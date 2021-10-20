@@ -19,7 +19,8 @@ import Data.List (intercalate
 import Data.IORef (IORef
                   ,newIORef
                   ,readIORef
-                  ,modifyIORef)
+                  ,modifyIORef
+                  ,writeIORef)
 
 import Burdock.Scientific
 import Burdock.Syntax
@@ -144,6 +145,7 @@ interp (Parens e) = interp e
 interp (Iden a) = do
     mv <- lookupEnv a
     case mv of
+        Just (BoxV vr) -> liftIO $ readIORef vr
         Just v -> pure v
         Nothing -> error $ "identifier not found: " ++ a
 
@@ -245,3 +247,20 @@ interpStatements (StmtExpr e : ss) = do
 interpStatements (Check _ ss' : ss) = do
     _ <- interpStatements ss'
     interpStatements ss
+
+interpStatements (VarDecl b e : ss) = do
+    v <- interp e
+    vr <- liftIO $ newIORef v
+    localEnv (extendEnv [(b,BoxV vr)]) $ interpStatements ss
+
+interpStatements (SetVar nm e : ss) = do
+    mv <- lookupEnv nm
+    let vr = case mv of
+                 Just (BoxV b) -> b
+                 Just x -> error $ "attempt to assign to something which isn't a var: " ++ show x
+                 Nothing -> error $ "identifier not found: " ++ nm
+    v <- interp e
+    liftIO $ writeIORef vr v
+    interpStatements ss
+    
+

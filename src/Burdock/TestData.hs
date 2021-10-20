@@ -148,12 +148,12 @@ check:
   f(3) is 4
 end
 
-#check:
-#  var a = 3
-#  a is 3
-#  a := 4
-#  a is 4
-#end
+check:
+  var a = 3
+  a is 3
+  a := 4
+  a is 4
+end
 
 
      |]
