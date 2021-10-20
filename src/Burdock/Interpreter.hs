@@ -12,7 +12,6 @@ import Control.Monad.Reader (ReaderT
                             ,local
                             ,liftIO
                             )
---import Control.Monad.IO.Class (liftIO)
 
 import Data.List (intercalate
                  ,sortOn)
@@ -55,6 +54,7 @@ data Value = NumV Scientific
            | FunV [String] Expr Env
            | ForeignFunV String
            | VariantV String [(String,Value)]
+           | BoxV (IORef Value)
 
 -- todo: the rough idea is to convert values back to syntax
 -- and pretty them
@@ -65,6 +65,7 @@ instance Show Value where
   show (VariantV nm fs) = "VariantV " ++ nm ++ "[" ++ intercalate "," (map show fs) ++ "]"
   show (FunV as bdy _env) = "FunV " ++ show as ++ "\n" ++ prettyExpr bdy
   show (ForeignFunV n) = "ForeignFunV " ++ show n
+  show (BoxV _n) = "BoxV XX" -- ++ show n
 
 instance Eq Value where
     NumV a == NumV b = a == b
@@ -188,10 +189,26 @@ interp (If bs e) = do
                    Nothing -> error "NoBranchesSatisfied"
     f bs
 
+{-
+  a = ...
+  b = ...
+  ...
+  ->
+  var a = raise("internal error: uninitialized letrec")
+  var b = raise("internal error: uninitialized letrec")
+  ...
+  a := ...
+  b := ...
+  ...
 
--- letrec -> what's the easiest way to make this just about work for now?
--- use the lisp style with variables?
-interp (LetRec {}) = error $ "todo: interp for letrec"
+-}
+interp (LetRec bs e) = undefined {-do
+    let vars = map makeVar bs
+        assigned = map makeAssign bs
+    in interp $ Block (vars ++ assigned ++ [e])
+  where
+    makeVar (v,_) = 
+    -}
 
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =

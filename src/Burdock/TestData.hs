@@ -88,11 +88,6 @@ check:
   2 is 3
 end
 
-  #letrec fact = lam(n):
-  #  if n == 1: 1 else: n * fact(n - 1) end
-  #end: fact(5) end is 120
-   
-
      |], Script
          [LetDecl "a" (Num 5)
          ,StmtExpr $ App (Iden "print") [Iden "a"]
@@ -101,6 +96,11 @@ end
          ,Check Nothing [StmtExpr $ BinOp (Num 2) "is" (Num 3)]
                                 
          ])
+    ,([R.r|
+       var a = 5
+       a := 6|]
+     ,Script [VarDecl "a" (Num 5)
+             ,SetVar "a" (Num 6)])
 
     ]
 
@@ -139,9 +139,6 @@ check:
   if za == 1: 1 else: 2 end is 1
   if za == zb: 1 else: 2 end is 2
 
-  #letrec fact = lam(n):
-  #  if n == 1: 1 else: n * fact(n - 1) end
-  #end: fact(5) end is 120
    
 end                    
 
@@ -151,6 +148,20 @@ check:
   f(3) is 4
 end
 
+#check:
+#  var a = 3
+#  a is 3
+#  a := 4
+#  a is 4
+#end
+
 
      |]
+   {-,[R.r|
+check:
+  letrec fact = lam(n):
+    if n == 1: 1 else: n * fact(n - 1) end
+  end: fact(5) end is 120
+end |]-}
+
     ]

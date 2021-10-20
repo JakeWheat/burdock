@@ -103,6 +103,8 @@ stmt (Check nm s) = prettyBlocklike vsep
                 Nothing -> pretty "check:"
                 Just nm' -> pretty "check" <+> (expr $ Text nm') <> pretty ":"
         ,stmts s]
+stmt (VarDecl pn e) = pretty "var" <+> pretty pn <+> pretty "=" <+> expr e
+stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
 
 stmts :: [Stmt] -> Doc a
 stmts = vsep . map stmt

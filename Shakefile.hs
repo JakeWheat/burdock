@@ -24,6 +24,8 @@ data GhcOptions
 ghcOpts :: GhcOptions
 ghcOpts = GhcOptions Nothing []
 
+testPattern :: Maybe String
+testPattern = Nothing -- Just "fact"
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
@@ -92,3 +94,4 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
     phony "test" $ do
         need ["_build/bin/burdock-tests"]
         cmd_ "_build/bin/burdock-tests  --color never --ansi-tricks false"
+            (maybe "" (\x -> "-p " ++ x) testPattern)

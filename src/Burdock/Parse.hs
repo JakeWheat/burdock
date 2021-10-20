@@ -339,7 +339,8 @@ script = Script <$> stmts
 
 stmt :: Parser Stmt
 stmt = choice
-    [checkBlock
+    [varDecl
+    ,checkBlock
     ,startsWithExprOrPattern]
 
 stmts :: Parser [Stmt]
@@ -354,12 +355,17 @@ checkBlock = do
     keyword_ "end"
     pure $ Check nm ss
 
+varDecl :: Parser Stmt
+varDecl = uncurry VarDecl <$> (keyword_ "var" *> binding)
+
+
 startsWithExprOrPattern :: Parser Stmt
 startsWithExprOrPattern = do
     ex <- expr
     case ex of
         Iden i -> choice
-            [LetDecl i <$> ((symbol_ "=" <?> "") *> expr)
+            [SetVar i <$> ((symbol_ ":=" <?> "") *> expr)
+            ,LetDecl i <$> ((symbol_ "=" <?> "") *> expr)
             ,pure $ StmtExpr ex]
         _ -> pure $ StmtExpr ex
 

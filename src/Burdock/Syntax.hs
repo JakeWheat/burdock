@@ -12,6 +12,8 @@ data Stmt =
       StmtExpr Expr
     | LetDecl PatName Expr
     | Check (Maybe String) [Stmt]
+    | VarDecl PatName Expr
+    | SetVar String Expr
     deriving (Eq,Show,Data)
 
 data Expr =
