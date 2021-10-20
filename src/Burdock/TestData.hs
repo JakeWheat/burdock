@@ -134,19 +134,23 @@ check:
     a
   end is 1
 
+  za = 1
+  zb = 2
+  if za == 1: 1 else: 2 end is 1
+  if za == zb: 1 else: 2 end is 2
+
   #letrec fact = lam(n):
   #  if n == 1: 1 else: n * fact(n - 1) end
   #end: fact(5) end is 120
    
 end                    
 
-     |]
-    ,    [R.r|
-
 f = lam(x): x + 1 end
 
 check:
   f(3) is 4
 end
-|]
+
+
+     |]
     ]

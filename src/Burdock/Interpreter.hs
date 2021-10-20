@@ -151,17 +151,17 @@ interp (App f es) = do
     vs <- mapM interp es
     app fv vs
 
-interp (BinOp e0 "+" e1) = do
-    -- todo: look up operators in the env
-    v0 <- interp e0
-    v1 <- interp e1
-    case (v0,v1) of
-        (NumV a, NumV b) -> pure $ NumV $ a + b
-        _ -> error $ "wrong types of args to +: " ++ show (v0,v1)
 
 interp (BinOp _ "is" _) = error $ "'is' test predicate only allowed in check block"
 
-interp (BinOp _ op _) = error $ "binop " ++ op ++ " not supported"
+interp (BinOp e0 op e1) = do
+    -- todo: look up operators in the env
+    v0 <- interp e0
+    v1 <- interp e1
+    case (v0,op,v1) of
+        (NumV a, "+", NumV b) -> pure $ NumV $ a + b
+        (a, "==", b) -> pure $ BoolV $ a == b
+        _ -> error $ "operator not supported: " ++ show (op,v0,v1)
 
 interp (Lam ps e) = do
     env <- askEnv
@@ -175,6 +175,19 @@ interp (Let bs e) = do
     newEnv bs
 
 interp (Block ss) = interpStatements ss
+
+interp (If bs e) = do
+    let f ((c,t):bs') = do
+            c' <- interp c
+            case c' of
+                BoolV True -> interp t
+                BoolV False -> f bs'
+                _ -> error $ "throwExpectedType 'Boolean'" ++ show c'
+        f [] = case e of
+                   Just x -> interp x
+                   Nothing -> error "NoBranchesSatisfied"
+    f bs
+
 
 -- letrec -> what's the easiest way to make this just about work for now?
 -- use the lisp style with variables?
