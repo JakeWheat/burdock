@@ -69,8 +69,11 @@ parseHelper parseFn fn src =
 
 type Parser = Parsec Void String
 
-myEof :: Parser ()
-myEof = eof <?> ""
+chainl1 :: Alternative m => m a -> m (a -> a -> a) -> m a
+chainl1 p op = scan
+  where
+    scan = p <**> rst
+    rst = (\f y g x -> g (f x y)) <$> op <*> p <*> rst <|> pure id
 
 boption :: a -> Parser a -> Parser a
 boption v p = (option v p) <?> ""
@@ -81,6 +84,11 @@ bchoice cs = choice $ addEmpty cs
     addEmpty (x:xs@(_:_)) = (x <?> "") : addEmpty xs
     addEmpty [x] = [x]
     addEmpty [] = []
+
+
+myEof :: Parser ()
+myEof = eof <?> ""
+
 
 lexeme :: Parser a -> Parser a
 lexeme f = f <* whiteSpace
@@ -106,16 +114,50 @@ commaSep = xSep ','
 commaSep1 :: Parser f -> Parser [f]
 commaSep1 = xSep1 ','
 
+whiteSpace :: Parser ()
+whiteSpace = space *> choice [blockComment *> whiteSpace
+                             ,lineComment *> whiteSpace
+                             ,pure ()] <?> ""
+
+char_ :: Char -> Parser ()
+char_ x = () <$ char x
+
 symbol :: String -> Parser String
 symbol x = lexeme (string x)
 
 symbol_ :: String -> Parser ()
 symbol_ x = lexeme_ (string x)
 
-whiteSpace :: Parser ()
-whiteSpace = space *> choice [blockComment *> whiteSpace
-                             ,lineComment *> whiteSpace
-                             ,pure ()] <?> ""
+keyword :: String -> Parser String
+keyword n = lexeme (try (string n <* notFollowedBy (satisfy (\a -> isAlphaNum a || a `elem` "?-+_"))))
+
+keyword_ :: String -> Parser ()
+keyword_ n = void $ keyword n
+
+reservedKeywords :: [String]
+reservedKeywords =
+    ["end", "lam", "let", "letrec", "if", "else", "ask", "then"
+    ,"otherwise", "block", "cases", "when", "var", "check"
+    ,"where", "fun", "rec", "data"
+    ,"import", "provide", "provide-types"
+    ,"from", "and", "or", "shadow", "as"
+    ,"ref"
+    ]
+
+identifierX :: Parser String
+identifierX =
+    lexeme ((:)
+    <$> (letterChar <|> char '_' <|> char '-')
+    <*> takeWhileP Nothing (\a -> (isAlphaNum a || a `elem` "?-+_")))
+    <?> "identifier"
+
+identifier :: Parser String
+identifier = try $ do
+    i <- identifierX
+    when (i `elem` reservedKeywords)
+        $ fail $ "unexpected keyword: " ++ i
+    guard (i `notElem` reservedKeywords)
+    pure i
 
 lineComment :: Parser ()
 lineComment = () <$ try (string "#" <?> "") <* takeWhileP Nothing (/='\n')
@@ -152,44 +194,14 @@ num = lexeme (
     -- not sure if this def pays its way
     appendA = flip (++)
 
-char_ :: Char -> Parser ()
-char_ x = () <$ char x
-
-keyword :: String -> Parser String
-keyword n = lexeme (try (string n <* notFollowedBy (satisfy (\a -> isAlphaNum a || a `elem` "?-+_"))))
-
-keyword_ :: String -> Parser ()
-keyword_ n = void $ keyword n
-
-reservedKeywords :: [String]
-reservedKeywords =
-    ["end", "lam", "let", "letrec", "if", "else", "ask", "then"
-    ,"otherwise", "block", "cases", "when", "var", "check"
-    ,"where", "fun", "rec", "data"
-    ,"import", "provide", "provide-types"
-    ,"from", "and", "or", "shadow", "as"
-    ,"ref"
-    ]
-
-identifierX :: Parser String
-identifierX =
-    lexeme ((:)
-    <$> (letterChar <|> char '_' <|> char '-')
-    <*> takeWhileP Nothing (\a -> (isAlphaNum a || a `elem` "?-+_")))
-    <?> "identifier"
-
-identifier :: Parser String
-identifier = try $ do
-    i <- identifierX
-    when (i `elem` reservedKeywords)
-        $ fail $ "unexpected keyword: " ++ i
-    guard (i `notElem` reservedKeywords)
-    pure i
-
 ------------------------------------------------------------------------------
 
--- parsers
+-- main parsing
 
+
+---------------------------------------
+
+-- expressions
 
 expr :: Parser Expr
 expr = chainl1 term f
@@ -198,12 +210,6 @@ expr = chainl1 term f
           op <- binOpSym
           pure $ \a b -> BinOp a op b
 
-chainl1 :: Alternative m => m a -> m (a -> a -> a) -> m a
-chainl1 p op = scan
-  where
-    scan = p <**> rst
-    rst = (\f y g x -> g (f x y)) <$> op <*> p <*> rst <|> pure id
-  
 term :: Parser Expr
 term = (do
     x <- choice
@@ -224,6 +230,9 @@ termSuffixes x = boption x $ do
     y <- choice [pure x <**> appSuffix]
     termSuffixes y
 
+appSuffix :: Parser (Expr -> Expr)
+appSuffix = flip App <$> parens (commaSep expr)
+
 binOpSym :: Parser String
 binOpSym = choice ([symbol "+"
                   ,symbol "*"
@@ -243,43 +252,16 @@ binOpSym = choice ([symbol "+"
                   ,"is"
                   ])
 
-appSuffix :: Parser (Expr -> Expr)
-appSuffix = flip App <$> parens (commaSep expr)
-
-block :: Parser Expr
-block = Block <$>
-    (keyword_ "block" *> symbol_ ":" *>
-    many stmt
-    <* keyword_ "end")
-
-
-numE :: Parser Expr
-numE = do
-    x <- num
-    maybe (fail $ "parsing number failed: " ++ x)
-          (pure . Num) (readMaybe x)
-
-stringE :: Parser Expr
-stringE = Text <$> stringRaw
-            <?> "string literal"
-
-stringRaw :: Parser String
-stringRaw = unescape <$>
-            choice [char_ '\'' *> takeWhileP Nothing (/='\'') <* lexeme_ (char_ '\'')
-                   ,char_ '"' *> takeWhileP Nothing (/='"') <* lexeme_ (char_ '"')]
-            <?> "string literal"
-  where
-    unescape ('\\':'n':xs) = '\n':unescape xs
-    unescape ('\\':'\\':xs) = '\\':unescape xs
-    unescape (x:xs) = x:unescape xs
-    unescape [] = []
 
 lamE :: Parser Expr
 lamE = Lam <$> (keyword_ "lam" *> parens (commaSep patName) <* symbol_ ":")
            <*> (expr <* keyword_ "end")
-           
+
 patName :: Parser String
 patName = identifier
+
+expressionLetRec :: Parser Expr
+expressionLetRec = keyword_ "letrec" *> letBody LetRec
 
 expressionLet :: Parser Expr
 expressionLet = keyword_ "let" *> letBody Let
@@ -291,12 +273,6 @@ letBody ctor = ctor <$> commaSep1 binding
 binding :: Parser (PatName,Expr)
 binding = (,) <$> patName
                        <*> (symbol_ "=" *> expr)
-
-expressionLetRec :: Parser Expr
-expressionLetRec = keyword_ "letrec" *> letBody LetRec
-
-parensE :: Parser Expr
-parensE = Parens <$> parens expr
 
 ifE :: Parser Expr
 ifE = do
@@ -321,6 +297,50 @@ ifE = do
             ]
     endif bs el = keyword_ "end" *> pure (If (reverse bs) el)
 
+block :: Parser Expr
+block = Block <$>
+    (keyword_ "block" *> symbol_ ":" *>
+    many stmt
+    <* keyword_ "end")
+
+numE :: Parser Expr
+numE = do
+    x <- num
+    maybe (fail $ "parsing number failed: " ++ x)
+          (pure . Num) (readMaybe x)
+
+stringE :: Parser Expr
+stringE = Text <$> stringRaw
+            <?> "string literal"
+
+stringRaw :: Parser String
+stringRaw = unescape <$>
+            choice [char_ '\'' *> takeWhileP Nothing (/='\'') <* lexeme_ (char_ '\'')
+                   ,char_ '"' *> takeWhileP Nothing (/='"') <* lexeme_ (char_ '"')]
+            <?> "string literal"
+  where
+    unescape ('\\':'n':xs) = '\n':unescape xs
+    unescape ('\\':'\\':xs) = '\\':unescape xs
+    unescape (x:xs) = x:unescape xs
+    unescape [] = []
+
+parensE :: Parser Expr
+parensE = Parens <$> parens expr
+
+---------------------------------------
+
+-- statements
+
+script :: Parser Script
+script = Script <$> stmts
+
+stmt :: Parser Stmt
+stmt = choice
+    [checkBlock
+    ,startsWithExprOrPattern]
+
+stmts :: Parser [Stmt]
+stmts = many stmt
 
 checkBlock :: Parser Stmt
 checkBlock = do
@@ -331,19 +351,6 @@ checkBlock = do
     keyword_ "end"
     pure $ Check nm ss
 
-letExprOrDecl :: Parser Stmt
-letExprOrDecl = do
-    keyword_ "let"
-    bs <- commaSep1 binding
-    case bs of
-        [b] -> choice [do
-                       e <- symbol_ ":" *> expr <* keyword_ "end"
-                       pure $ StmtExpr $ Let bs e
-                      ,pure $ uncurry LetDecl b]
-        _ -> do
-            e <- (symbol_ ":" *> expr <* keyword_ "end")
-            pure $ StmtExpr $ Let bs e
-
 startsWithExprOrPattern :: Parser Stmt
 startsWithExprOrPattern = do
     ex <- expr
@@ -353,13 +360,3 @@ startsWithExprOrPattern = do
             ,pure $ StmtExpr ex]
         _ -> pure $ StmtExpr ex
 
-stmt :: Parser Stmt
-stmt = choice
-    [checkBlock
-    ,startsWithExprOrPattern]
-
-stmts :: Parser [Stmt]
-stmts = many stmt
-
-script :: Parser Script
-script = Script <$> stmts
