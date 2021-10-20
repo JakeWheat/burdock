@@ -26,6 +26,7 @@ import Burdock.Scientific
 import Burdock.Syntax
 import Burdock.Pretty
 
+--import Debug.Trace (trace)
 
 ------------------------------------------------------------------------------
 
@@ -139,6 +140,7 @@ runInterp f = do
 -- the interpreter itself
 
 interp :: Expr -> Interpreter Value
+--interp x | trace ("trace: "  ++ prettyExpr x) False = undefined
 interp (Num n) = pure $ NumV n
 interp (Text s) = pure $ TextV s
 interp (Parens e) = interp e
@@ -163,6 +165,8 @@ interp (BinOp e0 op e1) = do
     v1 <- interp e1
     case (v0,op,v1) of
         (NumV a, "+", NumV b) -> pure $ NumV $ a + b
+        (NumV a, "-", NumV b) -> pure $ NumV $ a - b
+        (NumV a, "*", NumV b) -> pure $ NumV $ a * b
         (a, "==", b) -> pure $ BoolV $ a == b
         _ -> error $ "operator not supported: " ++ show (op,v0,v1)
 
@@ -196,21 +200,25 @@ interp (If bs e) = do
   b = ...
   ...
   ->
-  var a = raise("internal error: uninitialized letrec")
-  var b = raise("internal error: uninitialized letrec")
+  var a = lam():raise("internal error: uninitialized letrec")
+  var b = lam():raise("internal error: uninitialized letrec")
   ...
   a := ...
   b := ...
   ...
 
 -}
-interp (LetRec bs e) = undefined {-do
+interp (LetRec bs e) =
     let vars = map makeVar bs
         assigned = map makeAssign bs
-    in interp $ Block (vars ++ assigned ++ [e])
+        desugared = Block (vars ++ assigned ++ [StmtExpr e])
+        
+    in {-trace (prettyExpr desugared) $ -} interp desugared
   where
-    makeVar (v,_) = 
-    -}
+    makeVar (v,_) = VarDecl v $ Lam []
+        $ App (Iden "raise")
+            [Text "internal error: uninitialized letrec implementation var"]
+    makeAssign (b,v) = SetVar b v
 
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =

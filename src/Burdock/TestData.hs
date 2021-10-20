@@ -157,11 +157,23 @@ end
 
 
      |]
-   {-,[R.r|
+   ,[R.r|
 check:
   letrec fact = lam(n):
     if n == 1: 1 else: n * fact(n - 1) end
   end: fact(5) end is 120
-end |]-}
+
+  letrec addeven = lam(x): if x == 0: 0 else: x + addodd(x - 1) end end,
+         addodd = lam(x): if x == 0: 0 else: x + addeven(x - 1) end end:
+    addeven(6) end is 21
+
+  # todo: idea 1: make them lazy/memoized
+  # idea 2: reorder the definitions at desugar time
+  #letrec x = y + 1,
+  #       y = 2: x end is 3
+
+
+
+end |]
 
     ]
