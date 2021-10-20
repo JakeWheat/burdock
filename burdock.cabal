@@ -1,0 +1,44 @@
+cabal-version:      2.4
+name:               burdock
+version:            0.1
+
+synopsis:           experiment to implement a simple programming language
+
+description:        experiment to implement a simple programming language
+                    https://github.com/JakeWheat/burdock/
+
+license:            BSD-3-Clause
+license-file:       LICENSE
+author:             Jake Wheat
+maintainer:         jakewheat@tutanota.com
+copyright:          Copyright 2021 Jake Wheat
+category:           Language
+                     
+extra-source-files:  README,LICENSE
+
+Test-Suite burdock-tests
+    type:             exitcode-stdio-1.0
+    build-depends:    base ^>=4.14.3.0,
+                      tasty,
+                      tasty-hunit,
+                      megaparsec,
+                      scientific,
+                      prettyprinter,
+                      text,
+                      raw-strings-qq,
+                      mtl,
+                      safe-exceptions,
+
+    main-is:          BurdockTests.hs
+    hs-source-dirs:   src
+    other-modules:    Burdock.Interpreter
+                      Burdock.Parse
+                      Burdock.Pretty
+                      Burdock.Scientific
+                      Burdock.Syntax
+                      Burdock.TestData
+                      Burdock.Tests
+
+
+    default-language: Haskell2010
+    ghc-options:      -threaded -Wall
