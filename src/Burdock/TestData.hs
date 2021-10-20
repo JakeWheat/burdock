@@ -27,20 +27,20 @@ exprParseTests =
     ,("a + b + c", BinOp (BinOp (Iden "a") "+" (Iden "b")) "+" (Iden "c"))
 
     ,("lam(): 2 end", Lam [] (Num 2))
-    ,("lam(x): x + 1 end", Lam ["x"] (BinOp (Iden "x") "+" (Num 1)))
+    ,("lam(x): x + 1 end", Lam [nm "x"] (BinOp (Iden "x") "+" (Num 1)))
     ,("lam(x, y): x - y end"
-     ,Lam ["x","y"] (BinOp (Iden "x") "-" (Iden "y")))
+     ,Lam [nm "x",nm "y"] (BinOp (Iden "x") "-" (Iden "y")))
 
     ,("let x=3,y=4: x + y end"
-     , Let [("x", Num 3)
-           ,("y", Num 4)]
+     , Let [(nm "x", Num 3)
+           ,(nm "y", Num 4)]
          (BinOp (Iden "x") "+" (Iden "y")))
     ,("let x=3: x + 4 end"
-     ,Let [("x", Num 3)]
+     ,Let [(nm "x", Num 3)]
          (BinOp (Iden "x") "+" (Num 4)))
     
     ,("letrec a = 5: a end"
-     ,LetRec [("a",Num 5)] (Iden "a"))
+     ,LetRec [(nm "a",Num 5)] (Iden "a"))
 
     ,("block: end", Block [])
     ,("block: \n\
@@ -62,7 +62,11 @@ exprParseTests =
       \end"
      ,If [(BinOp (Iden "n") "==" (Num 1), Num 0)
          ,(BinOp (Iden "n") "==" (Num 2), Num 1)] (Just (Num 2)))
+    ,("let shadow a = 4 : a end"
+     ,Let [(PatName Shadow "a", Num 4)] (Iden "a"))
     ]
+  where
+    nm = PatName NoShadow
 
 scriptParseTests :: [(String, Script)]
 scriptParseTests =
@@ -89,9 +93,9 @@ check:
 end
 
      |], Script
-         [LetDecl "a" (Num 5)
+         [LetDecl (nm "a") (Num 5)
          ,StmtExpr $ App (Iden "print") [Iden "a"]
-         ,Check (Just "test-1") [LetDecl "b" (Num 6)
+         ,Check (Just "test-1") [LetDecl (nm "b") (Num 6)
                                 ,StmtExpr $ BinOp (Num 1) "is" (Num 1)]
          ,Check Nothing [StmtExpr $ BinOp (Num 2) "is" (Num 3)]
                                 
@@ -99,11 +103,12 @@ end
     ,([R.r|
        var a = 5
        a := 6|]
-     ,Script [VarDecl "a" (Num 5)
+     ,Script [VarDecl (nm "a") (Num 5)
              ,SetVar "a" (Num 6)])
 
     ]
-
+  where
+    nm = PatName NoShadow
 
 interpreterTests :: [String]
 interpreterTests =

@@ -30,7 +30,13 @@ data Expr =
     | Block [Stmt]
     deriving (Eq,Show,Data)
 
-type PatName = String
+data PatName =
+      PatName Shadow String
+    deriving (Eq,Show,Data)
+
+data Shadow = NoShadow | Shadow
+          deriving (Eq,Show,Data) 
+
 
 data Script =
       Script [Stmt]

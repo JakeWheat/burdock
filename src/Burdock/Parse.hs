@@ -260,8 +260,9 @@ lamE :: Parser Expr
 lamE = Lam <$> (keyword_ "lam" *> parens (commaSep patName) <* symbol_ ":")
            <*> (expr <* keyword_ "end")
 
-patName :: Parser String
-patName = identifier
+patName :: Parser PatName
+patName = PatName <$> boption NoShadow (Shadow <$ keyword_ "shadow")
+                  <*> identifier
 
 expressionLetRec :: Parser Expr
 expressionLetRec = keyword_ "letrec" *> letBody LetRec
@@ -365,7 +366,7 @@ startsWithExprOrPattern = do
     case ex of
         Iden i -> choice
             [SetVar i <$> ((symbol_ ":=" <?> "") *> expr)
-            ,LetDecl i <$> ((symbol_ "=" <?> "") *> expr)
+            ,LetDecl (PatName NoShadow i) <$> ((symbol_ "=" <?> "") *> expr)
             ,pure $ StmtExpr ex]
         _ -> pure $ StmtExpr ex
 

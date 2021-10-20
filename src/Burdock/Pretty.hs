@@ -51,7 +51,7 @@ expr (Parens e) = parens (expr e)
 expr (App e es) = expr e <> parens (commaSep $ map expr es)
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (Lam bs e) = prettyBlocklike sep
-    [pretty "lam" <> parens (commaSep $ map pretty bs) <> pretty ":"
+    [pretty "lam" <> parens (commaSep $ map patName bs) <> pretty ":"
     ,expr e]
 expr (Let bs e) = prettyBlocklike sep
     [pretty "let" <+> bs' <> pretty ":"
@@ -79,7 +79,13 @@ expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
     
 binding :: PatName -> Expr -> Doc a
 binding n e =
-    pretty n <+> pretty "=" <+> nest 2 (expr e)
+    patName n <+> pretty "=" <+> nest 2 (expr e)
+
+patName :: PatName -> Doc a
+patName (PatName s nm) =
+    case s of
+        Shadow -> pretty "shadow" <+> pretty nm
+        NoShadow -> pretty nm
 
 
 -- first line
@@ -103,7 +109,7 @@ stmt (Check nm s) = prettyBlocklike vsep
                 Nothing -> pretty "check:"
                 Just nm' -> pretty "check" <+> (expr $ Text nm') <> pretty ":"
         ,stmts s]
-stmt (VarDecl pn e) = pretty "var" <+> pretty pn <+> pretty "=" <+> expr e
+stmt (VarDecl pn e) = pretty "var" <+> patName pn <+> pretty "=" <+> expr e
 stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
 
 stmts :: [Stmt] -> Doc a

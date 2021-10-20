@@ -172,13 +172,13 @@ interp (BinOp e0 op e1) = do
 
 interp (Lam ps e) = do
     env <- askEnv
-    pure $ FunV ps e env
+    pure $ FunV (map unPat ps) e env
 
 interp (Let bs e) = do
     let newEnv [] = interp e
         newEnv ((b,ex):bs') = do
             v <- interp ex
-            localEnv (extendEnv [(b,v)]) $ newEnv bs'
+            localEnv (extendEnv [(unPat b,v)]) $ newEnv bs'
     newEnv bs
 
 interp (Block ss) = interpStatements ss
@@ -196,10 +196,12 @@ interp (If bs e) = do
     f bs
 
 {-
+letrec:
   a = ...
   b = ...
   ...
   ->
+  # want to replace the lam with a memoize thing
   var a = lam():raise("internal error: uninitialized letrec")
   var b = lam():raise("internal error: uninitialized letrec")
   ...
@@ -218,7 +220,10 @@ interp (LetRec bs e) =
     makeVar (v,_) = VarDecl v $ Lam []
         $ App (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
-    makeAssign (b,v) = SetVar b v
+    makeAssign (b,v) = SetVar (unPat b) v
+
+unPat :: PatName -> String
+unPat (PatName _ nm) = nm
 
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =
@@ -248,7 +253,7 @@ interpStatements [StmtExpr e] = interp e
 interpStatements [Check _ ss] = interpStatements ss
 interpStatements (LetDecl b e : ss) = do
     v <- interp e
-    localEnv (extendEnv [(b,v)]) $ interpStatements ss
+    localEnv (extendEnv [(unPat b,v)]) $ interpStatements ss
 interpStatements (StmtExpr e : ss) = do
     _ <- interp e
     interpStatements ss
@@ -259,7 +264,7 @@ interpStatements (Check _ ss' : ss) = do
 interpStatements (VarDecl b e : ss) = do
     v <- interp e
     vr <- liftIO $ newIORef v
-    localEnv (extendEnv [(b,BoxV vr)]) $ interpStatements ss
+    localEnv (extendEnv [(unPat b,BoxV vr)]) $ interpStatements ss
 
 interpStatements (SetVar nm e : ss) = do
     mv <- lookupEnv nm
