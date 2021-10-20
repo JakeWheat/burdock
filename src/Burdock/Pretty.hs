@@ -76,10 +76,24 @@ expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
     pel Nothing = []
     pel (Just e) = [pretty "else:"
                    ,nest 2 (expr e)]
+expr (DotExpr e i) = expr e <> pretty "." <> pretty i
+expr (Cases ty e mats els) =
+    prettyBlocklike vsep
+    [pretty "cases" <> parens (pretty ty) <+> expr e <> pretty ":"
+    ,vsep (map mf mats ++
+           [maybe mempty (\x -> pretty "|" <+> pretty "else" <+> pretty "=>" <+> expr x) els])]
+  where
+    mf (p, e1) = pretty "|" <+> pat p <+> pretty "=>" <+> expr e1
+
     
 binding :: PatName -> Expr -> Doc a
 binding n e =
     patName n <+> pretty "=" <+> nest 2 (expr e)
+
+pat :: Pat -> Doc a
+pat (IdenP pn) = patName pn
+pat (VariantP q c ps) = maybe mempty (\a -> pretty a <> pretty ".") q
+                        <> pretty c <> parens (commaSep $ map pat ps)
 
 patName :: PatName -> Doc a
 patName (PatName s nm) =
@@ -111,6 +125,20 @@ stmt (Check nm s) = prettyBlocklike vsep
         ,stmts s]
 stmt (VarDecl pn e) = pretty "var" <+> patName pn <+> pretty "=" <+> expr e
 stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
+
+stmt (DataDecl nm vs) =
+    prettyBlocklike vsep
+    [pretty "data" <+> pretty nm <+> pretty ":"
+    ,vsep $ map vf vs]
+  where
+      vf (VariantDecl vnm fs) =
+          pretty "|" <+> pretty vnm <> case fs of
+              [] -> mempty
+              _ -> parens (commaSep $ map f fs)
+      f (m, x) = (case m of
+                     Ref -> pretty "ref"
+                     _ -> mempty)
+                 <+> pretty x
 
 stmts :: [Stmt] -> Doc a
 stmts = vsep . map stmt

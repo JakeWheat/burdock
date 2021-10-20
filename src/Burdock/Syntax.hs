@@ -14,7 +14,15 @@ data Stmt =
     | Check (Maybe String) [Stmt]
     | VarDecl PatName Expr
     | SetVar String Expr
+    | DataDecl String [VariantDecl]
     deriving (Eq,Show,Data)
+
+data VariantDecl = VariantDecl String [(Ref,String)]
+                 deriving (Eq,Show,Data) 
+
+data Ref = Ref | Con
+         deriving (Eq,Show,Data) 
+
 
 data Expr =
       Num Scientific
@@ -28,7 +36,13 @@ data Expr =
     | Let [(PatName,Expr)] Expr
     | LetRec [(PatName,Expr)] Expr
     | Block [Stmt]
+    | DotExpr Expr String
+    | Cases String Expr [(Pat, Expr)] (Maybe Expr)
     deriving (Eq,Show,Data)
+
+data Pat = IdenP PatName
+         | VariantP (Maybe String) String [Pat]
+          deriving (Eq,Show,Data) 
 
 data PatName =
       PatName Shadow String

@@ -64,6 +64,35 @@ exprParseTests =
          ,(BinOp (Iden "n") "==" (Num 2), Num 1)] (Just (Num 2)))
     ,("let shadow a = 4 : a end"
      ,Let [(PatName Shadow "a", Num 4)] (Iden "a"))
+    ,("a.b", DotExpr (Iden "a") "b")
+    ,("f(1,2).c", DotExpr (App (Iden "f") [Num 1, Num 2]) "c")
+     ,("cases(List) a:\n\
+      \  | empty => \"empty\"\n\
+      \  | link(f, r) => \"link\"\n\
+      \end"
+     ,Cases "List" (Iden "a")
+        [(IdenP $ nm "empty", Text "empty")
+        ,(VariantP Nothing "link" [IdenP $ nm "f", IdenP $ nm "r"], Text "link")]
+        Nothing)
+
+    ,("cases(List) a:\n\
+      \  | empty => \"empty\"\n\
+      \  | else => \"else\"\n\
+      \end"
+     ,Cases "List" (Iden "a")
+        [(IdenP $ nm "empty", Text "empty")]
+        (Just $ Text "else"))
+
+    ,("cases(z.List) a:\n\
+      \  | z.empty => \"empty\"\n\
+      \  | z.link(f, r) => x\n\
+      \  | else => \"else\"\n\
+      \end"
+     ,Cases "z.List" (Iden "a")
+        [(VariantP (Just "z") "empty" [], Text "empty")
+        ,(VariantP (Just "z") "link" [IdenP $ nm "f", IdenP $ nm "r"], Iden "x")]
+        (Just $ Text "else"))
+
     ]
   where
     nm = PatName NoShadow
@@ -105,7 +134,42 @@ end
        a := 6|]
      ,Script [VarDecl (nm "a") (Num 5)
              ,SetVar "a" (Num 6)])
+    ,([R.r|
+       # data decl|]
+     ,Script [])
 
+    ,("data BTree:\n\
+      \  | node(value, left, right)\n\
+      \  | leaf(value)\n\
+      \end", Script [DataDecl "BTree" [VariantDecl "node" [(Con, "value"), (Con, "left"), (Con, "right")]
+                                      ,VariantDecl "leaf" [(Con, "value")]]])
+
+    ,("data MyEnum:\n\
+      \  | node(left, right)\n\
+      \  | leaf\n\
+      \end", Script [DataDecl "MyEnum" [VariantDecl "node" [(Con, "left"), (Con, "right")]
+                    ,VariantDecl "leaf" []]])
+
+    ,("data MyEnum:\n\
+      \  | node(left, right)\n\
+      \  | leaf()\n\
+      \end", Script [DataDecl "MyEnum" [VariantDecl "node" [(Con, "left"), (Con, "right")]
+                    ,VariantDecl "leaf" []]])
+
+    ,("data Point:\n\
+      \  | pt(x, y)\n\
+      \end", Script [DataDecl "Point" [VariantDecl "pt" [(Con, "x"), (Con, "y")]]])
+
+    ,("data Point: pt(x, y) end"
+     ,Script [DataDecl "Point" [VariantDecl "pt" [(Con, "x"), (Con, "y")]]])
+
+    ,("data Point: pt() end"
+     ,Script [DataDecl "Point" [VariantDecl "pt" []]])
+
+    ,("data Point: pt end"
+     ,Script [DataDecl "Point" [VariantDecl "pt" []]])
+
+    
     ]
   where
     nm = PatName NoShadow
@@ -179,6 +243,12 @@ check:
 
 
 
-end |]
+end
+|]
+   ,[R.r|
+
+# agdt
+   
+|]
 
     ]

@@ -10,7 +10,7 @@ import Text.Megaparsec (Parsec
                        ,(<|>)
                        ,parse
                        ,eof
-                       -- ,some
+                       ,some
                        ,choice
                        ,option
                        ,(<?>)
@@ -221,6 +221,7 @@ term = (do
         ,expressionLet
         ,ifE
         ,block
+        ,cases
         ,Iden <$> identifier
         ,numE
         ,stringE
@@ -230,11 +231,18 @@ term = (do
 
 termSuffixes :: Expr -> Parser Expr
 termSuffixes x = boption x $ do
-    y <- choice [pure x <**> appSuffix]
+    y <- choice [pure x <**> appSuffix
+                ,pure x <**> dotSuffix 
+                ]
     termSuffixes y
 
 appSuffix :: Parser (Expr -> Expr)
 appSuffix = flip App <$> parens (commaSep expr)
+
+dotSuffix :: Parser (Expr -> Expr)
+dotSuffix = symbol_ "." *>
+    (flip DotExpr <$> identifier)
+
 
 binOpSym :: Parser String
 binOpSym = choice ([symbol "+"
@@ -307,6 +315,66 @@ block = Block <$>
     many stmt
     <* keyword_ "end")
 
+cases :: Parser Expr
+cases = do
+    ty <- keyword_ "cases" *> parens typeName
+    t <- (expr <* symbol_ ":")
+    nextCase ty t []
+  where
+    typeName = (do
+        i <- identifier
+        -- todo: don't allow whitespace?
+        choice [do
+                j <- char '.' *> identifier
+                pure $ i ++ "." ++ j
+               ,pure i]) <?> "type name"
+    nextCase ty t cs =
+        choice [do
+                x <- casePart
+                case x of
+                    Right el -> endCase ty t cs (Just el)
+                    Left c -> nextCase ty t (c:cs)
+               ,endCase ty t cs Nothing]
+    casePart :: Parser (Either (Pat,Expr) Expr)
+    casePart = do
+        symbol_ "|"
+        choice
+            [Right <$> (keyword_ "else" *> symbol_ "=>" *> expr)
+            ,Left <$> ((,) <$> (casePat <?> "pattern") <*> (symbol_ "=>" *> expr))]
+    endCase ty t cs el = keyword_ "end" *> pure (Cases ty t (reverse cs) el)
+
+{-
+a case pattern can be:
+an (optionally dotted) identifier
+a (optionally dotted) shadow identifier
+a arged variant which is an (optionally dotted) identifier then parens commasep case pattern
+a case pattern with an as suffix
+
+a dotted identifier will parse as a variant with no args, it's a bit hacky
+-}
+
+casePat :: Parser Pat
+casePat = patTerm
+  where
+    patTerm = choice
+        [do
+         keyword_ "shadow"
+         i <- identifier
+         pure (IdenP $ PatName Shadow i)
+        ,do
+         i <- identifier
+         choice [do
+               j <- char '.' *> identifier
+               choice [do
+                       as <- parens (commaSep casePat)
+                       pure $ VariantP (Just i) j as
+                      ,pure $ VariantP (Just i) j []]
+              ,choice [do
+                       as <- parens (commaSep casePat)
+                       pure $ VariantP Nothing i as
+                      ,pure $ IdenP (PatName NoShadow i)]]]
+
+
 numE :: Parser Expr
 numE = do
     x <- num
@@ -341,11 +409,27 @@ script = Script <$> stmts
 stmt :: Parser Stmt
 stmt = choice
     [varDecl
+    ,dataDecl
     ,checkBlock
     ,startsWithExprOrPattern]
 
 stmts :: Parser [Stmt]
 stmts = many stmt
+
+varDecl :: Parser Stmt
+varDecl = uncurry VarDecl <$> (keyword_ "var" *> binding)
+
+dataDecl :: Parser Stmt
+dataDecl = DataDecl
+    <$> (keyword_ "data" *> identifier <* symbol_ ":")
+    <*> (((:[]) <$> singleVariant) <|> some variant) <* keyword_ "end"
+  where
+    singleVariant = VariantDecl
+                    <$> identifier <*> boption [] (parens (commaSep fld))
+    variant = VariantDecl
+              <$> (symbol_ "|" *> identifier)
+              <*> boption [] (parens (commaSep fld))
+    fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> identifier
 
 checkBlock :: Parser Stmt
 checkBlock = do
@@ -355,10 +439,6 @@ checkBlock = do
     ss <- many stmt
     keyword_ "end"
     pure $ Check nm ss
-
-varDecl :: Parser Stmt
-varDecl = uncurry VarDecl <$> (keyword_ "var" *> binding)
-
 
 startsWithExprOrPattern :: Parser Stmt
 startsWithExprOrPattern = do
