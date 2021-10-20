@@ -210,6 +210,7 @@ term = (do
         [lamE
         ,expressionLetRec
         ,expressionLet
+        ,ifE
         ,block
         ,Iden <$> identifier
         ,numE
@@ -296,6 +297,29 @@ expressionLetRec = keyword_ "letrec" *> letBody LetRec
 
 parensE :: Parser Expr
 parensE = Parens <$> parens expr
+
+ifE :: Parser Expr
+ifE = do
+    keyword_ "if"
+    ife <- cond
+    nextBranch [ife]
+  where
+    cond = (,) <$> expr <*> (symbol_ ":" *> expr)
+    nextBranch bs =
+        choice [do
+                x <- elsePart
+                case x of
+                    Right el -> endif bs (Just el)
+                    Left b -> nextBranch (b:bs)
+               ,endif bs Nothing]
+    elsePart :: Parser (Either (Expr,Expr) Expr)
+    elsePart = do
+        keyword_ "else"
+        choice
+            [Right <$> (symbol_ ":" *> expr)
+            ,Left <$> (keyword_ "if" *> cond)
+            ]
+    endif bs el = keyword_ "end" *> pure (If (reverse bs) el)
 
 
 checkBlock :: Parser Stmt

@@ -19,6 +19,7 @@ data Expr =
     | Text String
     | Iden String
     | Parens Expr
+    | If [(Expr,Expr)] (Maybe Expr)
     | App Expr [Expr]
     | BinOp Expr String Expr
     | Lam [PatName] Expr

@@ -63,6 +63,20 @@ expr (LetRec bs e) = prettyBlocklike sep
 expr (Block ss) = prettyBlocklike vsep
     [pretty "block:"
     ,stmts ss]
+expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
+  where
+    prettyCs [] = []
+    prettyCs ((c,t):cs') = [pretty "if" <+> expr c <> pretty ":"
+                           ,nest 2 (expr t)]
+                           ++ concat (map prettyEx cs')
+    prettyEx (c,t) = [pretty "else" <+> pretty "if" <+> expr c <> pretty ":"
+                     ,nest 2 (expr t)]
+    pel Nothing = []
+    pel (Just e) = [pretty "else:"
+                   ,nest 2 (expr e)]
+    
+    
+    
 
 prettyBlocklike :: ([Doc a] -> Doc a) ->  [Doc a] -> Doc a
 prettyBlocklike sp bdy =

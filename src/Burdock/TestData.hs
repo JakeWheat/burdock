@@ -47,6 +47,17 @@ exprParseTests =
       \  1 + 2\n\
       \end", Block [StmtExpr $ Iden "a", StmtExpr $ BinOp (Num 1) "+" (Num 2)])
 
+    ,("if n == 1: 1 else: 2 end"
+     ,If [(BinOp (Iden "n") "==" (Num 1), Num 1)] (Just (Num 2)))
+    ,("if n == 1:\n\
+      \  0\n\
+      \else if n == 2:\n\
+      \  1\n\
+      \else:\n\
+      \  2\n\
+      \end"
+     ,If [(BinOp (Iden "n") "==" (Num 1), Num 0)
+         ,(BinOp (Iden "n") "==" (Num 2), Num 1)] (Just (Num 2)))
     ]
 
 {-
