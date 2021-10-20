@@ -2,7 +2,11 @@
 
 {-# LANGUAGE QuasiQuotes #-}
 
-module Burdock.TestData where
+module Burdock.TestData
+    (exprParseTests
+    ,scriptParseTests
+    ,interpreterTests
+    ) where
 
 import Burdock.Syntax
 
@@ -59,11 +63,6 @@ exprParseTests =
      ,If [(BinOp (Iden "n") "==" (Num 1), Num 0)
          ,(BinOp (Iden "n") "==" (Num 2), Num 1)] (Just (Num 2)))
     ]
-
-{-
-
-
--}
 
 scriptParseTests :: [(String, Script)]
 scriptParseTests =

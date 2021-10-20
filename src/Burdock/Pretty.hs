@@ -1,5 +1,9 @@
 
-module Burdock.Pretty where
+module Burdock.Pretty
+    (prettyExpr
+    ,prettyScript
+    ,prettyStmt
+    ) where
 
 import Prettyprinter (pretty
                      ,Doc
@@ -13,17 +17,12 @@ import Prettyprinter (pretty
                      ,vsep
                      )
 
-{-import Data.Text (pack
-                 ,unpack
-                 ,Text)-}
-
 import Burdock.Syntax
 
 
-commaSep :: [Doc a] -> Doc a
-commaSep = sep . punctuate comma
+---------------------------------------
 
-
+-- api
 
 prettyExpr :: Expr -> String
 prettyExpr e = show $ expr e
@@ -34,6 +33,9 @@ prettyScript s = show $ script s
 prettyStmt :: Stmt -> String
 prettyStmt s = show $ stmt s
 
+---------------------------------------
+
+-- expressions
 
 
 expr :: Expr -> Doc a
@@ -75,13 +77,23 @@ expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
     pel (Just e) = [pretty "else:"
                    ,nest 2 (expr e)]
     
-    
-    
+binding :: PatName -> Expr -> Doc a
+binding n e =
+    pretty n <+> pretty "=" <+> nest 2 (expr e)
 
+
+-- first line
+--    bdy lines -> can pass sep, or vsep to always have it vertical
+--    even if it could fit on a line
+-- end
 prettyBlocklike :: ([Doc a] -> Doc a) ->  [Doc a] -> Doc a
 prettyBlocklike sp bdy =
     sp [(nest 2 $ sp bdy), pretty "end"]
 
+
+---------------------------------------
+
+-- statements
 
 stmt :: Stmt -> Doc a
 stmt (StmtExpr e) = expr e
@@ -95,10 +107,11 @@ stmt (Check nm s) = prettyBlocklike vsep
 stmts :: [Stmt] -> Doc a
 stmts = vsep . map stmt
 
-binding :: PatName -> Expr -> Doc a
-binding n e =
-    pretty n <+> pretty "=" <+> nest 2 (expr e)
 
 script :: Script -> Doc a
 script (Script iss) = stmts iss
 
+
+
+commaSep :: [Doc a] -> Doc a
+commaSep = sep . punctuate comma

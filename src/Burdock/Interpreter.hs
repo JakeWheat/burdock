@@ -1,6 +1,10 @@
 
 
-module Burdock.Interpreter where
+module Burdock.Interpreter
+    (TestResult(..)
+    ,executeScriptWithTests
+    ,interpretExpr
+    ) where
 
 import Control.Monad.Reader (ReaderT
                             ,runReaderT

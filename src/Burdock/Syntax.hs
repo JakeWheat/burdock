@@ -33,11 +33,3 @@ type PatName = String
 data Script =
       Script [Stmt]
     deriving (Eq,Show,Data)
-
-{-
-          | RecDecl PatName Expr
-          | FunDecl PatName -- name
-                    [PatName] -- args
-                    Expr -- body
-                    (Maybe [Stmt]) -- test block
--}

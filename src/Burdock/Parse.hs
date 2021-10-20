@@ -1,5 +1,8 @@
 
-module Burdock.Parse where
+module Burdock.Parse
+    (parseExpr
+    ,parseScript
+    ) where
 
 
 import Text.Megaparsec (Parsec
