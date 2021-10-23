@@ -14,7 +14,13 @@ data Stmt =
     | Check (Maybe String) [Stmt]
     | VarDecl PatName Expr
     | SetVar String Expr
-    | DataDecl String [VariantDecl]
+    | DataDecl String [VariantDecl] (Maybe [Stmt])
+    | RecDecl PatName Expr
+    | FunDecl
+        PatName -- name
+        [PatName] -- args
+        Expr -- body
+        (Maybe [Stmt]) -- test block
     deriving (Eq,Show,Data)
 
 data VariantDecl = VariantDecl String [(Ref,String)]

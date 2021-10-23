@@ -101,6 +101,12 @@ patName (PatName s nm) =
         Shadow -> pretty "shadow" <+> pretty nm
         NoShadow -> pretty nm
 
+whereBlock :: [Stmt] -> Doc a
+whereBlock ts = vsep
+    [pretty "where:"
+    ,nest 2 (stmts ts)]
+
+
 
 -- first line
 --    bdy lines -> can pass sep, or vsep to always have it vertical
@@ -126,10 +132,12 @@ stmt (Check nm s) = prettyBlocklike vsep
 stmt (VarDecl pn e) = pretty "var" <+> patName pn <+> pretty "=" <+> expr e
 stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
 
-stmt (DataDecl nm vs) =
+stmt (DataDecl nm vs w) =
     prettyBlocklike vsep
     [pretty "data" <+> pretty nm <+> pretty ":"
-    ,vsep $ map vf vs]
+    ,vsep $ map vf vs
+    ,maybe mempty whereBlock w
+    ]
   where
       vf (VariantDecl vnm fs) =
           pretty "|" <+> pretty vnm <> case fs of
@@ -139,6 +147,15 @@ stmt (DataDecl nm vs) =
                      Ref -> pretty "ref"
                      _ -> mempty)
                  <+> pretty x
+
+stmt (RecDecl n e) = pretty "rec" <+> binding n e
+stmt (FunDecl pn as e w) =
+    prettyBlocklike sep
+     [pretty "fun" <+> patName pn <+> parens (commaSep $ map patName as) <> pretty ":"
+     ,expr e
+     ,maybe mempty whereBlock w]
+
+
 
 stmts :: [Stmt] -> Doc a
 stmts = vsep . map stmt

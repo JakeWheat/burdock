@@ -261,32 +261,9 @@ interp (If bs e) = do
                    Nothing -> error "NoBranchesSatisfied"
     f bs
 
-{-
-letrec:
-  a = ...
-  b = ...
-  ...
-  ->
-  # want to replace the lam with a memoize thing
-  var a = lam():raise("internal error: uninitialized letrec")
-  var b = lam():raise("internal error: uninitialized letrec")
-  ...
-  a := ...
-  b := ...
-  ...
-
--}
 interp (LetRec bs e) =
-    let vars = map makeVar bs
-        assigned = map makeAssign bs
-        desugared = Block (vars ++ assigned ++ [StmtExpr e])
-        
-    in {-trace (prettyExpr desugared) $ -} interp desugared
-  where
-    makeVar (v,_) = VarDecl v $ Lam []
-        $ App (Iden "raise")
-            [Text "internal error: uninitialized letrec implementation var"]
-    makeAssign (b,v) = SetVar (unPat b) v
+    let sts = doLetRec bs
+    in interp $ Block (sts ++ [StmtExpr e])
 
 interp (DotExpr e f) = do
     v <- interp e
@@ -401,7 +378,7 @@ TODO: use iden + tag value to identify variants
 
 -}
 
-interpStatements (DataDecl dnm vs : ss) = do
+interpStatements (DataDecl dnm vs whr : ss) = do
     -- make them call make variant
     -- pass a list
     -- add haskell helper functions for working with lists in burdock
@@ -431,4 +408,38 @@ interpStatements (DataDecl dnm vs : ss) = do
     eqE a b = BinOp a "==" b
     orE a b = BinOp a "or" b
     
+interpStatements ss | (recbs@(_:_),ss') <- getRecs [] ss = do
+    interpStatements (doLetRec recbs ++ ss')
+  where
+    getRecs acc (RecDecl nm bdy : ss') = getRecs ((nm,bdy):acc) ss'
+    getRecs acc (FunDecl nm args bdy whr : ss') =
+        getRecs ((nm, Lam args bdy):acc) ss'
+    getRecs acc ss' = (reverse acc, ss')
+
+{-
+letrec:
+  a = ...
+  b = ...
+  ...
+  ->
+  # want to replace the lam with a memoize thing
+  var a = lam():raise("internal error: uninitialized letrec")
+  var b = lam():raise("internal error: uninitialized letrec")
+  ...
+  a := ...
+  b := ...
+  ...
+
+-}
+
+doLetRec :: [(PatName, Expr)] -> [Stmt]
+doLetRec bs = 
+    let vars = map makeVar bs
+        assigned = map makeAssign bs
+    in vars ++ assigned
+  where
+    makeVar (v,_) = VarDecl v $ Lam []
+        $ App (Iden "raise")
+            [Text "internal error: uninitialized letrec implementation var"]
+    makeAssign (b,v) = SetVar (unPat b) v
 

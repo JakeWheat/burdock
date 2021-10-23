@@ -81,6 +81,9 @@ chainl1 p op = scan
 boption :: a -> Parser a -> Parser a
 boption v p = (option v p) <?> ""
 
+boptional :: Parser a -> Parser (Maybe a)
+boptional p = optional p <?> ""
+
 bchoice :: [Parser a] -> Parser a
 bchoice cs = choice $ addEmpty cs
   where
@@ -408,7 +411,9 @@ script = Script <$> stmts
 
 stmt :: Parser Stmt
 stmt = choice
-    [varDecl
+    [recDecl
+    ,funDecl
+    ,varDecl
     ,dataDecl
     ,checkBlock
     ,startsWithExprOrPattern]
@@ -416,13 +421,32 @@ stmt = choice
 stmts :: Parser [Stmt]
 stmts = many stmt
 
+recDecl :: Parser Stmt
+recDecl = uncurry RecDecl <$> (keyword_ "rec" *> binding)
+
+funDecl :: Parser Stmt
+funDecl = FunDecl
+    <$> (keyword "fun" *> patName)
+    <*> parens (commaSep patName)
+    <*> (symbol_ ":" *> (unwrapSingle <$>
+         (Block <$> some stmt)))
+    <*> (boptional whereBlock <* keyword_ "end")
+    
+  where
+      unwrapSingle (Block [StmtExpr (a)]) = a
+      unwrapSingle x = x
+
+whereBlock :: Parser [Stmt]
+whereBlock = keyword_ "where" *> symbol_ ":" *> many stmt
+
 varDecl :: Parser Stmt
 varDecl = uncurry VarDecl <$> (keyword_ "var" *> binding)
 
 dataDecl :: Parser Stmt
 dataDecl = DataDecl
     <$> (keyword_ "data" *> identifier <* symbol_ ":")
-    <*> (((:[]) <$> singleVariant) <|> some variant) <* keyword_ "end"
+    <*> (((:[]) <$> singleVariant) <|> some variant)
+    <*> (boptional whereBlock <* keyword_ "end")
   where
     singleVariant = VariantDecl
                     <$> identifier <*> boption [] (parens (commaSep fld))

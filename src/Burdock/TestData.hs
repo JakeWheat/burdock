@@ -153,32 +153,62 @@ end
       \  | node(value, left, right)\n\
       \  | leaf(value)\n\
       \end", Script [DataDecl "BTree" [VariantDecl "node" [(Con, "value"), (Con, "left"), (Con, "right")]
-                                      ,VariantDecl "leaf" [(Con, "value")]]])
+                                      ,VariantDecl "leaf" [(Con, "value")]] Nothing])
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf\n\
       \end", Script [DataDecl "MyEnum" [VariantDecl "node" [(Con, "left"), (Con, "right")]
-                    ,VariantDecl "leaf" []]])
+                    ,VariantDecl "leaf" []] Nothing])
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf()\n\
       \end", Script [DataDecl "MyEnum" [VariantDecl "node" [(Con, "left"), (Con, "right")]
-                    ,VariantDecl "leaf" []]])
+                    ,VariantDecl "leaf" []] Nothing])
 
     ,("data Point:\n\
       \  | pt(x, y)\n\
-      \end", Script [DataDecl "Point" [VariantDecl "pt" [(Con, "x"), (Con, "y")]]])
+      \end", Script [DataDecl "Point" [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing])
 
     ,("data Point: pt(x, y) end"
-     ,Script [DataDecl "Point" [VariantDecl "pt" [(Con, "x"), (Con, "y")]]])
+     ,Script [DataDecl "Point" [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing])
 
     ,("data Point: pt() end"
-     ,Script [DataDecl "Point" [VariantDecl "pt" []]])
+     ,Script [DataDecl "Point" [VariantDecl "pt" []] Nothing])
 
     ,("data Point: pt end"
-     ,Script [DataDecl "Point" [VariantDecl "pt" []]])
+     ,Script [DataDecl "Point" [VariantDecl "pt" []] Nothing])
+
+    ,("fun f(a): a + 1 end"
+     ,Script[FunDecl (PatName NoShadow "f") [nm "a"] (BinOp (Iden "a") "+" (Num 1)) Nothing])
+
+    ,("fun f(a):\n\
+      \  a = 1\n\
+      \  a + 1\n\
+      \end", Script [FunDecl (PatName NoShadow "f") [nm "a"] (Block [LetDecl (nm "a") (Num 1)
+                                             ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing])
+    ,("fun double(n):\n\
+      \  n + n\n\
+      \where:\n\
+      \  double(10) is 20\n\
+      \  double(15) is 30\n\
+      \end"
+     ,Script [FunDecl (PatName NoShadow "double") [nm "n"] (BinOp (Iden "n") "+" (Iden "n"))
+      (Just [StmtExpr $ BinOp (App (Iden "double") [Num 10]) "is" (Num 20)
+           ,StmtExpr $ BinOp (App (Iden "double") [Num 15]) "is" (Num 30)])])
+
+    ,("rec fact = lam(x):\n\
+      \    if x == 0: 1\n\
+      \    else: x * fact(x - 1)\n\
+      \    end\n\
+      \  end"
+
+     ,Script [RecDecl (nm "fact")
+            $ Lam [nm "x"] $
+                    If [(BinOp (Iden "x") "==" (Num 0), Num 1)]
+                    (Just (BinOp (Iden "x") "*" (App (Iden "fact") [BinOp (Iden "x") "-" (Num 1)])))
+            ])
 
     
     ]
@@ -257,15 +287,89 @@ check:
          addodd = lam(x): if x == 0: 0 else: x + addeven(x - 1) end end:
     addeven(6) end is 21
 
-  # todo: idea 1: make them lazy/memoized
-  # idea 2: reorder the definitions at desugar time
   #letrec x = y + 1,
   #       y = 2: x end is 3
 
+end
 
+# check "letrec":
+#   letrec fac = lam(x): if x == 0: 1 else: x * fac(x - 1) end end:
+#     {fac(4);fac(5);fac(1)} end
+#     is {24;120;1}
+# 
+#   letrec
+#     addeven = lam(x): if x == 0: 0 else: x + addodd(x - 1) end end,
+#     addodd = lam(x):  if x == 0: 0 else: x + addeven(x - 1) end end:
+#     {addeven(2);addodd(2);addodd(5)}
+#   end is {3;3;15}
+# 
+# end
+
+fun fact(x):
+  if x == 0: 1
+  else: x * fact(x - 1)
+  end
+end
+
+check "fun":
+
+  fact(5) is 120
+  fact(4) is 24
+end
+
+fun fact2(x):
+  if x == 0: 1
+  else: x * fact2(x - 1)
+  end
+where:
+  fact2(5) is 120
+  fact2(4) is 24
+end
+
+check "recdecl":
+
+  block:
+    fun addeven(x): if x == 0: 0 else: x + addodd(x - 1) end end
+    fun addodd(x):  if x == 0: 0 else: x + addeven(x - 1) end end
+    addeven(6) is 21
+  end
+
+  block:
+    rec addeven = lam(x): if x == 0: 0 else: x + addodd(x - 1) end end
+    rec addodd = lam(x): if x == 0: 0 else: x + addeven(x - 1) end end
+    addeven(6) is 21
+  end
+
+  block:
+    fun addeven(x): if x == 0: 0 else: x + addodd(x - 1) end end
+    rec addodd = lam(x): if x == 0: 0 else: x + addeven(x - 1) end end
+    addeven(6) is 21
+  end
+
+  block:
+    rec addeven = lam(x) : if x == 0: 0 else: x + addodd(x - 1) end end
+    fun addodd(x): if x == 0: 0 else: x + addeven(x - 1) end end
+    addeven(6) is 21
+  end
 
 end
+
 |])
+   ,("fun", [R.r|
+fun fact(x):
+  if x == 0: 1
+  else: x * fact(x - 1)
+  end
+end
+
+check "fun":
+
+  fact(5) is 120
+  fact(4) is 24
+end
+
+|])
+   
    ,("agdt", [R.r|
 
 data Point:
