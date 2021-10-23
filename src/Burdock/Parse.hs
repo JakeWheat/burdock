@@ -366,11 +366,11 @@ casePat = patTerm
          choice [do
                j <- char '.' *> identifier
                choice [do
-                       as <- parens (commaSep casePat)
+                       as <- parens (commaSep patName)
                        pure $ VariantP (Just i) j as
                       ,pure $ VariantP (Just i) j []]
               ,choice [do
-                       as <- parens (commaSep casePat)
+                       as <- parens (commaSep patName)
                        pure $ VariantP Nothing i as
                       ,pure $ IdenP (PatName NoShadow i)]]]
 

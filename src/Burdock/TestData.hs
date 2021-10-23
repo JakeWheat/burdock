@@ -83,7 +83,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \end"
      ,Cases "List" (Iden "a")
         [(IdenP $ nm "empty", Text "empty")
-        ,(VariantP Nothing "link" [IdenP $ nm "f", IdenP $ nm "r"], Text "link")]
+        ,(VariantP Nothing "link" [nm "f", nm "r"], Text "link")]
         Nothing)
 
     ,("cases(List) a:\n\
@@ -101,7 +101,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \end"
      ,Cases "z.List" (Iden "a")
         [(VariantP (Just "z") "empty" [], Text "empty")
-        ,(VariantP (Just "z") "link" [IdenP $ nm "f", IdenP $ nm "r"], Iden "x")]
+        ,(VariantP (Just "z") "link" [nm "f", nm "r"], Iden "x")]
         (Just $ Text "else"))
 
     ]

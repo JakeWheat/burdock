@@ -93,7 +93,7 @@ binding n e =
 pat :: Pat -> Doc a
 pat (IdenP pn) = patName pn
 pat (VariantP q c ps) = maybe mempty (\a -> pretty a <> pretty ".") q
-                        <> pretty c <> parens (commaSep $ map pat ps)
+                        <> pretty c <> parens (commaSep $ map patName ps)
 
 patName :: PatName -> Doc a
 patName (PatName s nm) =

@@ -23,7 +23,7 @@ makeTests (TestGroup nm ts) = T.testGroup nm <$> mapM makeTests ts
 
 makeTests (ExprParseTest src ex) = pure $ makeParseTest parseExpr prettyExpr src ex
 makeTests (ScriptParseTest src ex) = pure $ makeParseTest parseScript prettyScript src ex
-makeTests (InterpreterTests nm src) = makeInterpreterTest src
+makeTests (InterpreterTests _nm src) = makeInterpreterTest src
 
 ------------------------------------------------------------------------------
 

@@ -23,7 +23,6 @@ data VariantDecl = VariantDecl String [(Ref,String)]
 data Ref = Ref | Con
          deriving (Eq,Show,Data) 
 
-
 data Expr =
       Num Scientific
     | Text String
@@ -41,7 +40,7 @@ data Expr =
     deriving (Eq,Show,Data)
 
 data Pat = IdenP PatName
-         | VariantP (Maybe String) String [Pat]
+         | VariantP (Maybe String) String [PatName]
           deriving (Eq,Show,Data) 
 
 data PatName =

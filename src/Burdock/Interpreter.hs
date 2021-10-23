@@ -313,7 +313,7 @@ interp (Cases _ty e cs els) = do
     matches (IdenP (PatName _ s)) (VariantV tag []) ce | tag == s = Just $ interp ce
     -- todo: ignores the qualifier if there is one
     matches (VariantP _ s nms) (VariantV tag fs) ce | tag == s = Just $ do
-        let letvs = zipWith (\(IdenP (PatName _ n)) (_,v) -> (n,v)) nms fs
+        let letvs = zipWith (\(PatName _ n) (_,v) -> (n,v)) nms fs
         localEnv (extendEnv letvs) $ interp ce
     matches _ _  _ = Nothing
 
