@@ -26,6 +26,10 @@ import Burdock.Scientific
 import Burdock.Syntax
 import Burdock.Pretty
 
+import Control.Exception.Safe (catch
+                              ,SomeException)
+
+
 --import Debug.Trace (trace)
 
 ------------------------------------------------------------------------------
@@ -242,12 +246,23 @@ interpStatements [] = pure $ VariantV "nothing" []
 interpStatements [LetDecl {}] = pure $ VariantV "nothing" []
 
 interpStatements (s@(StmtExpr (BinOp e0 "is" e1)) : ss) = do
-    let msg = prettyStmt s
-    -- todo: add catch
-    v0 <- interp e0
-    v1 <- interp e1
-    addTestResult $ TestResult msg (v0 == v1)
+    doit
     interpStatements ss
+  where
+    msg = prettyStmt s
+    catchit :: Interpreter Value -> Interpreter (Either String Value)
+    catchit f =
+        catch (Right <$> f) $ \ex -> pure $ Left $ show (ex :: SomeException)
+    doit :: Interpreter ()
+    doit = do
+        v0 <- catchit $ interp e0
+        v1 <- catchit $ interp e1
+        case (v0,v1) of
+            (Right v0', Right v1') -> addTestResult $ TestResult msg (v0' == v1')
+            (Left er0, Right {}) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0) False
+            (Right {}, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
+            (Left er0, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
+        pure ()
 
 interpStatements [StmtExpr e] = interp e
 interpStatements [Check _ ss] = interpStatements ss
