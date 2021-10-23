@@ -295,8 +295,28 @@ interp (DotExpr e f) = do
                       | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
         _ -> error $ "dot called on non variant: " ++ show v
 
+interp (Cases _ty e cs els) = do
+    v <- interp e
+    matchb v cs
+  where
+    matchb v ((p,ce) : cs') =
+        case matches p v ce of
+            Just f -> f
+            Nothing -> matchb v cs'
+    matchb v [] = case els of
+                      Just ee -> interp ee
+                      Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
+    -- return a maybe let which provides the bindings needed
+    -- todo: instead of using last ts, look up the tag for the pattern
+    -- to match the whole ts, by using some modification of the tag as an identifier
+    -- this will handle modules and aliases and stuff
+    matches (IdenP (PatName _ s)) (VariantV tag []) ce | tag == s = Just $ interp ce
+    -- todo: ignores the qualifier if there is one
+    matches (VariantP _ s nms) (VariantV tag fs) ce | tag == s = Just $ do
+        let letvs = zipWith (\(IdenP (PatName _ n)) (_,v) -> (n,v)) nms fs
+        localEnv (extendEnv letvs) $ interp ce
+    matches _ _  _ = Nothing
 
-interp (Cases {}) = error $ "todo: interp for Cases"
 
 unPat :: PatName -> String
 unPat (PatName _ nm) = nm
@@ -372,8 +392,8 @@ interpStatements (SetVar nm e : ss) = do
 
 data decl:
 
-TODO: an is-x function for each variant
-TODO: an is-dat function for the data type
+an is-x function for each variant
+an is-dat function for the data type
 a make function for each variant, with the name of the variant, e.g.
 pt(...)
 
@@ -385,7 +405,10 @@ interpStatements (DataDecl dnm vs : ss) = do
     -- make them call make variant
     -- pass a list
     -- add haskell helper functions for working with lists in burdock
-    let makeMake (VariantDecl vnm fs) =
+    let makeMake (VariantDecl vnm []) =
+            letDecl vnm
+            $ appN "make-variant" [Text vnm]
+        makeMake (VariantDecl vnm fs) =
             letDecl vnm
             $ lam (map snd fs)
             $ appN "make-variant" (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))

@@ -278,8 +278,20 @@ check:
   is-pt(p1) is true
   is-Point(p1) is true
   is-Point(1) is false
+  # is-Point({1;3}) is false
   p1.x is 1
   p1.y is 2
+end
+
+data Nowt:
+  | nowt
+end
+
+n1 = nowt
+check:
+  is-Nowt(n1) is true
+  is-nowt(n1) is true
+  n1 is nowt
 end
 
 data Two:
@@ -290,6 +302,14 @@ end
 t1 = pt1(1,2)
 t2 = pt2(3,4)
 
+#fun pf(a,n):
+pf = lam(a,n):
+  cases (Two) a:
+    | pt1(x,y) => if n == 0: x else: y end
+    | pt2(x,y) => if n == 0: x else: y end
+  end
+end
+
 check:
   is-pt1(t1) is true
   is-pt2(t1) is false
@@ -298,7 +318,31 @@ check:
   is-Two(t1) is true
   is-Two(t2) is true
   is-Two(p1) is false
+  pf(t1,0) is 1
+  pf(t1,1) is 2
+  pf(t2,0) is 3
+  pf(t2,1) is 4
+
 end
+
+# data MyOption:
+#   | my-none
+#   | my-some(a)
+# end
+# 
+# check:
+#   #fun f(a): cases(MyOption) a:
+#   f = lam(a): cases(MyOption) a:
+#       | my-none => "none"
+#       | my-some(b) => "some" + tostring(b)
+#     end
+#   end
+#   x = my-none
+#   f(x) is "none"
+#   y = my-some(1)
+#   f(y) is "some1"
+# end
+#  
 
 
 
