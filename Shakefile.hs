@@ -48,7 +48,8 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ,"text"
             ,"raw-strings-qq"
             ,"mtl"
-            ,"safe-exceptions"]
+            ,"safe-exceptions"
+            ,"pretty-show"]
 
     let ghc :: GhcOptions -> FilePath -> FilePath -> Action ()
         ghc opts src output = do

@@ -30,6 +30,8 @@ import Control.Exception.Safe (catch
                               ,SomeException)
 
 
+-- import Text.Show.Pretty (ppShow)
+
 --import Debug.Trace (trace)
 
 ------------------------------------------------------------------------------
@@ -120,6 +122,7 @@ lookupEnv :: String -> Interpreter (Maybe Value)
 lookupEnv k = do
     st <- ask
     e <- liftIO $ readIORef (isEnv st)
+    --liftIO $ putStrLn $ "-------------\n" ++ ppShow e ++ "\n-------------"
     pure $ lookup k e 
 
 askFF :: Interpreter ForeignFunctions
@@ -160,6 +163,7 @@ defaultEnv =
     ,("+", ForeignFunV "+")
     ,("-", ForeignFunV "-")
     ,("*", ForeignFunV "*")
+    ,("make-variant", ForeignFunV "make-variant")
     ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
@@ -168,8 +172,17 @@ defaultFF =
     ,("+", \[NumV a,NumV b] -> pure $ NumV $ a + b)
     ,("-", \[NumV a,NumV b] -> pure $ NumV $ a - b)
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
+    ,("make-variant", makeVariant)
     ]
 
+makeVariant :: [Value] -> Interpreter Value
+makeVariant (TextV nm:as) =
+    VariantV nm <$> f as
+  where
+    f [] = pure []
+    f (TextV fnm : v : as') = ((fnm,v):) <$> f as'
+    f x = error $ "wrong args to make-variant: " ++ show x
+makeVariant x = error $ "wrong args to make-variant: " ++ show x
 ------------------------------------------------------------------------------
 
 -- the interpreter itself
@@ -199,12 +212,14 @@ interp (BinOp e0 "and" e1) = do
     case x of
         BoolV False -> pure x
         BoolV True -> interp e1
+        _ -> error $ "bad value type to 'and' operator: " ++ show x
 
 interp (BinOp e0 "or" e1) = do
     x <- interp e0
     case x of
         BoolV True -> pure x
         BoolV False -> interp e1
+        _ -> error $ "bad value type to 'or' operator: " ++ show x
 
 
 
@@ -265,6 +280,16 @@ interp (LetRec bs e) =
         $ App (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
     makeAssign (b,v) = SetVar (unPat b) v
+
+interp (DotExpr e f) = do
+    v <- interp e
+    case v of
+        VariantV _ fs | Just fv <- lookup f fs -> pure fv
+                      | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
+        _ -> error $ "dot called on non variant: " ++ show v
+
+
+interp (Cases {}) = error $ "todo: interp for Cases"
 
 unPat :: PatName -> String
 unPat (PatName _ nm) = nm
@@ -335,5 +360,35 @@ interpStatements (SetVar nm e : ss) = do
     v <- interp e
     liftIO $ writeIORef vr v
     interpStatements ss
+
+{-
+
+data decl:
+
+TODO: an is-x function for each variant
+TODO: an is-dat function for the data type
+a make function for each variant, with the name of the variant, e.g.
+pt(...)
+
+TODO: use iden + tag value to identify variants
+
+-}
+
+interpStatements (DataDecl _dnm vs : ss) = do
+    -- make them call make variant
+    -- pass a list
+    -- add haskell helper functions for working with lists in burdock
+    let makeMake (VariantDecl vnm fs) =
+            letDecl vnm
+            $ lam (map snd fs)
+            $ appN "make-variant" (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
+        mks = map makeMake vs
+    interpStatements (mks ++ ss)
+  where
+    letDecl nm v = LetDecl (PatName NoShadow nm) v
+    lam as e = Lam (map (PatName NoShadow) as) e
+    --letE bs e = Let (flip map bs $ \(b,v) -> (PatName NoShadow b, v)) e
+    appN nm as = App (Iden nm) as
+    --eqE a b = BinOp a "==" b
     
 

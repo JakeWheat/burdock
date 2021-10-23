@@ -266,4 +266,19 @@ check:
 
 end
 |])
+   ,("agdt", [R.r|
+
+data Point:
+  | pt(x, y)
+end
+   
+p1 = pt(1,2)
+
+check:
+  p1.x is 1
+  p1.y is 2
+end
+
+|])
+
     ]
