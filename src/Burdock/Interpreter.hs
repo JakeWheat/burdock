@@ -398,8 +398,8 @@ interpStatements (DataDecl dnm vs whr : ss) = do
             letDecl ("is-" ++ dnm)
             $ lam ["x"]
             $ foldl1 orE $ map callIs vs
-            
-    interpStatements (map makeMake vs ++ map makeIs vs ++ [makeIsDat] ++ ss)
+        chk = maybe [] (\w -> [Check (Just dnm) w]) whr
+    interpStatements (map makeMake vs ++ map makeIs vs ++ [makeIsDat] ++ chk ++ ss)
   where
     letDecl nm v = LetDecl (PatName NoShadow nm) v
     lam as e = Lam (map (PatName NoShadow) as) e

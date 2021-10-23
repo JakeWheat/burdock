@@ -406,8 +406,7 @@ end
 t1 = pt1(1,2)
 t2 = pt2(3,4)
 
-#fun pf(a,n):
-pf = lam(a,n):
+fun pf(a,n):
   cases (Two) a:
     | pt1(x,y) => if n == 0: x else: y end
     | pt2(x,y) => if n == 0: x else: y end
@@ -429,24 +428,47 @@ check:
 
 end
 
-# data MyOption:
-#   | my-none
-#   | my-some(a)
-# end
-# 
-# check:
-#   #fun f(a): cases(MyOption) a:
-#   f = lam(a): cases(MyOption) a:
-#       | my-none => "none"
-#       | my-some(b) => "some" + tostring(b)
-#     end
-#   end
-#   x = my-none
-#   f(x) is "none"
-#   y = my-some(1)
-#   f(y) is "some1"
-# end
-#  
+data MyOption:
+  | my-none
+  | my-some(a)
+end
+
+check:
+  fun f(a): cases(MyOption) a:
+      | my-none => "none"
+      | my-some(b) => "some" + tostring(b)
+    end
+  end
+  x = my-none
+  f(x) is "none"
+  # needs the built in (global) function tostring
+  # y = my-some(1)
+  # f(y) is "some1"
+end
+ 
+data BTree:
+  | node(value #|:: Number|#, left #|:: BTree|#, right #|:: BTree|#)
+  | leaf(value #|:: Number|#)
+where:
+  a-btree = node(1, leaf(2), node(3, leaf(4), leaf(5)))
+
+  is-BTree(a-btree) is true
+  is-BTree("not-a-tree") is false
+  is-BTree(leaf(5)) is true
+  is-leaf(leaf(5)) is true
+  is-leaf(a-btree) is false
+  is-leaf("not-a-tree") is false
+  is-node(leaf(5)) is false
+  is-node(a-btree) is true
+  is-node("not-a-tree") is false
+
+  a-btree.value is 1
+  a-btree.left.value is 2
+  a-btree.right.value is 3
+  a-btree.right.left.value is 4
+  a-btree.right.right.value is 5
+
+end
 
 
 
