@@ -408,13 +408,14 @@ interpStatements (DataDecl dnm vs whr : ss) = do
     eqE a b = BinOp a "==" b
     orE a b = BinOp a "or" b
     
-interpStatements ss | (recbs@(_:_),ss') <- getRecs [] ss = do
-    interpStatements (doLetRec recbs ++ ss')
+interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
+    interpStatements (doLetRec recbs ++ chks ++ ss')
   where
-    getRecs acc (RecDecl nm bdy : ss') = getRecs ((nm,bdy):acc) ss'
-    getRecs acc (FunDecl nm args bdy whr : ss') =
-        getRecs ((nm, Lam args bdy):acc) ss'
-    getRecs acc ss' = (reverse acc, ss')
+    getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
+    getRecs accdecls accchks (FunDecl nm args bdy whr : ss') =
+        let accchks' = maybe accchks (\w -> Check (Just $ unPat nm) w : accchks) whr
+        in getRecs ((nm, Lam args bdy):accdecls) accchks' ss'
+    getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
 {-
 letrec:
