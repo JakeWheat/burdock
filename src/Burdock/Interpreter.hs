@@ -90,6 +90,8 @@ instance Eq Value where
 
 type Env = [(String, Value)]
 
+type ForeignFunctions = [(String, [Value] -> Interpreter Value)]
+
 emptyEnv :: Env
 emptyEnv = []
 
@@ -98,7 +100,9 @@ extendEnv bs env = bs ++ env
 
 data InterpreterState =
     InterpreterState {isEnv :: IORef Env
-                     ,isTestResults :: IORef [TestResult]}
+                     ,isTestResults :: IORef [TestResult]
+                     ,isForeignFunctions :: IORef ForeignFunctions
+                     }
 
 localEnv :: (Env -> Env) -> Interpreter a -> Interpreter a
 localEnv m f = do
@@ -118,6 +122,12 @@ lookupEnv k = do
     e <- liftIO $ readIORef (isEnv st)
     pure $ lookup k e 
 
+askFF :: Interpreter ForeignFunctions
+askFF = do
+    st <- ask
+    liftIO $ readIORef $ isForeignFunctions st
+
+
 -- saves a test result to the interpreter state
 addTestResult :: TestResult -> Interpreter ()
 addTestResult tr = do
@@ -128,7 +138,8 @@ emptyInterpreterState :: IO InterpreterState
 emptyInterpreterState = do
     a <- newIORef emptyEnv
     b <- newIORef []
-    pure $ InterpreterState a b
+    c <- newIORef []
+    pure $ InterpreterState a b c
 
 type Interpreter = ReaderT InterpreterState IO
 
@@ -138,12 +149,25 @@ runInterp :: Interpreter a -> IO a
 runInterp f = do
     s <- emptyInterpreterState
     modifyIORef (isEnv s) (defaultEnv ++)
+    modifyIORef (isForeignFunctions s) (defaultFF ++)
     runReaderT f s
 
 defaultEnv :: [(String,Value)]
 defaultEnv =
     [("true", BoolV True)
     ,("false", BoolV False)
+    ,("==", ForeignFunV "==")
+    ,("+", ForeignFunV "+")
+    ,("-", ForeignFunV "-")
+    ,("*", ForeignFunV "*")
+    ]
+
+defaultFF :: [(String, [Value] -> Interpreter Value)]
+defaultFF =
+    [("==", \[a,b] -> pure $ BoolV $ a == b)
+    ,("+", \[NumV a,NumV b] -> pure $ NumV $ a + b)
+    ,("-", \[NumV a,NumV b] -> pure $ NumV $ a - b)
+    ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
     ]
 
 ------------------------------------------------------------------------------
@@ -185,15 +209,10 @@ interp (BinOp e0 "or" e1) = do
 
 
 interp (BinOp e0 op e1) = do
-    -- todo: look up operators in the env
     v0 <- interp e0
     v1 <- interp e1
-    case (v0,op,v1) of
-        (NumV a, "+", NumV b) -> pure $ NumV $ a + b
-        (NumV a, "-", NumV b) -> pure $ NumV $ a - b
-        (NumV a, "*", NumV b) -> pure $ NumV $ a * b
-        (a, "==", b) -> pure $ BoolV $ a == b
-        _ -> error $ "operator not supported: " ++ show (op,v0,v1)
+    opv <- interp $ Iden op
+    app opv [v0,v1]
 
 interp (Lam ps e) = do
     env <- askEnv
@@ -256,6 +275,11 @@ app fv vs =
         FunV ps bdy env -> do
             as <- safeZip ps vs
             localEnv (const $ extendEnv as env) $ interp bdy
+        ForeignFunV nm -> do
+            ffs <- askFF
+            case lookup nm ffs of
+                Just f -> f vs
+                Nothing -> error $ "internal error, foreign function not found: " ++ nm
         _ -> error $ "app called on non function value: " ++ show fv
   where
     safeZip ps xs | length ps == length xs  = pure $ zip ps xs
