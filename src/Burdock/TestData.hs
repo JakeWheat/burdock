@@ -224,6 +224,16 @@ check:
   a is 4
 end
 
+check:
+  true and false is false
+  true or false is true
+end
+
+check "short circuiting":
+  true or raise("fail") is true
+  false and raise("fail") is false
+end
+
 
      |]
    ,[R.r|

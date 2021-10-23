@@ -137,7 +137,14 @@ type Interpreter = ReaderT InterpreterState IO
 runInterp :: Interpreter a -> IO a
 runInterp f = do
     s <- emptyInterpreterState
+    modifyIORef (isEnv s) (defaultEnv ++)
     runReaderT f s
+
+defaultEnv :: [(String,Value)]
+defaultEnv =
+    [("true", BoolV True)
+    ,("false", BoolV False)
+    ]
 
 ------------------------------------------------------------------------------
 
@@ -162,6 +169,20 @@ interp (App f es) = do
 
 
 interp (BinOp _ "is" _) = error $ "'is' test predicate only allowed in check block"
+
+interp (BinOp e0 "and" e1) = do
+    x <- interp e0
+    case x of
+        BoolV False -> pure x
+        BoolV True -> interp e1
+
+interp (BinOp e0 "or" e1) = do
+    x <- interp e0
+    case x of
+        BoolV True -> pure x
+        BoolV False -> interp e1
+
+
 
 interp (BinOp e0 op e1) = do
     -- todo: look up operators in the env
