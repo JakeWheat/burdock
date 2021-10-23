@@ -3,9 +3,8 @@
 {-# LANGUAGE QuasiQuotes #-}
 
 module Burdock.TestData
-    (exprParseTests
-    ,scriptParseTests
-    ,interpreterTests
+    (testdata
+    ,TestTree(..)
     ) where
 
 import Burdock.Syntax
@@ -13,11 +12,23 @@ import Burdock.Syntax
 import qualified Text.RawString.QQ as R
 
 
+
+data TestTree = TestGroup String [TestTree]
+              | ExprParseTest String Expr
+              | ScriptParseTest String Script
+              | InterpreterTests String String
+
+testdata :: TestTree
+testdata = TestGroup "allTests"
+    [exprParseTests
+    ,scriptParseTests
+    ,interpreterTests]
+
+
 -- todo: how to make this more readable?
 
-
-exprParseTests :: [(String,Expr)]
-exprParseTests =
+exprParseTests :: TestTree
+exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     [("1", Num 1)
     ,("\"test\"", Text "test") 
     ,("test", Iden "test")
@@ -97,8 +108,8 @@ exprParseTests =
   where
     nm = PatName NoShadow
 
-scriptParseTests :: [(String, Script)]
-scriptParseTests =
+scriptParseTests :: TestTree
+scriptParseTests = TestGroup "scriptParseTests" $ map (uncurry ScriptParseTest)
     [([R.r|
 check:
   1 is 1
@@ -174,9 +185,9 @@ end
   where
     nm = PatName NoShadow
 
-interpreterTests :: [String]
-interpreterTests =
-    [
+interpreterTests :: TestTree
+interpreterTests = TestGroup "interpreterTests" $ map (uncurry InterpreterTests)
+    [("basics",
     [R.r|
 
 check:
@@ -235,8 +246,8 @@ check "short circuiting":
 end
 
 
-     |]
-   ,[R.r|
+     |])
+   ,("letrec", [R.r|
 check:
   letrec fact = lam(n):
     if n == 1: 1 else: n * fact(n - 1) end
@@ -254,11 +265,5 @@ check:
 
 
 end
-|]
-   ,[R.r|
-
-# agdt
-   
-|]
-
+|])
     ]

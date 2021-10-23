@@ -14,36 +14,16 @@ import qualified Test.Tasty.HUnit as T
 
 main :: IO ()
 main = do
-    at <- allTests
-    T.defaultMain $ T.testGroup "all_tests" [at]
+    at <- makeTests testdata
+    T.defaultMain at
 
 
-allTests :: IO T.TestTree
-allTests = do
-    interpreterTests'' <- interpreterTests'
-    pure $ T.testGroup "Burdock.Tests" [exprParseTests'
-                                       ,scriptParseTests'
-                                       ,interpreterTests''
-                                       ]
+makeTests :: TestTree -> IO T.TestTree
+makeTests (TestGroup nm ts) = T.testGroup nm <$> mapM makeTests ts
 
--- todo: mix all the test data together in a big data only tree
--- then apply the make tests in one pass over the tree
--- so that the tree structure of the tests is part of the testdata
--- and not here
-exprParseTests' :: T.TestTree
-exprParseTests' =
-    T.testGroup "exprParseTests" $
-    map (uncurry $ makeParseTest parseExpr prettyExpr) exprParseTests
-
-scriptParseTests' :: T.TestTree
-scriptParseTests' =
-    T.testGroup "scriptParseTests" $
-    map (uncurry $ makeParseTest parseScript prettyScript) scriptParseTests
-
-interpreterTests' :: IO T.TestTree
-interpreterTests' =
-    T.testGroup "interpreterTests" <$> mapM makeInterpreterTest interpreterTests
-
+makeTests (ExprParseTest src ex) = pure $ makeParseTest parseExpr prettyExpr src ex
+makeTests (ScriptParseTest src ex) = pure $ makeParseTest parseScript prettyScript src ex
+makeTests (InterpreterTests nm src) = makeInterpreterTest src
 
 ------------------------------------------------------------------------------
 
