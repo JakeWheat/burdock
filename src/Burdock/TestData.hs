@@ -275,9 +275,32 @@ end
 p1 = pt(1,2)
 
 check:
+  is-pt(p1) is true
+  is-Point(p1) is true
+  is-Point(1) is false
   p1.x is 1
   p1.y is 2
 end
+
+data Two:
+  | pt1(x, y)
+  | pt2(x, y)
+end
+
+t1 = pt1(1,2)
+t2 = pt2(3,4)
+
+check:
+  is-pt1(t1) is true
+  is-pt2(t1) is false
+  is-pt1(t2) is false
+  is-pt2(t2) is true
+  is-Two(t1) is true
+  is-Two(t2) is true
+  is-Two(p1) is false
+end
+
+
 
 |])
 

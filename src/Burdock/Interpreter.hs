@@ -164,6 +164,7 @@ defaultEnv =
     ,("-", ForeignFunV "-")
     ,("*", ForeignFunV "*")
     ,("make-variant", ForeignFunV "make-variant")
+    ,("variant-tag", ForeignFunV "variant-tag")
     ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
@@ -173,6 +174,7 @@ defaultFF =
     ,("-", \[NumV a,NumV b] -> pure $ NumV $ a - b)
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
     ,("make-variant", makeVariant)
+    ,("variant-tag", variantTag)
     ]
 
 makeVariant :: [Value] -> Interpreter Value
@@ -183,6 +185,11 @@ makeVariant (TextV nm:as) =
     f (TextV fnm : v : as') = ((fnm,v):) <$> f as'
     f x = error $ "wrong args to make-variant: " ++ show x
 makeVariant x = error $ "wrong args to make-variant: " ++ show x
+
+variantTag :: [Value] -> Interpreter Value
+variantTag [VariantV t _] = pure $ TextV t
+variantTag _ = pure $ VariantV "nothing" []
+
 ------------------------------------------------------------------------------
 
 -- the interpreter itself
@@ -374,7 +381,7 @@ TODO: use iden + tag value to identify variants
 
 -}
 
-interpStatements (DataDecl _dnm vs : ss) = do
+interpStatements (DataDecl dnm vs : ss) = do
     -- make them call make variant
     -- pass a list
     -- add haskell helper functions for working with lists in burdock
@@ -382,13 +389,23 @@ interpStatements (DataDecl _dnm vs : ss) = do
             letDecl vnm
             $ lam (map snd fs)
             $ appN "make-variant" (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
-        mks = map makeMake vs
-    interpStatements (mks ++ ss)
+        makeIs (VariantDecl vnm _) = 
+            letDecl ("is-" ++ vnm)
+            $ lam ["x"]
+            $ eqE (appN "variant-tag" [Iden "x"]) (Text vnm)
+        callIs (VariantDecl vnm _) = appN ("is-" ++ vnm) [Iden "x"]
+        makeIsDat =
+            letDecl ("is-" ++ dnm)
+            $ lam ["x"]
+            $ foldl1 orE $ map callIs vs
+            
+    interpStatements (map makeMake vs ++ map makeIs vs ++ [makeIsDat] ++ ss)
   where
     letDecl nm v = LetDecl (PatName NoShadow nm) v
     lam as e = Lam (map (PatName NoShadow) as) e
     --letE bs e = Let (flip map bs $ \(b,v) -> (PatName NoShadow b, v)) e
     appN nm as = App (Iden nm) as
-    --eqE a b = BinOp a "==" b
+    eqE a b = BinOp a "==" b
+    orE a b = BinOp a "or" b
     
 
