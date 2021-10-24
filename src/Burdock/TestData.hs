@@ -116,7 +116,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
                                                ,("c", Iden "x")])
     ,("{}", RecordSel [])
 
-
+    ,("[list:]", Construct (Iden "list") [])
+    ,("[list: 1,2,3]", Construct (Iden "list") [Num 1, Num 2, Num 3])
      
     ]
   where
@@ -291,7 +292,7 @@ end
 
 
      |])
-   ,("letrec", [R.r|
+    ,("letrec", [R.r|
 check:
   letrec fact = lam(n):
     if n == 1: 1 else: n * fact(n - 1) end
@@ -369,7 +370,7 @@ check "recdecl":
 end
 
 |])
-   ,("fun", [R.r|
+    ,("fun", [R.r|
 fun fact(x):
   if x == 0: 1
   else: x * fact(x - 1)
@@ -384,7 +385,7 @@ end
 
 |])
    
-   ,("agdt", [R.r|
+    ,("agdt", [R.r|
 
 data Point:
   | pt(x, y)
@@ -488,7 +489,7 @@ end
 
 |])
 
-   ,("tuples", [R.r|
+    ,("tuples", [R.r|
 check:
   t = {"a";"b";true}
   t.{0} is "a"
@@ -568,7 +569,7 @@ end
 |#
 
 |])
-   ,("records", [R.r|
+    ,("records", [R.r|
 check:
   x = 33
   a = {a: "one", b : 2, c : x }
@@ -599,6 +600,133 @@ check:
   # check non ordering of fields in equality
 
   {a:1, b:2} is { b:2, a:1}
+end
+|])
+
+    ,("list-basics", [R.r|
+
+#|
+
+data List:
+   | empty
+   | link(first,rest)
+end
+
+|#
+
+check:
+  empty is [list:]
+  link(1, empty) is [list: 1]
+  link(1, link(2, empty)) is [list: 1,2]
+
+end
+
+check:
+  l1 = [list: 1]
+  mt = empty
+  is-empty(mt) is true
+  is-empty(l1) is false
+  is-link(mt) is false
+  is-link(l1) is true
+
+  is-List(l1) is true
+  is-List(mt) is true
+end
+
+check:
+  l1 = [list: 1,2,3]
+  l1.first is 1
+  l1.rest is [list: 2,3]
+end
+
+check:
+  list1 = [list: 2,3]
+  list2 = link(1, list1)
+  list2 is [list: 1,2,3]
+
+  [list: 1,2,3].first is 1
+  [list: 1,2,3].rest  is [list: 2,3]
+end
+
+check:
+  empty is [list:]
+  link(1, empty) is [list: 1]
+  link(1, link(2, empty)) is [list: 1,2]
+  link(empty, link(empty, [list: ])) is [list: [list:],[list:]]
+end
+
+#|
+check:
+  x = [list: 1,2,3]
+  # -> link(1, link(2, link (3,empty)))
+  # test variant binding
+  
+  link(a,b) = x
+  a is 1
+  link(_,link(c,d)) = x
+  c is 2
+  d is [list: 3]
+  w = let link(y,z) = x: {y;z} end
+  w is {1;[list:2,3]}
+  a0 = [list:]
+  # this seems pretty dodgy: pattern match on a no arg variant
+  # instead of binding to an identifier called empty
+  empty = a0
+  # todo: do a raises test with this
+  nothing
+end
+   |#
+
+check:
+  x = [list:1]
+  cases(list) x:
+    | empty => true
+    | else => false
+  end is false
+
+  #shadow
+  x = [list:]
+  cases(list) x:
+    | empty => true
+    | else => false
+  end is true
+
+  #shadow
+  x = [list:1]
+  cases(list) x:
+    | link(a,b) => block:
+        a is 1
+        b is empty
+        nothing
+      end
+    | else => nothing
+  end
+  
+end
+
+
+fun my-is-empty(l):
+  cases(List) l:
+    | empty => true
+    | else => false
+  end
+end
+
+fun length(l):
+  cases(List) l:
+    | empty => 0
+    | link(f, r) => 1 + length(r)
+  end
+end
+
+check:
+  l1 = empty
+  l2 = [list: 1,2,3]
+  my-is-empty(l1) is true
+  my-is-empty(l2) is false
+
+  length(l1) is 0
+  length(l2) is 3
 end
 |])
 

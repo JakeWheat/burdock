@@ -234,6 +234,7 @@ term = (do
         ,numE
         ,stringE
         ,parensE
+        ,construct
         ,tupleOrRecord
         ]
     bchoice [termSuffixes x, pure x]) <?> "expression"
@@ -452,6 +453,10 @@ tupleOrRecord2 mkRecSel mkTupSel pTupEl extractIden = do
               f <- fld
               moreRecord (f:fs)]]
     fld = (,) <$> (identifier <* symbol_ ":") <*> expr
+
+construct :: Parser Expr
+construct = Construct <$> (symbol_ "[" *> (Iden <$> identifier) <* symbol_ ":")
+            <*> (commaSep expr <* symbol_ "]")
 
 
 ---------------------------------------

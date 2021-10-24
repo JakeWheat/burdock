@@ -46,6 +46,7 @@ data Expr =
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TupleGet Expr Int
+    | Construct Expr [Expr]
     deriving (Eq,Show,Data)
 
 data Pat = IdenP PatName

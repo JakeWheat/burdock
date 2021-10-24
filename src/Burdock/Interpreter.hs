@@ -167,7 +167,15 @@ defaultEnv =
     ,("variant-tag", ForeignFunV "variant-tag")
     ,("is-tuple", ForeignFunV "is-tuple")
     ,("is-record", ForeignFunV "is-record")
-    ]
+    ,("empty", VariantV "empty" [])
+    ,("link", ForeignFunV "link")
+    ,("nothing", VariantV "nothing" [])
+    ,("is-empty", ForeignFunV "is-empty")
+    ,("is-link", ForeignFunV "is-link")
+    ,("is-List", ForeignFunV "is-List")
+    ,("is-nothing", ForeignFunV "is-nothing") 
+    ,("is-Nothing", ForeignFunV "is-Nothing") 
+   ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
 defaultFF =
@@ -177,8 +185,14 @@ defaultFF =
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
     ,("make-variant", makeVariant)
     ,("variant-tag", variantTag)
-    ,("is-tuple", isTuple)
-    ,("is-record", isRecord)
+    ,("is-tuple", isVariant "tuple")
+    ,("is-record", isVariant "record")
+    ,("link", listLink)
+    ,("is-empty", isVariant "empty")
+    ,("is-link", isVariant "link")
+    ,("is-nothing", isVariant "nothing")
+    ,("is-Nothing", isAgdt "Nothing" ["nothing"])
+    ,("is-List", isAgdt "List" ["empty", "link"])
     ]
 
 makeVariant :: [Value] -> Interpreter Value
@@ -190,16 +204,18 @@ makeVariant (TextV nm:as) =
     f x = error $ "wrong args to make-variant: " ++ show x
 makeVariant x = error $ "wrong args to make-variant: " ++ show x
 
-isTuple :: [Value] -> Interpreter Value
-isTuple [VariantV "tuple" _] = pure $ BoolV True
-isTuple [_] = pure $ BoolV False
-isTuple _ = error $ "wrong number of args to is-tuple"
+isVariant :: String -> [Value] -> Interpreter Value
+isVariant tg [VariantV vt _] = pure $ BoolV $ tg == vt
+isVariant tg _ = error $ "wrong number of args to is-" ++ tg
 
-isRecord :: [Value] -> Interpreter Value
-isRecord [VariantV "record" _] = pure $ BoolV True
-isRecord [_] = pure $ BoolV False
-isRecord _ = error $ "wrong number of args to is-record"
+isAgdt :: String -> [String] -> [Value] -> Interpreter Value
+isAgdt _ty tgs [VariantV vt _] = pure $ BoolV (vt `elem` tgs)
+isAgdt ty _ _ = error $ "wrong number of args to is-" ++ ty
 
+
+listLink :: [Value] -> Interpreter Value
+listLink [a,b] = pure $ VariantV "link" [("first", a), ("rest", b)]
+listLink _ = error $ "wrong number of args to link"
 
 
 variantTag :: [Value] -> Interpreter Value
@@ -326,9 +342,15 @@ interp (TupleGet e f) = do
                  $ lookup (show f) fs
         _ -> error $ "tuple get called on non tuple value: " ++ show v
 
---    | TupleSel [Expr]
---    | RecordSel [(String,Expr)]
---    | TupleGet Expr Int
+interp (Construct (Iden "list") es) = do
+    vs <- mapM interp es
+    pure $ makeBList vs
+
+interp (Construct {}) = error "todo: construct for non lists"
+
+makeBList :: [Value] -> Value
+makeBList [] = VariantV "empty" []
+makeBList (x:xs) = VariantV "link" [("first", x),("rest", makeBList xs)]
 
 
 
