@@ -43,6 +43,9 @@ data Expr =
     | Block [Stmt]
     | DotExpr Expr String
     | Cases String Expr [(Pat, Expr)] (Maybe Expr)
+    | TupleSel [Expr]
+    | RecordSel [(String,Expr)]
+    | TupleGet Expr Int
     deriving (Eq,Show,Data)
 
 data Pat = IdenP PatName

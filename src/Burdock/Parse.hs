@@ -1,4 +1,6 @@
 
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE MultiWayIf #-}
 module Burdock.Parse
     (parseExpr
     ,parseScript
@@ -200,6 +202,9 @@ num = lexeme (
     -- not sure if this def pays its way
     appendA = flip (++)
 
+nonNegativeInteger :: Parser Int
+nonNegativeInteger = lexeme (read <$> takeWhile1P Nothing isDigit)
+
 ------------------------------------------------------------------------------
 
 -- main parsing
@@ -229,6 +234,7 @@ term = (do
         ,numE
         ,stringE
         ,parensE
+        ,tupleOrRecord
         ]
     bchoice [termSuffixes x, pure x]) <?> "expression"
 
@@ -244,7 +250,8 @@ appSuffix = flip App <$> parens (commaSep expr)
 
 dotSuffix :: Parser (Expr -> Expr)
 dotSuffix = symbol_ "." *>
-    (flip DotExpr <$> identifier)
+    bchoice [flip TupleGet <$> (symbol_ "{" *> nonNegativeInteger <* symbol_ "}")
+            ,flip DotExpr <$> identifier]
 
 
 binOpSym :: Parser String
@@ -401,6 +408,51 @@ stringRaw = unescape <$>
 
 parensE :: Parser Expr
 parensE = Parens <$> parens expr
+
+tupleOrRecord :: Parser Expr
+tupleOrRecord = tupleOrRecord2 RecordSel
+                               TupleSel
+                               expr
+                               (\case
+                                     Iden i -> Just i
+                                     _ -> Nothing)
+
+tupleOrRecord2 :: ([(String, Expr)] -> a)
+               -> ([a] -> a)
+               -> Parser a
+               -> (a -> Maybe String)
+               -> Parser a
+tupleOrRecord2 mkRecSel mkTupSel pTupEl extractIden = do
+    symbol_ "{"
+    choice [-- {} is an empty record, not an empty tuple
+            symbol_ "}" *> pure (mkRecSel [])
+           ,eitherElement]
+  where
+    eitherElement = do
+        x <- pTupEl
+        if | Just i <- extractIden x -> choice
+                [do
+                 symbol_ ":"
+                 e <- expr
+                 moreRecord [(i,e)]
+                ,moreTuple [x]]
+           | otherwise -> moreTuple [x]
+    moreTuple ts = choice
+        [symbol_ "}" *> pure (mkTupSel (reverse ts))
+        ,symbol ";" *> choice
+             [symbol_ "}" *> pure (mkTupSel (reverse ts))
+             ,do
+              te <- pTupEl
+              moreTuple (te:ts)]]
+    moreRecord fs = choice
+        [symbol_ "}" *> pure (mkRecSel (reverse fs))
+        ,symbol "," *> choice
+             [symbol_ "}" *> pure (mkRecSel (reverse fs))
+             ,do
+              f <- fld
+              moreRecord (f:fs)]]
+    fld = (,) <$> (identifier <* symbol_ ":") <*> expr
+
 
 ---------------------------------------
 

@@ -104,6 +104,20 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
         ,(VariantP (Just "z") "link" [nm "f", nm "r"], Iden "x")]
         (Just $ Text "else"))
 
+    -- tuple selector
+    ,("{\"a\";\"b\";true}", TupleSel [Text "a", Text "b", Iden "true"])
+    ,("{1}", TupleSel [Num 1])
+    -- tuple field get
+    ,("myobj4.{0}", TupleGet (Iden "myobj4") 0)
+    ,("f().{1}", TupleGet (App (Iden "f") []) 1)
+    -- record selector
+    ,("{a: \"one\", b : 2, c : x }", RecordSel [("a", Text "one")
+                                               ,("b", Num 2)
+                                               ,("c", Iden "x")])
+    ,("{}", RecordSel [])
+
+
+     
     ]
   where
     nm = PatName NoShadow
@@ -473,5 +487,117 @@ end
 
 
 |])
+
+   {-,("tuples", [R.r|
+check:
+  t = {"a";"b";true}
+  t.{0} is "a"
+  t.{1} is "b"
+  t.{2} is true
+
+  is-tuple(t) is true
+
+  myobj4 = {1}
+  myobj4.{0} is 1
+
+end
+
+
+# todo: restore when tuple binding restored
+#check:
+#  {x; y} = {1; 2}
+#  x is 1
+#  y is 2
+#end
+
+# todo: restore when tuple binding restored
+#check:
+#  {x; y} as z = {1; 2}
+#  x is 1
+#  y is 2
+#  z is {1;2}
+#end
+
+
+# todo: restore when tuple binding restored
+# check:
+#   {{w; x}; {y; z}} = {{5; true}; {"hello"; 4}}
+#   w is 5
+#   x is true
+#   y is "hello"
+#   z is 4
+# end
+
+# todo: restore when tuple binding restored
+# check:
+#   {{w; x} as wx; {y; z} as yz} as wxyz = {{5; true}; {"hello"; 4}}
+#   w is 5
+#   x is true
+#   y is "hello"
+#   z is 4
+#   wx is {5; true}
+#   yz is {"hello"; 4}
+#   wxyz is {wx; yz}
+# end
+
+#|
+
+#check:
+#  {x; y} = {1; 2}
+#  x is 1
+#  y is 2
+#
+#  fun sum-two({k; v}, {a; b; c}):
+#    k + v + a + b + c
+#  end
+#
+#  sum-two({10; 12}, {1; 4; 5}) is 32
+#
+#  fun sum-vals(elts) block:
+#    var sum = 0
+#    for each({k; v} from elts):
+#      sum := sum + v
+#    end
+#    sum
+#  end
+#
+#  elts = [list: {"a"; 5}, {"b"; 6}, {"c"; 7}]
+#  sum-vals(elts) is 18
+#end
+
+|])
+   ,("records", [R.r|
+check:
+  x = 33
+  a = {a: "one", b : 2, c : x }
+  a.a is "one"
+  a.b is 2
+  a.c is 33
+
+  is-record(a) is true
+
+  myobj3 = {}
+  is-record(myobj3) is true
+
+
+  my-obj = {s: "Hello", b: true, n: 42}
+  fun g(thing #|:: {n :: Number}|#)#| -> Number|#:
+    thing.n
+  end
+
+  g(my-obj) is 42
+
+  # this succeeds with type checking on in pyret:
+  #my-obj2 :: {n :: Number, s :: String, b :: Boolean} = {s: "Hello", b: true, n: 42}
+  #fun g2(thing :: {n :: Number}) -> Number:
+  #  thing.n
+  #end
+  #g2(my-obj2) is 42
+
+  # check non ordering of fields in equality
+
+  {a:1, b:2} is { b:2, a:1}
+end
+|])-}
 
     ]

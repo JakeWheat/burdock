@@ -85,6 +85,13 @@ expr (Cases ty e mats els) =
   where
     mf (p, e1) = pretty "|" <+> pat p <+> pretty "=>" <+> expr e1
 
+expr (TupleSel es) = pretty "{" <> nest 2 (xSep ";" (map expr es) <> pretty "}")
+expr (RecordSel flds) = pretty "{" <> nest 2 (commaSep (map fld flds) <> pretty "}")
+  where
+    fld (n,e) = pretty n <> pretty ":" <+> expr e
+expr (TupleGet e n) = expr e <> pretty ".{" <> pretty (show n) <> pretty "}"
+
+
     
 binding :: PatName -> Expr -> Doc a
 binding n e =
@@ -168,3 +175,6 @@ script (Script iss) = stmts iss
 
 commaSep :: [Doc a] -> Doc a
 commaSep = sep . punctuate comma
+
+xSep :: String -> [Doc a] -> Doc a
+xSep s = sep . punctuate (pretty s)
