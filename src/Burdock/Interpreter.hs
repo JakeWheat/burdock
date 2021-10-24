@@ -1,5 +1,5 @@
 
-
+{-# LANGUAGE TupleSections #-}
 module Burdock.Interpreter
     (TestResult(..)
     ,executeScriptWithTests
@@ -165,6 +165,8 @@ defaultEnv =
     ,("*", ForeignFunV "*")
     ,("make-variant", ForeignFunV "make-variant")
     ,("variant-tag", ForeignFunV "variant-tag")
+    ,("is-tuple", ForeignFunV "is-tuple")
+    ,("is-record", ForeignFunV "is-record")
     ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
@@ -175,6 +177,8 @@ defaultFF =
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
     ,("make-variant", makeVariant)
     ,("variant-tag", variantTag)
+    ,("is-tuple", isTuple)
+    ,("is-record", isRecord)
     ]
 
 makeVariant :: [Value] -> Interpreter Value
@@ -185,6 +189,18 @@ makeVariant (TextV nm:as) =
     f (TextV fnm : v : as') = ((fnm,v):) <$> f as'
     f x = error $ "wrong args to make-variant: " ++ show x
 makeVariant x = error $ "wrong args to make-variant: " ++ show x
+
+isTuple :: [Value] -> Interpreter Value
+isTuple [VariantV "tuple" _] = pure $ BoolV True
+isTuple [_] = pure $ BoolV False
+isTuple _ = error $ "wrong number of args to is-tuple"
+
+isRecord :: [Value] -> Interpreter Value
+isRecord [VariantV "record" _] = pure $ BoolV True
+isRecord [_] = pure $ BoolV False
+isRecord _ = error $ "wrong number of args to is-record"
+
+
 
 variantTag :: [Value] -> Interpreter Value
 variantTag [VariantV t _] = pure $ TextV t
@@ -293,6 +309,27 @@ interp (Cases _ty e cs els) = do
         let letvs = zipWith (\(PatName _ n) (_,v) -> (n,v)) nms fs
         localEnv (extendEnv letvs) $ interp ce
     matches _ _  _ = Nothing
+
+interp (TupleSel es) = do
+    vs <- mapM interp es
+    pure $ VariantV "tuple" $ zipWith (\n v -> (show n, v)) [(0::Int)..] vs
+
+interp (RecordSel fs) = do
+    vs <- mapM (\(n,e) -> (n,) <$> interp e) fs
+    pure $ VariantV "record" vs
+
+interp (TupleGet e f) = do
+    v <- interp e
+    case v of
+        VariantV "tuple" fs ->
+            maybe (error $ "tuple field not found: " ++ show f ++ ", " ++ show v) pure
+                 $ lookup (show f) fs
+        _ -> error $ "tuple get called on non tuple value: " ++ show v
+
+--    | TupleSel [Expr]
+--    | RecordSel [(String,Expr)]
+--    | TupleGet Expr Int
+
 
 
 unPat :: PatName -> String

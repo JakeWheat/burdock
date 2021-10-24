@@ -306,18 +306,18 @@ check:
 
 end
 
-# check "letrec":
-#   letrec fac = lam(x): if x == 0: 1 else: x * fac(x - 1) end end:
-#     {fac(4);fac(5);fac(1)} end
-#     is {24;120;1}
-# 
-#   letrec
-#     addeven = lam(x): if x == 0: 0 else: x + addodd(x - 1) end end,
-#     addodd = lam(x):  if x == 0: 0 else: x + addeven(x - 1) end end:
-#     {addeven(2);addodd(2);addodd(5)}
-#   end is {3;3;15}
-# 
-# end
+check "letrec":
+  letrec fac = lam(x): if x == 0: 1 else: x * fac(x - 1) end end:
+    {fac(4);fac(5);fac(1)} end
+    is {24;120;1}
+
+  letrec
+    addeven = lam(x): if x == 0: 0 else: x + addodd(x - 1) end end,
+    addodd = lam(x):  if x == 0: 0 else: x + addeven(x - 1) end end:
+    {addeven(2);addodd(2);addodd(5)}
+  end is {3;3;15}
+
+end
 
 fun fact(x):
   if x == 0: 1
@@ -396,7 +396,7 @@ check:
   is-pt(p1) is true
   is-Point(p1) is true
   is-Point(1) is false
-  # is-Point({1;3}) is false
+  is-Point({1;3}) is false
   p1.x is 1
   p1.y is 2
 end
@@ -488,7 +488,7 @@ end
 
 |])
 
-   {-,("tuples", [R.r|
+   ,("tuples", [R.r|
 check:
   t = {"a";"b";true}
   t.{0} is "a"
@@ -540,30 +540,32 @@ end
 #   wxyz is {wx; yz}
 # end
 
-#|
 
-#check:
-#  {x; y} = {1; 2}
-#  x is 1
-#  y is 2
-#
-#  fun sum-two({k; v}, {a; b; c}):
-#    k + v + a + b + c
-#  end
-#
-#  sum-two({10; 12}, {1; 4; 5}) is 32
-#
-#  fun sum-vals(elts) block:
-#    var sum = 0
-#    for each({k; v} from elts):
-#      sum := sum + v
-#    end
-#    sum
-#  end
-#
-#  elts = [list: {"a"; 5}, {"b"; 6}, {"c"; 7}]
-#  sum-vals(elts) is 18
-#end
+# needs tuple binding and for
+#|
+check:
+  {x; y} = {1; 2}
+  x is 1
+  y is 2
+
+  fun sum-two({k; v}, {a; b; c}):
+    k + v + a + b + c
+  end
+
+  sum-two({10; 12}, {1; 4; 5}) is 32
+
+  fun sum-vals(elts) block:
+    var sum = 0
+    for each({k; v} from elts):
+      sum := sum + v
+    end
+    sum
+  end
+
+  elts = [list: {"a"; 5}, {"b"; 6}, {"c"; 7}]
+  sum-vals(elts) is 18
+end
+|#
 
 |])
    ,("records", [R.r|
@@ -598,6 +600,6 @@ check:
 
   {a:1, b:2} is { b:2, a:1}
 end
-|])-}
+|])
 
     ]
