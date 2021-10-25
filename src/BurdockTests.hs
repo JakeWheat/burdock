@@ -45,6 +45,8 @@ makeInterpreterTest src = catch makeIt $ \ex ->
     pure $ T.testCase src $ T.assertFailure $ show (ex :: SomeException)
   where
     makeIt = do
-        let ast = either error id $ parseScript "" src
-        trs <- executeScriptWithTests ast
+        h <- newHandle
+        -- let ast = either error id $ parseScript "" src
+        trs <- runScriptWithTests h Nothing [] src
         pure $ T.testCase src $ forM_ trs $ \(TestResult nm ps) -> T.assertBool nm ps
+

@@ -49,7 +49,10 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ,"raw-strings-qq"
             ,"mtl"
             ,"safe-exceptions"
-            ,"pretty-show"]
+            ,"pretty-show"
+            ,"haskeline"
+            ,"optparse-applicative"
+            ]
 
     let ghc :: GhcOptions -> FilePath -> FilePath -> Action ()
         ghc opts src output = do
@@ -80,6 +83,10 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
                            $ filter (not . ("." `isPrefixOf`)) bldFiles
         cmd_ "rm -Rf" filesToClean1
 
+    phony "all" $ do
+        need ["_build/bin/burdock-tests"
+             ,"_build/bin/burdock"]
+
     -- todo: use ghc -M to do this better
     let needHsFiles dir = do
             hs <- getDirectoryFiles dir ["//*.hs"]
@@ -96,3 +103,10 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
         need ["_build/bin/burdock-tests"]
         cmd_ "_build/bin/burdock-tests  --color never --ansi-tricks false"
             (maybe "" (\x -> "-p " ++ x) testPattern)
+
+    "_build/bin/burdock" %> \out -> do
+        needHsFiles "src"
+        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"})
+            "src/BurdockExe.hs"
+            out
+

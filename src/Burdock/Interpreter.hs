@@ -2,8 +2,19 @@
 {-# LANGUAGE TupleSections #-}
 module Burdock.Interpreter
     (TestResult(..)
-    ,executeScriptWithTests
-    ,interpretExpr
+    ,runScriptWithTests
+    --,interpretExpr
+
+    ,Value
+    ,valueToString
+    --,nothing
+
+    ,newHandle
+    ,Handle
+    ,runScript
+    ,evalExpr
+    ,evalFun
+
     ) where
 
 import Control.Monad.Reader (ReaderT
@@ -25,6 +36,7 @@ import Data.IORef (IORef
 import Burdock.Scientific
 import Burdock.Syntax
 import Burdock.Pretty
+import Burdock.Parse (parseScript, parseExpr)
 
 import Control.Exception.Safe (catch
                               ,SomeException)
@@ -38,17 +50,59 @@ import Control.Exception.Safe (catch
 
 -- public api
 
+data Handle = Handle (IORef InterpreterState)
+
+newHandle :: IO Handle
+newHandle = do
+    s <- emptyInterpreterState
+    modifyIORef (isEnv s) (defaultEnv ++)
+    modifyIORef (isForeignFunctions s) (defaultFF ++)
+    h <- newIORef s
+    pure $ Handle h
+
+runScript :: Handle
+          -> Maybe FilePath
+          -> [(String,Value)]
+          -> String
+          -> IO Value
+runScript h mfn _lenv src = runInterp h $ do
+    let Script ast = either error id $ parseScript (maybe "" id mfn) src
+    interpStatements ast
+    
+evalExpr :: Handle
+         -> Maybe FilePath
+         -> [(String,Value)]
+         -> String
+         -> IO Value
+evalExpr h mfn _lenv src = runInterp h $ do
+    let ast = either error id $ parseExpr (maybe "" id mfn) src
+    interpStatements [StmtExpr ast]
+
+-- todo: eval function shorthand
+evalFun :: Handle
+        -> Maybe FilePath
+        -> [(String,Value)]
+        -> String 
+        -> [Value]
+        -> IO Value
+evalFun _h _mfn _lenv _fn _args = undefined
+
+-- temp testing
+
 data TestResult = TestResult String Bool
 
-executeScriptWithTests :: Script -> IO [TestResult]
-executeScriptWithTests (Script ss) = runInterp $ do
-    _ <- interpStatements ss
+runScriptWithTests :: Handle
+                   -> Maybe FilePath
+                   -> [(String,Value)]
+                   -> String
+                   -> IO [TestResult]
+runScriptWithTests h mfn _lenv src = runInterp h $ do
+    let Script ast = either error id $ parseScript (maybe "" id mfn) src 
+    _ <- interpStatements ast
+    -- todo: create an ffi function to get these test results
+    -- and use this instead of the runscriptwithtests wrapper
     st <- ask
     liftIO (reverse <$> readIORef (isTestResults st))
-
-interpretExpr :: Expr -> IO Value
-interpretExpr e = runInterp (interp e)
-
 
 ------------------------------------------------------------------------------
 
@@ -85,6 +139,15 @@ instance Eq Value where
     _ == _ = False
 
 -- do instance eq, show
+
+valueToString :: Value -> Maybe String
+valueToString v = case v of
+    VariantV "nothing" [] -> Nothing
+    _ -> Just $ show v -- todo: torepr
+
+-- temp?
+nothing :: Value
+nothing = VariantV "nothing" []
 
 ------------------------------------------------------------------------------
 
@@ -148,12 +211,15 @@ type Interpreter = ReaderT InterpreterState IO
 
 -- create the run function
 
-runInterp :: Interpreter a -> IO a
-runInterp f = do
-    s <- emptyInterpreterState
-    modifyIORef (isEnv s) (defaultEnv ++)
-    modifyIORef (isForeignFunctions s) (defaultFF ++)
-    runReaderT f s
+runInterp :: Handle -> Interpreter a -> IO a
+runInterp (Handle h) f = do
+    h' <- readIORef h
+    (v,h'') <- runReaderT (do
+          res <- f
+          st <- ask
+          pure (res,st)) h'
+    writeIORef h h''
+    pure v
 
 defaultEnv :: [(String,Value)]
 defaultEnv =
@@ -173,8 +239,9 @@ defaultEnv =
     ,("is-empty", ForeignFunV "is-empty")
     ,("is-link", ForeignFunV "is-link")
     ,("is-List", ForeignFunV "is-List")
-    ,("is-nothing", ForeignFunV "is-nothing") 
-    ,("is-Nothing", ForeignFunV "is-Nothing") 
+    ,("is-nothing", ForeignFunV "is-nothing")
+    ,("is-Nothing", ForeignFunV "is-Nothing")
+    ,("print", ForeignFunV "print")
    ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
@@ -193,6 +260,7 @@ defaultFF =
     ,("is-nothing", isVariant "nothing")
     ,("is-Nothing", isAgdt "Nothing" ["nothing"])
     ,("is-List", isAgdt "List" ["empty", "link"])
+    ,("print", bPrint)
     ]
 
 makeVariant :: [Value] -> Interpreter Value
@@ -221,6 +289,13 @@ listLink _ = error $ "wrong number of args to link"
 variantTag :: [Value] -> Interpreter Value
 variantTag [VariantV t _] = pure $ TextV t
 variantTag _ = pure $ VariantV "nothing" []
+
+bPrint :: [Value] -> Interpreter Value
+bPrint [v] = do
+    liftIO $ putStrLn $ show v --todo: use torepr
+    pure nothing
+
+bPrint _ = error $ "wrong number of args to print"
 
 ------------------------------------------------------------------------------
 
@@ -486,9 +561,32 @@ letrec:
   var a = lam():raise("internal error: uninitialized letrec")
   var b = lam():raise("internal error: uninitialized letrec")
   ...
-  a := ...
+  # then for each binding that doesn't have a lam on the lhs:
+  a := memoize(lam(): original_expr)
+  # if it has a lam on the lhs, then do the original expr
   b := ...
   ...
+  memoize-force(a)
+  # this is needed for every non lam binding
+  # although it has to ignore non memoize values(since it might be
+  # called more than once), so it should work if called on all the values
+  ...
+
+this approach roughly ensures every binding has a lazy value
+before any value is evaluated
+and these lazy values are all evaluated before continuing (e.g. to make
+sure side effects happen at the right time, and the performance behaves
+the way you'd expect)
+
+every non fun value will remain a variable, if you turn them into
+constants, will it work?
+
+a memothunk has to be in a variable, otherwise it's an error
+when you get the value of the variable, it evaluates the contained lam
+and updates the variable and returns the value
+there's also a ffi function memoize-eval, which if passed a variable
+with a memothunk in it, it will eval it and save it
+if passed any other kind of value, it will do nothing without error
 
 -}
 
