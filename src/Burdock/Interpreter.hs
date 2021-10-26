@@ -142,8 +142,6 @@ instance Eq Value where
     VariantV nm fs == VariantV lm gs = (nm,fs) == (lm,gs)
     _ == _ = False
 
--- do instance eq, show
-
 valueToString :: Value -> Maybe String
 valueToString v = case v of
     VariantV "nothing" [] -> Nothing
@@ -157,15 +155,6 @@ nothing = VariantV "nothing" []
 
 -- environment, interpreter state, intepreter monad helper functions
 
-type Env = [(String, Value)]
-
-type ForeignFunctions = [(String, [Value] -> Interpreter Value)]
-
-emptyEnv :: Env
-emptyEnv = []
-
-extendEnv :: [(String,Value)] -> Env -> Env
-extendEnv bs env = bs ++ env
 
 {-
 
@@ -195,12 +184,33 @@ todo: namespace the foreign functions when there's an api for them:
 
 -}
 
+type Env = [(String, Value)]
+type ForeignFunctions = [(String, [Value] -> Interpreter Value)]
+
 data InterpreterState =
     InterpreterState {isSystemEnv :: IORef Env
                      ,isScriptEnv :: IORef Env
                      ,isTestResults :: IORef [TestResult]
                      ,isForeignFunctions :: IORef ForeignFunctions
                      }
+type Interpreter = ReaderT InterpreterState IO
+
+
+-- it's a bit crap that have variables nested within variables
+-- but it seems like the least worst option for now
+-- it uses reader + ioref because this is more straightforward
+-- that using rwst/state
+-- but then it needs an extra ioref so that you can preserve the
+-- handle state conveniently in the handle wrapper when you
+-- run api functions
+data Handle = Handle (IORef InterpreterState)
+
+
+emptyEnv :: Env
+emptyEnv = []
+
+extendEnv :: [(String,Value)] -> Env -> Env
+extendEnv bs env = bs ++ env
 
 showState :: InterpreterState -> IO String
 showState s = do
@@ -294,17 +304,7 @@ emptyInterpreterState = do
     d <- newIORef []
     pure $ InterpreterState a b c d
 
-type Interpreter = ReaderT InterpreterState IO
 
-
--- it's a bit crap that have variables nested within variables
--- but it seems like the least worst option for now
--- it uses reader + ioref because this is more straightforward
--- that using rwst/state
--- but then it needs an extra ioref so that you can preserve the
--- handle state conveniently in the handle wrapper when you
--- run api functions
-data Handle = Handle (IORef InterpreterState)
 
 newHandle :: IO Handle
 newHandle = do
@@ -323,6 +323,10 @@ runInterp (Handle h) f = do
           pure (res,st)) h'
     writeIORef h h''
     pure v
+
+------------------------------------------------------------------------------
+
+-- built in functions implemented in haskell:
 
 defaultEnv :: [(String,Value)]
 defaultEnv =
@@ -346,6 +350,7 @@ defaultEnv =
     ,("is-Nothing", ForeignFunV "is-Nothing")
     ,("print", ForeignFunV "print")
     ,("load-module", ForeignFunV "load-module")
+    ,("show-handle-state", ForeignFunV "show-handle-state")
     ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
@@ -366,6 +371,7 @@ defaultFF =
     ,("is-List", isAgdt "List" ["empty", "link"])
     ,("print", bPrint)
     ,("load-module", loadModule)
+    ,("show-handle-state", bShowHandleState)
     ]
 
 makeVariant :: [Value] -> Interpreter Value
@@ -417,6 +423,14 @@ loadModule [TextV moduleName, TextV fn] = do
 
 loadModule _ = error $ "wrong args to load module"
 
+bShowHandleState :: [Value] -> Interpreter Value
+bShowHandleState [] = do
+    st <- ask
+    v <- liftIO $ showState st
+    pure $ TextV v
+    
+bShowHandleState _ = error $ "wrong args to show-handle-state"
+
 ------------------------------------------------------------------------------
 
 -- the interpreter itself
@@ -454,8 +468,6 @@ interp (BinOp e0 "or" e1) = do
         BoolV True -> pure x
         BoolV False -> interp e1
         _ -> error $ "bad value type to 'or' operator: " ++ show x
-
-
 
 interp (BinOp e0 op e1) = do
     v0 <- interp e0
@@ -500,6 +512,14 @@ interp (DotExpr e f) = do
                       | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
         _ -> error $ "dot called on non variant: " ++ show v
 
+
+{-
+run through each branch
+if the variant tag in the value matches the variant tag in the pattern
+run that branch
+if there are members with names, bind these before running the branch
+
+-}
 interp (Cases _ty e cs els) = do
     v <- interp e
     matchb v cs
@@ -569,53 +589,80 @@ app fv vs =
     safeZip ps xs | length ps == length xs  = pure $ zip ps xs
                   | otherwise = error $ "wrong number of args: " ++ show ps ++ ", " ++ show xs
 
+---------------------------------------
 
-letValue :: String -> Value -> Interpreter ()
-letValue nm v = do
-    modifyScriptEnv (extendEnv [(nm,v)])
 
 interpStatements :: [Stmt] -> Interpreter Value
+
+-- gather adjacent fun and rec can be mutually recursive
+-- to desugar all together
+interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
+    interpStatements (doLetRec recbs ++ chks ++ ss')
+  where
+    getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
+    getRecs accdecls accchks (FunDecl nm args bdy whr : ss') =
+        let accchks' = maybe accchks (\w -> Check (Just $ unPat nm) w : accchks) whr
+        in getRecs ((nm, Lam args bdy):accdecls) accchks' ss'
+    getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
+
+-- return value if it's the last statement
+interpStatements [s] = interpStatement s
+interpStatements (s:ss) = interpStatement s >> interpStatements ss
 interpStatements [] = pure $ VariantV "nothing" []
 
-interpStatements (s@(StmtExpr (BinOp e0 "is" e1)) : ss) = do
-    doit
-    interpStatements ss
+
+interpStatement :: Stmt -> Interpreter Value
+
+{-
+
+TODO: notes on how tests execute
+the quick version is that
+a is b
+becomes something like
+run-is-test(lam(): a, lam(): b)
+and run-is-test will catch any exceptions from evaluating a or b and
+  report this, as well as reporting if they are equal if they eval without
+  throwing exceptions
+
+
+-}
+
+interpStatement (RecDecl {}) = error $ "internal error, rec decl not captured by letrec desugaring"
+interpStatement (FunDecl {}) = error $ "internal error, fun decl not captured by letrec desugaring"
+
+interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
+    v0 <- catchit $ interp e0
+    v1 <- catchit $ interp e1
+    case (v0,v1) of
+        (Right v0', Right v1') ->
+            if v0' == v1'
+            then addTestResult $ TestResult msg True
+            else addTestResult $
+                TestResult (msg ++ "\n" ++ show v0' ++ "\n!=\n" ++ show v1') False
+        (Left er0, Right {}) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0) False
+        (Right {}, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
+        (Left er0, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
+    pure nothing
   where
     msg = prettyStmt s
     catchit :: Interpreter Value -> Interpreter (Either String Value)
     catchit f =
         catch (Right <$> f) $ \ex -> pure $ Left $ show (ex :: SomeException)
-    doit :: Interpreter ()
-    doit = do
-        v0 <- catchit $ interp e0
-        v1 <- catchit $ interp e1
-        case (v0,v1) of
-            (Right v0', Right v1') -> addTestResult $ TestResult msg (v0' == v1')
-            (Left er0, Right {}) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0) False
-            (Right {}, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
-            (Left er0, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
-        pure ()
 
-interpStatements [StmtExpr e] = interp e
-interpStatements [Check _ ss] = interpStatements ss
-interpStatements (LetDecl b e : ss) = do
+interpStatement (StmtExpr e) = interp e
+interpStatement (Check _ ss) = interpStatements ss
+interpStatement (LetDecl b e) = do
     v <- interp e
     letValue (unPat b) v
-    interpStatements ss
-interpStatements (StmtExpr e : ss) = do
-    _ <- interp e
-    interpStatements ss
-interpStatements (Check _ ss' : ss) = do
-    _ <- interpStatements ss'
-    interpStatements ss
+    pure nothing
 
-interpStatements (VarDecl b e : ss) = do
+interpStatement (VarDecl b e) = do
     v <- interp e
     vr <- liftIO $ newIORef v
     letValue (unPat b) (BoxV vr)
-    interpStatements ss
+    pure nothing
 
-interpStatements (SetVar nm e : ss) = do
+interpStatement (SetVar nm e) = do
     mv <- lookupEnv nm
     let vr = case mv of
                  Just (BoxV b) -> b
@@ -623,7 +670,7 @@ interpStatements (SetVar nm e : ss) = do
                  Nothing -> error $ "identifier not found: " ++ nm
     v <- interp e
     liftIO $ writeIORef vr v
-    interpStatements ss
+    pure nothing
 
 {-
 
@@ -638,7 +685,7 @@ TODO: use iden + tag value to identify variants
 
 -}
 
-interpStatements (DataDecl dnm vs whr : ss) = do
+interpStatement (DataDecl dnm vs whr) = do
     -- make them call make variant
     -- pass a list
     -- add haskell helper functions for working with lists in burdock
@@ -659,7 +706,7 @@ interpStatements (DataDecl dnm vs whr : ss) = do
             $ lam ["x"]
             $ foldl1 orE $ map callIs vs
         chk = maybe [] (\w -> [Check (Just dnm) w]) whr
-    interpStatements (map makeMake vs ++ map makeIs vs ++ [makeIsDat] ++ chk ++ ss)
+    interpStatements (map makeMake vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
   where
     letDecl nm v = LetDecl (PatName NoShadow nm) v
     lam as e = Lam (map (PatName NoShadow) as) e
@@ -667,15 +714,28 @@ interpStatements (DataDecl dnm vs whr : ss) = do
     appN nm as = App (Iden nm) as
     eqE a b = BinOp a "==" b
     orE a b = BinOp a "or" b
-    
-interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
-    interpStatements (doLetRec recbs ++ chks ++ ss')
-  where
-    getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
-    getRecs accdecls accchks (FunDecl nm args bdy whr : ss') =
-        let accchks' = maybe accchks (\w -> Check (Just $ unPat nm) w : accchks) whr
-        in getRecs ((nm, Lam args bdy):accdecls) accchks' ss'
-    getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
+
+
+
+{-
+
+prelude statements
+
+import
+include from
+include
+
+provide
+-> uses a special wrapper
+
+
+-}
+
+
+letValue :: String -> Value -> Interpreter ()
+letValue nm v = do
+    modifyScriptEnv (extendEnv [(nm,v)])
+
 
 {-
 letrec:
