@@ -22,7 +22,9 @@ import Control.Monad.Reader (ReaderT
                             ,liftIO
                             )
 
-import Control.Monad (forM_)
+import Control.Monad (forM_
+                     ,void
+                     )
 
 import Data.List (intercalate
                  ,sortOn)
@@ -165,40 +167,112 @@ emptyEnv = []
 extendEnv :: [(String,Value)] -> Env -> Env
 extendEnv bs env = bs ++ env
 
+{-
+
+system env: contains the bindings for the loaded modules and system
+support internals
+
+script env: contains the bindings for the runscript of the handle
+
+this split allows modules to load without reference to any of the
+runscript bindings as they should
+and allows persistence of bindings in the runscript context between
+  calls -> especially needed for the repl
+
+there's no straightforward way to query only one of them
+typically, you'll create a localscriptenv which replaces the scriptenv
+  when loading modules to hide the runscript bindings
+
+keeps the foreign functions separate, so that the main env can easily
+be show completely, not sure if this is worth this kind of split.
+it also allows two pointers to the same foreign function to be compared,
+which wouldn't be the case without the indirection
+
+todo: namespace the foreign functions when there's an api for them:
+  want to support the idea that two files from two different people,
+  that coincidentally use the same name for a foreign function id,
+  can still be run together without having to edit one
+
+-}
+
 data InterpreterState =
-    InterpreterState {isEnv :: IORef Env
+    InterpreterState {isSystemEnv :: IORef Env
+                     ,isScriptEnv :: IORef Env
                      ,isTestResults :: IORef [TestResult]
                      ,isForeignFunctions :: IORef ForeignFunctions
                      }
 
 showState :: InterpreterState -> IO String
 showState s = do
-    e <- readIORef $ isEnv s
-    pure $ show e
+    e1 <- readIORef $ isSystemEnv s
+    e2 <- readIORef $ isScriptEnv s
+    pure $ show $ e1 ++ e2
 
-localEnv :: (Env -> Env) -> Interpreter a -> Interpreter a
-localEnv m f = do
+{-
+show the system env
+then the script env
+in tables
+left side: binding name
+right side: binding value
+values: simple: num, bool, text: but use ``` display, no '\n'
+     foreignfunv
+     boxv: look inside the box, mark it as a box though
+     variantv:
+       special show for list, record, tuple
+  funv: show the env
+        show the param names and the expr (using pretty)
+        -> show as a lam syntax
+        the env needs shrinking to not be awful
+
+then figure out how to show values as bindings to other bindings
+  the only way to do this is to save this info at time of adding to the env
+  it only works for bindings which are a = _system_path.module.iden
+    which will display like this instead of with the actual value on the lhs
+
+
+TODO: add test results -> but these will end up in the above before
+long
+foreign functions 
+
+-}
+
+    
+
+localScriptEnv :: (Env -> Env) -> Interpreter a -> Interpreter a
+localScriptEnv m f = do
     st <- ask
-    e' <- liftIO $ m <$> readIORef (isEnv st)
+    e' <- liftIO $ m <$> readIORef (isScriptEnv st)
     e1 <- liftIO $ newIORef e'
-    local (const $ st {isEnv = e1}) f
+    local (const $ st {isScriptEnv = e1}) f
 
 askEnv :: Interpreter Env
 askEnv = do
     st <- ask
-    liftIO $ readIORef $ isEnv st
+    e1 <- liftIO $ readIORef $ isSystemEnv st
+    e2 <- liftIO $ readIORef $ isScriptEnv st
+    pure $ e1 ++ e2
+
+askScriptEnv :: Interpreter Env
+askScriptEnv =  do
+    st <- ask
+    liftIO $ readIORef $ isScriptEnv st
 
 lookupEnv :: String -> Interpreter (Maybe Value)
 lookupEnv k = do
-    st <- ask
-    e <- liftIO $ readIORef (isEnv st)
+    e <- askEnv
     --liftIO $ putStrLn $ "-------------\n" ++ ppShow e ++ "\n-------------"
     pure $ lookup k e 
 
-modifyEnv :: (Env -> Env) -> Interpreter ()
-modifyEnv f = do
+modifyScriptEnv :: (Env -> Env) -> Interpreter ()
+modifyScriptEnv f = do
     st <- ask
-    liftIO $ modifyIORef (isEnv st) f
+    liftIO $ modifyIORef (isScriptEnv st) f
+
+modifySystemEnv :: (Env -> Env) -> Interpreter ()
+modifySystemEnv f = do
+    st <- ask
+    liftIO $ modifyIORef (isSystemEnv st) f
+
 
 askFF :: Interpreter ForeignFunctions
 askFF = do
@@ -215,9 +289,10 @@ addTestResult tr = do
 emptyInterpreterState :: IO InterpreterState
 emptyInterpreterState = do
     a <- newIORef emptyEnv
-    b <- newIORef []
+    b <- newIORef emptyEnv
     c <- newIORef []
-    pure $ InterpreterState a b c
+    d <- newIORef []
+    pure $ InterpreterState a b c d
 
 type Interpreter = ReaderT InterpreterState IO
 
@@ -234,15 +309,10 @@ data Handle = Handle (IORef InterpreterState)
 newHandle :: IO Handle
 newHandle = do
     s <- emptyInterpreterState
-    modifyIORef (isEnv s) (defaultEnv ++)
+    modifyIORef (isSystemEnv s) (defaultEnv ++)
     modifyIORef (isForeignFunctions s) (defaultFF ++)
     h <- newIORef s
     pure $ Handle h
-
-showHandleState :: Handle -> IO String
-showHandleState (Handle h) = do
-    hh <- readIORef h
-    showState hh
 
 runInterp :: Handle -> Interpreter a -> IO a
 runInterp (Handle h) f = do
@@ -275,7 +345,8 @@ defaultEnv =
     ,("is-nothing", ForeignFunV "is-nothing")
     ,("is-Nothing", ForeignFunV "is-Nothing")
     ,("print", ForeignFunV "print")
-   ]
+    ,("load-module", ForeignFunV "load-module")
+    ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
 defaultFF =
@@ -294,6 +365,7 @@ defaultFF =
     ,("is-Nothing", isAgdt "Nothing" ["nothing"])
     ,("is-List", isAgdt "List" ["empty", "link"])
     ,("print", bPrint)
+    ,("load-module", loadModule)
     ]
 
 makeVariant :: [Value] -> Interpreter Value
@@ -329,6 +401,21 @@ bPrint [v] = do
     pure nothing
 
 bPrint _ = error $ "wrong number of args to print"
+
+-- load module at filepath
+loadModule :: [Value] -> Interpreter Value
+loadModule [TextV moduleName, TextV fn] = do
+    src <- liftIO $ readFile fn
+    let Script ast = either error id $ parseScript fn src
+    localScriptEnv (const emptyEnv) $ do
+        void $ interpStatements ast
+        moduleEnv <- askScriptEnv
+        -- make a record from the env
+        let moduleRecord = VariantV "record" moduleEnv
+        modifySystemEnv ((moduleName,moduleRecord):)
+    pure nothing
+
+loadModule _ = error $ "wrong args to load module"
 
 ------------------------------------------------------------------------------
 
@@ -384,11 +471,11 @@ interp (Let bs e) = do
     let newEnv [] = interp e
         newEnv ((b,ex):bs') = do
             v <- interp ex
-            localEnv (extendEnv [(unPat b,v)]) $ newEnv bs'
+            localScriptEnv (extendEnv [(unPat b,v)]) $ newEnv bs'
     newEnv bs
 
 interp (Block ss) =
-    localEnv id $ interpStatements ss
+    localScriptEnv id $ interpStatements ss
 
 interp (If bs e) = do
     let f ((c,t):bs') = do
@@ -432,7 +519,7 @@ interp (Cases _ty e cs els) = do
     -- todo: ignores the qualifier if there is one
     matches (VariantP _ s nms) (VariantV tag fs) ce | tag == s = Just $ do
         let letvs = zipWith (\(PatName _ n) (_,v) -> (n,v)) nms fs
-        localEnv (extendEnv letvs) $ interp ce
+        localScriptEnv (extendEnv letvs) $ interp ce
     matches _ _  _ = Nothing
 
 interp (TupleSel es) = do
@@ -471,7 +558,7 @@ app fv vs =
     case fv of
         FunV ps bdy env -> do
             as <- safeZip ps vs
-            localEnv (const $ extendEnv as env) $ interp bdy
+            localScriptEnv (const $ extendEnv as env) $ interp bdy
         ForeignFunV nm -> do
             ffs <- askFF
             case lookup nm ffs of
@@ -485,7 +572,7 @@ app fv vs =
 
 letValue :: String -> Value -> Interpreter ()
 letValue nm v = do
-    modifyEnv (extendEnv [(nm,v)])
+    modifyScriptEnv (extendEnv [(nm,v)])
 
 interpStatements :: [Stmt] -> Interpreter Value
 interpStatements [] = pure $ VariantV "nothing" []
