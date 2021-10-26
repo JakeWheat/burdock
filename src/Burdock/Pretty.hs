@@ -167,6 +167,27 @@ stmt (FunDecl pn as e w) =
      ,maybe mempty whereBlock w]
 
 
+stmt (Provide pis) =
+    prettyBlocklike vsep
+         [pretty "provide:"
+         ,commaSep $ map provideItem pis]
+stmt (Include s) = pretty "include" <+> importSource s
+stmt (IncludeFrom a pis) =
+    prettyBlocklike vsep
+         [pretty "include" <+> pretty "from" <+> pretty a <> pretty ":"
+         ,nest 2 $ commaSep $ map provideItem pis]
+stmt (Import is a) = pretty "import" <+> importSource is <+> pretty "as" <+> pretty a
+
+provideItem :: ProvideItem -> Doc a
+provideItem ProvideAll = pretty "*"
+provideItem (ProvideName n) = pretty n
+provideItem (ProvideAlias n a) = pretty n <+> pretty "as" <+> pretty a
+
+importSource :: ImportSource -> Doc a
+importSource (ImportSpecial nm as) = pretty nm <> parens (commaSep $ map (dquotes . pretty) as)
+importSource (ImportName s) = pretty s
+
+
 
 stmts :: [Stmt] -> Doc a
 stmts = vsep . map stmt

@@ -473,6 +473,9 @@ stmt = choice
     ,varDecl
     ,dataDecl
     ,checkBlock
+    ,provide
+    ,include
+    ,importStmt
     ,startsWithExprOrPattern]
 
 stmts :: Parser [Stmt]
@@ -520,6 +523,40 @@ checkBlock = do
     ss <- many stmt
     keyword_ "end"
     pure $ Check nm ss
+
+provide :: Parser Stmt
+provide = Provide <$> (keyword_ "provide"
+                       *> symbol_ ":"
+                       *> commaSep provideItem
+                       <* keyword_ "end")
+
+provideItem :: Parser ProvideItem
+provideItem = choice
+    [ProvideAll <$ symbol_ "*"
+    ,do
+     a <- identifier
+     bchoice [ProvideAlias a <$> (keyword_ "as" *> identifier)
+            ,pure $ ProvideName a]
+    ]
+
+include :: Parser Stmt
+include = do
+    keyword_ "include"
+    choice [IncludeFrom
+            <$> (keyword_ "from" *> identifier <* symbol_ ":")
+            <*> (commaSep provideItem <* keyword_ "end")
+           ,Include <$> importSource]
+
+importSource :: Parser ImportSource
+importSource = do
+    a <- identifier
+    bchoice [ImportSpecial a <$> parens (commaSep stringRaw)
+            ,pure $ ImportName a]
+
+importStmt :: Parser Stmt
+importStmt = keyword_ "import" *> (Import <$> importSource
+                      <*> (keyword_ "as" *> identifier))
+
 
 startsWithExprOrPattern :: Parser Stmt
 startsWithExprOrPattern = do

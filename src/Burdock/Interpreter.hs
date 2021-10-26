@@ -716,22 +716,6 @@ interpStatement (DataDecl dnm vs whr) = do
     orE a b = BinOp a "or" b
 
 
-
-{-
-
-prelude statements
-
-import
-include from
-include
-
-provide
--> uses a special wrapper
-
-
--}
-
-
 letValue :: String -> Value -> Interpreter ()
 letValue nm v = do
     modifyScriptEnv (extendEnv [(nm,v)])

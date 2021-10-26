@@ -225,6 +225,66 @@ end
                     (Just (BinOp (Iden "x") "*" (App (Iden "fact") [BinOp (Iden "x") "-" (Num 1)])))
             ])
 
+    ,("provide: * end\n\
+      \1"
+     ,Script [Provide [ProvideAll]
+             ,StmtExpr $ Num 1])
+
+    ,("provide: a end\n\
+      \1"
+     ,Script [Provide [ProvideName "a"]
+             ,StmtExpr $ Num 1])
+
+    ,("provide: a,b end\n\
+      \1"
+     ,Script [Provide [ProvideName "a", ProvideName "b"]
+             ,StmtExpr $ Num 1])
+
+    ,("provide: a as b end\n\
+      \1"
+     ,Script [Provide [ProvideAlias "a" "b"]
+             ,StmtExpr $ Num 1])
+
+    ,("include file(\"file.tea\")\n\
+      \1"
+     ,Script [Include (ImportSpecial "file" ["file.tea"])
+             ,StmtExpr $ Num 1])
+
+    ,("include string-dict\n\
+      \1"
+     ,Script [Include (ImportName "string-dict")
+             ,StmtExpr $ Num 1])
+
+    ,("import file(\"file.tea\") as X\n\
+      \1"
+     ,Script [Import (ImportSpecial "file" ["file.tea"]) "X"
+             ,StmtExpr $ Num 1])
+
+    ,("import string-dict as X\n\
+      \1"
+     ,Script [Import (ImportName "string-dict") "X"
+             ,StmtExpr $ Num 1])
+
+
+    ,("include from X: * end\n\
+      \1"
+     ,Script [IncludeFrom "X" [ProvideAll]
+             ,StmtExpr $ Num 1])
+
+    ,("include from X: a end\n\
+      \1"
+     ,Script [IncludeFrom "X" [ProvideName "a"]
+             ,StmtExpr $ Num 1])
+
+    ,("include from X: a,b end\n\
+      \1"
+     ,Script [IncludeFrom "X" [ProvideName "a", ProvideName "b"]
+             ,StmtExpr $ Num 1])
+
+    ,("include from X: a as b end\n\
+      \1"
+     ,Script [IncludeFrom "X" [ProvideAlias "a" "b"]
+             ,StmtExpr $ Num 1])
     
     ]
   where

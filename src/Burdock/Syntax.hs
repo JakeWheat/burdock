@@ -8,6 +8,10 @@ import Data.Data (Data)
 
 import Burdock.Scientific
 
+data Script =
+      Script [Stmt]
+    deriving (Eq,Show,Data)
+
 data Stmt =
       StmtExpr Expr
     | LetDecl PatName Expr
@@ -21,6 +25,10 @@ data Stmt =
         [PatName] -- args
         Expr -- body
         (Maybe [Stmt]) -- test block
+    | Provide [ProvideItem]
+    | Import ImportSource String
+    | Include ImportSource
+    | IncludeFrom String [ProvideItem]
     deriving (Eq,Show,Data)
 
 data VariantDecl = VariantDecl String [(Ref,String)]
@@ -28,6 +36,16 @@ data VariantDecl = VariantDecl String [(Ref,String)]
 
 data Ref = Ref | Con
          deriving (Eq,Show,Data) 
+
+data ProvideItem = ProvideAll
+                 | ProvideAlias String String
+                 | ProvideName String
+                 deriving (Eq,Show,Data) 
+
+data ImportSource = ImportSpecial String [String]
+                  | ImportName String
+                  deriving (Eq,Show,Data) 
+----
 
 data Expr =
       Num Scientific
@@ -59,8 +77,3 @@ data PatName =
 
 data Shadow = NoShadow | Shadow
           deriving (Eq,Show,Data) 
-
-
-data Script =
-      Script [Stmt]
-    deriving (Eq,Show,Data)
