@@ -50,20 +50,7 @@ import Control.Exception.Safe (catch
 
 -- public api
 
-data Handle = Handle (IORef InterpreterState)
-
-newHandle :: IO Handle
-newHandle = do
-    s <- emptyInterpreterState
-    modifyIORef (isEnv s) (defaultEnv ++)
-    modifyIORef (isForeignFunctions s) (defaultFF ++)
-    h <- newIORef s
-    pure $ Handle h
-
-showHandleState :: Handle -> IO String
-showHandleState (Handle h) = do
-    hh <- readIORef h
-    showState hh
+-- newHandle below with the rest of handle stuff
 
 runScript :: Handle
           -> Maybe FilePath
@@ -234,7 +221,28 @@ emptyInterpreterState = do
 
 type Interpreter = ReaderT InterpreterState IO
 
--- create the run function
+
+-- it's a bit crap that have variables nested within variables
+-- but it seems like the least worst option for now
+-- it uses reader + ioref because this is more straightforward
+-- that using rwst/state
+-- but then it needs an extra ioref so that you can preserve the
+-- handle state conveniently in the handle wrapper when you
+-- run api functions
+data Handle = Handle (IORef InterpreterState)
+
+newHandle :: IO Handle
+newHandle = do
+    s <- emptyInterpreterState
+    modifyIORef (isEnv s) (defaultEnv ++)
+    modifyIORef (isForeignFunctions s) (defaultFF ++)
+    h <- newIORef s
+    pure $ Handle h
+
+showHandleState :: Handle -> IO String
+showHandleState (Handle h) = do
+    hh <- readIORef h
+    showState hh
 
 runInterp :: Handle -> Interpreter a -> IO a
 runInterp (Handle h) f = do
