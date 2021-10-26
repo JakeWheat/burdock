@@ -2,12 +2,10 @@
 {-# LANGUAGE TupleSections #-}
 module Burdock.Interpreter
     (TestResult(..)
-    ,runScriptWithTests
-    --,interpretExpr
+    ,getTestResults
 
     ,Value
     ,valueToString
-    --,nothing
 
     ,newHandle
     ,Handle
@@ -23,6 +21,8 @@ import Control.Monad.Reader (ReaderT
                             ,local
                             ,liftIO
                             )
+
+import Control.Monad (forM_)
 
 import Data.List (intercalate
                  ,sortOn)
@@ -70,12 +70,13 @@ runScript :: Handle
           -> [(String,Value)]
           -> String
           -> IO Value
-runScript h mfn _lenv src = do
+runScript h mfn lenv src = do
     --hh <- showHandleState h
     --putStrLn $ "before:\n" ++ hh ++ "\n----\n"
     ret <- runInterp h $ do
         let Script ast = either error id $ parseScript (maybe "" id mfn) src
-        -- todo: add the _lenv as letdecls to the start of the script
+        -- todo: how to make this local to this call only
+        forM_ lenv $ \(n,v) -> letValue n v
         interpStatements ast
     --hh1 <- showHandleState h
     --putStrLn $ "after:\n" ++ hh1 ++ "\n----\n"
@@ -87,40 +88,34 @@ evalExpr :: Handle
          -> [(String,Value)]
          -> String
          -> IO Value
-evalExpr h mfn _lenv src = runInterp h $ do
-    -- todo: construct a let wrapper from the lenv
+evalExpr h mfn lenv src = runInterp h $ do
     let ast = either error id $ parseExpr (maybe "" id mfn) src
+    -- todo: how to make this local to this call only
+    forM_ lenv $ \(n,v) -> letValue n v
     interp ast
 
--- todo: eval function shorthand
 evalFun :: Handle
         -> String 
         -> [Value]
         -> IO Value
 evalFun h fun args = runInterp h $ do
     let ast = either error id $ parseExpr "" fun
-    _f <- interpStatements [StmtExpr ast]
-    -- f <- evalExpr h Nothing [] fun
-    let _as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
-        _src' = "fff(" ++ intercalate "," (map fst _as) ++ ")"
-        _ast' = either error id $ parseExpr "" _src'
-    --interp (("fff", f):as) ast'
-    undefined
+    f <- interpStatements [StmtExpr ast]
+    let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
+        src' = "fff(" ++ intercalate "," (map fst as) ++ ")"
+        ast' = either error id $ parseExpr "" src'
+    forM_ (("fff", f):as) $ \(n,v) -> letValue n v
+    interp ast'
 
 -- temp testing
+-- todo: store the test results as burdock values
+-- use a function to get these stored test results
+-- and a helper to convert to haskell value (if needed)
 
 data TestResult = TestResult String Bool
 
-runScriptWithTests :: Handle
-                   -> Maybe FilePath
-                   -> [(String,Value)]
-                   -> String
-                   -> IO [TestResult]
-runScriptWithTests h mfn _lenv src = runInterp h $ do
-    let Script ast = either error id $ parseScript (maybe "" id mfn) src 
-    _ <- interpStatements ast
-    -- todo: create an ffi function to get these test results
-    -- and use this instead of the runscriptwithtests wrapper
+getTestResults :: Handle -> IO [TestResult]
+getTestResults h = runInterp h $ do
     st <- ask
     liftIO (reverse <$> readIORef (isTestResults st))
 
@@ -216,7 +211,7 @@ lookupEnv k = do
 modifyEnv :: (Env -> Env) -> Interpreter ()
 modifyEnv f = do
     st <- ask
-    liftIO $ modifyIORef  (isEnv st) f
+    liftIO $ modifyIORef (isEnv st) f
 
 askFF :: Interpreter ForeignFunctions
 askFF = do
@@ -480,6 +475,10 @@ app fv vs =
                   | otherwise = error $ "wrong number of args: " ++ show ps ++ ", " ++ show xs
 
 
+letValue :: String -> Value -> Interpreter ()
+letValue nm v = do
+    modifyEnv (extendEnv [(nm,v)])
+
 interpStatements :: [Stmt] -> Interpreter Value
 interpStatements [] = pure $ VariantV "nothing" []
 
@@ -506,7 +505,7 @@ interpStatements [StmtExpr e] = interp e
 interpStatements [Check _ ss] = interpStatements ss
 interpStatements (LetDecl b e : ss) = do
     v <- interp e
-    modifyEnv (extendEnv [(unPat b,v)])
+    letValue (unPat b) v
     interpStatements ss
 interpStatements (StmtExpr e : ss) = do
     _ <- interp e
@@ -518,7 +517,7 @@ interpStatements (Check _ ss' : ss) = do
 interpStatements (VarDecl b e : ss) = do
     v <- interp e
     vr <- liftIO $ newIORef v
-    modifyEnv (extendEnv [(unPat b,BoxV vr)])
+    letValue (unPat b) (BoxV vr)
     interpStatements ss
 
 interpStatements (SetVar nm e : ss) = do

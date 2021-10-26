@@ -46,7 +46,7 @@ makeInterpreterTest src = catch makeIt $ \ex ->
   where
     makeIt = do
         h <- newHandle
-        trs <- runScriptWithTests h Nothing [] src
+        _ <- runScript h Nothing [] src
+        trs <- getTestResults h
         let ts = flip map trs $ \(TestResult nm ps) -> T.testCase nm $ T.assertBool "" ps
         pure $ T.testGroup (take 10 src) ts
-

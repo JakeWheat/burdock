@@ -130,6 +130,11 @@ repl h = go
 doRepl :: IO ()
 doRepl = do
     h <- B.newHandle
+    --putStrLn "test print"
+    --a1 <- B.evalExpr h Nothing [] "1"
+    --a2 <- B.evalExpr h Nothing [] "true"
+    --B.evalFun h "print" [a1]
+    --B.evalFun h "print" [a2]
     runInputT st (repl h)
   where
     st = defaultSettings {historyFile = Just ".burdockreplhistory"}
