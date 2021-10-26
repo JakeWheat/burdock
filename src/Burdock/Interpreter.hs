@@ -60,14 +60,27 @@ newHandle = do
     h <- newIORef s
     pure $ Handle h
 
+showHandleState :: Handle -> IO String
+showHandleState (Handle h) = do
+    hh <- readIORef h
+    showState hh
+
 runScript :: Handle
           -> Maybe FilePath
           -> [(String,Value)]
           -> String
           -> IO Value
-runScript h mfn _lenv src = runInterp h $ do
-    let Script ast = either error id $ parseScript (maybe "" id mfn) src
-    interpStatements ast
+runScript h mfn _lenv src = do
+    --hh <- showHandleState h
+    --putStrLn $ "before:\n" ++ hh ++ "\n----\n"
+    ret <- runInterp h $ do
+        let Script ast = either error id $ parseScript (maybe "" id mfn) src
+        -- todo: add the _lenv as letdecls to the start of the script
+        interpStatements ast
+    --hh1 <- showHandleState h
+    --putStrLn $ "after:\n" ++ hh1 ++ "\n----\n"
+    pure ret
+
     
 evalExpr :: Handle
          -> Maybe FilePath
@@ -75,17 +88,24 @@ evalExpr :: Handle
          -> String
          -> IO Value
 evalExpr h mfn _lenv src = runInterp h $ do
+    -- todo: construct a let wrapper from the lenv
     let ast = either error id $ parseExpr (maybe "" id mfn) src
-    interpStatements [StmtExpr ast]
+    interp ast
 
 -- todo: eval function shorthand
 evalFun :: Handle
-        -> Maybe FilePath
-        -> [(String,Value)]
         -> String 
         -> [Value]
         -> IO Value
-evalFun _h _mfn _lenv _fn _args = undefined
+evalFun h fun args = runInterp h $ do
+    let ast = either error id $ parseExpr "" fun
+    _f <- interpStatements [StmtExpr ast]
+    -- f <- evalExpr h Nothing [] fun
+    let _as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
+        _src' = "fff(" ++ intercalate "," (map fst _as) ++ ")"
+        _ast' = either error id $ parseExpr "" _src'
+    --interp (("fff", f):as) ast'
+    undefined
 
 -- temp testing
 
@@ -169,6 +189,11 @@ data InterpreterState =
                      ,isForeignFunctions :: IORef ForeignFunctions
                      }
 
+showState :: InterpreterState -> IO String
+showState s = do
+    e <- readIORef $ isEnv s
+    pure $ show e
+
 localEnv :: (Env -> Env) -> Interpreter a -> Interpreter a
 localEnv m f = do
     st <- ask
@@ -187,6 +212,11 @@ lookupEnv k = do
     e <- liftIO $ readIORef (isEnv st)
     --liftIO $ putStrLn $ "-------------\n" ++ ppShow e ++ "\n-------------"
     pure $ lookup k e 
+
+modifyEnv :: (Env -> Env) -> Interpreter ()
+modifyEnv f = do
+    st <- ask
+    liftIO $ modifyIORef  (isEnv st) f
 
 askFF :: Interpreter ForeignFunctions
 askFF = do
@@ -354,7 +384,8 @@ interp (Let bs e) = do
             localEnv (extendEnv [(unPat b,v)]) $ newEnv bs'
     newEnv bs
 
-interp (Block ss) = interpStatements ss
+interp (Block ss) =
+    localEnv id $ interpStatements ss
 
 interp (If bs e) = do
     let f ((c,t):bs') = do
@@ -451,7 +482,6 @@ app fv vs =
 
 interpStatements :: [Stmt] -> Interpreter Value
 interpStatements [] = pure $ VariantV "nothing" []
-interpStatements [LetDecl {}] = pure $ VariantV "nothing" []
 
 interpStatements (s@(StmtExpr (BinOp e0 "is" e1)) : ss) = do
     doit
@@ -476,7 +506,8 @@ interpStatements [StmtExpr e] = interp e
 interpStatements [Check _ ss] = interpStatements ss
 interpStatements (LetDecl b e : ss) = do
     v <- interp e
-    localEnv (extendEnv [(unPat b,v)]) $ interpStatements ss
+    modifyEnv (extendEnv [(unPat b,v)])
+    interpStatements ss
 interpStatements (StmtExpr e : ss) = do
     _ <- interp e
     interpStatements ss
@@ -487,7 +518,8 @@ interpStatements (Check _ ss' : ss) = do
 interpStatements (VarDecl b e : ss) = do
     v <- interp e
     vr <- liftIO $ newIORef v
-    localEnv (extendEnv [(unPat b,BoxV vr)]) $ interpStatements ss
+    modifyEnv (extendEnv [(unPat b,BoxV vr)])
+    interpStatements ss
 
 interpStatements (SetVar nm e : ss) = do
     mv <- lookupEnv nm

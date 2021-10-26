@@ -5,7 +5,7 @@ import Burdock.Parse
 import Burdock.Pretty
 import Burdock.Interpreter
 
-import Control.Monad (forM_)
+--import Control.Monad (forM_, forM)
 import Control.Exception.Safe (catch
                               ,SomeException)
 
@@ -42,11 +42,11 @@ makeParseTest parse pretty src expected = T.testCase src $ do
 
 makeInterpreterTest :: String -> IO T.TestTree
 makeInterpreterTest src = catch makeIt $ \ex ->
-    pure $ T.testCase src $ T.assertFailure $ show (ex :: SomeException)
+    pure $ T.testCase (take 10 src) $ T.assertFailure $ show (ex :: SomeException)
   where
     makeIt = do
         h <- newHandle
-        -- let ast = either error id $ parseScript "" src
         trs <- runScriptWithTests h Nothing [] src
-        pure $ T.testCase src $ forM_ trs $ \(TestResult nm ps) -> T.assertBool nm ps
+        let ts = flip map trs $ \(TestResult nm ps) -> T.testCase nm $ T.assertBool "" ps
+        pure $ T.testGroup (take 10 src) ts
 
