@@ -1,5 +1,6 @@
 
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase #-}
 module Burdock.Interpreter
     (TestResult(..)
     ,getTestResults
@@ -204,6 +205,7 @@ type ForeignFunctions = [(String, [Value] -> Interpreter Value)]
 data InterpreterState =
     InterpreterState {isSystemEnv :: IORef Env
                      ,isScriptEnv :: IORef Env
+                     ,isProvides :: IORef [ProvideItem]
                      ,isTestResults :: IORef [TestResult]
                      ,isForeignFunctions :: IORef ForeignFunctions
                      }
@@ -273,7 +275,9 @@ localScriptEnv m f = do
     st <- ask
     e' <- liftIO $ m <$> readIORef (isScriptEnv st)
     e1 <- liftIO $ newIORef e'
-    local (const $ st {isScriptEnv = e1}) f
+    p <- liftIO $ newIORef []
+    local (const $ st {isScriptEnv = e1
+                      ,isProvides = p}) f
 
 askEnv :: Interpreter Env
 askEnv = do
@@ -303,12 +307,20 @@ _modifySystemEnv f = do
     st <- ask
     liftIO $ modifyIORef (isSystemEnv st) f
 
+modifyScriptProvides :: ([ProvideItem] -> [ProvideItem]) -> Interpreter ()
+modifyScriptProvides f = do
+    st <- ask
+    liftIO $ modifyIORef (isProvides st) f
+
+askScriptProvides :: Interpreter [ProvideItem]
+askScriptProvides = do
+    st <- ask
+    liftIO $ readIORef (isProvides st)
 
 askFF :: Interpreter ForeignFunctions
 askFF = do
     st <- ask
     liftIO $ readIORef $ isForeignFunctions st
-
 
 -- saves a test result to the interpreter state
 addTestResult :: TestResult -> Interpreter ()
@@ -322,9 +334,8 @@ emptyInterpreterState = do
     b <- newIORef emptyEnv
     c <- newIORef []
     d <- newIORef []
-    pure $ InterpreterState a b c d
-
-
+    e <- newIORef []
+    pure $ InterpreterState a b c d e
 
 newHandle :: IO Handle
 newHandle = do
@@ -662,6 +673,9 @@ interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
         in getRecs ((nm, Lam args bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
+-- the interpreter for all other statements don't need access to the
+-- statement list so they delegate to interpStatement
+
 -- return value if it's the last statement
 interpStatements [s] = interpStatement s
 interpStatements (s:ss) = interpStatement s >> interpStatements ss
@@ -669,6 +683,9 @@ interpStatements [] = pure $ VariantV "nothing" []
 
 
 interpStatement :: Stmt -> Interpreter Value
+
+interpStatement (RecDecl {}) = error $ "internal error, rec decl not captured by letrec desugaring"
+interpStatement (FunDecl {}) = error $ "internal error, fun decl not captured by letrec desugaring"
 
 {-
 
@@ -683,9 +700,6 @@ and run-is-test will catch any exceptions from evaluating a or b and
 
 
 -}
-
-interpStatement (RecDecl {}) = error $ "internal error, rec decl not captured by letrec desugaring"
-interpStatement (FunDecl {}) = error $ "internal error, fun decl not captured by letrec desugaring"
 
 interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
     v0 <- catchit $ interp e0
@@ -827,15 +841,10 @@ interpStatement (Include is) = do
     pure nothing
 
 {-
-provide uses a special wrapper, put it in interpStatements
+provide:
 
-it will continue the module with a wrapper function, and when it's
-done, instead of putting the whole module top level, it will transform
-it first according to the provide names
-
-it has to work with the default implicit provide *
--> either disable that when it activates
-or piggyback onto it?
+logs the provide pis to an internal record in the current script env
+the load module knows how to turn these into the provided module value
 
 provide: * end
 provide: a end
@@ -844,7 +853,11 @@ provide: a as b end
 
 -}
 
-interpStatement (Provide {}) = error "todo: provide"
+interpStatement (Provide pis) = do
+    -- todo: turn the provides into burdock values and save as a regular burdock list?
+    modifyScriptProvides (++pis)
+    pure nothing
+
 ------------------------------------------------------------------------------
 
 -- module loading support
@@ -875,8 +888,11 @@ loadModule moduleName fn = do
     localScriptEnv (const emptyEnv) $ do
         void $ interpStatements ast
         moduleEnv <- askScriptEnv
-        -- make a record from the env
-        let moduleRecord = VariantV "record" moduleEnv
+        -- get the pis
+        pis <- (\case [] -> [ProvideAll]
+                      x -> x) <$> askScriptProvides
+        -- make a record from the env using the pis
+        let moduleRecord = VariantV "record" $ aliasSomething moduleEnv pis
             sp = modulePath moduleName
         modifySystemExtendRecord sp moduleRecord
 
