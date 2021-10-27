@@ -24,6 +24,7 @@ import Control.Monad.Reader (ReaderT
 
 import Control.Monad (forM_
                      ,void
+                     ,when
                      )
 
 import Data.List (intercalate
@@ -43,6 +44,25 @@ import Burdock.Parse (parseScript, parseExpr)
 import Control.Exception.Safe (catch
                               ,SomeException)
 
+import qualified Prettyprinter as P
+    (pretty
+    ,Doc
+    --,parens
+    ,nest
+    ,(<+>)
+    ,sep
+    ,punctuate
+    --,comma
+    --,dquotes
+    ,--vsep
+    )
+
+import System.FilePath
+    (dropExtension
+    ,takeFileName
+    ,(</>)
+    ,(<.>)
+    )
 
 -- import Text.Show.Pretty (ppShow)
 
@@ -59,17 +79,11 @@ runScript :: Handle
           -> [(String,Value)]
           -> String
           -> IO Value
-runScript h mfn lenv src = do
-    --hh <- showHandleState h
-    --putStrLn $ "before:\n" ++ hh ++ "\n----\n"
-    ret <- runInterp h $ do
-        let Script ast = either error id $ parseScript (maybe "" id mfn) src
-        -- todo: how to make this local to this call only
-        forM_ lenv $ \(n,v) -> letValue n v
-        interpStatements ast
-    --hh1 <- showHandleState h
-    --putStrLn $ "after:\n" ++ hh1 ++ "\n----\n"
-    pure ret
+runScript h mfn lenv src = runInterp h $ do
+    let Script ast = either error id $ parseScript (maybe "" id mfn) src
+    -- todo: how to make this local to this call only
+    forM_ lenv $ \(n,v) -> letValue n v
+    interpStatements ast
 
     
 evalExpr :: Handle
@@ -142,10 +156,10 @@ instance Eq Value where
     VariantV nm fs == VariantV lm gs = (nm,fs) == (lm,gs)
     _ == _ = False
 
-valueToString :: Value -> Maybe String
+valueToString :: Value -> IO (Maybe String)
 valueToString v = case v of
-    VariantV "nothing" [] -> Nothing
-    _ -> Just $ show v -- todo: torepr
+    VariantV "nothing" [] -> pure $ Nothing
+    _ -> Just <$> torepr' v
 
 -- temp?
 nothing :: Value
@@ -216,7 +230,13 @@ showState :: InterpreterState -> IO String
 showState s = do
     e1 <- readIORef $ isSystemEnv s
     e2 <- readIORef $ isScriptEnv s
-    pure $ show $ e1 ++ e2
+    p1 <- showTab "System" e1
+    p2 <- showTab "User" e2
+    pure $ p1 ++ "\n" ++ p2
+  where
+    showTab t vs = do
+        ps <- mapM (\(n,v) -> ((n ++ " = ") ++) <$> torepr' v) vs
+        pure $ t ++ "\n" ++ unlines ps 
 
 {-
 show the system env
@@ -351,6 +371,7 @@ defaultEnv =
     ,("print", ForeignFunV "print")
     ,("load-module", ForeignFunV "load-module")
     ,("show-handle-state", ForeignFunV "show-handle-state")
+    ,("torepr", ForeignFunV "torepr")
     ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
@@ -370,8 +391,9 @@ defaultFF =
     ,("is-Nothing", isAgdt "Nothing" ["nothing"])
     ,("is-List", isAgdt "List" ["empty", "link"])
     ,("print", bPrint)
-    ,("load-module", loadModule)
+    ,("load-module", bLoadModule)
     ,("show-handle-state", bShowHandleState)
+    ,("torepr", torepr)
     ]
 
 makeVariant :: [Value] -> Interpreter Value
@@ -403,25 +425,17 @@ variantTag _ = pure $ VariantV "nothing" []
 
 bPrint :: [Value] -> Interpreter Value
 bPrint [v] = do
-    liftIO $ putStrLn $ show v --todo: use torepr
+    liftIO (putStrLn =<< torepr' v)
     pure nothing
 
 bPrint _ = error $ "wrong number of args to print"
 
 -- load module at filepath
-loadModule :: [Value] -> Interpreter Value
-loadModule [TextV moduleName, TextV fn] = do
-    src <- liftIO $ readFile fn
-    let Script ast = either error id $ parseScript fn src
-    localScriptEnv (const emptyEnv) $ do
-        void $ interpStatements ast
-        moduleEnv <- askScriptEnv
-        -- make a record from the env
-        let moduleRecord = VariantV "record" moduleEnv
-        modifySystemEnv ((moduleName,moduleRecord):)
+bLoadModule :: [Value] -> Interpreter Value
+bLoadModule [TextV moduleName, TextV fn] = do
+    loadModule moduleName fn
     pure nothing
-
-loadModule _ = error $ "wrong args to load module"
+bLoadModule _ = error $ "wrong args to load module"
 
 bShowHandleState :: [Value] -> Interpreter Value
 bShowHandleState [] = do
@@ -430,6 +444,42 @@ bShowHandleState [] = do
     pure $ TextV v
     
 bShowHandleState _ = error $ "wrong args to show-handle-state"
+
+torepr :: [Value] -> Interpreter Value
+torepr [x] = TextV <$> liftIO (torepr' x)
+torepr _ = error "wrong number of args to torepr"
+
+torepr' :: Value -> IO String
+torepr' x = show <$> toreprx x
+
+toreprx :: Value -> IO (P.Doc a)
+toreprx (NumV n) = pure $ case extractInt n of
+                             Just x -> P.pretty $ show x
+                             Nothing ->  P.pretty $ show n
+toreprx (BoolV n) = pure $ P.pretty $ if n then "true" else "false"
+toreprx (FunV {}) = pure $ P.pretty "<Function>" -- todo: print the function value
+toreprx (ForeignFunV f) = pure $ P.pretty $ "<ForeignFunction:" ++ f ++ ">"
+toreprx (TextV s) = pure $ P.pretty $ "\"" ++ s ++ "\""
+toreprx (BoxV b) = do
+    bv <- readIORef b
+    v <- toreprx bv
+    pure $ P.pretty "<Box:" <> v <> P.pretty ">"
+
+toreprx (VariantV "tuple" fs) = do
+    vs <- mapM (toreprx . snd) fs
+    pure $ P.pretty "{" <> P.nest 2 (xSep ";" vs) <> P.pretty "}"
+toreprx (VariantV "record" fs) = do
+    vs <- mapM f fs
+    pure $ P.pretty "{" <> P.nest 2 (xSep "," vs) <> P.pretty "}"
+  where
+    f (a,b) = ((P.pretty a P.<+> P.pretty "=") P.<+>) <$> toreprx b
+toreprx (VariantV nm []) = pure $ P.pretty nm
+toreprx (VariantV nm fs) = do
+    vs <- mapM (toreprx . snd) fs
+    pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
+
+xSep :: String -> [P.Doc a] -> P.Doc a
+xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 
 ------------------------------------------------------------------------------
 
@@ -508,7 +558,13 @@ interp (LetRec bs e) =
 interp (DotExpr e f) = do
     v <- interp e
     case v of
-        VariantV _ fs | Just fv <- lookup f fs -> pure fv
+        VariantV _ fs | Just fv <- lookup f fs ->
+                            -- not quite sure about this?
+                            -- it's needed for referencing vars in a module
+                            -- (including fun which is desugared to a var)
+                            case fv of
+                                BoxV vr -> liftIO $ readIORef vr
+                                _ -> pure fv
                       | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
         _ -> error $ "dot called on non variant: " ++ show v
 
@@ -637,8 +693,11 @@ interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
         (Right v0', Right v1') ->
             if v0' == v1'
             then addTestResult $ TestResult msg True
-            else addTestResult $
-                TestResult (msg ++ "\n" ++ show v0' ++ "\n!=\n" ++ show v1') False
+            else do
+                p0 <- liftIO $ torepr' v0'
+                p1 <- liftIO $ torepr' v1'
+                addTestResult $
+                  TestResult (msg ++ "\n" ++ p0 ++ "\n!=\n" ++ p1) False
         (Left er0, Right {}) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0) False
         (Right {}, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
         (Left er0, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
@@ -714,6 +773,90 @@ interpStatement (DataDecl dnm vs whr) = do
     appN nm as = App (Iden nm) as
     eqE a b = BinOp a "==" b
     orE a b = BinOp a "or" b
+
+---------------------------------------
+
+-- prelude statements
+
+{-
+import file("file.tea") as X
+import string-dict as X
+
+->
+resolve the path to the module, if it isn't loaded, load it
+alias it locally
+-}
+
+{-
+include from X: a end
+include from X: * end
+include from X: a,b end
+include from X: a as b end
+-}
+
+{-
+include file("file.tea")
+include string-dict
+include m == include from m: * end
+-}
+
+interpStatement (Include is) = do
+    (modName,fn) <- resolveImportPath [] is
+    ensureModuleLoaded modName fn
+    pure nothing
+
+
+{-
+provide uses a special wrapper, put it in interpStatements
+
+it will continue the module with a wrapper function, and when it's
+done, instead of putting the whole module top level, it will transform
+it first according to the provide names
+
+it has to work with the default implicit provide *
+-> either disable that when it activates
+or piggyback onto it?
+
+provide: * end
+provide: a end
+provide: a,b end
+provide: a as b end
+
+-}
+
+resolveImportPath :: [FilePath] -> ImportSource -> Interpreter (String, FilePath)
+resolveImportPath moduleSearchPath is = do
+    case is of
+        ImportSpecial "file" [fn] ->
+            pure (dropExtension $ takeFileName fn, fn)
+        ImportSpecial {} -> error "unsupported import"
+        -- todo: set this path in a sensible and flexible way
+        ImportName nm -> pure (nm, "data" </> "built-ins" </> nm <.> "bur")
+
+ensureModuleLoaded :: String -> FilePath -> Interpreter ()
+ensureModuleLoaded moduleName moduleFile = do
+    st <- ask
+    se <- liftIO $ readIORef (isSystemEnv st)
+    when (moduleName `notElem` map fst se) $ do
+        liftIO $ putStrLn $ "loading module: " ++ moduleFile
+        loadModule moduleName moduleFile
+
+loadModule :: String -> FilePath -> Interpreter ()
+loadModule moduleName fn = do
+    src <- liftIO $ readFile fn
+    let Script ast = either error id $ parseScript fn src
+    localScriptEnv (const emptyEnv) $ do
+        void $ interpStatements ast
+        moduleEnv <- askScriptEnv
+        -- make a record from the env
+        let moduleRecord = VariantV "record" moduleEnv
+        modifySystemEnv ((moduleName,moduleRecord):)
+        
+-- create the aliases which are letdecls
+-- to point the names in the provide items to the internal
+-- loaded module/ module member names
+aliasModule :: [ProvideItem] -> [Stmt]
+aliasModule = undefined
 
 
 letValue :: String -> Value -> Interpreter ()

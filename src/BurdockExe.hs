@@ -99,7 +99,8 @@ runSrc fnm src = do
     h <- B.newHandle
     
     v <- B.runScript h fnm [] src
-    case B.valueToString v of
+    pv <- B.valueToString v
+    case pv of
         Nothing -> pure ()
         Just s -> putStrLn s
 
@@ -108,7 +109,8 @@ runSrc fnm src = do
 process :: B.Handle -> String -> IO ()
 process h src = (do
     v <- B.runScript h Nothing [] src
-    case B.valueToString v of
+    pv <- B.valueToString v
+    case pv of
             Nothing -> pure ()
             Just s -> putStrLn s)
     `catch` (\(e::SomeException) -> putStrLn $ "Error: " ++ displayException e)

@@ -52,6 +52,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ,"pretty-show"
             ,"haskeline"
             ,"optparse-applicative"
+            ,"filepath"
             ]
 
     let ghc :: GhcOptions -> FilePath -> FilePath -> Action ()
