@@ -8,6 +8,8 @@ import Data.Data (Data)
 
 import Burdock.Scientific
 
+type SourcePosition = Maybe (FilePath, Int, Int)
+
 data Script =
       Script [Stmt]
     deriving (Eq,Show,Data)

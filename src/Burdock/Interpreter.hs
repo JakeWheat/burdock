@@ -437,7 +437,10 @@ variantTag _ = pure $ VariantV "nothing" []
 
 bPrint :: [Value] -> Interpreter Value
 bPrint [v] = do
-    liftIO (putStrLn =<< torepr' v)
+    v' <- case v of
+              TextV s -> pure s
+              _ -> liftIO $ torepr' v
+    liftIO $ putStrLn v'
     pure nothing
 
 bPrint _ = error $ "wrong number of args to print"
@@ -920,9 +923,9 @@ aliasSomething :: [(String,Value)] -> [ProvideItem] -> [(String,Value)]
 aliasSomething rc pis = concat $ map apis pis
   where
     apis ProvideAll = rc
-    apis (ProvideAlias nm k) = case lookup k rc of
+    apis (ProvideAlias k al) = case lookup k rc of
         Nothing -> error $ "provide alias source not found: " ++ k
-        Just v -> [(nm,v)]
+        Just v -> [(al,v)]
     apis (ProvideName k) = case lookup k rc of
         Nothing -> error $ "provide alias source not found: " ++ k
         Just v -> [(k,v)]

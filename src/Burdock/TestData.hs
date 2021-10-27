@@ -726,5 +726,69 @@ check:
   length(l2) is 3
 end
 |])
+    ,("modules-import-simple", [R.r|
+
+import file("test-data/trivial-one.bur") as X
+check:
+  X.a is 5
+end
+|])
+     ,("modules-import-simple-2", [R.r|
+
+import file("test-data/trivial-two.bur") as X
+check:
+  X.a is 5
+end
+
+|])
+     ,("modules-import-simple-3", [R.r|
+
+import file("test-data/trivial-three.bur") as X
+check:
+  X.c is 5
+end
+
+|])
+     ,("include-from-simple", [R.r|
+
+import file("test-data/trivial-one.bur") as X
+include from X:
+  *
+end
+check:
+  X.a is 5
+  a is 5
+end
+|])
+     ,("include-from-simple-2", [R.r|
+
+import file("test-data/trivial-one.bur") as X
+include from X:
+  a
+end
+check:
+  X.a is 5
+  a is 5
+end
+|])
+     ,("include-from-simple-3", [R.r|
+
+import file("test-data/trivial-one.bur") as X
+include from X:
+  a as c
+end
+check:
+  X.a is 5
+  c is 5
+end
+|])
+     ,("include-simple", [R.r|
+
+include file("test-data/trivial-one.bur")
+check:
+  a is 5
+end
+
+|])
 
     ]
