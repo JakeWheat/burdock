@@ -298,8 +298,8 @@ modifyScriptEnv f = do
     st <- ask
     liftIO $ modifyIORef (isScriptEnv st) f
 
-modifySystemEnv :: (Env -> Env) -> Interpreter ()
-modifySystemEnv f = do
+_modifySystemEnv :: (Env -> Env) -> Interpreter ()
+_modifySystemEnv f = do
     st <- ask
     liftIO $ modifyIORef (isSystemEnv st) f
 
@@ -350,7 +350,8 @@ runInterp (Handle h) f = do
 
 defaultEnv :: [(String,Value)]
 defaultEnv =
-    [("true", BoolV True)
+    [("_system", VariantV "record" [("modules", VariantV "record" [])])
+    ,("true", BoolV True)
     ,("false", BoolV False)
     ,("==", ForeignFunV "==")
     ,("+", ForeignFunV "+")
@@ -787,12 +788,30 @@ resolve the path to the module, if it isn't loaded, load it
 alias it locally
 -}
 
+interpStatement (Import is al) =  do
+    (modName,fn) <- resolveImportPath [] is
+    ensureModuleLoaded modName fn
+    as <- aliasModule modName [ProvideAll]
+    letValue al $ VariantV "record" as
+    pure nothing
 {-
 include from X: a end
 include from X: * end
 include from X: a,b end
 include from X: a as b end
+
+makes names in the already visible module alias X available without a
+qualifier
+
 -}
+interpStatement (IncludeFrom nm pis) = do
+    v <- interp (Iden nm)
+    case v of
+        VariantV "record" fs -> do
+            let as = aliasSomething fs pis
+            mapM_ (uncurry letValue) as
+        _ -> error $ "trying to alias from something that isn't a record: " ++ show v
+    pure nothing
 
 {-
 include file("file.tea")
@@ -803,8 +822,9 @@ include m == include from m: * end
 interpStatement (Include is) = do
     (modName,fn) <- resolveImportPath [] is
     ensureModuleLoaded modName fn
+    ls <- aliasModule modName [ProvideAll]
+    mapM_ (uncurry letValue) ls
     pure nothing
-
 
 {-
 provide uses a special wrapper, put it in interpStatements
@@ -824,8 +844,15 @@ provide: a as b end
 
 -}
 
+interpStatement (Provide {}) = error "todo: provide"
+------------------------------------------------------------------------------
+
+-- module loading support
+
+
+
 resolveImportPath :: [FilePath] -> ImportSource -> Interpreter (String, FilePath)
-resolveImportPath moduleSearchPath is = do
+resolveImportPath _moduleSearchPath is = do
     case is of
         ImportSpecial "file" [fn] ->
             pure (dropExtension $ takeFileName fn, fn)
@@ -850,13 +877,70 @@ loadModule moduleName fn = do
         moduleEnv <- askScriptEnv
         -- make a record from the env
         let moduleRecord = VariantV "record" moduleEnv
-        modifySystemEnv ((moduleName,moduleRecord):)
-        
+            sp = modulePath moduleName
+        modifySystemExtendRecord sp moduleRecord
+
+-- TODO: not really happy with how messy these functions are
+
 -- create the aliases which are letdecls
 -- to point the names in the provide items to the internal
 -- loaded module/ module member names
-aliasModule :: [ProvideItem] -> [Stmt]
-aliasModule = undefined
+aliasModule :: String -> [ProvideItem] -> Interpreter [(String,Value)]
+aliasModule modName pis = do
+    modEnv <- ex <$> lkp
+    pure $ aliasSomething modEnv pis
+    -- pure $ concat $ map (apis modEnv) pis
+  where
+    mk [] = error $ "alias module: empty path"
+    mk [p] = Iden p
+    mk [r,p] = DotExpr (Iden r) p
+    mk [s,r,p] = DotExpr (DotExpr (Iden s) r) p
+    mk _ = error $ "todo: aliasmodule, find someone who is better at programming than me"
+    ex (VariantV "record" r) = r
+    ex x = error $ "aliasmodule: module value is not a record: " ++ show x
+    lkp = interp $ mk $ modulePath modName
+
+aliasSomething :: [(String,Value)] -> [ProvideItem] -> [(String,Value)]
+aliasSomething rc pis = concat $ map apis pis
+  where
+    apis ProvideAll = rc
+    apis (ProvideAlias nm k) = case lookup k rc of
+        Nothing -> error $ "provide alias source not found: " ++ k
+        Just v -> [(nm,v)]
+    apis (ProvideName k) = case lookup k rc of
+        Nothing -> error $ "provide alias source not found: " ++ k
+        Just v -> [(k,v)]
+
+-- says where to find the named module in the system path
+-- _system.modules.[nm]
+modulePath :: String -> [String]
+modulePath nm = ["_system", "modules", nm]
+
+modifySystemExtendRecord :: [String] -> Value -> Interpreter ()
+modifySystemExtendRecord pth v = do
+    st <- ask
+    e <- liftIO $ readIORef (isSystemEnv st)
+    -- dodgy code to descend into a path of records until
+    -- you find the place to add the new entry
+    let f :: [(String,Value)] -> [String] -> [(String,Value)]
+        f _ [] = error $ "internal error modifySystemExtendRecord no path"
+        f r [p] =
+            case lookup p r of
+                Just _ -> error $ "internal error: modifySystemExtendRecord extend record field already present: " ++ show pth
+                Nothing -> (p,v) : r
+        f r (p:ps) =
+            case lookup p r of
+                Nothing -> error $ "internal error: modifySystemExtendRecord path not found: " ++ show pth ++ " " ++ p
+                Just (VariantV "record" s) ->
+                    let s' = VariantV "record" $ f s ps
+                    in updateEntry p s' r
+                Just x -> error $ "internal error: modifySystemExtendRecord non record " ++ show pth ++ ": " ++ show x
+
+    liftIO $ writeIORef (isSystemEnv st) $ f e pth
+  where
+    updateEntry k u mp = 
+        (k,u) : filter ((/= k) . fst) mp
+---------------------------------------
 
 
 letValue :: String -> Value -> Interpreter ()
