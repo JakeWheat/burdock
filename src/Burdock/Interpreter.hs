@@ -35,7 +35,9 @@ import Control.Monad (forM_
                      )
 
 import Data.List (intercalate
-                 ,sortOn)
+                 ,sortOn
+                 ,partition
+                 )
 
 import Data.IORef (IORef
                   ,newIORef
@@ -143,9 +145,18 @@ getTestResults :: Handle -> IO [(String, [CheckBlockResult])]
 getTestResults h = runInterp h $ do
     st <- ask
     v <- liftIO (reverse <$> readIORef (isTestResults st))
-    let v1 = [("unknown-module", [CheckBlockResult "unknown-checkblock" $ map (\(_,_,x) -> x) v])]
-    pure v1
-    -- liftIO (reverse <$> readIORef (isTestResults st))
+    let perModules :: [(String, [(String,TestResult)])]
+        perModules = partitionN $ map (\(m,cb,tr) -> (m,(cb,tr))) v
+        collectCBs :: [(String, [(String,[TestResult])])]
+        collectCBs = map (\(mb,cbs) -> (mb,partitionN cbs)) perModules
+    pure $ map (\(a,b) -> (a, map (uncurry CheckBlockResult) b)) collectCBs
+
+partitionN :: Eq a => [(a,b)] -> [(a,[b])]
+partitionN [] = []
+partitionN vs@((k,_):_) =
+    let (x,y) = partition ((==k) . fst) vs
+    in (k,map snd x) : partitionN y
+
 
 ------------------------------------------------------------------------------
 
@@ -232,11 +243,11 @@ data InterpreterState =
     InterpreterState {isSystemEnv :: IORef Env
                      ,isScriptEnv :: IORef Env
                      ,isProvides :: IORef [ProvideItem]
+                     ,isTestInfo :: IORef TestInfo
                      ,isTestResults :: IORef [(String,String,TestResult)]
                      ,isForeignFunctions :: IORef ForeignFunctions
                      }
 type Interpreter = ReaderT InterpreterState IO
-
 
 -- it's a bit crap that have variables nested within variables
 -- but it seems like the least worst option for now
@@ -354,15 +365,29 @@ addTestResult moduleName checkBlockName tr = do
     st <- ask
     liftIO $ modifyIORef (isTestResults st) ((moduleName,checkBlockName,tr):)
 
+-- the state that the testing framework needs to track in the interpreter
+data TestInfo
+    = TestInfo
+    {tiCurrentSource :: String
+    ,tiCurrentCheckblock :: Maybe String
+    ,tiNextAnonCheckblockNum :: Int
+    }
+
+
 
 emptyInterpreterState :: IO InterpreterState
 emptyInterpreterState = do
-    a <- newIORef emptyEnv
-    b <- newIORef emptyEnv
-    c <- newIORef []
-    d <- newIORef []
-    e <- newIORef []
-    pure $ InterpreterState a b c d e
+    sysenv <- newIORef emptyEnv
+    scenv <- newIORef emptyEnv
+    provs <- newIORef []
+    ti <- newIORef $ TestInfo
+        {tiCurrentSource = "handle-api"
+        ,tiCurrentCheckblock = Nothing
+        ,tiNextAnonCheckblockNum = 1
+        }
+    trs <- newIORef []
+    ffs <- newIORef []
+    pure $ InterpreterState sysenv scenv provs ti trs ffs
 
 baseEnv :: [(String,Value)]
 baseEnv =
@@ -768,7 +793,11 @@ and run-is-test will catch any exceptions from evaluating a or b and
 interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
     v0 <- catchit $ interp e0
     v1 <- catchit $ interp e1
-    let atr = addTestResult "unknown" "unknown"
+    st <- ask
+    ti <- liftIO $ readIORef (isTestInfo st)
+    let cbn = maybe (error "is precated not in check block")
+              id $ tiCurrentCheckblock ti
+    let atr = addTestResult (tiCurrentSource ti) cbn
     case (v0,v1) of
         (Right v0', Right v1') ->
             if v0' == v1'
@@ -792,7 +821,19 @@ interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
         catch (Right <$> f) $ \ex -> pure $ Left $ show (ex :: SomeException)
 
 interpStatement (StmtExpr e) = interp e
-interpStatement (Check _ ss) = interpStatements ss
+interpStatement (Check mnm ss) = do
+    st <- ask
+    ti <- liftIO $ readIORef (isTestInfo st)
+    let (cnm, newcbn) = case mnm of
+            Just n -> (n, id)
+            Nothing ->
+                let i = tiNextAnonCheckblockNum ti
+                in ("check-block-" ++ show i
+                   ,\cti -> cti {tiNextAnonCheckblockNum = i + 1})
+    -- todo: use a reader style local wrapper
+    liftIO $ modifyIORef (isTestInfo st) $
+        \cti -> newcbn $ cti {tiCurrentCheckblock = Just cnm}
+    interpStatements ss
 interpStatement (LetDecl b e) = do
     v <- interp e
     letValue (unPat b) v
@@ -970,6 +1011,12 @@ loadModule includeGlobals moduleName fn = do
         Script ast' = either error id $ parseScript fn src
         ast = incG ast'
     localScriptEnv (const emptyEnv) $ do
+
+        st <- ask
+        -- todo: use a reader style local wrapper for testinfo too
+        liftIO $ modifyIORef (isTestInfo st) $
+            \cti -> cti {tiCurrentSource = moduleName}
+
         when (moduleName == "_internals") $ do
             {- the few bits that cannot be defined directly in the
                _internals.bur:
