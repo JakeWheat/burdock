@@ -11,24 +11,23 @@ the option of only getting some items from globals or even none at all
 |#
 
 provide:
-  #true,
-  #false,
+  true,
+  false,
 
   is-List,
   is-empty,
   is-link,
-  #empty,
+  empty,
   link,
 
   is-nothing,
   is-Nothing,
-  #nothing,
+  nothing,
 
   is-tuple,
   is-record,
 
   print,
-
   torepr
 
 end

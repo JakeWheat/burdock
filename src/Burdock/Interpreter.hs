@@ -25,7 +25,7 @@ import Control.Monad.Reader (ReaderT
 
 import Control.Monad (forM_
                      ,void
-                     --,when
+                     ,when
                      )
 
 import Data.List (intercalate
@@ -337,18 +337,37 @@ emptyInterpreterState = do
     e <- newIORef []
     pure $ InterpreterState a b c d e
 
+baseEnv :: [(String,Value)]
+baseEnv =
+    [("_system", VariantV "record" [("modules", VariantV "record" [])])
+
+    -- come back to dealing with these properly when decide how to
+    -- do ad hoc polymorphism
+    -- but definitely also want a way to refer to these as regular
+    -- values in the syntax like haskell does (==)
+    -- so they can be passed as function values, and appear in
+    -- provides, include lists
+
+    ,("==", ForeignFunV "==")
+    ,("+", ForeignFunV "+")
+    ,("-", ForeignFunV "-")
+    ,("*", ForeignFunV "*")
+
+    ]
+
+
 newHandle :: IO Handle
 newHandle = do
     -- create a completely empty state
     s <- emptyInterpreterState
 
     -- add the built in ffi functions
-    modifyIORef (isForeignFunctions s) (defaultFF ++)
+    modifyIORef (isForeignFunctions s) (builtInFF ++)
 
     -- bootstrap the getffivalue function and other initial values
     -- including the _system thing
     -- temp: this is what will mostly be factored into _internals and globals
-    modifyIORef (isSystemEnv s) (defaultEnv ++)
+    modifyIORef (isSystemEnv s) (baseEnv ++)
 
     h <- Handle <$> newIORef s
     
@@ -381,25 +400,8 @@ runInterp (Handle h) f = do
 
 -- built in functions implemented in haskell:
 
-defaultEnv :: [(String,Value)]
-defaultEnv =
-    [("_system", VariantV "record" [("modules", VariantV "record" [])])
-    -- what's the best way to bootstrap these?
-    ,("true", BoolV True)
-    ,("false", BoolV False)
-    ,("get-ffi-value", ForeignFunV "get-ffi-value")
-    ,("empty", VariantV "empty" [])
-    ,("nothing", VariantV "nothing" [])
-
-    ,("==", ForeignFunV "==")
-    ,("+", ForeignFunV "+")
-    ,("-", ForeignFunV "-")
-    ,("*", ForeignFunV "*")
-
-    ]
-
-defaultFF :: [(String, [Value] -> Interpreter Value)]
-defaultFF =
+builtInFF :: [(String, [Value] -> Interpreter Value)]
+builtInFF =
     [("get-ffi-value", getFFIValue)
     ,("==", \[a,b] -> pure $ BoolV $ a == b)
     ,("+", \[NumV a,NumV b] -> pure $ NumV $ a + b)
@@ -935,6 +937,18 @@ loadModule includeGlobals moduleName fn = do
         Script ast' = either error id $ parseScript fn src
         ast = incG ast'
     localScriptEnv (const emptyEnv) $ do
+        -- hack for putting built in non function values, plus
+        -- the bootstrap get-ffi-value function
+        -- to the internals module
+        when (moduleName == "_internals") $ do
+            mapM_ (uncurry letValue)
+                [("true", BoolV True)
+                ,("false", BoolV False)
+                ,("empty", VariantV "empty" [])
+                ,("nothing", VariantV "nothing" [])
+                ,("get-ffi-value", ForeignFunV "get-ffi-value")
+                ]
+        
         void $ interpStatements ast
         moduleEnv <- askScriptEnv
         -- get the pis

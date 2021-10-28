@@ -15,9 +15,9 @@ module which reexports these
 
 # true = BoolV true
 # false = BoolV false
-# get-ffi-value = ForeignFunV get-ffi-value
 # empty = VariantV "empty" []
 # nothing = VariantV "nothing" []
+# get-ffi-value = ForeignFunV get-ffi-value
 
 # also currently hacked in, because didn't come up with syntax for
 # operators yet or how ad hoc polymorphism will work:
@@ -45,14 +45,12 @@ show-handle-state = get-ffi-value("show-handle-state")
 is-List = get-ffi-value("is-List")
 is-empty = get-ffi-value("is-empty")
 is-link = get-ffi-value("is-link")
-# uses a bootstrap hack for zero arg variants
-# empty = get-ffi-value("empty")
+# empty = uses bootstrap hack
 link = get-ffi-value("link")
 
 is-nothing = get-ffi-value("is-nothing")
 is-Nothing = get-ffi-value("is-Nothing")
-# uses a bootstrap hack for zero arg variants
-# nothing = get-ffi-value("nothing")
+# nothing = uses bootstrap hack
 
 is-tuple = get-ffi-value("is-tuple")
 is-record = get-ffi-value("is-record")
