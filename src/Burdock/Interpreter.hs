@@ -339,11 +339,31 @@ emptyInterpreterState = do
 
 newHandle :: IO Handle
 newHandle = do
+    -- create a completely empty state
     s <- emptyInterpreterState
-    modifyIORef (isSystemEnv s) (defaultEnv ++)
+
+    -- add the built in ffi functions
     modifyIORef (isForeignFunctions s) (defaultFF ++)
-    h <- newIORef s
-    pure $ Handle h
+
+    -- bootstrap the getffivalue function and other initial values
+    -- including the _system thing
+    -- temp: this is what will mostly be factored into _internals and globals
+    modifyIORef (isSystemEnv s) (defaultEnv ++)
+
+    h <- Handle <$> newIORef s
+    
+    runInterp h $ do
+        -- load the _internals.bur module
+        internalsPth <- liftIO $ getBuiltInModulePath "_internals"
+        loadModule False "_internals" internalsPth
+
+        -- for now, include globals module, later this will depend
+        -- on if a use context is used
+        -- todo: write some tests to show the system works when you don't load
+        -- the globals module explicitly or via include globals
+    pure h
+    
+
 
 runInterp :: Handle -> Interpreter a -> IO a
 runInterp (Handle h) f = do
@@ -362,14 +382,17 @@ runInterp (Handle h) f = do
 defaultEnv :: [(String,Value)]
 defaultEnv =
     [("_system", VariantV "record" [("modules", VariantV "record" [])])
+    -- what's the best way to bootstrap these?
     ,("true", BoolV True)
     ,("false", BoolV False)
+    
     ,("==", ForeignFunV "==")
     ,("+", ForeignFunV "+")
     ,("-", ForeignFunV "-")
     ,("*", ForeignFunV "*")
     ,("make-variant", ForeignFunV "make-variant")
     ,("variant-tag", ForeignFunV "variant-tag")
+    
     ,("is-tuple", ForeignFunV "is-tuple")
     ,("is-record", ForeignFunV "is-record")
     ,("empty", VariantV "empty" [])
@@ -388,7 +411,8 @@ defaultEnv =
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
 defaultFF =
-    [("==", \[a,b] -> pure $ BoolV $ a == b)
+    [("get-ffi-value", getFFIValue)
+    ,("==", \[a,b] -> pure $ BoolV $ a == b)
     ,("+", \[NumV a,NumV b] -> pure $ NumV $ a + b)
     ,("-", \[NumV a,NumV b] -> pure $ NumV $ a - b)
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
@@ -407,6 +431,13 @@ defaultFF =
     ,("show-handle-state", bShowHandleState)
     ,("torepr", torepr)
     ]
+
+getFFIValue :: [Value] -> Interpreter Value
+getFFIValue [TextV nm] = do
+    -- todo: check the value exists in the ffi catalog
+    pure $ ForeignFunV nm
+getFFIValue _ = error "wrong args to get-ffi-value"
+    
 
 makeVariant :: [Value] -> Interpreter Value
 makeVariant (TextV nm:as) =
@@ -448,7 +479,7 @@ bPrint _ = error $ "wrong number of args to print"
 -- load module at filepath
 bLoadModule :: [Value] -> Interpreter Value
 bLoadModule [TextV moduleName, TextV fn] = do
-    loadModule moduleName fn
+    loadModule True moduleName fn
     pure nothing
 bLoadModule _ = error $ "wrong args to load module"
 
@@ -512,12 +543,19 @@ interp (Iden a) = do
         Just v -> pure v
         Nothing -> error $ "identifier not found: " ++ a
 
+
 interp (App f es) = do
     fv <- interp f
-    vs <- mapM interp es
-    app fv vs
+    -- special case apps
+    if (fv == ForeignFunV "catch-as-either")
+        then catchAsEither es
+        else do
+            -- TODO: refactor to check the value of fv before
+            -- evaluating the es?
+            vs <- mapM interp es
+            app fv vs
 
-
+-- special case binops
 interp (BinOp _ "is" _) = error $ "'is' test predicate only allowed in check block"
 
 interp (BinOp e0 "and" e1) = do
@@ -535,9 +573,9 @@ interp (BinOp e0 "or" e1) = do
         _ -> error $ "bad value type to 'or' operator: " ++ show x
 
 interp (BinOp e0 op e1) = do
+    opv <- interp $ Iden op
     v0 <- interp e0
     v1 <- interp e1
-    opv <- interp $ Iden op
     app opv [v0,v1]
 
 interp (Lam ps e) = do
@@ -659,6 +697,9 @@ app fv vs =
   where
     safeZip ps xs | length ps == length xs  = pure $ zip ps xs
                   | otherwise = error $ "wrong number of args: " ++ show ps ++ ", " ++ show xs
+
+catchAsEither :: [Expr] -> Interpreter Value
+catchAsEither = undefined
 
 ---------------------------------------
 
@@ -866,6 +907,10 @@ interpStatement (Provide pis) = do
 -- module loading support
 
 
+getBuiltInModulePath :: String -> IO FilePath
+getBuiltInModulePath nm =
+    -- later will need to use the cabal Paths_ thing and stuff
+    pure ("data" </> "built-ins" </> nm <.> "bur")
 
 resolveImportPath :: [FilePath] -> ImportSource -> Interpreter (String, FilePath)
 resolveImportPath _moduleSearchPath is = do
@@ -874,7 +919,7 @@ resolveImportPath _moduleSearchPath is = do
             pure (dropExtension $ takeFileName fn, fn)
         ImportSpecial {} -> error "unsupported import"
         -- todo: set this path in a sensible and flexible way
-        ImportName nm -> pure (nm, "data" </> "built-ins" </> nm <.> "bur")
+        ImportName nm -> (nm,) <$> liftIO (getBuiltInModulePath nm)
 
 ensureModuleLoaded :: String -> FilePath -> Interpreter ()
 ensureModuleLoaded moduleName moduleFile = do
@@ -882,12 +927,19 @@ ensureModuleLoaded moduleName moduleFile = do
     se <- liftIO $ readIORef (isSystemEnv st)
     when (moduleName `notElem` map fst se) $ do
         liftIO $ putStrLn $ "loading module: " ++ moduleFile
-        loadModule moduleName moduleFile
+        loadModule True moduleName moduleFile
 
-loadModule :: String -> FilePath -> Interpreter ()
-loadModule moduleName fn = do
+-- todo: replace the includeGlobals flag with use context
+loadModule :: Bool -> String -> FilePath -> Interpreter ()
+loadModule includeGlobals moduleName fn = do
     src <- liftIO $ readFile fn
-    let Script ast = either error id $ parseScript fn src
+    -- todo: figure out how to do this better
+    -- the module name for build in globals might not always be this?
+    let incG = if includeGlobals && moduleName /= "globals"
+               then (Include (ImportName "globals") :)
+               else id
+        Script ast' = either error id $ parseScript fn src
+        ast = incG ast'
     localScriptEnv (const emptyEnv) $ do
         void $ interpStatements ast
         moduleEnv <- askScriptEnv
@@ -1016,4 +1068,5 @@ doLetRec bs =
         $ App (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
     makeAssign (b,v) = SetVar (unPat b) v
+
 

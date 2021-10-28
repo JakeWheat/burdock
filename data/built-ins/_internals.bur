@@ -1,0 +1,16 @@
+
+#|
+
+this is the code which is unconditionally loaded in every handle to
+run any burdock
+
+it includes only what's needed to make the system work
+
+users should import stuff the want to use via the globals or other
+module which reexports these
+
+|#
+
+print("load internals")
+
+internals_value = "internals_value"

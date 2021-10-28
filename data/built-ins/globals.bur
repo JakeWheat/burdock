@@ -1,0 +1,16 @@
+
+#|
+
+This is the default relatively minimal module which is automatically
+included in every other module (apart from _internals used to bootstrap).
+
+When use context support is added, typically your context file will
+include globals, reprovide it, and add some extras, but there's also
+the option of only getting some items from globals or even none at all
+
+|#
+
+print("globals loaded")
+
+globals_value = "globals_value"
+
