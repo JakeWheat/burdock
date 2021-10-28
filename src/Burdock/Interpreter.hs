@@ -25,7 +25,7 @@ import Control.Monad.Reader (ReaderT
 
 import Control.Monad (forM_
                      ,void
-                     ,when
+                     --,when
                      )
 
 import Data.List (intercalate
@@ -352,7 +352,7 @@ newHandle = do
 
     h <- Handle <$> newIORef s
     
-    runInterp h $ do
+    void $ runInterp h $ do
         -- load the _internals.bur module
         internalsPth <- liftIO $ getBuiltInModulePath "_internals"
         loadModule False "_internals" internalsPth
@@ -361,6 +361,8 @@ newHandle = do
         -- on if a use context is used
         -- todo: write some tests to show the system works when you don't load
         -- the globals module explicitly or via include globals
+        interpStatement (Include (ImportName "globals"))
+        
     pure h
     
 
@@ -923,11 +925,14 @@ resolveImportPath _moduleSearchPath is = do
 
 ensureModuleLoaded :: String -> FilePath -> Interpreter ()
 ensureModuleLoaded moduleName moduleFile = do
-    st <- ask
-    se <- liftIO $ readIORef (isSystemEnv st)
-    when (moduleName `notElem` map fst se) $ do
-        liftIO $ putStrLn $ "loading module: " ++ moduleFile
-        loadModule True moduleName moduleFile
+    modRec <- interp (DotExpr (Iden "_system") "modules")
+    case modRec of
+        VariantV "record" fs
+            | moduleName `notElem` map fst fs -> do
+                liftIO $ putStrLn $ "loading module: " ++ moduleFile
+                loadModule True moduleName moduleFile
+            | otherwise -> pure ()
+        _ -> error $ "_system.modules is not a record??"
 
 -- todo: replace the includeGlobals flag with use context
 loadModule :: Bool -> String -> FilePath -> Interpreter ()

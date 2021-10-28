@@ -13,4 +13,5 @@ module which reexports these
 
 print("load internals")
 
-internals_value = "internals_value"
+internals-value = "internals-value"
+

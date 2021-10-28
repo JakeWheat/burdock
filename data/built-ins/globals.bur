@@ -12,5 +12,5 @@ the option of only getting some items from globals or even none at all
 
 print("globals loaded")
 
-globals_value = "globals_value"
+globals-value = "globals-value"
 
