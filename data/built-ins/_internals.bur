@@ -11,7 +11,54 @@ module which reexports these
 
 |#
 
-print("load internals")
+# defined in the bootstrap code:
 
-internals-value = "internals-value"
+# true = BoolV true
+# false = BoolV false
+# get-ffi-value = ForeignFunV get-ffi-value
+# empty = VariantV "empty" []
+# nothing = VariantV "nothing" []
+
+# also currently hacked in, because didn't come up with syntax for
+# operators yet or how ad hoc polymorphism will work:
+# comparisons: == < > != <= >=
+# arithmetic: + - / *
+# there will be some more added
+# some operators won't be polymorphic
+# and and or are special operators because they don't necessarily
+# evaluate their second arg, and are implmented in the interpreter internals
+# test predicates are syntax and aren't treated as regular operators
+
+# internals used in the implementation of agdt:
+
+make-variant = get-ffi-value("make-variant")
+variant-tag = get-ffi-value("variant-tag")
+
+# debugging and troubleshooting support
+
+load-module = get-ffi-value("load-module")
+show-handle-state = get-ffi-value("show-handle-state")
+
+# user stuff that's also used in bootstrapping the system
+# todo: review which ones of these can go in globals
+
+is-List = get-ffi-value("is-List")
+is-empty = get-ffi-value("is-empty")
+is-link = get-ffi-value("is-link")
+# uses a bootstrap hack for zero arg variants
+# empty = get-ffi-value("empty")
+link = get-ffi-value("link")
+
+is-nothing = get-ffi-value("is-nothing")
+is-Nothing = get-ffi-value("is-Nothing")
+# uses a bootstrap hack for zero arg variants
+# nothing = get-ffi-value("nothing")
+
+is-tuple = get-ffi-value("is-tuple")
+is-record = get-ffi-value("is-record")
+
+print = get-ffi-value("print")
+
+torepr = get-ffi-value("torepr")
+
 

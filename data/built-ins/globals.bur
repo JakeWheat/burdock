@@ -10,7 +10,27 @@ the option of only getting some items from globals or even none at all
 
 |#
 
-print("globals loaded")
+provide:
+  #true,
+  #false,
 
-globals-value = "globals-value"
+  is-List,
+  is-empty,
+  is-link,
+  #empty,
+  link,
 
+  is-nothing,
+  is-Nothing,
+  #nothing,
+
+  is-tuple,
+  is-record,
+
+  print,
+
+  torepr
+
+end
+
+include _internals

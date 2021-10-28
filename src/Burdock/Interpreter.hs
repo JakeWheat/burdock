@@ -387,28 +387,15 @@ defaultEnv =
     -- what's the best way to bootstrap these?
     ,("true", BoolV True)
     ,("false", BoolV False)
-    
+    ,("get-ffi-value", ForeignFunV "get-ffi-value")
+    ,("empty", VariantV "empty" [])
+    ,("nothing", VariantV "nothing" [])
+
     ,("==", ForeignFunV "==")
     ,("+", ForeignFunV "+")
     ,("-", ForeignFunV "-")
     ,("*", ForeignFunV "*")
-    ,("make-variant", ForeignFunV "make-variant")
-    ,("variant-tag", ForeignFunV "variant-tag")
-    
-    ,("is-tuple", ForeignFunV "is-tuple")
-    ,("is-record", ForeignFunV "is-record")
-    ,("empty", VariantV "empty" [])
-    ,("link", ForeignFunV "link")
-    ,("nothing", VariantV "nothing" [])
-    ,("is-empty", ForeignFunV "is-empty")
-    ,("is-link", ForeignFunV "is-link")
-    ,("is-List", ForeignFunV "is-List")
-    ,("is-nothing", ForeignFunV "is-nothing")
-    ,("is-Nothing", ForeignFunV "is-Nothing")
-    ,("print", ForeignFunV "print")
-    ,("load-module", ForeignFunV "load-module")
-    ,("show-handle-state", ForeignFunV "show-handle-state")
-    ,("torepr", ForeignFunV "torepr")
+
     ]
 
 defaultFF :: [(String, [Value] -> Interpreter Value)]
@@ -811,15 +798,16 @@ interpStatement (DataDecl dnm vs whr) = do
     -- add haskell helper functions for working with lists in burdock
     let makeMake (VariantDecl vnm []) =
             letDecl vnm
-            $ appN "make-variant" [Text vnm]
+            $ App (internalsRef "make-variant") [Text vnm]
         makeMake (VariantDecl vnm fs) =
             letDecl vnm
             $ lam (map snd fs)
-            $ appN "make-variant" (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
+            $ App (internalsRef "make-variant")
+                (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
         makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            $ eqE (appN "variant-tag" [Iden "x"]) (Text vnm)
+            $ eqE (App (internalsRef "variant-tag") [Iden "x"]) (Text vnm)
         callIs (VariantDecl vnm _) = appN ("is-" ++ vnm) [Iden "x"]
         makeIsDat =
             letDecl ("is-" ++ dnm)
@@ -828,6 +816,7 @@ interpStatement (DataDecl dnm vs whr) = do
         chk = maybe [] (\w -> [Check (Just dnm) w]) whr
     interpStatements (map makeMake vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
   where
+    internalsRef nm = DotExpr (DotExpr (DotExpr (Iden "_system") "modules") "_internals") nm
     letDecl nm v = LetDecl (PatName NoShadow nm) v
     lam as e = Lam (map (PatName NoShadow) as) e
     --letE bs e = Let (flip map bs $ \(b,v) -> (PatName NoShadow b, v)) e
@@ -929,7 +918,7 @@ ensureModuleLoaded moduleName moduleFile = do
     case modRec of
         VariantV "record" fs
             | moduleName `notElem` map fst fs -> do
-                liftIO $ putStrLn $ "loading module: " ++ moduleFile
+                --liftIO $ putStrLn $ "loading module: " ++ moduleFile
                 loadModule True moduleName moduleFile
             | otherwise -> pure ()
         _ -> error $ "_system.modules is not a record??"
