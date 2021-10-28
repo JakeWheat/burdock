@@ -1,0 +1,54 @@
+check:
+  1 is 1
+  "test" is "test"
+  1 + 2 is 3
+  let a = 3: a end is 3
+  let a = 1, b = a + 1: a + b end is 3
+
+  let g = lam(a): a + 1 end: g(2) end is 3
+
+  block:
+    a = 1
+    a + 2
+  end is 3
+
+  block:
+    a = 1
+    block:
+      #shadow
+      a = 2
+      a
+    end
+    a
+  end is 1
+
+  za = 1
+  zb = 2
+  if za == 1: 1 else: 2 end is 1
+  if za == zb: 1 else: 2 end is 2
+
+   
+end                    
+
+f = lam(x): x + 1 end
+
+check:
+  f(3) is 4
+end
+
+check:
+  var a = 3
+  a is 3
+  a := 4
+  a is 4
+end
+
+check:
+  true and false is false
+  true or false is true
+end
+
+check "short circuiting":
+  true or raise("fail") is true
+  false and raise("fail") is false
+end

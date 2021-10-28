@@ -1,0 +1,8 @@
+import file("burdock-test-src/trivial-one.bur") as X
+include from X:
+  a
+end
+check:
+  X.a is 5
+  a is 5
+end

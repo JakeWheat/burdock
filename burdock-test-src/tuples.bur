@@ -1,0 +1,13 @@
+
+check:
+  t = {"a";"b";true}
+  t.{0} is "a"
+  t.{1} is "b"
+  t.{2} is true
+
+  is-tuple(t) is true
+
+  myobj4 = {1}
+  myobj4.{0} is 1
+
+end
