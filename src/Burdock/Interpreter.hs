@@ -3,6 +3,7 @@
 {-# LANGUAGE LambdaCase #-}
 module Burdock.Interpreter
     (TestResult(..)
+    ,CheckBlockResult(..)
     ,getTestResults
 
     --,Value
@@ -136,10 +137,15 @@ addFFI h ffis = runInterp h $ do
 data TestResult = TestPass String
                 | TestFail String String
 
-getTestResults :: Handle -> IO [TestResult]
+data CheckBlockResult = CheckBlockResult String [TestResult]
+
+getTestResults :: Handle -> IO [(String, [CheckBlockResult])]
 getTestResults h = runInterp h $ do
     st <- ask
-    liftIO (reverse <$> readIORef (isTestResults st))
+    v <- liftIO (reverse <$> readIORef (isTestResults st))
+    let v1 = [("unknown-module", [CheckBlockResult "unknown-checkblock" $ map (\(_,_,x) -> x) v])]
+    pure v1
+    -- liftIO (reverse <$> readIORef (isTestResults st))
 
 ------------------------------------------------------------------------------
 
@@ -226,7 +232,7 @@ data InterpreterState =
     InterpreterState {isSystemEnv :: IORef Env
                      ,isScriptEnv :: IORef Env
                      ,isProvides :: IORef [ProvideItem]
-                     ,isTestResults :: IORef [TestResult]
+                     ,isTestResults :: IORef [(String,String,TestResult)]
                      ,isForeignFunctions :: IORef ForeignFunctions
                      }
 type Interpreter = ReaderT InterpreterState IO
@@ -343,10 +349,11 @@ askFF = do
     liftIO $ readIORef $ isForeignFunctions st
 
 -- saves a test result to the interpreter state
-addTestResult :: TestResult -> Interpreter ()
-addTestResult tr = do
+addTestResult :: String -> String -> TestResult -> Interpreter ()
+addTestResult moduleName checkBlockName tr = do
     st <- ask
-    liftIO $ modifyIORef (isTestResults st) (tr:)
+    liftIO $ modifyIORef (isTestResults st) ((moduleName,checkBlockName,tr):)
+
 
 emptyInterpreterState :: IO InterpreterState
 emptyInterpreterState = do
@@ -761,22 +768,22 @@ and run-is-test will catch any exceptions from evaluating a or b and
 interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
     v0 <- catchit $ interp e0
     v1 <- catchit $ interp e1
+    let atr = addTestResult "unknown" "unknown"
     case (v0,v1) of
         (Right v0', Right v1') ->
             if v0' == v1'
-            then addTestResult $ TestPass msg
+            then atr $ TestPass msg
             else do
                 p0 <- liftIO $ torepr' v0'
                 p1 <- liftIO $ torepr' v1'
-                addTestResult $
-                  TestFail msg (p0 ++ "\n!=\n" ++ p1)
+                atr $ TestFail msg (p0 ++ "\n!=\n" ++ p1)
         (Left er0, Right {}) ->
-            addTestResult $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
         (Right {}, Left er1) ->
-            addTestResult $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
         (Left er0, Left er1) ->
-            addTestResult $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
-                                          ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1)
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
+                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1)
     pure nothing
   where
     msg = prettyStmt s

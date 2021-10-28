@@ -48,7 +48,10 @@ makeInterpreterTest src = catch makeIt $ \ex ->
         h <- newHandle
         _ <- runScript h Nothing [] src
         trs <- getTestResults h
-        let ts = flip map trs $ \case
-                TestPass nm -> T.testCase nm $ T.assertBool "" True
-                TestFail nm msg -> T.testCase nm $ T.assertBool msg False
+        
+        let ts = flip map trs $ \(modName, cbs) ->
+                T.testGroup modName $ flip map cbs $ \(CheckBlockResult cnm cts) ->
+                T.testGroup cnm $ flip map cts $ \case
+                    TestPass nm -> T.testCase nm $ T.assertBool "" True
+                    TestFail nm msg -> T.testCase nm $ T.assertBool msg False
         pure $ T.testGroup (take 10 src) ts
