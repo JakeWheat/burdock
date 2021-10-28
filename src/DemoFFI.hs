@@ -21,6 +21,12 @@ addFFI:
 it might be nice to try to find some shorthand to avoid adding an ffi
 function with an api call, then binding it in burdock code?
 
+add some helpers to make a wrapper for the command line for scripts or
+repl, with some additional haskell ffi, really easy to write and
+minimal boilerplate, something like: 
+
+main = burdockExe additionalFFITypes additionalFFIFunctions
+
 -}
 
 {-# LANGUAGE QuasiQuotes #-}
@@ -30,8 +36,8 @@ import Burdock.Scientific (extractInt)
 
 import qualified Text.RawString.QQ as R
 
-import Data.Dynamic (Dynamic
-                    ,toDyn
+import Data.Dynamic (--Dynamic
+                     toDyn
                     ,fromDynamic
                     )
 
@@ -45,6 +51,8 @@ main = do
     B.addFFI h [("demo-make-haskell-int", demoMakeHaskellInt)
              ,("demo-extract-int", demoExtractInt)
              ,("demo-add-to-int", demoAddToInt)]
+
+    -- could also run from a file easily
     
     void $ B.runScript h Nothing [] [R.r|
 
@@ -65,6 +73,7 @@ print(v1)
 v2 = demo-extract-int(v1)
 
 print(v2)
+# not implemented yet:
 #print(is-number(v2))
 
                     |]

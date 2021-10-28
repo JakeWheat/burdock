@@ -1,5 +1,5 @@
 
-
+{-# LANGUAGE LambdaCase #-}
 import Burdock.TestData
 import Burdock.Parse
 import Burdock.Pretty
@@ -48,5 +48,7 @@ makeInterpreterTest src = catch makeIt $ \ex ->
         h <- newHandle
         _ <- runScript h Nothing [] src
         trs <- getTestResults h
-        let ts = flip map trs $ \(TestResult nm ps) -> T.testCase nm $ T.assertBool "" ps
+        let ts = flip map trs $ \case
+                TestPass nm -> T.testCase nm $ T.assertBool "" True
+                TestFail nm msg -> T.testCase nm $ T.assertBool msg False
         pure $ T.testGroup (take 10 src) ts

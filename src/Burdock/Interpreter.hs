@@ -126,14 +126,15 @@ addFFI :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
 addFFI h ffis = runInterp h $ do
     st <- ask
     liftIO $ modifyIORef (isForeignFunctions st) (ffis ++)
-    
 
--- temp testing
--- todo: store the test results as burdock values
--- use a function to get these stored test results
--- and a helper to convert to haskell value (if needed)
 
-data TestResult = TestResult String Bool
+---------------------------------------
+
+-- testing, uses haskell values atm, will move to burdock
+-- values at some point in the future
+
+data TestResult = TestPass String
+                | TestFail String String
 
 getTestResults :: Handle -> IO [TestResult]
 getTestResults h = runInterp h $ do
@@ -763,15 +764,19 @@ interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
     case (v0,v1) of
         (Right v0', Right v1') ->
             if v0' == v1'
-            then addTestResult $ TestResult msg True
+            then addTestResult $ TestPass msg
             else do
                 p0 <- liftIO $ torepr' v0'
                 p1 <- liftIO $ torepr' v1'
                 addTestResult $
-                  TestResult (msg ++ "\n" ++ p0 ++ "\n!=\n" ++ p1) False
-        (Left er0, Right {}) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0) False
-        (Right {}, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
-        (Left er0, Left er1) -> addTestResult $ TestResult (msg ++ "\n" ++ prettyExpr e0 ++ " failed: " ++ er0 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1) False
+                  TestFail msg (p0 ++ "\n!=\n" ++ p1)
+        (Left er0, Right {}) ->
+            addTestResult $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
+        (Right {}, Left er1) ->
+            addTestResult $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
+        (Left er0, Left er1) ->
+            addTestResult $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
+                                          ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1)
     pure nothing
   where
     msg = prettyStmt s
