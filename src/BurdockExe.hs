@@ -97,7 +97,6 @@ runHandle fp h = do
 runSrc :: Maybe String -> String -> IO ()
 runSrc fnm src = do
     h <- B.newHandle
-    
     v <- B.runScript h fnm [] src
     pv <- B.valueToString v
     case pv of

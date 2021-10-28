@@ -78,6 +78,8 @@ import Data.Dynamic (Dynamic
                     --,fromDynamic
                     )
 
+import Data.Char (isSpace)
+
 -- import Text.Show.Pretty (ppShow)
 
 --import Debug.Trace (trace)
@@ -97,9 +99,13 @@ runScript h mfn lenv src = runInterp h $ do
     let Script ast = either error id $ parseScript (maybe "" id mfn) src
     -- todo: how to make this local to this call only
     forM_ lenv $ \(n,v) -> letValue n v
-    interpStatements ast
+    ret <- interpStatements ast
+    -- optionally display test results here    
+    trs <- getTestResultsI
+    when (not $ null trs) $
+        liftIO $ putStrLn $ showTestResults trs
+    pure ret
 
-    
 evalExpr :: Handle
          -> Maybe FilePath
          -> [(String,Value)]
@@ -138,11 +144,16 @@ addFFI h ffis = runInterp h $ do
 
 data TestResult = TestPass String
                 | TestFail String String
+                deriving Show
 
 data CheckBlockResult = CheckBlockResult String [TestResult]
+                      deriving Show
 
 getTestResults :: Handle -> IO [(String, [CheckBlockResult])]
-getTestResults h = runInterp h $ do
+getTestResults h = runInterp h getTestResultsI
+
+getTestResultsI :: Interpreter [(String, [CheckBlockResult])]
+getTestResultsI = do
     st <- ask
     v <- liftIO (reverse <$> readIORef (isTestResults st))
     let perModules :: [(String, [(String,TestResult)])]
@@ -157,6 +168,53 @@ partitionN vs@((k,_):_) =
     let (x,y) = partition ((==k) . fst) vs
     in (k,map snd x) : partitionN y
 
+
+showTestResults :: [(String, [CheckBlockResult])] -> String
+showTestResults ms =
+    intercalate "\n\n\n" (map (uncurry showModuleTests) ms)
+    ++ "\n" ++ summarizeAll (concatMap snd ms)
+  where
+    showModuleTests mnm cbs =
+        heading ("Module: " ++ mnm) ++ "\n"
+        ++ intercalate "\n\n" (map showCheckBlockResult cbs)
+        ++ "\n" ++ summarizeCheckBlocks mnm cbs
+    heading s = s ++ "\n" ++ replicate (length s) '-'
+    getCheckBlockTotals ts = 
+        let f p t [] = (p,t)
+            f p t (TestPass {} : s) = f (p + 1) (t + 1) s
+            f p t (TestFail {} : s) = f p (t + 1) s
+        in f (0 :: Int) (0 :: Int) ts
+    summarizeAll rs =
+        let (passed,total) = getCheckBlocksTotals rs
+        in showOutOf passed total ++ " in all check blocks"
+    showOutOf passed total =
+        show passed ++ "/" ++ show total ++ " tests passed"
+    sumPairs ps = 
+        let f t1 t2 [] = (t1,t2)
+            f t1 t2 ((a,b):rs) = f (t1 + a) (t2 + b) rs
+        in f (0 :: Int) (0 :: Int) ps
+    getCheckBlocksTotals cbs = 
+        sumPairs $ map (\(CheckBlockResult _ ts) -> getCheckBlockTotals ts) cbs
+    summarizeCheckBlocks mnm cbs =
+        let (passed, total) = getCheckBlocksTotals cbs
+        in showOutOf passed total ++ " in all check blocks: " ++ mnm
+    summarizeCheckBlock nm ts =
+        let (passed, total) = getCheckBlockTotals ts
+        in showOutOf passed total ++ " in check block: " ++ nm
+    showCheckBlockResult (CheckBlockResult nm ts) =
+        "Check block: " ++ nm ++ "\n"
+        ++ unlines (map showTestResult ts)
+        ++ summarizeCheckBlock nm ts
+    showTestResult (TestPass nm) =
+        "  test (" ++ nest 8 nm ++ "): OK"
+    showTestResult (TestFail nm msg) =
+        "  test (" ++ nest 8 nm ++ "): failed, reason:\n" ++ indent 4 msg
+    indent n txt = unlines $ map (replicate n ' ' ++) $ lines txt
+    nest n txt =
+        case lines $ txt of
+            (f:r) -> trim $ unlines (f : map (replicate n ' ' ++) r)
+            _ -> trim txt
+    trim = reverse . dropWhile isSpace . reverse . dropWhile isSpace
 
 ------------------------------------------------------------------------------
 
