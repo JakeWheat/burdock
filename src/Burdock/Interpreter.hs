@@ -175,7 +175,7 @@ partitionN vs@((k,_):_) =
 
 formatTestResults :: [(String, [CheckBlockResult])] -> String
 formatTestResults ms =
-    intercalate "\n\n\n" (map (uncurry showModuleTests) ms)
+    intercalate "\n\n" (map (uncurry showModuleTests) ms)
     ++ "\n" ++ summarizeAll (concatMap snd ms)
   where
     showModuleTests mnm cbs =
@@ -985,6 +985,26 @@ import string-dict as X
 ->
 resolve the path to the module, if it isn't loaded, load it
 alias it locally
+
+TODO:
+1. import from packages like this?
+import package-name.module-name ...
+2. import modules in an fs hierarchy like haskell does
+import package-name.dir-name.module-name ...
+doesn't apply to importing files
+3. import modules as if they were in a package my-p
+import my-p.x.y
+ -> import file("x/y.bur") ...
+4. when importing using the raw name instead of file, there's a default qualifier:
+
+import xx
+-> import xx as xx
+import xx.yy
+-> import xx.yy as yy ?
+it's slightly annoying otherwise - maybe not annoying enough?
+  but it is the kind of annoying boilerplate that beginners and newcomers
+  will see and can often judge over harshly on
+
 -}
 
 interpStatement (Import is al) =  do
@@ -1055,7 +1075,7 @@ internalsRef nm = DotExpr (DotExpr (DotExpr (Iden "_system") "modules") "_intern
 getBuiltInModulePath :: String -> IO FilePath
 getBuiltInModulePath nm =
     -- later will need to use the cabal Paths_ thing and stuff
-    pure ("data" </> "built-ins" </> nm <.> "bur")
+    pure ("built-ins" </> nm <.> "bur")
 
 resolveImportPath :: [FilePath] -> ImportSource -> Interpreter (String, FilePath)
 resolveImportPath _moduleSearchPath is = do

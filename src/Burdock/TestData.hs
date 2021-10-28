@@ -728,14 +728,14 @@ end
 |])
     ,("modules-import-simple", [R.r|
 
-import file("test-data/trivial-one.bur") as X
+import file("test-src/trivial-one.bur") as X
 check:
   X.a is 5
 end
 |])
      ,("modules-import-simple-2", [R.r|
 
-import file("test-data/trivial-two.bur") as X
+import file("test-src/trivial-two.bur") as X
 check:
   X.a is 5
 end
@@ -743,7 +743,7 @@ end
 |])
      ,("modules-import-simple-3", [R.r|
 
-import file("test-data/trivial-three.bur") as X
+import file("test-src/trivial-three.bur") as X
 check:
   X.c is 5
 end
@@ -751,7 +751,7 @@ end
 |])
      ,("include-from-simple", [R.r|
 
-import file("test-data/trivial-one.bur") as X
+import file("test-src/trivial-one.bur") as X
 include from X:
   *
 end
@@ -762,7 +762,7 @@ end
 |])
      ,("include-from-simple-2", [R.r|
 
-import file("test-data/trivial-one.bur") as X
+import file("test-src/trivial-one.bur") as X
 include from X:
   a
 end
@@ -773,7 +773,7 @@ end
 |])
      ,("include-from-simple-3", [R.r|
 
-import file("test-data/trivial-one.bur") as X
+import file("test-src/trivial-one.bur") as X
 include from X:
   a as c
 end
@@ -784,7 +784,7 @@ end
 |])
      ,("include-simple", [R.r|
 
-include file("test-data/trivial-one.bur")
+include file("test-src/trivial-one.bur")
 check:
   a is 5
 end
