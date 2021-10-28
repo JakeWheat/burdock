@@ -103,7 +103,7 @@ runScript h mfn lenv src = runInterp h $ do
     -- optionally display test results here    
     trs <- getTestResultsI
     when (not $ null trs) $
-        liftIO $ putStrLn $ showTestResults trs
+        liftIO $ putStrLn $ formatTestResults trs
     pure ret
 
 evalExpr :: Handle
@@ -169,8 +169,8 @@ partitionN vs@((k,_):_) =
     in (k,map snd x) : partitionN y
 
 
-showTestResults :: [(String, [CheckBlockResult])] -> String
-showTestResults ms =
+formatTestResults :: [(String, [CheckBlockResult])] -> String
+formatTestResults ms =
     intercalate "\n\n\n" (map (uncurry showModuleTests) ms)
     ++ "\n" ++ summarizeAll (concatMap snd ms)
   where
@@ -374,6 +374,14 @@ localScriptEnv m f = do
     local (const $ st {isScriptEnv = e1
                       ,isProvides = p}) f
 
+localTestInfo :: (TestInfo -> TestInfo) -> Interpreter a -> Interpreter a
+localTestInfo m f = do
+    st <- ask
+    ti <- liftIO $ m <$> readIORef (isTestInfo st)
+    ti' <- liftIO $ newIORef ti
+    local (const $ st {isTestInfo = ti'}) f
+
+    
 askEnv :: Interpreter Env
 askEnv = do
     st <- ask
@@ -439,7 +447,7 @@ emptyInterpreterState = do
     scenv <- newIORef emptyEnv
     provs <- newIORef []
     ti <- newIORef $ TestInfo
-        {tiCurrentSource = "handle-api"
+        {tiCurrentSource = "runScript-api"
         ,tiCurrentCheckblock = Nothing
         ,tiNextAnonCheckblockNum = 1
         }
@@ -888,10 +896,8 @@ interpStatement (Check mnm ss) = do
                 let i = tiNextAnonCheckblockNum ti
                 in ("check-block-" ++ show i
                    ,\cti -> cti {tiNextAnonCheckblockNum = i + 1})
-    -- todo: use a reader style local wrapper
-    liftIO $ modifyIORef (isTestInfo st) $
-        \cti -> newcbn $ cti {tiCurrentCheckblock = Just cnm}
-    interpStatements ss
+    localTestInfo (\cti -> newcbn $ cti {tiCurrentCheckblock = Just cnm})
+        $ interpStatements ss
 interpStatement (LetDecl b e) = do
     v <- interp e
     letValue (unPat b) v
@@ -1068,12 +1074,8 @@ loadModule includeGlobals moduleName fn = do
                else id
         Script ast' = either error id $ parseScript fn src
         ast = incG ast'
-    localScriptEnv (const emptyEnv) $ do
-
-        st <- ask
-        -- todo: use a reader style local wrapper for testinfo too
-        liftIO $ modifyIORef (isTestInfo st) $
-            \cti -> cti {tiCurrentSource = moduleName}
+    localScriptEnv (const emptyEnv)
+        $ localTestInfo (\cti -> cti {tiCurrentSource = moduleName}) $ do
 
         when (moduleName == "_internals") $ do
             {- the few bits that cannot be defined directly in the
