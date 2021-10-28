@@ -46,6 +46,9 @@ makeInterpreterTest src = catch makeIt $ \ex ->
   where
     makeIt = do
         h <- newHandle
+        _ <- runScript h Nothing []
+             "_system.modules._internals.set-auto-print-test-results(false)\n\
+             \_system.modules._internals.set-auto-run-tests(true)"
         _ <- runScript h Nothing [] src
         trs <- getTestResults h
         

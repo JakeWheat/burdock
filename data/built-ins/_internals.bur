@@ -72,3 +72,20 @@ data Either:
   | left(v)
   | right(v)
 end
+
+# if tests are run, automatically print the results
+# this is used to disable the printing when you are getting the test
+# results out and printing them or using them differently yourself
+# it's used by the tasty testing adaptor
+var auto-print-test-results = true
+# the 'api' is to use the function, don't read or write the var directly
+fun set-auto-print-test-results(b):
+  auto-print-test-results := b
+end
+# set whether tests should be run or ignored
+var auto-run-tests = false
+# the 'api' is to use the function, don't read or write the var directly
+fun set-auto-run-tests(b):
+  auto-run-tests := b
+end
+

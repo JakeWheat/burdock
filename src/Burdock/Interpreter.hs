@@ -100,10 +100,14 @@ runScript h mfn lenv src = runInterp h $ do
     -- todo: how to make this local to this call only
     forM_ lenv $ \(n,v) -> letValue n v
     ret <- interpStatements ast
-    -- optionally display test results here    
-    trs <- getTestResultsI
-    when (not $ null trs) $
-        liftIO $ putStrLn $ formatTestResults trs
+    printTestResults <- interp $ internalsRef "auto-print-test-results"
+    case printTestResults of
+        BoolV True -> do
+            trs <- getTestResultsI
+            when (not $ null trs) $
+                liftIO $ putStrLn $ formatTestResults trs
+        BoolV False -> pure ()
+        x -> error $ "bad value in auto-print-test-results (should be boolv): " ++ show x
     pure ret
 
 evalExpr :: Handle
@@ -888,16 +892,23 @@ interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
 
 interpStatement (StmtExpr e) = interp e
 interpStatement (Check mnm ss) = do
-    st <- ask
-    ti <- liftIO $ readIORef (isTestInfo st)
-    let (cnm, newcbn) = case mnm of
-            Just n -> (n, id)
-            Nothing ->
-                let i = tiNextAnonCheckblockNum ti
-                in ("check-block-" ++ show i
-                   ,\cti -> cti {tiNextAnonCheckblockNum = i + 1})
-    localTestInfo (\cti -> newcbn $ cti {tiCurrentCheckblock = Just cnm})
-        $ interpStatements ss
+
+    runTestsEnabled <- interp $ internalsRef "auto-run-tests"
+    case runTestsEnabled of
+        BoolV True -> do
+            st <- ask
+            ti <- liftIO $ readIORef (isTestInfo st)
+            let (cnm, newcbn) = case mnm of
+                    Just n -> (n, id)
+                    Nothing ->
+                        let i = tiNextAnonCheckblockNum ti
+                        in ("check-block-" ++ show i
+                           ,\cti -> cti {tiNextAnonCheckblockNum = i + 1})
+            localTestInfo (\cti -> newcbn $ cti {tiCurrentCheckblock = Just cnm})
+                $ interpStatements ss
+        BoolV False -> pure nothing
+        x -> error $ "auto-run-tests not set right (should be boolv): " ++ show x
+    
 interpStatement (LetDecl b e) = do
     v <- interp e
     letValue (unPat b) v
@@ -956,7 +967,6 @@ interpStatement (DataDecl dnm vs whr) = do
         chk = maybe [] (\w -> [Check (Just dnm) w]) whr
     interpStatements (map makeMake vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
   where
-    internalsRef nm = DotExpr (DotExpr (DotExpr (Iden "_system") "modules") "_internals") nm
     letDecl nm v = LetDecl (PatName NoShadow nm) v
     lam as e = Lam (map (PatName NoShadow) as) e
     --letE bs e = Let (flip map bs $ \(b,v) -> (PatName NoShadow b, v)) e
@@ -1032,6 +1042,10 @@ interpStatement (Provide pis) = do
     -- todo: turn the provides into burdock values and save as a regular burdock list?
     modifyScriptProvides (++pis)
     pure nothing
+
+internalsRef :: String -> Expr
+internalsRef nm = DotExpr (DotExpr (DotExpr (Iden "_system") "modules") "_internals") nm
+
 
 ------------------------------------------------------------------------------
 

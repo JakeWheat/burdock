@@ -40,6 +40,7 @@ TODO: filters on which tests to run
 import qualified  Burdock.Interpreter as B
 
 import Control.Monad.Trans
+import Control.Monad (when, void)
 import System.Console.Haskeline (InputT
                                 ,Interrupt
                                 ,historyFile
@@ -58,11 +59,11 @@ import Options.Applicative (Parser
                            ,metavar
                            ,help
                            ,short
-                           ,option
+                           --,option
                            --,showDefault
                            --,switch
-                           ,auto
-                           ,value
+                           --,auto
+                           --,value
                            ,execParser
                            ,info
                            ,(<**>)
@@ -74,6 +75,7 @@ import Options.Applicative (Parser
                            ,optional
                            ,argument
                            ,str
+                           ,switch
                            )
 import System.IO (Handle
                  ,hIsTerminalDevice
@@ -83,20 +85,21 @@ import System.IO (Handle
 ------------------------------------------------------------------------------
 
 
-runFile :: FilePath -> IO ()
-runFile fp = do
+runFile :: FilePath -> Bool -> IO ()
+runFile fp rTests = do
     src <- readFile fp
-    runSrc (Just fp) src
+    runSrc (Just fp) rTests src
 
-runHandle :: FilePath -> Handle -> IO ()
-runHandle fp h = do
+runHandle :: FilePath -> Handle -> Bool -> IO ()
+runHandle fp h rTests = do
     src <- hGetContents h
-    runSrc (Just fp) src
+    runSrc (Just fp) rTests src
 
 
-runSrc :: Maybe String -> String -> IO ()
-runSrc fnm src = do
+runSrc :: Maybe String -> Bool -> String -> IO ()
+runSrc fnm rTests src = do
     h <- B.newHandle
+    when rTests $ void $ B.runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
     v <- B.runScript h fnm [] src
     pv <- B.valueToString v
     case pv of
@@ -145,7 +148,7 @@ doRepl = do
 data MyOpts = MyOpts
   { file :: Maybe String
   , script :: Maybe String
-  , testLevel :: Int}
+  , runTests :: Bool}
   deriving Show
 
 myOpts :: Parser MyOpts
@@ -155,11 +158,12 @@ myOpts = MyOpts
           (short 'c'
            <> metavar "SOURCE"
            <> help "code to run"))
-      <*> option auto
+      {-<*> option auto
           (long "test-level"
            <> value 1
            <> metavar "INT"
-           <> help "test-level 0 = skip, 1= one line, 2 = show failures, 3 = show all")
+           <> help "test-level 0 = skip, 1= one line, 2 = show failures, 3 = show all")-}
+      <*> switch (long "run-tests" <> help "Run tests")
 
 
 myOptsPlus :: ParserInfo MyOpts
@@ -176,7 +180,8 @@ main = do
     isTTY <- hIsTerminalDevice stdin
     case os of
         MyOpts {file = Just {}, script = Just {}} -> error "please pass either a file or code to run, not both"
-        MyOpts {file = Just f} -> runFile f
-        MyOpts {script = Just c} -> runSrc Nothing c
-        _ | not isTTY -> runHandle "stdin" stdin
-        _ -> doRepl
+        MyOpts {file = Just f, runTests = rt} -> runFile f rt
+        MyOpts {script = Just c, runTests = rt} -> runSrc Nothing rt c
+        MyOpts {script = Nothing, file = Nothing, runTests = rt}
+            | not isTTY -> runHandle "stdin" stdin rt
+            | otherwise -> doRepl
