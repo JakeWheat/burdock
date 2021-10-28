@@ -83,10 +83,15 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
                            $ filter (not . ("-packages" `isSuffixOf`))
                            $ filter (not . ("." `isPrefixOf`)) bldFiles
         cmd_ "rm -Rf" filesToClean1
+        cmd_ "rm -Rf -dist-newstyle"
 
     phony "all" $ do
         need ["_build/bin/burdock-tests"
-             ,"_build/bin/burdock"]
+             ,"_build/bin/burdock"
+             ,"_build/bin/DemoFFI"]
+
+    phony "build-using-cabal" $
+        cmd_ "cabal build"
 
     -- todo: use ghc -M to do this better
     let needHsFiles dir = do
@@ -109,5 +114,11 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
         needHsFiles "src"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"})
             "src/BurdockExe.hs"
+            out
+
+    "_build/bin/DemoFFI" %> \out -> do
+        needHsFiles "src"
+        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"})
+            "src/DemoFFI.hs"
             out
 

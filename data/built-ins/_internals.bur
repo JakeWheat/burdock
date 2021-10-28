@@ -29,6 +29,13 @@ module which reexports these
 # evaluate their second arg, and are implmented in the interpreter internals
 # test predicates are syntax and aren't treated as regular operators
 
+# todo: add data types for provides support
+# add data types for testing support?
+# complete the data type support for bool, num, function, foreign function vals,
+#   list, string, tuple, record
+# review which of the below can go in globals instead
+
+
 # internals used in the implementation of agdt:
 
 make-variant = get-ffi-value("make-variant")
@@ -59,4 +66,9 @@ print = get-ffi-value("print")
 
 torepr = get-ffi-value("torepr")
 
+catch-as-either = get-ffi-value("catch-as-either")
 
+data Either:
+  | left(v)
+  | right(v)
+end

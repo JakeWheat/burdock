@@ -5,7 +5,7 @@ module Burdock.Interpreter
     (TestResult(..)
     ,getTestResults
 
-    ,Value
+    --,Value
     ,valueToString
 
     ,newHandle
@@ -13,6 +13,11 @@ module Burdock.Interpreter
     ,runScript
     ,evalExpr
     ,evalFun
+
+    -- temp for ffi
+    ,Interpreter
+    ,Value(..)
+    ,addFFI
 
     ) where
 
@@ -65,6 +70,11 @@ import System.FilePath
     ,(<.>)
     )
 
+import Data.Dynamic (Dynamic
+                    --,toDyn
+                    --,fromDynamic
+                    )
+
 -- import Text.Show.Pretty (ppShow)
 
 --import Debug.Trace (trace)
@@ -111,6 +121,13 @@ evalFun h fun args = runInterp h $ do
     forM_ (("fff", f):as) $ \(n,v) -> letValue n v
     interp ast'
 
+
+addFFI :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
+addFFI h ffis = runInterp h $ do
+    st <- ask
+    liftIO $ modifyIORef (isForeignFunctions st) (ffis ++)
+    
+
 -- temp testing
 -- todo: store the test results as burdock values
 -- use a function to get these stored test results
@@ -136,6 +153,7 @@ data Value = NumV Scientific
            | ForeignFunV String
            | VariantV String [(String,Value)]
            | BoxV (IORef Value)
+           | FFIValue Dynamic
 
 -- todo: the rough idea is to convert values back to syntax
 -- and pretty them
@@ -147,6 +165,7 @@ instance Show Value where
   show (FunV as bdy _env) = "FunV " ++ show as ++ "\n" ++ prettyExpr bdy
   show (ForeignFunV n) = "ForeignFunV " ++ show n
   show (BoxV _n) = "BoxV XX" -- ++ show n
+  show (FFIValue _v) = "FFIValue"
 
 instance Eq Value where
     NumV a == NumV b = a == b
@@ -514,6 +533,8 @@ toreprx (VariantV nm []) = pure $ P.pretty nm
 toreprx (VariantV nm fs) = do
     vs <- mapM (toreprx . snd) fs
     pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
+
+toreprx (FFIValue {}) = pure $ P.pretty "<ffi-value>"
 
 xSep :: String -> [P.Doc a] -> P.Doc a
 xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
@@ -937,10 +958,14 @@ loadModule includeGlobals moduleName fn = do
         Script ast' = either error id $ parseScript fn src
         ast = incG ast'
     localScriptEnv (const emptyEnv) $ do
-        -- hack for putting built in non function values, plus
-        -- the bootstrap get-ffi-value function
-        -- to the internals module
         when (moduleName == "_internals") $ do
+            {- the few bits that cannot be defined directly in the
+               _internals.bur:
+               get-ffi-value, which is used to bind ffi functions
+                  to burdock idens
+               then there's no syntax to define the constant
+               values, and constant variant used to bootstrap things, particularly
+               agdt themselves: true, false, empty and nothing-}
             mapM_ (uncurry letValue)
                 [("true", BoolV True)
                 ,("false", BoolV False)
