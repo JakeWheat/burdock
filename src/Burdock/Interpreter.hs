@@ -104,10 +104,11 @@ runScript :: Handle
           -> String
           -> IO Value
 runScript h mfn lenv src = runInterp h $ do
-    let Script ast = either error id $ parseScript (maybe "" id mfn) src
+    (fn, Script ast) <- either error id <$> iParseScript mfn src
     -- todo: how to make this local to this call only
     forM_ lenv $ \(n,v) -> letValue n v
-    ret <- interpStatements ast
+    ret <- localTestInfo (\cti -> cti {tiCurrentSource = fn}) $
+           interpStatements ast
     printTestResults <- interp $ internalsRef "auto-print-test-results"
     case printTestResults of
         BoolV True -> do
@@ -326,6 +327,8 @@ data InterpreterState =
                      ,isTestResults :: IORef [(String,String,TestResult)]
                      ,isForeignFunctions :: IORef ForeignFunctions
                      ,isCallStack :: CallStack
+                     ,isSourceCache :: IORef [(FilePath,String)]
+                     ,isUniqueSourceCtr :: IORef Int
                      }
 type Interpreter = ReaderT InterpreterState IO
 
@@ -477,14 +480,10 @@ data TestInfo
     ,tiNextAnonCheckblockNum :: Int
     }
 
--- todo: something nicer
-formatCallStack :: CallStack -> Interpreter String
-formatCallStack = pure . unlines . map show
-
 readCallStack :: Interpreter CallStack
 readCallStack = do
     st <- ask
-    pure $ reverse $ isCallStack st
+    pure $ isCallStack st
 
 emptyInterpreterState :: IO InterpreterState
 emptyInterpreterState = do
@@ -498,7 +497,9 @@ emptyInterpreterState = do
         }
     trs <- newIORef []
     ffs <- newIORef []
-    pure $ InterpreterState sysenv scenv provs ti trs ffs []
+    sc <- newIORef []
+    ctr <- newIORef 0
+    pure $ InterpreterState sysenv scenv provs ti trs ffs [] sc ctr
 
 ---------------------------------------
 
@@ -587,8 +588,43 @@ formatExceptionI includeCallstack e = do
            else pure ""
     pure $ m ++ stf
 
+-- partial idea -> save sources as4 they are parsed, so can refer to them
+-- in later error messages and stuff
+-- todo: track original filenames plus generated unique filenames better
+iParseScript :: Maybe FilePath -> String -> Interpreter (Either String (FilePath, Script))
+iParseScript mfn src = do
+    fn <- case mfn of
+              Nothing -> uniqueSourceName
+              Just x -> pure x
+    st <- ask
+    liftIO $ modifyIORef (isSourceCache st) ((fn,src):)
+    pure $ (fn,) <$> parseScript fn src
 
--- iParseScript ::
+-- needs some checking
+uniqueSourceName :: Interpreter String
+uniqueSourceName = do
+    st <- ask
+    i <- liftIO $ readIORef (isUniqueSourceCtr st)
+    liftIO $ writeIORef (isUniqueSourceCtr st) (i + 1)
+    pure $ "unknown-" ++ show i
+    
+formatCallStack :: CallStack -> Interpreter String
+formatCallStack cs = do
+    st <- ask
+    sc <- liftIO $ readIORef (isSourceCache st)
+    pure $ unlines $ map (f sc) cs
+  where
+    f :: [(FilePath, String)] -> SourcePosition -> String
+    f _ Nothing = "<unknown>"
+    f sc (Just (fn,l,c)) = either show id $ do
+        -- todo: add the caret for the column
+        src <- maybe (Left $ "source not found in cache: " ++ fn) Right $ lookup fn sc
+        -- todo: add error handling for this
+        -- plus memoize running lines on the source?
+        let lne = lines src !! (l - 1)
+            caret = replicate (c - 1) ' ' ++ "^"
+        pure $ fn ++ ":" ++ show l ++ ":\n" ++ lne ++ "\n" ++ caret
+
 
 ---------------------------------------
 
@@ -1246,10 +1282,10 @@ loadModule includeGlobals moduleName fn = do
     let incG = if includeGlobals && moduleName /= "globals"
                then (Include (ImportName "globals") :)
                else id
-        Script ast' = either error id $ parseScript fn src
-        ast = incG ast'
+    (fn',Script ast') <- either error id <$> iParseScript (Just fn) src
+    let ast = incG ast'
     localScriptEnv (const emptyEnv)
-        $ localTestInfo (\cti -> cti {tiCurrentSource = moduleName}) $ do
+        $ localTestInfo (\cti -> cti {tiCurrentSource = fn'}) $ do
 
         when (moduleName == "_internals") $ do
             {- the few bits that cannot be defined directly in the
