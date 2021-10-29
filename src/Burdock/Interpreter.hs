@@ -51,9 +51,11 @@ import Burdock.Pretty
 import Burdock.Parse (parseScript, parseExpr)
 
 import Control.Exception.Safe (catch
-                              ,SomeException
+                              --,SomeException
                               ,Exception
-                              ,throwM)
+                              ,throwM
+                              ,catchAny
+                              )
 
 import qualified Prettyprinter as P
     (pretty
@@ -564,6 +566,7 @@ builtInFF =
     ,("show-handle-state", bShowHandleState)
     ,("torepr", torepr)
     ,("raise", raise)
+    ,("haskell-error", haskellError)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -666,6 +669,17 @@ xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 raise :: [Value] -> Interpreter Value
 raise [v] = throwM $ ValueException v
 raise _ = error "wrong args to raise"
+
+-- convert a burdock either value to a haskell one
+
+bToHEither :: Value -> Either Value Value
+bToHEither (VariantV "left" [(_,e)]) = Left e
+bToHEither (VariantV "right" [(_,r)]) = Right r
+bToHEither x = error $ "non either passed to btoheither: " ++ show x
+
+haskellError :: [Value] -> Interpreter Value
+haskellError [TextV v] = error v
+haskellError _ = error $ "wrong args to haskell-error"
 
 ------------------------------------------------------------------------------
 
@@ -840,7 +854,7 @@ app fv vs =
 
 catchAsEither :: [Expr] -> Interpreter Value
 catchAsEither [e] = do
-    v0 <- catchit (interp e)
+    v0 <- ca $ catchit (interp e)
     let (f,v1) = case v0 of
             Right v -> (internalsRef "right", v)
             Left er -> (internalsRef "left", er)
@@ -848,8 +862,11 @@ catchAsEither [e] = do
     app fv [v1]
   where
     catchit :: Interpreter Value -> Interpreter (Either Value Value)
-    catchit f =
-        catch (Right <$> f) $ \ex -> pure $ Left $ interpreterExceptionToValue (ex :: InterpreterException)
+    catchit f = catch (Right <$> f) iToV
+    iToV = pure . Left . interpreterExceptionToValue
+    -- catch any haskell exception, for dealing with error and undefined
+    -- not sure about this, but definitely wanted for testing
+    ca f = catchAny f (pure . Left . TextV . show)
 
 
 catchAsEither _ = error $ "wrong args to catch as either"
@@ -899,13 +916,14 @@ and run-is-test will catch any exceptions from evaluating a or b and
 -}
 
 interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
-    v0 <- catchit $ interp e0
-    v1 <- catchit $ interp e1
+    v0 <- bToHEither <$> catchAsEither [e0]
+    v1 <- bToHEither <$> catchAsEither [e1]
     st <- ask
     ti <- liftIO $ readIORef (isTestInfo st)
     let cbn = maybe (error "is precated not in check block")
               id $ tiCurrentCheckblock ti
     let atr = addTestResult (tiCurrentSource ti) cbn
+
     case (v0,v1) of
         (Right v0', Right v1') ->
             if v0' == v1'
@@ -914,19 +932,20 @@ interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
                 p0 <- liftIO $ torepr' v0'
                 p1 <- liftIO $ torepr' v1'
                 atr $ TestFail msg (p0 ++ "\n!=\n" ++ p1)
-        (Left er0, Right {}) ->
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
-        (Right {}, Left er1) ->
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
-        (Left er0, Left er1) ->
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
-                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1)
+        (Left er0, Right {}) -> do
+            er0' <- liftIO $ torepr' er0
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
+        (Right {}, Left er1) -> do
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
+        (Left er0, Left er1) -> do
+            er0' <- liftIO $ torepr' er0
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
+                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
     pure nothing
   where
     msg = prettyStmt s
-    catchit :: Interpreter Value -> Interpreter (Either String Value)
-    catchit f =
-        catch (Right <$> f) $ \ex -> pure $ Left $ show (ex :: SomeException)
 
 interpStatement (StmtExpr e) = interp e
 interpStatement (Check mnm ss) = do

@@ -36,6 +36,7 @@ module which reexports these
 # review which of the below can go in globals instead
 
 raise = get-ffi-value("raise")
+haskell-error = get-ffi-value("haskell-error")
 
 # internals used in the implementation of agdt:
 
