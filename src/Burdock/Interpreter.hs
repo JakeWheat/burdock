@@ -149,7 +149,7 @@ addFFI h ffis = runInterp h $ do
     liftIO $ modifyIORef (isForeignFunctions st) (ffis ++)
 
 formatException :: Handle -> Bool -> InterpreterException -> IO String
-formatException h includeCalltrace e = runInterp h $ formatExceptionI includeCalltrace e
+formatException h includeCallstack e = runInterp h $ formatExceptionI includeCallstack e
 
 ---------------------------------------
 
@@ -726,13 +726,13 @@ bFormatCallStack [FFIValue cs] = do
 bFormatCallStack _ = error $ "wrong args to format-call-stack"
 
 formatExceptionI :: Bool -> InterpreterException -> Interpreter String
-formatExceptionI includeCalltrace e = do
+formatExceptionI includeCallstack e = do
     (st,m) <- case e of
             ValueException st (TextV m) -> pure (st,m)
             ValueException st m -> (st,) <$> liftIO (torepr' m)
             InterpreterException st m -> pure (st,m)
-    stf <- if includeCalltrace
-           then ("\ncall trace:\n" ++) <$> formatCallStack st
+    stf <- if includeCallstack
+           then ("\ncall stack:\n" ++) <$> formatCallStack st
            else pure ""
     pure $ m ++ stf
 

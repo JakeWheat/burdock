@@ -1,45 +1,47 @@
 cabal-version:      2.4
 name:               burdock
 version:            0.1
-
-synopsis:           functional programming language
-
-description:        functional programming language
-                    https://github.com/JakeWheat/burdock/
-
 license:            BSD-3-Clause
 license-file:       LICENSE
-author:             Jake Wheat
-maintainer:         jakewheat@tutanota.com
 copyright:          Copyright 2021 Jake Wheat
-category:           Language
-                     
-extra-source-files:  README,LICENSE
+maintainer:         jakewheat@tutanota.com
+author:             Jake Wheat
+synopsis:           functional programming language
+description:
+    functional programming language
+    https://github.com/JakeWheat/burdock/
 
+category:           Language
+extra-source-files:
+    README
+    LICENSE
+
+source-repository head
+    type:     git
+    location: https://github.com/JakeWheat/burdock
 
 executable burdock
     main-is:          BurdockExe.hs
-    build-depends:    base >= 4 && < 6,
-                      megaparsec,
-                      scientific,
-                      prettyprinter,
-                      text,
-                      mtl,
-                      safe-exceptions,
-                      pretty-show,
-                      haskeline,
-                      optparse-applicative,
-                      filepath,
-                      uniplate
-                      
-                      
-
     hs-source-dirs:   src
-    other-modules:    Burdock.Interpreter
-                      Burdock.Parse
-                      Burdock.Pretty
-                      Burdock.Scientific
-                      Burdock.Syntax
+    other-modules:
+        Burdock.Interpreter
+        Burdock.Parse
+        Burdock.Pretty
+        Burdock.Scientific
+        Burdock.Syntax
 
     default-language: Haskell2010
     ghc-options:      -threaded -Wall
+    build-depends:
+        base >=4 && <6,
+        megaparsec >=9.2.0 && <9.3,
+        scientific >=0.3.7.0 && <0.4,
+        prettyprinter >=1.7.1 && <1.8,
+        text >=1.1.0.0 && <1.3,
+        mtl >=2.1.3.1 && <2.3,
+        safe-exceptions >=0.1.7.2 && <0.2,
+        pretty-show ==1.10.*,
+        haskeline >=0.8.2 && <0.9,
+        optparse-applicative >=0.16.1.0 && <0.17,
+        filepath >=1.3.0.2 && <1.5,
+        uniplate >=1.6.13 && <1.7
