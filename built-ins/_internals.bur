@@ -35,6 +35,7 @@ module which reexports these
 #   list, string, tuple, record
 # review which of the below can go in globals instead
 
+raise = get-ffi-value("raise")
 
 # internals used in the implementation of agdt:
 

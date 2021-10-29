@@ -78,4 +78,4 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
                 T.testGroup cnm $ flip map cts $ \case
                     TestPass nm -> T.testCase nm $ T.assertBool "" True
                     TestFail nm msg -> T.testCase nm $ T.assertBool msg False
-        pure $ T.testGroup (take 10 src) ts
+        pure $ T.testGroup fn ts

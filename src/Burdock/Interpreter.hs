@@ -51,7 +51,9 @@ import Burdock.Pretty
 import Burdock.Parse (parseScript, parseExpr)
 
 import Control.Exception.Safe (catch
-                              ,SomeException)
+                              ,SomeException
+                              ,Exception
+                              ,throwM)
 
 import qualified Prettyprinter as P
     (pretty
@@ -79,6 +81,8 @@ import Data.Dynamic (Dynamic
                     )
 
 import Data.Char (isSpace)
+
+import System.IO.Unsafe (unsafePerformIO)
 
 -- import Text.Show.Pretty (ppShow)
 
@@ -172,7 +176,7 @@ partitionN vs@((k,_):_) =
     let (x,y) = partition ((==k) . fst) vs
     in (k,map snd x) : partitionN y
 
-
+-- todo: this function is a complete mess
 formatTestResults :: [(String, [CheckBlockResult])] -> String
 formatTestResults ms =
     intercalate "\n\n" (map (uncurry showModuleTests) ms)
@@ -190,7 +194,7 @@ formatTestResults ms =
         in f (0 :: Int) (0 :: Int) ts
     summarizeAll rs =
         let (passed,total) = getCheckBlocksTotals rs
-        in showOutOf passed total ++ " in all check blocks"
+        in showOutOf passed total ++ " in all modules"
     showOutOf passed total =
         show passed ++ "/" ++ show total ++ " tests passed"
     sumPairs ps = 
@@ -201,10 +205,10 @@ formatTestResults ms =
         sumPairs $ map (\(CheckBlockResult _ ts) -> getCheckBlockTotals ts) cbs
     summarizeCheckBlocks mnm cbs =
         let (passed, total) = getCheckBlocksTotals cbs
-        in showOutOf passed total ++ " in all check blocks: " ++ mnm
+        in showOutOf passed total ++ " in module: " ++ mnm
     summarizeCheckBlock nm ts =
         let (passed, total) = getCheckBlockTotals ts
-        in showOutOf passed total ++ " in check block: " ++ nm
+        in "  " ++ showOutOf passed total ++ " in check block: " ++ nm
     showCheckBlockResult (CheckBlockResult nm ts) =
         "Check block: " ++ nm ++ "\n"
         ++ unlines (map showTestResult ts)
@@ -254,6 +258,8 @@ instance Eq Value where
     VariantV "record" as == VariantV "record" bs =
         sortOn fst as == sortOn fst bs
     VariantV nm fs == VariantV lm gs = (nm,fs) == (lm,gs)
+    ForeignFunV x == ForeignFunV y = x == y
+    -- todo: funv, boxv ..., ffivalue
     _ == _ = False
 
 valueToString :: Value -> IO (Maybe String)
@@ -321,6 +327,21 @@ type Interpreter = ReaderT InterpreterState IO
 data Handle = Handle (IORef InterpreterState)
 
 
+data InterpreterException = InterpreterException String
+                          | ValueException Value
+
+instance Show InterpreterException where
+    show (InterpreterException s) = s
+    -- todo: create a pure version of torepr' just to use here
+    show (ValueException v) = unsafePerformIO $ torepr' v
+
+instance Exception InterpreterException where
+
+interpreterExceptionToValue :: InterpreterException -> Value
+interpreterExceptionToValue (InterpreterException s) = TextV s
+interpreterExceptionToValue (ValueException v) = v
+
+
 emptyEnv :: Env
 emptyEnv = []
 
@@ -368,7 +389,6 @@ foreign functions
 -}
 
     
-
 localScriptEnv :: (Env -> Env) -> Interpreter a -> Interpreter a
 localScriptEnv m f = do
     st <- ask
@@ -543,6 +563,7 @@ builtInFF =
     ,("load-module", bLoadModule)
     ,("show-handle-state", bShowHandleState)
     ,("torepr", torepr)
+    ,("raise", raise)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -641,6 +662,10 @@ toreprx (FFIValue {}) = pure $ P.pretty "<ffi-value>"
 
 xSep :: String -> [P.Doc a] -> P.Doc a
 xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
+
+raise :: [Value] -> Interpreter Value
+raise [v] = throwM $ ValueException v
+raise _ = error "wrong args to raise"
 
 ------------------------------------------------------------------------------
 
@@ -814,7 +839,20 @@ app fv vs =
                   | otherwise = error $ "wrong number of args: " ++ show ps ++ ", " ++ show xs
 
 catchAsEither :: [Expr] -> Interpreter Value
-catchAsEither = undefined
+catchAsEither [e] = do
+    v0 <- catchit (interp e)
+    let (f,v1) = case v0 of
+            Right v -> (internalsRef "right", v)
+            Left er -> (internalsRef "left", er)
+    fv <- interp f
+    app fv [v1]
+  where
+    catchit :: Interpreter Value -> Interpreter (Either Value Value)
+    catchit f =
+        catch (Right <$> f) $ \ex -> pure $ Left $ interpreterExceptionToValue (ex :: InterpreterException)
+
+
+catchAsEither _ = error $ "wrong args to catch as either"
 
 ---------------------------------------
 

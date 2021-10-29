@@ -14,6 +14,13 @@ provide:
   true,
   false,
 
+  raise,
+  catch-as-either,
+
+
+  print,
+  torepr,
+  
   is-List,
   is-empty,
   is-link,
@@ -25,10 +32,7 @@ provide:
   nothing,
 
   is-tuple,
-  is-record,
-
-  print,
-  torepr
+  is-record
 
 end
 

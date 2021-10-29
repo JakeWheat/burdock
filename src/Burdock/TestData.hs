@@ -309,4 +309,6 @@ interpreterTests =
      ,"burdock-test-src/include-from-simple.bur"
      ,"burdock-test-src/include-from-simple-2.bur"
      ,"burdock-test-src/include-from-simple-3.bur"
-     ,"burdock-test-src/include-simple.bur"]
+     ,"burdock-test-src/include-simple.bur"
+     ,"burdock-test-src/raise.bur"
+     ]
