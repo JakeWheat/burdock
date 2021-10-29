@@ -78,15 +78,15 @@ import System.FilePath
     )
 
 import Data.Dynamic (Dynamic
-                    --,toDyn
-                    --,fromDynamic
+                    ,toDyn
+                    ,fromDynamic
                     )
 
 import Data.Char (isSpace)
 
 import System.IO.Unsafe (unsafePerformIO)
 
--- import Text.Show.Pretty (ppShow)
+import Text.Show.Pretty (ppShow)
 
 --import Debug.Trace (trace)
 
@@ -262,6 +262,11 @@ instance Eq Value where
     VariantV nm fs == VariantV lm gs = (nm,fs) == (lm,gs)
     ForeignFunV x == ForeignFunV y = x == y
     -- todo: funv, boxv ..., ffivalue
+    -- ioref has an eq instance for pointer equality
+    --    this is very useful
+    --    pyret has some other concepts of equality
+    --    not sure if should write alternative equals in the right monad
+    --    and try to stick to them
     _ == _ = False
 
 valueToString :: Value -> IO (Maybe String)
@@ -567,6 +572,8 @@ builtInFF =
     ,("torepr", torepr)
     ,("raise", raise)
     ,("haskell-error", haskellError)
+    ,("parse-file", bParseFile)
+    ,("show-haskell-ast", bShowHaskellAst)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -681,6 +688,23 @@ haskellError :: [Value] -> Interpreter Value
 haskellError [TextV v] = error v
 haskellError _ = error $ "wrong args to haskell-error"
 
+bParseFile :: [Value] -> Interpreter Value
+bParseFile [TextV fn] = do
+    src <- liftIO $ readFile fn
+    let ast = either error id $ parseScript fn src
+    pure $ FFIValue $ toDyn $ ast
+    
+bParseFile _ = error $ "wrong args to parse-file"
+
+bShowHaskellAst :: [Value] -> Interpreter Value
+bShowHaskellAst [FFIValue v] = do
+    let ast :: Script
+        Just ast = fromDynamic v
+    pure $ TextV $ ppShow ast
+bShowHaskellAst _ = error $ "wrong args to show-haskell-ast"
+    
+
+
 ------------------------------------------------------------------------------
 
 -- the interpreter itself
@@ -698,7 +722,7 @@ interp (Iden a) = do
         Nothing -> error $ "identifier not found: " ++ a
 
 
-interp (App f es) = do
+interp (App _ f es) = do
     fv <- interp f
     -- special case apps
     if (fv == ForeignFunV "catch-as-either")
@@ -1006,16 +1030,16 @@ interpStatement (DataDecl dnm vs whr) = do
     -- add haskell helper functions for working with lists in burdock
     let makeMake (VariantDecl vnm []) =
             letDecl vnm
-            $ App (internalsRef "make-variant") [Text vnm]
+            $ App appSourcePos (internalsRef "make-variant") [Text vnm]
         makeMake (VariantDecl vnm fs) =
             letDecl vnm
             $ lam (map snd fs)
-            $ App (internalsRef "make-variant")
+            $ App appSourcePos (internalsRef "make-variant")
                 (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
         makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            $ eqE (App (internalsRef "variant-tag") [Iden "x"]) (Text vnm)
+            $ eqE (App appSourcePos (internalsRef "variant-tag") [Iden "x"]) (Text vnm)
         callIs (VariantDecl vnm _) = appN ("is-" ++ vnm) [Iden "x"]
         makeIsDat =
             letDecl ("is-" ++ dnm)
@@ -1027,7 +1051,7 @@ interpStatement (DataDecl dnm vs whr) = do
     letDecl nm v = LetDecl (PatName NoShadow nm) v
     lam as e = Lam (map (PatName NoShadow) as) e
     --letE bs e = Let (flip map bs $ \(b,v) -> (PatName NoShadow b, v)) e
-    appN nm as = App (Iden nm) as
+    appN nm as = App appSourcePos (Iden nm) as
     eqE a b = BinOp a "==" b
     orE a b = BinOp a "or" b
 
@@ -1308,8 +1332,14 @@ doLetRec bs =
     in vars ++ assigned
   where
     makeVar (v,_) = VarDecl v $ Lam []
-        $ App (Iden "raise")
+        $ App appSourcePos (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
     makeAssign (b,v) = SetVar (unPat b) v
 
+
+-- placeholder to mark the places where need to fix the source
+-- position
+
+appSourcePos :: SourcePosition
+appSourcePos = Nothing
 

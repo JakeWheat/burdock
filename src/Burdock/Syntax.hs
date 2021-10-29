@@ -55,7 +55,7 @@ data Expr =
     | Iden String
     | Parens Expr
     | If [(Expr,Expr)] (Maybe Expr)
-    | App Expr [Expr]
+    | App SourcePosition Expr [Expr]
     | BinOp Expr String Expr
     | Lam [PatName] Expr
     | Let [(PatName,Expr)] Expr

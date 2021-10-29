@@ -29,7 +29,9 @@ executable burdock
                       pretty-show,
                       haskeline,
                       optparse-applicative,
-                      filepath
+                      filepath,
+                      uniplate
+                      
                       
 
     hs-source-dirs:   src

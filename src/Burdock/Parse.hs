@@ -26,7 +26,11 @@ import Text.Megaparsec (Parsec
                        ,notFollowedBy
                        ,errorBundlePretty
                        ,satisfy
-                       ,anySingle)
+                       ,anySingle
+                       ,getSourcePos
+                       ,SourcePos(..)
+                       ,unPos
+                       )
 
 import Text.Megaparsec.Char (space
                             ,char
@@ -247,7 +251,14 @@ termSuffixes x = boption x $ do
     termSuffixes y
 
 appSuffix :: Parser (Expr -> Expr)
-appSuffix = flip App <$> parens (commaSep expr)
+appSuffix = f <$> sourcePos <*> parens (commaSep expr)
+  where
+    f sp as x = App sp x as
+
+sourcePos :: Parser SourcePosition
+sourcePos = do
+    x <- getSourcePos
+    pure $ Just (sourceName x, unPos $ sourceLine x, unPos $ sourceColumn x)
 
 dotSuffix :: Parser (Expr -> Expr)
 dotSuffix = symbol_ "." *>

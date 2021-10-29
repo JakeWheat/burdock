@@ -1,0 +1,11 @@
+
+include either
+
+
+check:
+  right(4) is catch-as-either(4)
+  left(5) is catch-as-either(raise(5))
+
+  # todo: raise, raises-satisfies, does-not-raise
+  
+end

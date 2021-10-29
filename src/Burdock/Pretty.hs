@@ -48,7 +48,7 @@ expr (Text s) = dquotes (pretty $ escape s)
     escape [] = []
 expr (Iden n) = pretty n
 expr (Parens e) = parens (expr e)
-expr (App e es) = expr e <> parens (commaSep $ map expr es)
+expr (App _ e es) = expr e <> parens (commaSep $ map expr es)
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (Lam bs e) = prettyBlocklike sep
     [pretty "lam" <> parens (commaSep $ map patName bs) <> pretty ":"
