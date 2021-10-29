@@ -356,6 +356,10 @@ interpreterExceptionToValue (InterpreterException _ s) = TextV s
 interpreterExceptionToValue (ValueException _ v) = v
 
 
+---------------------------------------
+
+-- interpreter state functions
+
 
 emptyEnv :: Env
 emptyEnv = []
@@ -444,11 +448,6 @@ modifyScriptEnv f = do
     st <- ask
     liftIO $ modifyIORef (isScriptEnv st) f
 
-_modifySystemEnv :: (Env -> Env) -> Interpreter ()
-_modifySystemEnv f = do
-    st <- ask
-    liftIO $ modifyIORef (isSystemEnv st) f
-
 modifyScriptProvides :: ([ProvideItem] -> [ProvideItem]) -> Interpreter ()
 modifyScriptProvides f = do
     st <- ask
@@ -478,7 +477,14 @@ data TestInfo
     ,tiNextAnonCheckblockNum :: Int
     }
 
+-- todo: something nicer
+formatCallStack :: CallStack -> Interpreter String
+formatCallStack = pure . unlines . map show
 
+readCallStack :: Interpreter CallStack
+readCallStack = do
+    st <- ask
+    pure $ reverse $ isCallStack st
 
 emptyInterpreterState :: IO InterpreterState
 emptyInterpreterState = do
@@ -493,6 +499,10 @@ emptyInterpreterState = do
     trs <- newIORef []
     ffs <- newIORef []
     pure $ InterpreterState sysenv scenv provs ti trs ffs []
+
+---------------------------------------
+
+-- new handles, running interpreter functions using a handle
 
 baseEnv :: [(String,Value)]
 baseEnv =
@@ -552,6 +562,71 @@ runInterp (Handle h) f = do
           pure (res,st)) h'
     writeIORef h h''
     pure v
+
+
+---------------------------------------
+
+-- other interpreter monad support functions
+
+-- convert a burdock either value to a haskell one
+
+bToHEither :: Value -> Either Value Value
+bToHEither (VariantV "left" [(_,e)]) = Left e
+bToHEither (VariantV "right" [(_,r)]) = Right r
+bToHEither x = error $ "non either passed to btoheither: " ++ show x
+
+
+formatExceptionI :: Bool -> InterpreterException -> Interpreter String
+formatExceptionI includeCallstack e = do
+    (st,m) <- case e of
+            ValueException st (TextV m) -> pure (st,m)
+            ValueException st m -> (st,) <$> liftIO (torepr' m)
+            InterpreterException st m -> pure (st,m)
+    stf <- if includeCallstack
+           then ("\ncall stack:\n" ++) <$> formatCallStack st
+           else pure ""
+    pure $ m ++ stf
+
+
+-- iParseScript ::
+
+---------------------------------------
+
+-- converting values to strings
+
+torepr' :: Value -> IO String
+torepr' x = show <$> toreprx x
+
+toreprx :: Value -> IO (P.Doc a)
+toreprx (NumV n) = pure $ case extractInt n of
+                             Just x -> P.pretty $ show x
+                             Nothing ->  P.pretty $ show n
+toreprx (BoolV n) = pure $ P.pretty $ if n then "true" else "false"
+toreprx (FunV {}) = pure $ P.pretty "<Function>" -- todo: print the function value
+toreprx (ForeignFunV f) = pure $ P.pretty $ "<ForeignFunction:" ++ f ++ ">"
+toreprx (TextV s) = pure $ P.pretty $ "\"" ++ s ++ "\""
+toreprx (BoxV b) = do
+    bv <- readIORef b
+    v <- toreprx bv
+    pure $ P.pretty "<Box:" <> v <> P.pretty ">"
+
+toreprx (VariantV "tuple" fs) = do
+    vs <- mapM (toreprx . snd) fs
+    pure $ P.pretty "{" <> P.nest 2 (xSep ";" vs) <> P.pretty "}"
+toreprx (VariantV "record" fs) = do
+    vs <- mapM f fs
+    pure $ P.pretty "{" <> P.nest 2 (xSep "," vs) <> P.pretty "}"
+  where
+    f (a,b) = ((P.pretty a P.<+> P.pretty "=") P.<+>) <$> toreprx b
+toreprx (VariantV nm []) = pure $ P.pretty nm
+toreprx (VariantV nm fs) = do
+    vs <- mapM (toreprx . snd) fs
+    pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
+
+toreprx (FFIValue {}) = pure $ P.pretty "<ffi-value>"
+
+xSep :: String -> [P.Doc a] -> P.Doc a
+xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 
 ------------------------------------------------------------------------------
 
@@ -649,52 +724,12 @@ torepr :: [Value] -> Interpreter Value
 torepr [x] = TextV <$> liftIO (torepr' x)
 torepr _ = error "wrong number of args to torepr"
 
-torepr' :: Value -> IO String
-torepr' x = show <$> toreprx x
-
-toreprx :: Value -> IO (P.Doc a)
-toreprx (NumV n) = pure $ case extractInt n of
-                             Just x -> P.pretty $ show x
-                             Nothing ->  P.pretty $ show n
-toreprx (BoolV n) = pure $ P.pretty $ if n then "true" else "false"
-toreprx (FunV {}) = pure $ P.pretty "<Function>" -- todo: print the function value
-toreprx (ForeignFunV f) = pure $ P.pretty $ "<ForeignFunction:" ++ f ++ ">"
-toreprx (TextV s) = pure $ P.pretty $ "\"" ++ s ++ "\""
-toreprx (BoxV b) = do
-    bv <- readIORef b
-    v <- toreprx bv
-    pure $ P.pretty "<Box:" <> v <> P.pretty ">"
-
-toreprx (VariantV "tuple" fs) = do
-    vs <- mapM (toreprx . snd) fs
-    pure $ P.pretty "{" <> P.nest 2 (xSep ";" vs) <> P.pretty "}"
-toreprx (VariantV "record" fs) = do
-    vs <- mapM f fs
-    pure $ P.pretty "{" <> P.nest 2 (xSep "," vs) <> P.pretty "}"
-  where
-    f (a,b) = ((P.pretty a P.<+> P.pretty "=") P.<+>) <$> toreprx b
-toreprx (VariantV nm []) = pure $ P.pretty nm
-toreprx (VariantV nm fs) = do
-    vs <- mapM (toreprx . snd) fs
-    pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
-
-toreprx (FFIValue {}) = pure $ P.pretty "<ffi-value>"
-
-xSep :: String -> [P.Doc a] -> P.Doc a
-xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 
 raise :: [Value] -> Interpreter Value
 raise [v] = do
     cs <- readCallStack
     throwM $ ValueException cs v
 raise _ = error "wrong args to raise"
-
--- convert a burdock either value to a haskell one
-
-bToHEither :: Value -> Either Value Value
-bToHEither (VariantV "left" [(_,e)]) = Left e
-bToHEither (VariantV "right" [(_,r)]) = Right r
-bToHEither x = error $ "non either passed to btoheither: " ++ show x
 
 haskellError :: [Value] -> Interpreter Value
 haskellError [TextV v] = error v
@@ -725,26 +760,8 @@ bFormatCallStack [FFIValue cs] = do
     TextV <$> formatCallStack hcs
 bFormatCallStack _ = error $ "wrong args to format-call-stack"
 
-formatExceptionI :: Bool -> InterpreterException -> Interpreter String
-formatExceptionI includeCallstack e = do
-    (st,m) <- case e of
-            ValueException st (TextV m) -> pure (st,m)
-            ValueException st m -> (st,) <$> liftIO (torepr' m)
-            InterpreterException st m -> pure (st,m)
-    stf <- if includeCallstack
-           then ("\ncall stack:\n" ++) <$> formatCallStack st
-           else pure ""
-    pure $ m ++ stf
 
 
--- todo: something nicer
-formatCallStack :: CallStack -> Interpreter String
-formatCallStack = pure . unlines . map show
-
-readCallStack :: Interpreter CallStack
-readCallStack = do
-    st <- ask
-    pure $ reverse $ isCallStack st
 
 ------------------------------------------------------------------------------
 
@@ -934,9 +951,8 @@ catchAsEither [e] = do
     -- catch any haskell exception, for dealing with error and undefined
     -- not sure about this, but definitely wanted for testing
     ca f = catchAny f (pure . Left . TextV . show)
-
-
 catchAsEither _ = error $ "wrong args to catch as either"
+
 
 ---------------------------------------
 
@@ -1379,10 +1395,8 @@ doLetRec bs =
             [Text "internal error: uninitialized letrec implementation var"]
     makeAssign (b,v) = SetVar (unPat b) v
 
-
 -- placeholder to mark the places where need to fix the source
 -- position
 
 appSourcePos :: SourcePosition
 appSourcePos = Nothing
-
