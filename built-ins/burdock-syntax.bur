@@ -1,0 +1,18 @@
+
+#|
+
+   start of some code to expose parsing burdock and working with the
+   syntax
+   
+|#
+
+provide:
+  parse-file,
+  show-haskell-ast
+end
+
+
+import _internals as i
+
+parse-file = i.get-ffi-value("parse-file")
+show-haskell-ast = i.get-ffi-value("show-haskell-ast")

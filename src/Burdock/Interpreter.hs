@@ -16,6 +16,8 @@ module Burdock.Interpreter
     ,evalFun
 
     -- temp for ffi
+    ,InterpreterException
+    ,formatException
     ,Interpreter
     ,Value(..)
     ,addFFI
@@ -146,6 +148,8 @@ addFFI h ffis = runInterp h $ do
     st <- ask
     liftIO $ modifyIORef (isForeignFunctions st) (ffis ++)
 
+formatException :: Handle -> Bool -> InterpreterException -> IO String
+formatException h includeCalltrace e = runInterp h $ formatExceptionI includeCalltrace e
 
 ---------------------------------------
 
@@ -321,7 +325,7 @@ data InterpreterState =
                      ,isTestInfo :: IORef TestInfo
                      ,isTestResults :: IORef [(String,String,TestResult)]
                      ,isForeignFunctions :: IORef ForeignFunctions
-                     ,isCallStack :: [SourcePosition]
+                     ,isCallStack :: CallStack
                      }
 type Interpreter = ReaderT InterpreterState IO
 
@@ -335,19 +339,22 @@ type Interpreter = ReaderT InterpreterState IO
 data Handle = Handle (IORef InterpreterState)
 
 
-data InterpreterException = InterpreterException String
-                          | ValueException Value
+type CallStack = [SourcePosition]
+
+data InterpreterException = InterpreterException CallStack String
+                          | ValueException CallStack Value
 
 instance Show InterpreterException where
-    show (InterpreterException s) = s
+    show (InterpreterException _ s) = s
     -- todo: create a pure version of torepr' just to use here
-    show (ValueException v) = unsafePerformIO $ torepr' v
+    show (ValueException _ v) = unsafePerformIO $ torepr' v
 
 instance Exception InterpreterException where
 
 interpreterExceptionToValue :: InterpreterException -> Value
-interpreterExceptionToValue (InterpreterException s) = TextV s
-interpreterExceptionToValue (ValueException v) = v
+interpreterExceptionToValue (InterpreterException _ s) = TextV s
+interpreterExceptionToValue (ValueException _ v) = v
+
 
 
 emptyEnv :: Env
@@ -576,7 +583,7 @@ builtInFF =
     ,("parse-file", bParseFile)
     ,("show-haskell-ast", bShowHaskellAst)
     ,("get-call-stack", getCallStack)
-    ,("format-call-stack", formatCallStack)
+    ,("format-call-stack", bFormatCallStack)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -677,7 +684,9 @@ xSep :: String -> [P.Doc a] -> P.Doc a
 xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 
 raise :: [Value] -> Interpreter Value
-raise [v] = throwM $ ValueException v
+raise [v] = do
+    cs <- readCallStack
+    throwM $ ValueException cs v
 raise _ = error "wrong args to raise"
 
 -- convert a burdock either value to a haskell one
@@ -707,17 +716,35 @@ bShowHaskellAst [FFIValue v] = do
 bShowHaskellAst _ = error $ "wrong args to show-haskell-ast"
     
 getCallStack :: [Value] -> Interpreter Value
-getCallStack [] = do
-    st <- ask
-    pure $ FFIValue $ toDyn $ reverse $ isCallStack st
+getCallStack [] = (FFIValue . toDyn) <$> readCallStack
 getCallStack _ = error $ "wrong args to get-call-stack"
 
-formatCallStack :: [Value] -> Interpreter Value
-formatCallStack [FFIValue cs] = do
-    let hcs :: [SourcePosition]
-        Just hcs = fromDynamic cs
-    pure $ TextV $ unlines $ map show hcs
-formatCallStack _ = error $ "wrong args to format-call-stack"
+bFormatCallStack :: [Value] -> Interpreter Value
+bFormatCallStack [FFIValue cs] = do
+    let Just hcs = fromDynamic cs
+    TextV <$> formatCallStack hcs
+bFormatCallStack _ = error $ "wrong args to format-call-stack"
+
+formatExceptionI :: Bool -> InterpreterException -> Interpreter String
+formatExceptionI includeCalltrace e = do
+    (st,m) <- case e of
+            ValueException st (TextV m) -> pure (st,m)
+            ValueException st m -> (st,) <$> liftIO (torepr' m)
+            InterpreterException st m -> pure (st,m)
+    stf <- if includeCalltrace
+           then ("\ncall trace:\n" ++) <$> formatCallStack st
+           else pure ""
+    pure $ m ++ stf
+
+
+-- todo: something nicer
+formatCallStack :: CallStack -> Interpreter String
+formatCallStack = pure . unlines . map show
+
+readCallStack :: Interpreter CallStack
+readCallStack = do
+    st <- ask
+    pure $ reverse $ isCallStack st
 
 ------------------------------------------------------------------------------
 

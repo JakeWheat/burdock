@@ -72,6 +72,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
     -- clean everything including package databases
     phony "clean-all" $ do
         removeFilesAfter "_build" ["//*"]
+        cmd_ "rm -Rf dist-newstyle"
 
 
     -- clean everything except the package databases, despite
@@ -84,7 +85,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
                            $ filter (not . ("-packages" `isSuffixOf`))
                            $ filter (not . ("." `isPrefixOf`)) bldFiles
         cmd_ "rm -Rf" filesToClean1
-        cmd_ "rm -Rf -dist-newstyle"
+        cmd_ "rm -Rf dist-newstyle"
 
     phony "all" $ do
         need ["_build/bin/burdock-tests"

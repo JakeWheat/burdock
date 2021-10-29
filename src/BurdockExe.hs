@@ -15,23 +15,12 @@ burdock my_script.bur
 running a script written on the command line:
 burdock -c "some source code text"
 
-TODO:
-set test level, works with all the above:
---test-level LEV
-LEV:
-0 = skip
-1 = one line
-2 = show failures
-3 = show all (default)
---run-tests LEV
-LEV:
-0 = none
-1 = direct user code only
-2 = all code not in another package or built in (default)
-3 = all user code including other packages
-4 = include built ins and global/internals (for implementation
-    debugging and troubleshooting)
-TODO: filters on which tests to run
+run a script's tests:
+
+burdock my_script.bur --run-tests
+
+This probably won't work unless my_script.bur usually exits promptly
+
 
 -}
 
@@ -50,7 +39,12 @@ import System.Console.Haskeline (InputT
                                 ,defaultSettings
                                 --,catch
                                 )
-import Control.Exception.Safe (catch, SomeException, displayException)
+import Control.Exception.Safe
+    (catch
+    ,catchAny
+    --,SomeException
+    ,displayException
+    )
 
 
 import Options.Applicative (Parser
@@ -82,6 +76,8 @@ import System.IO (Handle
                  ,stdin
                  ,hGetContents)
 
+import System.Exit (exitFailure)
+
 ------------------------------------------------------------------------------
 
 
@@ -95,16 +91,22 @@ runHandle fp h rTests = do
     src <- hGetContents h
     runSrc (Just fp) rTests src
 
-
 runSrc :: Maybe String -> Bool -> String -> IO ()
 runSrc fnm rTests src = do
     h <- B.newHandle
-    when rTests $ void $ B.runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
-    v <- B.runScript h fnm [] src
-    pv <- B.valueToString v
-    case pv of
-        Nothing -> pure ()
-        Just s -> putStrLn s
+    flip catch (handleEx h) $ do
+        when rTests $ void $ B.runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
+        v <- B.runScript h fnm [] src
+        pv <- B.valueToString v
+        case pv of
+            Nothing -> pure ()
+            Just s -> putStrLn s
+  where
+    handleEx :: B.Handle -> B.InterpreterException -> IO ()
+    handleEx h ex = do
+        x <- B.formatException h True ex
+        putStrLn $ "Error: " ++ x
+        exitFailure
 
 -- repl
 
@@ -115,7 +117,10 @@ process h src = (do
     case pv of
             Nothing -> pure ()
             Just s -> putStrLn s)
-    `catch` (\(e::SomeException) -> putStrLn $ "Error: " ++ displayException e)
+    `catch` (\e -> do
+        x <- B.formatException h True e
+        putStrLn $ "Error: " ++ x)
+    `catchAny` (\e -> putStrLn $ "Error: " ++ displayException e)
 
 repl :: B.Handle -> InputT IO ()
 repl h = go
@@ -185,3 +190,4 @@ main = do
         MyOpts {script = Nothing, file = Nothing, runTests = rt}
             | not isTTY -> runHandle "stdin" stdin rt
             | otherwise -> doRepl
+
