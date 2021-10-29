@@ -38,6 +38,10 @@ module which reexports these
 raise = get-ffi-value("raise")
 haskell-error = get-ffi-value("haskell-error")
 
+get-call-stack = get-ffi-value("get-call-stack")
+format-call-stack = get-ffi-value("format-call-stack")
+
+
 # internals used in the implementation of agdt:
 
 make-variant = get-ffi-value("make-variant")

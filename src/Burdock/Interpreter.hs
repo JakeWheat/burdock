@@ -321,6 +321,7 @@ data InterpreterState =
                      ,isTestInfo :: IORef TestInfo
                      ,isTestResults :: IORef [(String,String,TestResult)]
                      ,isForeignFunctions :: IORef ForeignFunctions
+                     ,isCallStack :: [SourcePosition]
                      }
 type Interpreter = ReaderT InterpreterState IO
 
@@ -484,7 +485,7 @@ emptyInterpreterState = do
         }
     trs <- newIORef []
     ffs <- newIORef []
-    pure $ InterpreterState sysenv scenv provs ti trs ffs
+    pure $ InterpreterState sysenv scenv provs ti trs ffs []
 
 baseEnv :: [(String,Value)]
 baseEnv =
@@ -574,6 +575,8 @@ builtInFF =
     ,("haskell-error", haskellError)
     ,("parse-file", bParseFile)
     ,("show-haskell-ast", bShowHaskellAst)
+    ,("get-call-stack", getCallStack)
+    ,("format-call-stack", formatCallStack)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -703,7 +706,18 @@ bShowHaskellAst [FFIValue v] = do
     pure $ TextV $ ppShow ast
 bShowHaskellAst _ = error $ "wrong args to show-haskell-ast"
     
+getCallStack :: [Value] -> Interpreter Value
+getCallStack [] = do
+    st <- ask
+    pure $ FFIValue $ toDyn $ reverse $ isCallStack st
+getCallStack _ = error $ "wrong args to get-call-stack"
 
+formatCallStack :: [Value] -> Interpreter Value
+formatCallStack [FFIValue cs] = do
+    let hcs :: [SourcePosition]
+        Just hcs = fromDynamic cs
+    pure $ TextV $ unlines $ map show hcs
+formatCallStack _ = error $ "wrong args to format-call-stack"
 
 ------------------------------------------------------------------------------
 
@@ -722,16 +736,18 @@ interp (Iden a) = do
         Nothing -> error $ "identifier not found: " ++ a
 
 
-interp (App _ f es) = do
+interp (App sp f es) = do
     fv <- interp f
     -- special case apps
     if (fv == ForeignFunV "catch-as-either")
-        then catchAsEither es
+        then do
+            -- todo: maintain call stack
+            catchAsEither es
         else do
             -- TODO: refactor to check the value of fv before
             -- evaluating the es?
             vs <- mapM interp es
-            app fv vs
+            local (\m -> m { isCallStack = sp : isCallStack m}) $ app fv vs
 
 -- special case binops
 interp (BinOp _ "is" _) = error $ "'is' test predicate only allowed in check block"
