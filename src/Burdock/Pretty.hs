@@ -95,7 +95,7 @@ expr (Construct e as) =
     pretty "[" <> expr e <> pretty ":"
     <+> nest 2 (commaSep $ map expr as) <> pretty "]"
 
-
+expr (TypeSel ty) = pretty "type(" <> nest 2 (typ ty) <> pretty ")"
     
 binding :: PatName -> Expr -> Doc a
 binding n e =
@@ -117,6 +117,19 @@ whereBlock ts = vsep
     [pretty "where:"
     ,nest 2 (stmts ts)]
 
+
+typ :: Type -> Doc a
+typ (TName nms) = xSep "." $ map pretty nms
+typ (TTuple ts) = pretty "{" <> nest 2 (xSep ";" $ map typ ts) <> pretty "}"
+typ (TRecord fs) = pretty "{" <> nest 2 (xSep "," $ map f fs) <> pretty "}"
+  where
+    f(n,t) = pretty n <+> pretty "::" <+> typ t
+typ (TParam t as) = typ t <> pretty "<" <> nest 2 (xSep "," $ map typ as) <> pretty ">"
+typ (TArrow ts t) = xSep "," (map typ ts) <+> pretty "->" <+> typ t
+typ (TNamedArrow ts t) = pretty "(" <> xSep "," (map f ts) <> pretty ")" <+> pretty "->" <+> typ t
+  where
+    f(n,u) = pretty n <+> pretty "::" <+> typ u
+typ (TParens t) = pretty "(" <> typ t <> pretty ")"
 
 
 -- first line
@@ -165,7 +178,6 @@ stmt (FunDecl pn as e w) =
      [pretty "fun" <+> patName pn <+> parens (commaSep $ map patName as) <> pretty ":"
      ,expr e
      ,maybe mempty whereBlock w]
-
 
 stmt (Provide pis) =
     prettyBlocklike vsep

@@ -3,6 +3,7 @@
 {-# LANGUAGE MultiWayIf #-}
 module Burdock.Parse
     (parseExpr
+    ,parseStmt
     ,parseScript
     ) where
 
@@ -61,6 +62,9 @@ import Burdock.Syntax
 
 parseExpr :: FilePath -> String -> Either String Expr
 parseExpr fn src = parseHelper expr fn src
+
+parseStmt :: FilePath -> String -> Either String Stmt
+parseStmt fn src = parseHelper stmt fn src
 
 parseScript :: FilePath -> String -> Either String Script
 parseScript fn src = parseHelper script fn src
@@ -234,6 +238,7 @@ term = (do
         ,ifE
         ,block
         ,cases
+        ,typeSel
         ,Iden <$> identifier
         ,numE
         ,stringE
@@ -395,6 +400,9 @@ casePat = patTerm
                        as <- parens (commaSep patName)
                        pure $ VariantP Nothing i as
                       ,pure $ IdenP (PatName NoShadow i)]]]
+
+typeSel :: Parser Expr
+typeSel = TypeSel <$> (keyword_ "type" *> parens typ)
 
 
 numE :: Parser Expr
@@ -579,3 +587,54 @@ startsWithExprOrPattern = do
             ,pure $ StmtExpr ex]
         _ -> pure $ StmtExpr ex
 
+typ :: Parser Type
+typ = startsWithIden <|> parensOrNamedArrow <|> ttupleOrRecord
+  where
+    startsWithIden = do
+        i <- identifier
+        ctu i
+    ctu i = do
+        i1 <- choice
+              [(\x -> TName [i,x]) <$> (symbol_ "." *> identifier)
+              ,pure $ TName [i]]
+        choice
+              [TParam i1 <$> (symbol_ "<" *> commaSep1 noarrow <* symbol_ ">")
+              ,(\is r -> TArrow (i1:is) r)
+              <$> (many (symbol_ "," *> noarrow))
+              <*> (symbol_ "->" *> noarrow)
+              ,pure i1]
+    noarrow = parensOrNamedArrow <|> do
+        i <- identifier
+        noarrowctu i
+    noarrowctu i = do
+        i1 <- choice
+              [(\x -> TName [i,x]) <$> (symbol_ "." *> identifier)
+              ,pure $ TName [i]]
+        choice
+              [TParam i1 <$> (symbol_ "<" *> commaSep1 typ <* symbol_ ">")
+              ,pure i1]
+    parensOrNamedArrow = symbol_ "(" *> do
+        i <- identifier
+        choice [do
+                x <- symbol_ "::" *> noarrow
+                xs <- option [] $ symbol_ "," *> (commaSep1 ((,) <$> identifier <*> (symbol_ "::" *> noarrow)))
+                r <- symbol_ ")" *> symbol_ "->" *> noarrow
+                pure $ TNamedArrow ((i,x):xs) r
+               ,do
+                i1 <- ctu i <* symbol_ ")"
+                pure $ TParens i1]
+               
+
+    ttupleOrRecord = symbol_ "{" *> f <* symbol_ "}"
+      where
+        f = do
+            i <- identifier
+            choice
+                [do
+                 t <- symbol_ "::" *> noarrow
+                 ts <- option [] $ symbol_ "," *> commaSep1 ((,) <$> identifier <*> (symbol_ "::" *> noarrow))
+                 pure $ TRecord ((i,t):ts)
+                ,do
+                 i1 <- noarrowctu i
+                 ts <- option [] $ symbol_ ";" *> xSep1 ';' noarrow
+                 pure $ TTuple (i1:ts)]

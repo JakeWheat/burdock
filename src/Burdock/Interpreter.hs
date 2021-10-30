@@ -591,6 +591,12 @@ formatExceptionI includeCallstack e = do
 -- partial idea -> save sources as4 they are parsed, so can refer to them
 -- in later error messages and stuff
 -- todo: track original filenames plus generated unique filenames better
+-- something robust will track repeated loads of the same file
+-- which changes each load
+-- and be able to identify which version of that source a particular
+-- call stack refers to
+-- can think about generating generated names specific to the api, and
+-- to the repl (e.g. repl-line-x for repl instead of unknown-arbitrary-ctr)
 iParseScript :: Maybe FilePath -> String -> Interpreter (Either String (FilePath, Script))
 iParseScript mfn src = do
     fn <- case mfn of
@@ -947,6 +953,8 @@ interp (Construct (Iden "list") es) = do
 
 interp (Construct {}) = error "todo: construct for non lists"
 
+interp (TypeSel {}) = error "todo: typeselector"
+
 makeBList :: [Value] -> Value
 makeBList [] = VariantV "empty" []
 makeBList (x:xs) = VariantV "link" [("first", x),("rest", makeBList xs)]
@@ -1135,7 +1143,7 @@ interpStatement (DataDecl dnm vs whr) = do
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
             $ eqE (App appSourcePos (internalsRef "variant-tag") [Iden "x"]) (Text vnm)
-        callIs (VariantDecl vnm _) = appN ("is-" ++ vnm) [Iden "x"]
+        callIs (VariantDecl vnm _) = App appSourcePos  (Iden $ "is-" ++ vnm) [Iden "x"]
         makeIsDat =
             letDecl ("is-" ++ dnm)
             $ lam ["x"]
@@ -1145,8 +1153,6 @@ interpStatement (DataDecl dnm vs whr) = do
   where
     letDecl nm v = LetDecl (PatName NoShadow nm) v
     lam as e = Lam (map (PatName NoShadow) as) e
-    --letE bs e = Let (flip map bs $ \(b,v) -> (PatName NoShadow b, v)) e
-    appN nm as = App appSourcePos (Iden nm) as
     eqE a b = BinOp a "==" b
     orE a b = BinOp a "or" b
 

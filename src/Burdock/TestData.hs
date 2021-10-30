@@ -15,6 +15,7 @@ import qualified Text.RawString.QQ as R
 
 data TestTree = TestGroup String [TestTree]
               | ExprParseTest String Expr
+              | StmtParseTest String Stmt
               | ScriptParseTest String Script
               | InterpreterTests String String
               | InterpreterTestsFile FilePath
@@ -120,10 +121,33 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
 
     ,("[list:]", Construct (Iden "list") [])
     ,("[list: 1,2,3]", Construct (Iden "list") [Num 1, Num 2, Num 3])
-     
+
+    ,("type(Number)", TypeSel $ TName ["Number"])
+    ,("type(X.Something)"
+     ,TypeSel $ TName ["X","Something"])
+    ,("type({Number; Boolean})"
+     ,TypeSel $ TTuple [TName ["Number"], TName["Boolean"]])
+    ,("type({Number})"
+     ,TypeSel $ TTuple [TName ["Number"]])
+    ,("type(List<Number>)"
+     ,TypeSel $ TParam (TName ["List"]) [TName ["Number"]])
+    ,("type(Stuff<Number, Number>)"
+     ,TypeSel $ TParam (TName ["Stuff"]) [TName ["Number"], TName ["Number"]])
+    ,("type({x :: Number, y :: String})"
+     ,TypeSel $ TRecord [("x", TName ["Number"]),("y", TName ["String"])])
+    ,("type(String, (String -> String) -> String)"
+     ,TypeSel $ TArrow [TName ["String"], TParens (TArrow [TName ["String"]] $ TName ["String"])] $ TName ["String"])
+
+    ,("type(String, String -> String)"
+     ,TypeSel $ TArrow [TName ["String"], TName ["String"]] $ TName ["String"])
+    ,("type(String -> String)"
+     ,TypeSel $ TArrow [TName ["String"]] $ TName ["String"])
+    ,("type((s :: String, t :: String) -> String)"
+     ,TypeSel $ TNamedArrow [("s",TName ["String"]), ("t", TName ["String"])] $ TName ["String"])
     ]
   where
     nm = PatName NoShadow
+
 
 scriptParseTests :: TestTree
 scriptParseTests = TestGroup "scriptParseTests" $ map (uncurry ScriptParseTest)

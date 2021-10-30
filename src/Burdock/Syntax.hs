@@ -67,6 +67,7 @@ data Expr =
     | RecordSel [(String,Expr)]
     | TupleGet Expr Int
     | Construct Expr [Expr]
+    | TypeSel Type
     deriving (Eq,Show,Data)
 
 data Pat = IdenP PatName
@@ -79,3 +80,12 @@ data PatName =
 
 data Shadow = NoShadow | Shadow
           deriving (Eq,Show,Data) 
+
+data Type = TName [String]
+          | TTuple [Type]
+          | TRecord [(String,Type)]
+          | TParam Type [Type]
+          | TArrow [Type] Type
+          | TNamedArrow [(String,Type)] Type
+          | TParens Type
+          deriving (Eq,Show,Data)
