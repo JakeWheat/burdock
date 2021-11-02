@@ -9,6 +9,11 @@ it includes only what's needed to make the system work
 users should import stuff the want to use via the globals or other
 module which reexports these
 
+TODO: split between bootstrap and internals
+bootstrap gets the language working
+
+internals has other stuff that can't go directly into the built-in modules
+   
 |#
 
 # defined in the bootstrap code:

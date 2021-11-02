@@ -821,11 +821,10 @@ interp (Iden a) = do
         Just v -> pure v
         Nothing -> error $ "identifier not found: " ++ a
 
-
 interp (App sp f es) = do
     fv <- interp f
     -- special case apps
-    if (fv == ForeignFunV "catch-as-either")
+    if fv == ForeignFunV "catch-as-either"
         then do
             -- todo: maintain call stack
             catchAsEither es
@@ -899,6 +898,7 @@ interp (DotExpr e f) = do
                                 BoxV vr -> liftIO $ readIORef vr
                                 _ -> pure fv
                       | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
+                                             ++ " " ++ show fs
         _ -> error $ "dot called on non variant: " ++ show v
 
 

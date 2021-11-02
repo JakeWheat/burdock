@@ -402,7 +402,10 @@ casePat = patTerm
                       ,pure $ IdenP (PatName NoShadow i)]]]
 
 typeSel :: Parser Expr
-typeSel = TypeSel <$> (keyword_ "type" *> parens typ)
+typeSel = do
+    keyword_ "type-val"
+    choice [TypeSel <$> parens typ
+           ,pure $ Iden "type-val"]
 
 
 numE :: Parser Expr

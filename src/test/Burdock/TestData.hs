@@ -122,28 +122,29 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("[list:]", Construct (Iden "list") [])
     ,("[list: 1,2,3]", Construct (Iden "list") [Num 1, Num 2, Num 3])
 
-    ,("type(Number)", TypeSel $ TName ["Number"])
-    ,("type(X.Something)"
+    ,("type-val(Number)", TypeSel $ TName ["Number"])
+    ,("type-val(X.Something)"
      ,TypeSel $ TName ["X","Something"])
-    ,("type({Number; Boolean})"
+    ,("type-val({Number; Boolean})"
      ,TypeSel $ TTuple [TName ["Number"], TName["Boolean"]])
-    ,("type({Number})"
+    ,("type-val({Number})"
      ,TypeSel $ TTuple [TName ["Number"]])
-    ,("type(List<Number>)"
+    ,("type-val(List<Number>)"
      ,TypeSel $ TParam (TName ["List"]) [TName ["Number"]])
-    ,("type(Stuff<Number, Number>)"
+    ,("type-val(Stuff<Number, Number>)"
      ,TypeSel $ TParam (TName ["Stuff"]) [TName ["Number"], TName ["Number"]])
-    ,("type({x :: Number, y :: String})"
+    ,("type-val({x :: Number, y :: String})"
      ,TypeSel $ TRecord [("x", TName ["Number"]),("y", TName ["String"])])
-    ,("type(String, (String -> String) -> String)"
+    ,("type-val(String, (String -> String) -> String)"
      ,TypeSel $ TArrow [TName ["String"], TParens (TArrow [TName ["String"]] $ TName ["String"])] $ TName ["String"])
 
-    ,("type(String, String -> String)"
+    ,("type-val(String, String -> String)"
      ,TypeSel $ TArrow [TName ["String"], TName ["String"]] $ TName ["String"])
-    ,("type(String -> String)"
+    ,("type-val(String -> String)"
      ,TypeSel $ TArrow [TName ["String"]] $ TName ["String"])
-    ,("type((s :: String, t :: String) -> String)"
+    ,("type-val((s :: String, t :: String) -> String)"
      ,TypeSel $ TNamedArrow [("s",TName ["String"]), ("t", TName ["String"])] $ TName ["String"])
+    ,("type-val", Iden "type-val")
     ]
   where
     nm = PatName NoShadow

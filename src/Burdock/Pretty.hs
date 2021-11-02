@@ -95,7 +95,7 @@ expr (Construct e as) =
     pretty "[" <> expr e <> pretty ":"
     <+> nest 2 (commaSep $ map expr as) <> pretty "]"
 
-expr (TypeSel ty) = pretty "type(" <> nest 2 (typ ty) <> pretty ")"
+expr (TypeSel ty) = pretty "type-val(" <> nest 2 (typ ty) <> pretty ")"
     
 binding :: PatName -> Expr -> Doc a
 binding n e =
