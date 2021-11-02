@@ -35,7 +35,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             -- blast anything already there away to keep the deps accurate
             -- it's not painfully slow to rebuild because cabal v2 has cached the builds
             cmd_ "rm -Rf" dir
-            cmd_ "cabal install --lib " pkgs "--package-env" dir
+            cmd_ "cabal -j install --lib " pkgs "--package-env" dir
 
     -- todo: separate packages for the tests, the executable and the lib
     phony "install-deps" $ do
@@ -61,7 +61,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             let blddir = output ++ "-build"
             cmd_ "mkdir -p" blddir
             let srcpath = "-i" ++ takeDirectory src
-            cmd_ "ghc -threaded -Wall --make" src "-outputdir=" blddir
+            cmd_ "ghc -threaded -Wall -j --make" src "-outputdir=" blddir
                  "-o" output
                  (maybe [] (\x -> ["-package-env",x]) (ghcPackages opts))
                  (case ghcSrcs opts of
@@ -93,7 +93,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
              ,"_build/bin/DemoFFI"]
 
     phony "build-using-cabal" $
-        cmd_ "cabal build"
+        cmd_ "cabal -j build"
 
     -- todo: use ghc -M to do this better
     let needHsFiles dir = do
@@ -103,8 +103,9 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
 
     "_build/bin/burdock-tests" %> \out -> do
         needHsFiles "src"
-        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"})
-            "src/BurdockTests.hs"
+        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
+                     ,ghcSrcs = ["src"]})
+            "src/test/BurdockTests.hs"
             out
     
     phony "test" $ do
@@ -114,13 +115,15 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
 
     "_build/bin/burdock" %> \out -> do
         needHsFiles "src"
-        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"})
-            "src/BurdockExe.hs"
+        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
+                     ,ghcSrcs = ["src"]})
+            "src/app/BurdockExe.hs"
             out
 
     "_build/bin/DemoFFI" %> \out -> do
         needHsFiles "src"
-        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"})
-            "src/DemoFFI.hs"
+        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
+                     ,ghcSrcs = ["src"]})
+            "src/examples/DemoFFI.hs"
             out
 
