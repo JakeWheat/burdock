@@ -246,8 +246,9 @@ data Value = NumV Scientific
            | BoxV (IORef Value)
            | FFIValue Dynamic
 
--- todo: the rough idea is to convert values back to syntax
--- and pretty them
+-- todo: revert back to automatically derived show
+-- and use torepr' everywhere you want a readable value that
+-- isn't the haskell ast syntax
 instance Show Value where
   show (NumV n) = "NumV " ++ show n
   show (TextV n) = "TextV " ++ show n
@@ -258,6 +259,11 @@ instance Show Value where
   show (BoxV _n) = "BoxV XX" -- ++ show n
   show (FFIValue _v) = "FFIValue"
 
+
+-- needs some work
+-- not even sure value should have an eq instance
+-- because comparing values is not a pure operation in general
+-- so having an eq instance is surely very error prone
 instance Eq Value where
     NumV a == NumV b = a == b
     BoolV a == BoolV b = a == b

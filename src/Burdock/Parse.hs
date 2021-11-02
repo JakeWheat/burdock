@@ -597,25 +597,24 @@ typ = startsWithIden <|> parensOrNamedArrow <|> ttupleOrRecord
         i <- identifier
         ctu i
     ctu i = do
-        i1 <- choice
-              [(\x -> TName [i,x]) <$> (symbol_ "." *> identifier)
-              ,pure $ TName [i]]
+        i1 <- tname i
         choice
               [TParam i1 <$> (symbol_ "<" *> commaSep1 noarrow <* symbol_ ">")
-              ,(\is r -> TArrow (i1:is) r)
+              ,(\is r -> TArrow (TName i1:is) r)
               <$> (many (symbol_ "," *> noarrow))
               <*> (symbol_ "->" *> noarrow)
-              ,pure i1]
+              ,pure $ TName i1]
     noarrow = parensOrNamedArrow <|> do
         i <- identifier
         noarrowctu i
+    tname i = do
+        sfs <- many (symbol_ "." *> identifier)
+        pure (i:sfs)
     noarrowctu i = do
-        i1 <- choice
-              [(\x -> TName [i,x]) <$> (symbol_ "." *> identifier)
-              ,pure $ TName [i]]
+        i1 <- tname i
         choice
               [TParam i1 <$> (symbol_ "<" *> commaSep1 typ <* symbol_ ">")
-              ,pure i1]
+              ,pure $ TName i1]
     parensOrNamedArrow = symbol_ "(" *> do
         i <- identifier
         choice [do

@@ -124,7 +124,9 @@ typ (TTuple ts) = pretty "{" <> nest 2 (xSep ";" $ map typ ts) <> pretty "}"
 typ (TRecord fs) = pretty "{" <> nest 2 (xSep "," $ map f fs) <> pretty "}"
   where
     f(n,t) = pretty n <+> pretty "::" <+> typ t
-typ (TParam t as) = typ t <> pretty "<" <> nest 2 (xSep "," $ map typ as) <> pretty ">"
+typ (TParam t as) =
+    (xSep "." $ map pretty t)
+    <> pretty "<" <> nest 2 (xSep "," $ map typ as) <> pretty ">"
 typ (TArrow ts t) = xSep "," (map typ ts) <+> pretty "->" <+> typ t
 typ (TNamedArrow ts t) = pretty "(" <> xSep "," (map f ts) <> pretty ")" <+> pretty "->" <+> typ t
   where

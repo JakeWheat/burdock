@@ -130,9 +130,9 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("type-val({Number})"
      ,TypeSel $ TTuple [TName ["Number"]])
     ,("type-val(List<Number>)"
-     ,TypeSel $ TParam (TName ["List"]) [TName ["Number"]])
+     ,TypeSel $ TParam ["List"] [TName ["Number"]])
     ,("type-val(Stuff<Number, Number>)"
-     ,TypeSel $ TParam (TName ["Stuff"]) [TName ["Number"], TName ["Number"]])
+     ,TypeSel $ TParam ["Stuff"] [TName ["Number"], TName ["Number"]])
     ,("type-val({x :: Number, y :: String})"
      ,TypeSel $ TRecord [("x", TName ["Number"]),("y", TName ["String"])])
     ,("type-val(String, (String -> String) -> String)"

@@ -84,7 +84,7 @@ data Shadow = NoShadow | Shadow
 data Type = TName [String]
           | TTuple [Type]
           | TRecord [(String,Type)]
-          | TParam Type [Type]
+          | TParam [String] [Type]
           | TArrow [Type] Type
           | TNamedArrow [(String,Type)] Type
           | TParens Type
