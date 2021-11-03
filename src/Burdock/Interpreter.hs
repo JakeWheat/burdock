@@ -687,22 +687,29 @@ builtInFF =
     ,("+", \[NumV a,NumV b] -> pure $ NumV $ a + b)
     ,("-", \[NumV a,NumV b] -> pure $ NumV $ a - b)
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
+
     ,("make-variant", makeVariant)
     ,("variant-tag", variantTag)
-    ,("is-tuple", isVariant "tuple")
-    ,("is-record", isVariant "record")
-    ,("link", listLink)
-    ,("is-empty", isVariant "empty")
-    ,("is-link", isVariant "link")
-    ,("is-nothing", isVariant "nothing")
-    ,("is-Nothing", isAgdt "Nothing" ["nothing"])
-    ,("is-List", isAgdt "List" ["empty", "link"])
-    ,("print", bPrint)
+
     ,("load-module", bLoadModule)
     ,("show-handle-state", bShowHandleState)
+    ,("haskell-error", haskellError)
+
+    ,("is-empty", isVariant "empty")
+    ,("is-link", isVariant "link")
+    ,("is-List", isAgdt "List" ["empty", "link"])
+    ,("link", listLink)
+
+    ,("is-nothing", isVariant "nothing")
+    ,("is-Nothing", isAgdt "Nothing" ["nothing"])
+
+    ,("is-tuple", isVariant "tuple")
+    ,("is-record", isVariant "record")
+
+    ,("print", bPrint)
     ,("torepr", torepr)
     ,("raise", raise)
-    ,("haskell-error", haskellError)
+
     ,("parse-file", bParseFile)
     ,("show-haskell-ast", bShowHaskellAst)
     ,("get-call-stack", getCallStack)
@@ -904,7 +911,7 @@ interp (DotExpr e f) = do
                                 BoxV vr -> liftIO $ readIORef vr
                                 _ -> pure fv
                       | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
-                                             ++ " " ++ show fs
+                                             ++ "\nfields are: " ++ show fs
         _ -> error $ "dot called on non variant: " ++ show v
 
 
