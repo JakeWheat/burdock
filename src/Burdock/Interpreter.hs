@@ -546,7 +546,7 @@ newHandle = do
     h <- Handle <$> newIORef s
     
     void $ runInterp h $ do
-        -- load the _internals.bur module
+        initBootstrapModule
         internalsPth <- liftIO $ getBuiltInModulePath "_internals"
         loadModule False "_internals" internalsPth
 
@@ -695,11 +695,6 @@ builtInFF =
     ,("show-handle-state", bShowHandleState)
     ,("haskell-error", haskellError)
 
-    ,("is-empty", isVariant "empty")
-    ,("is-link", isVariant "link")
-    ,("is-List", isAgdt "List" ["empty", "link"])
-    ,("link", listLink)
-
     ,("is-nothing", isVariant "nothing")
     ,("is-Nothing", isAgdt "Nothing" ["nothing"])
 
@@ -739,12 +734,6 @@ isVariant tg _ = error $ "wrong number of args to is-" ++ tg
 isAgdt :: String -> [String] -> [Value] -> Interpreter Value
 isAgdt _ty tgs [VariantV vt _] = pure $ BoolV (vt `elem` tgs)
 isAgdt ty _ _ = error $ "wrong number of args to is-" ++ ty
-
-
-listLink :: [Value] -> Interpreter Value
-listLink [a,b] = pure $ VariantV "link" [("first", a), ("rest", b)]
-listLink _ = error $ "wrong number of args to link"
-
 
 variantTag :: [Value] -> Interpreter Value
 variantTag [VariantV t _] = pure $ TextV t
@@ -1146,16 +1135,16 @@ interpStatement (DataDecl dnm vs whr) = do
     -- add haskell helper functions for working with lists in burdock
     let makeMake (VariantDecl vnm []) =
             letDecl vnm
-            $ App appSourcePos (internalsRef "make-variant") [Text vnm]
+            $ App appSourcePos (bootstrapRef "make-variant") [Text vnm]
         makeMake (VariantDecl vnm fs) =
             letDecl vnm
             $ lam (map snd fs)
-            $ App appSourcePos (internalsRef "make-variant")
+            $ App appSourcePos (bootstrapRef "make-variant")
                 (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
         makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            $ eqE (App appSourcePos (internalsRef "variant-tag") [Iden "x"]) (Text vnm)
+            $ eqE (App appSourcePos (bootstrapRef "variant-tag") [Iden "x"]) (Text vnm)
         callIs (VariantDecl vnm _) = App appSourcePos  (Iden $ "is-" ++ vnm) [Iden "x"]
         makeIsDat =
             letDecl ("is-" ++ dnm)
@@ -1261,6 +1250,8 @@ interpStatement (Provide pis) = do
 internalsRef :: String -> Expr
 internalsRef nm = DotExpr (DotExpr (DotExpr (Iden "_system") "modules") "_internals") nm
 
+bootstrapRef :: String -> Expr
+bootstrapRef nm = DotExpr (DotExpr (DotExpr (Iden "_system") "modules") "_bootstrap") nm
 
 ------------------------------------------------------------------------------
 
@@ -1292,45 +1283,50 @@ ensureModuleLoaded moduleName moduleFile = do
             | otherwise -> pure ()
         _ -> error $ "_system.modules is not a record??"
 
+-- bootstrap is a special built in module which carefully creates
+-- the minimal in language infrastructure for the language itself to work
+-- a big reason is then to be able to use any part of the language
+-- in the _internals module which is used to bootstrap the built in modules
+-- that uses use, including globals
+
+initBootstrapModule :: Interpreter ()
+initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
+    mapM_ (uncurry letValue)
+        [("true", BoolV True)
+        ,("false", BoolV False)
+        ,("nothing", VariantV "nothing" [])
+        ,("is-nothing", ForeignFunV "is-nothing")
+        ,("is-Nothing", ForeignFunV "is-Nothing")
+        -- todo: complete the boolean (and nothing?) types
+        ,("get-ffi-value", ForeignFunV "get-ffi-value")
+        ,("make-variant", ForeignFunV "make-variant")
+        ,("variant-tag", ForeignFunV "variant-tag")
+        ]
+
+runModule :: String -> String -> Interpreter () -> Interpreter ()        
+runModule filename moduleName f =
+    localScriptEnv (const emptyEnv)
+        $ localTestInfo (\cti -> cti {tiCurrentSource = filename}) $ do
+        f
+        moduleEnv <- askScriptEnv
+        -- get the pis and make a record from the env using them
+        pis <- (\case [] -> [ProvideAll]
+                      x -> x) <$> askScriptProvides
+        let moduleRecord = VariantV "record" $ aliasSomething moduleEnv pis
+            sp = modulePath moduleName
+        modifySystemExtendRecord sp moduleRecord
+
 -- todo: replace the includeGlobals flag with use context
 loadModule :: Bool -> String -> FilePath -> Interpreter ()
 loadModule includeGlobals moduleName fn = do
     src <- liftIO $ readFile fn
-    -- todo: figure out how to do this better
-    -- the module name for build in globals might not always be this?
+    -- auto include globals, revisit when use context added
     let incG = if includeGlobals && moduleName /= "globals"
                then (Include (ImportName "globals") :)
                else id
     (fn',Script ast') <- either error id <$> iParseScript (Just fn) src
     let ast = incG ast'
-    localScriptEnv (const emptyEnv)
-        $ localTestInfo (\cti -> cti {tiCurrentSource = fn'}) $ do
-
-        when (moduleName == "_internals") $ do
-            {- the few bits that cannot be defined directly in the
-               _internals.bur:
-               get-ffi-value, which is used to bind ffi functions
-                  to burdock idens
-               then there's no syntax to define the constant
-               values, and constant variant used to bootstrap things, particularly
-               agdt themselves: true, false, empty and nothing-}
-            mapM_ (uncurry letValue)
-                [("true", BoolV True)
-                ,("false", BoolV False)
-                ,("empty", VariantV "empty" [])
-                ,("nothing", VariantV "nothing" [])
-                ,("get-ffi-value", ForeignFunV "get-ffi-value")
-                ]
-        
-        void $ interpStatements ast
-        moduleEnv <- askScriptEnv
-        -- get the pis
-        pis <- (\case [] -> [ProvideAll]
-                      x -> x) <$> askScriptProvides
-        -- make a record from the env using the pis
-        let moduleRecord = VariantV "record" $ aliasSomething moduleEnv pis
-            sp = modulePath moduleName
-        modifySystemExtendRecord sp moduleRecord
+    runModule fn' moduleName $ void $ interpStatements ast
 
 -- TODO: not really happy with how messy these functions are
 

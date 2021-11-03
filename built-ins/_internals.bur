@@ -4,41 +4,21 @@
 this is the code which is unconditionally loaded in every handle to
 run any burdock
 
-it includes only what's needed to make the system work
+the system first loads the _bootstrap module, which creates the
+minimum bits that are needed for the language itself
 
+then parts of the system which should always be loaded, even when you
+don't load the globals module, go here
+
+todo: factor out bits to the correct built-in module that don't need
+to be necessarily loaded=
+   
 users should import stuff the want to use via the globals or other
 module which reexports these
 
-TODO: split between bootstrap and internals
-bootstrap gets the language working
-
-internals has other stuff that can't go directly into the built-in modules
-   
 |#
 
-# defined in the bootstrap code:
-
-# true = BoolV true
-# false = BoolV false
-# empty = VariantV "empty" []
-# nothing = VariantV "nothing" []
-# get-ffi-value = ForeignFunV get-ffi-value
-
-# also currently hacked in, because didn't come up with syntax for
-# operators yet or how ad hoc polymorphism will work:
-# comparisons: == < > != <= >=
-# arithmetic: + - / *
-# there will be some more added
-# some operators won't be polymorphic
-# and and or are special operators because they don't necessarily
-# evaluate their second arg, and are implmented in the interpreter internals
-# test predicates are syntax and aren't treated as regular operators
-
-# todo: add data types for provides support
-# add data types for testing support?
-# complete the data type support for bool, num, function, foreign function vals,
-#   list, string, tuple, record
-# review which of the below can go in globals instead
+include _bootstrap
 
 raise = get-ffi-value("raise")
 haskell-error = get-ffi-value("haskell-error")
@@ -46,29 +26,12 @@ haskell-error = get-ffi-value("haskell-error")
 get-call-stack = get-ffi-value("get-call-stack")
 format-call-stack = get-ffi-value("format-call-stack")
 
-
-# internals used in the implementation of agdt:
-
-make-variant = get-ffi-value("make-variant")
-variant-tag = get-ffi-value("variant-tag")
-
 # debugging and troubleshooting support
 
 load-module = get-ffi-value("load-module")
 show-handle-state = get-ffi-value("show-handle-state")
 
 # user stuff that's also used in bootstrapping the system
-# todo: review which ones of these can go in globals
-
-is-List = get-ffi-value("is-List")
-is-empty = get-ffi-value("is-empty")
-is-link = get-ffi-value("is-link")
-# empty = uses bootstrap hack
-link = get-ffi-value("link")
-
-is-nothing = get-ffi-value("is-nothing")
-is-Nothing = get-ffi-value("is-Nothing")
-# nothing = uses bootstrap hack
 
 is-tuple = get-ffi-value("is-tuple")
 is-record = get-ffi-value("is-record")
@@ -82,6 +45,11 @@ catch-as-either = get-ffi-value("catch-as-either")
 data Either:
   | left(v)
   | right(v)
+end
+
+data List:
+  | link(first,rest)
+  | empty
 end
 
 # if tests are run, automatically print the results
