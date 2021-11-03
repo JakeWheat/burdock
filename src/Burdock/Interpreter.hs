@@ -534,28 +534,22 @@ newHandle :: IO Handle
 newHandle = do
     -- create a completely empty state
     s <- emptyInterpreterState
-
     -- add the built in ffi functions
     modifyIORef (isForeignFunctions s) (builtInFF ++)
-
     -- bootstrap the getffivalue function and other initial values
     -- including the _system thing
     -- temp: this is what will mostly be factored into _internals and globals
     modifyIORef (isSystemEnv s) (baseEnv ++)
-
     h <- Handle <$> newIORef s
-    
-    void $ runInterp h $ do
+    runInterp h $ do
         initBootstrapModule
         internalsPth <- liftIO $ getBuiltInModulePath "_internals"
         loadModule False "_internals" internalsPth
-
         -- for now, include globals module, later this will depend
         -- on if a use context is used
         -- todo: write some tests to show the system works when you don't load
         -- the globals module explicitly or via include globals
-        interpStatement (Include (ImportName "globals"))
-        
+        void $ interpStatement (Include (ImportName "globals"))
     pure h
     
 
@@ -689,17 +683,17 @@ builtInFF =
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
 
     ,("make-variant", makeVariant)
-    ,("variant-tag", variantTag)
+    ,("is-variant", isVariant)
 
     ,("load-module", bLoadModule)
     ,("show-handle-state", bShowHandleState)
     ,("haskell-error", haskellError)
 
-    ,("is-nothing", isVariant "nothing")
-    ,("is-Nothing", isAgdt "Nothing" ["nothing"])
+    ,("is-nothing", isNothing)
+    ,("is-Nothing", isNothing)
 
-    ,("is-tuple", isVariant "tuple")
-    ,("is-record", isVariant "record")
+    ,("is-tuple", isTuple)
+    ,("is-record", isRecord)
 
     ,("print", bPrint)
     ,("torepr", torepr)
@@ -719,25 +713,34 @@ getFFIValue _ = error "wrong args to get-ffi-value"
     
 
 makeVariant :: [Value] -> Interpreter Value
-makeVariant (TextV nm:as) =
-    VariantV nm <$> f as
+makeVariant (TextV nm : as) =
+    pure $ VariantV nm (f as)
   where
-    f [] = pure []
-    f (TextV fnm : v : as') = ((fnm,v):) <$> f as'
+    f [] = []
+    f (TextV fnm : v : as') = (fnm,v): f as'
     f x = error $ "wrong args to make-variant: " ++ show x
 makeVariant x = error $ "wrong args to make-variant: " ++ show x
 
-isVariant :: String -> [Value] -> Interpreter Value
-isVariant tg [VariantV vt _] = pure $ BoolV $ tg == vt
-isVariant tg _ = error $ "wrong number of args to is-" ++ tg
+isVariant :: [Value] -> Interpreter Value
+isVariant [TextV nm, VariantV vt _] = pure $ BoolV $ nm == vt
+isVariant [TextV _nm, _] = pure $ BoolV False
+isVariant _ = error $ "wrong args to is-variant"
 
-isAgdt :: String -> [String] -> [Value] -> Interpreter Value
-isAgdt _ty tgs [VariantV vt _] = pure $ BoolV (vt `elem` tgs)
-isAgdt ty _ _ = error $ "wrong number of args to is-" ++ ty
+isNothing :: [Value] -> Interpreter Value
+isNothing [VariantV "nothing" _] = pure $ BoolV True
+isNothing [_] = pure $ BoolV False
+isNothing _ = error $ "wrong args to is-nothing/is-Nothing"
 
-variantTag :: [Value] -> Interpreter Value
-variantTag [VariantV t _] = pure $ TextV t
-variantTag _ = pure $ VariantV "nothing" []
+isTuple :: [Value] -> Interpreter Value
+isTuple [VariantV "tuple" _] = pure $ BoolV True
+isTuple [_] = pure $ BoolV False
+isTuple _ = error $ "wrong args to is-tuple"
+
+isRecord :: [Value] -> Interpreter Value
+isRecord [VariantV "record" _] = pure $ BoolV True
+isRecord [_] = pure $ BoolV False
+isRecord _ = error $ "wrong args to is-record"
+
 
 bPrint :: [Value] -> Interpreter Value
 bPrint [v] = do
@@ -803,7 +806,6 @@ bFormatCallStack [FFIValue cs] = do
     let Just hcs = fromDynamic cs
     TextV <$> formatCallStack hcs
 bFormatCallStack _ = error $ "wrong args to format-call-stack"
-
 
 
 
@@ -915,23 +917,26 @@ interp (Cases _ty e cs els) = do
     v <- interp e
     matchb v cs
   where
-    matchb v ((p,ce) : cs') =
-        case matches p v ce of
+    matchb v ((p,ce) : cs') = do
+        x <- matches p v ce
+        case x of
             Just f -> f
             Nothing -> matchb v cs'
     matchb v [] = case els of
                       Just ee -> interp ee
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
-    -- return a maybe let which provides the bindings needed
-    -- todo: instead of using last ts, look up the tag for the pattern
-    -- to match the whole ts, by using some modification of the tag as an identifier
-    -- this will handle modules and aliases and stuff
-    matches (IdenP (PatName _ s)) (VariantV tag []) ce | tag == s = Just $ interp ce
-    -- todo: ignores the qualifier if there is one
-    matches (VariantP _ s nms) (VariantV tag fs) ce | tag == s = Just $ do
-        let letvs = zipWith (\(PatName _ n) (_,v) -> (n,v)) nms fs
-        localScriptEnv (extendEnv letvs) $ interp ce
-    matches _ _  _ = Nothing
+    matches (IdenP (PatName _ s)) v ce = doMatch s [] v ce
+    matches (VariantP _ s nms) v ce = doMatch s nms v ce
+    doMatch s nms (VariantV tag fs) ce = do
+        pat <- interp (Iden $ "_pattern-" ++ s)
+        case pat of
+            TextV nm ->
+                if nm == tag
+                then let letvs = zipWith (\(PatName _ n) (_,v) -> (n,v)) nms fs
+                     in pure $ Just $ localScriptEnv (extendEnv letvs) $ interp ce
+                else pure Nothing
+            _ -> error $ "pattern lookup returned " ++ show pat
+    doMatch _ _ _ _ = pure Nothing
 
 interp (TupleSel es) = do
     vs <- mapM interp es
@@ -999,6 +1004,13 @@ catchAsEither [e] = do
     ca f = catchAny f (pure . Left . TextV . show)
 catchAsEither _ = error $ "wrong args to catch as either"
 
+{-
+errorWithCallStack :: String -> Interpreter a
+errorWithCallStack msg = do
+    cs <- readCallStack
+    csf <- formatCallStack cs
+    error $ msg ++ "\nCALLSTACK:\n" ++ csf ++ "\n-------"
+-}
 
 ---------------------------------------
 
@@ -1026,6 +1038,8 @@ interpStatements [] = pure $ VariantV "nothing" []
 
 
 interpStatement :: Stmt -> Interpreter Value
+
+-- interpStatement x | trace ("interp: " ++ show x) False = undefined
 
 interpStatement (RecDecl {}) = error $ "internal error, rec decl not captured by letrec desugaring"
 interpStatement (FunDecl {}) = error $ "internal error, fun decl not captured by letrec desugaring"
@@ -1124,38 +1138,35 @@ an is-x function for each variant
 an is-dat function for the data type
 a make function for each variant, with the name of the variant, e.g.
 pt(...)
+a support binding for pattern matching variants, for each variant x:
+_pattern-x = ...
 
-TODO: use iden + tag value to identify variants
 
 -}
 
 interpStatement (DataDecl dnm vs whr) = do
-    -- make them call make variant
-    -- pass a list
-    -- add haskell helper functions for working with lists in burdock
-    let makeMake (VariantDecl vnm []) =
-            letDecl vnm
-            $ App appSourcePos (bootstrapRef "make-variant") [Text vnm]
-        makeMake (VariantDecl vnm fs) =
-            letDecl vnm
-            $ lam (map snd fs)
-            $ App appSourcePos (bootstrapRef "make-variant")
-                (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
-        makeIs (VariantDecl vnm _) = 
+    let makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            $ eqE (App appSourcePos (bootstrapRef "variant-tag") [Iden "x"]) (Text vnm)
-        callIs (VariantDecl vnm _) = App appSourcePos  (Iden $ "is-" ++ vnm) [Iden "x"]
+            $ App appSourcePos (bootstrapRef "is-variant") [Text vnm, Iden "x"]
+        callIs (VariantDecl vnm _) = App appSourcePos (Iden $ "is-" ++ vnm) [Iden "x"]
         makeIsDat =
             letDecl ("is-" ++ dnm)
             $ lam ["x"]
             $ foldl1 orE $ map callIs vs
         chk = maybe [] (\w -> [Check (Just dnm) w]) whr
-    interpStatements (map makeMake vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
+    interpStatements (concatMap makeV vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
   where
+    makeV :: VariantDecl -> [Stmt]
+    makeV (VariantDecl vnm fs) =
+        [letDecl vnm
+         $ (if null fs then id else lam (map snd fs))
+         $ App appSourcePos (bootstrapRef "make-variant")
+                (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
+        ,letDecl ("_pattern-" ++ vnm) $ Text vnm
+        ]
     letDecl nm v = LetDecl (PatName NoShadow nm) v
     lam as e = Lam (map (PatName NoShadow) as) e
-    eqE a b = BinOp a "==" b
     orE a b = BinOp a "or" b
 
 ---------------------------------------
@@ -1300,7 +1311,7 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
         -- todo: complete the boolean (and nothing?) types
         ,("get-ffi-value", ForeignFunV "get-ffi-value")
         ,("make-variant", ForeignFunV "make-variant")
-        ,("variant-tag", ForeignFunV "variant-tag")
+        ,("is-variant", ForeignFunV "is-variant")
         ]
 
 runModule :: String -> String -> Interpreter () -> Interpreter ()        

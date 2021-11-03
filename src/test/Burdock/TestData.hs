@@ -17,7 +17,6 @@ data TestTree = TestGroup String [TestTree]
               | ExprParseTest String Expr
               | StmtParseTest String Stmt
               | ScriptParseTest String Script
-              | InterpreterTests String String
               | InterpreterTestsFile FilePath
 
 testdata :: TestTree

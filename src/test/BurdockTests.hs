@@ -29,7 +29,6 @@ makeTests (TestGroup nm ts) = T.testGroup nm <$> mapM makeTests ts
 makeTests (ExprParseTest src ex) = pure $ makeParseTest parseExpr prettyExpr src ex
 makeTests (StmtParseTest src ex) = pure $ makeParseTest parseStmt prettyStmt src ex
 makeTests (ScriptParseTest src ex) = pure $ makeParseTest parseScript prettyScript src ex
-makeTests (InterpreterTests _nm src) = makeInterpreterTest src
 makeTests (InterpreterTestsFile fn) = makeInterpreterFileTest fn
 
 ------------------------------------------------------------------------------
@@ -47,25 +46,6 @@ makeParseTest parse pretty src expected = T.testCase src $ do
     let printed = pretty got
     let roundtrip = either error rmsp $ parse "" printed
     T.assertEqual "parse pretty roundtrip" expected roundtrip
-
-makeInterpreterTest :: String -> IO T.TestTree
-makeInterpreterTest src = catch makeIt $ \ex ->
-    pure $ T.testCase (take 10 src) $ T.assertFailure $ show (ex :: SomeException)
-  where
-    makeIt = do
-        h <- newHandle
-        _ <- runScript h Nothing []
-             "_system.modules._internals.set-auto-print-test-results(false)\n\
-             \_system.modules._internals.set-auto-run-tests(true)"
-        _ <- runScript h Nothing [] src
-        trs <- getTestResults h
-        
-        let ts = flip map trs $ \(modName, cbs) ->
-                T.testGroup modName $ flip map cbs $ \(CheckBlockResult cnm cts) ->
-                T.testGroup cnm $ flip map cts $ \case
-                    TestPass nm -> T.testCase nm $ T.assertBool "" True
-                    TestFail nm msg -> T.testCase nm $ T.assertBool msg False
-        pure $ T.testGroup (take 10 src) ts
 
 makeInterpreterFileTest :: FilePath -> IO T.TestTree
 makeInterpreterFileTest fn = catch makeIt $ \ex -> do

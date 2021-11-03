@@ -48,7 +48,7 @@ data Either:
 end
 
 data List:
-  | link(first,rest)
+  | link(first, rest)
   | empty
 end
 

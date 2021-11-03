@@ -17,7 +17,6 @@ provide:
   raise,
   catch-as-either,
 
-
   print,
   torepr,
   
@@ -26,6 +25,9 @@ provide:
   is-link,
   empty,
   link,
+  # todo: make this automagical
+  _pattern-empty,
+  _pattern-link,
 
   is-nothing,
   is-Nothing,

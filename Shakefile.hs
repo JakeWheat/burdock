@@ -68,6 +68,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
                       [] -> []
                       x -> ["-i" ++ intercalate ":" x])
                  srcpath
+                 -- "-fprof-auto -fprof-cafs"
 
     -- clean everything including package databases
     phony "clean-all" $ do
