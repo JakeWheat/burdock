@@ -927,9 +927,11 @@ interp (Cases _ty e cs els) = do
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
     matches (CaseBinding s nms) v ce = doMatch s nms v ce
     doMatch s' nms (VariantV tag fs) ce = do
-        -- todo: lookup the full path
-        let s = last s'
-        caseName <- interp (Iden $ "_casepattern-" ++ s)
+        let s = f s'
+            f [] = []
+            f [x] = ["_casepattern-" ++ x]
+            f (x:xs) = x : f xs
+        caseName <- interp $ makeDotPathExpr s
         case caseName of
             TextV nm ->
                 if nm == tag
