@@ -50,8 +50,8 @@ expr (Iden n) = pretty n
 expr (Parens e) = parens (expr e)
 expr (App _ e es) = expr e <> parens (commaSep $ map expr es)
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
-expr (Lam bs e) = prettyBlocklike sep
-    [pretty "lam" <> parens (commaSep $ map binding bs) <> pretty ":"
+expr (Lam fh e) = prettyBlocklike sep
+    [pretty "lam" <> funHeader fh <> pretty ":"
     ,expr e]
 expr (Let bs e) = prettyBlocklike sep
     [pretty "let" <+> bs' <> pretty ":"
@@ -176,9 +176,9 @@ stmt (DataDecl nm vs w) =
                  <+> pretty x
 
 stmt (RecDecl n e) = pretty "rec" <+> bindExpr n e
-stmt (FunDecl pn as e w) =
+stmt (FunDecl pn hdr e w) =
     prettyBlocklike sep
-     [pretty "fun" <+> binding pn <+> parens (commaSep $ map binding as) <> pretty ":"
+     [pretty "fun" <+> binding pn <> funHeader hdr <> pretty ":"
      ,expr e
      ,maybe mempty whereBlock w]
 
@@ -192,6 +192,9 @@ stmt (IncludeFrom a pis) =
          [pretty "include" <+> pretty "from" <+> pretty a <> pretty ":"
          ,nest 2 $ commaSep $ map provideItem pis]
 stmt (Import is a) = pretty "import" <+> importSource is <+> pretty "as" <+> pretty a
+
+funHeader :: FunHeader -> Doc a
+funHeader (FunHeader _ as _) =  parens (commaSep $ map binding as)
 
 provideItem :: ProvideItem -> Doc a
 provideItem ProvideAll = pretty "*"

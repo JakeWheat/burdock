@@ -863,7 +863,7 @@ interp (BinOp e0 op e1) = do
 
 interp (Lam ps e) = do
     env <- askEnv
-    pure $ FunV (map bindingName ps) e env
+    pure $ FunV (map bindingName $ funHeaderArgs ps) e env
 
 interp (Let bs e) = do
     let newEnv [] = interp e
@@ -974,6 +974,9 @@ makeBList (x:xs) = VariantV "link" [("first", x),("rest", makeBList xs)]
 bindingName :: Binding -> String
 bindingName (NameBinding _ nm _) = nm
 
+funHeaderArgs :: FunHeader -> [Binding]
+funHeaderArgs (FunHeader _ as _) = as
+
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =
     case fv of
@@ -1026,9 +1029,9 @@ interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
     interpStatements (doLetRec recbs ++ chks ++ ss')
   where
     getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
-    getRecs accdecls accchks (FunDecl nm args bdy whr : ss') =
+    getRecs accdecls accchks (FunDecl nm fh bdy whr : ss') =
         let accchks' = maybe accchks (\w -> Check (Just $ bindingName nm) w : accchks) whr
-        in getRecs ((nm, Lam args bdy):accdecls) accchks' ss'
+        in getRecs ((nm, Lam fh bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
 -- the interpreter for all other statements don't need access to the
@@ -1168,9 +1171,11 @@ interpStatement (DataDecl dnm vs whr) = do
                 (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
         ,letDecl ("_casepattern-" ++ vnm) $ Text vnm
         ]
-    letDecl nm v = LetDecl (NameBinding NoShadow nm Nothing) v
-    lam as e = Lam (map (\x -> NameBinding NoShadow x Nothing) as) e
+    letDecl nm v = LetDecl (mnm nm) v
+    lam as e = Lam (fh $ map mnm as) e
+    fh as = FunHeader [] as Nothing
     orE a b = BinOp a "or" b
+    mnm x = NameBinding NoShadow x Nothing
 
 ---------------------------------------
 
@@ -1459,7 +1464,7 @@ doLetRec bs =
         assigned = map makeAssign bs
     in vars ++ assigned
   where
-    makeVar (v,_) = VarDecl v $ Lam []
+    makeVar (v,_) = VarDecl v $ Lam (FunHeader [] [] Nothing)
         $ App appSourcePos (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
     makeAssign (b,v) = SetVar (bindingName b) v

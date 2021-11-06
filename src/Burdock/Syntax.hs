@@ -24,13 +24,17 @@ data Stmt =
     | RecDecl Binding Expr
     | FunDecl
         Binding -- name
-        [Binding] -- args
+        FunHeader
         Expr -- body
         (Maybe [Stmt]) -- test block
     | Provide [ProvideItem]
     | Import ImportSource String
     | Include ImportSource
     | IncludeFrom String [ProvideItem]
+    deriving (Eq,Show,Data)
+
+-- ty params args return ann
+data FunHeader = FunHeader [Type] [Binding] (Maybe Type)
     deriving (Eq,Show,Data)
 
 data VariantDecl = VariantDecl String [(Ref,String)]
@@ -57,7 +61,7 @@ data Expr =
     | If [(Expr,Expr)] (Maybe Expr)
     | App SourcePosition Expr [Expr]
     | BinOp Expr String Expr
-    | Lam [Binding] Expr
+    | Lam FunHeader Expr
     | Let [(Binding,Expr)] Expr
     | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]

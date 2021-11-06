@@ -292,7 +292,7 @@ binOpSym = choice ([symbol "+"
 
 
 lamE :: Parser Expr
-lamE = Lam <$> (keyword_ "lam" *> parens (commaSep binding) <* symbol_ ":")
+lamE = Lam <$> (keyword_ "lam" *> funHeader <* symbol_ ":")
            <*> (expr <* keyword_ "end")
 
 binding :: Parser Binding
@@ -487,7 +487,7 @@ recDecl = uncurry RecDecl <$> (keyword_ "rec" *> bindExpr)
 funDecl :: Parser Stmt
 funDecl = FunDecl
     <$> (keyword "fun" *> binding)
-    <*> parens (commaSep binding)
+    <*> funHeader
     <*> (symbol_ ":" *> (unwrapSingle <$>
          (Block <$> some stmt)))
     <*> (boptional whereBlock <* keyword_ "end")
@@ -495,6 +495,9 @@ funDecl = FunDecl
   where
       unwrapSingle (Block [StmtExpr (a)]) = a
       unwrapSingle x = x
+
+funHeader :: Parser FunHeader
+funHeader = FunHeader [] <$> parens (commaSep binding) <*> pure Nothing
 
 whereBlock :: Parser [Stmt]
 whereBlock = keyword_ "where" *> symbol_ ":" *> many stmt

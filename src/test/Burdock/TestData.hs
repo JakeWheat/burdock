@@ -39,10 +39,10 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("a + b", BinOp (Iden "a") "+" (Iden "b"))
     ,("a + b + c", BinOp (BinOp (Iden "a") "+" (Iden "b")) "+" (Iden "c"))
 
-    ,("lam(): 2 end", Lam [] (Num 2))
-    ,("lam(x): x + 1 end", Lam [nm "x"] (BinOp (Iden "x") "+" (Num 1)))
+    ,("lam(): 2 end", lam [] (Num 2))
+    ,("lam(x): x + 1 end", lam ["x"] (BinOp (Iden "x") "+" (Num 1)))
     ,("lam(x, y): x - y end"
-     ,Lam [nm "x",nm "y"] (BinOp (Iden "x") "-" (Iden "y")))
+     ,lam ["x","y"] (BinOp (Iden "x") "-" (Iden "y")))
 
     ,("let x=3,y=4: x + y end"
      , Let [(nm "x", Num 3)
@@ -147,6 +147,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ]
   where
     nm x = NameBinding NoShadow x Nothing
+    lam as = Lam (FunHeader [] (map nm as) Nothing)
 
 
 scriptParseTests :: TestTree
@@ -222,21 +223,22 @@ end
      ,Script [DataDecl "Point" [VariantDecl "pt" []] Nothing])
 
     ,("fun f(a): a + 1 end"
-     ,Script[FunDecl (NameBinding NoShadow "f" Nothing) [nm "a"] (BinOp (Iden "a") "+" (Num 1)) Nothing])
+     ,Script[FunDecl (nm "f") (fh ["a"]) (BinOp (Iden "a") "+" (Num 1)) Nothing])
 
     ,("fun f(a):\n\
       \  a = 1\n\
       \  a + 1\n\
-      \end", Script [FunDecl (NameBinding NoShadow "f" Nothing)
-                        [nm "a"] (Block [LetDecl (nm "a") (Num 1)
-                                        ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing])
+      \end", Script [FunDecl (nm "f")
+                        (fh ["a"])
+                        (Block [LetDecl (nm "a") (Num 1)
+                               ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing])
     ,("fun double(n):\n\
       \  n + n\n\
       \where:\n\
       \  double(10) is 20\n\
       \  double(15) is 30\n\
       \end"
-     ,Script [FunDecl (NameBinding NoShadow "double" Nothing) [nm "n"] (BinOp (Iden "n") "+" (Iden "n"))
+     ,Script [FunDecl (nm "double") (fh ["n"]) (BinOp (Iden "n") "+" (Iden "n"))
       (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [Num 10]) "is" (Num 20)
            ,StmtExpr $ BinOp (App Nothing (Iden "double") [Num 15]) "is" (Num 30)])])
 
@@ -247,7 +249,7 @@ end
       \  end"
 
      ,Script [RecDecl (nm "fact")
-            $ Lam [nm "x"] $
+            $ Lam (fh ["x"]) $
                     If [(BinOp (Iden "x") "==" (Num 0), Num 1)]
                     (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [BinOp (Iden "x") "-" (Num 1)])))
             ])
@@ -316,6 +318,7 @@ end
     ]
   where
     nm x = NameBinding NoShadow x Nothing
+    fh as = FunHeader [] (map nm as) Nothing
 
 interpreterTests :: TestTree
 interpreterTests =
