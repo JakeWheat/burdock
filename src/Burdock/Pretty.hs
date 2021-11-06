@@ -95,7 +95,8 @@ expr (Construct e as) =
     pretty "[" <> expr e <> pretty ":"
     <+> nest 2 (commaSep $ map expr as) <> pretty "]"
 
-expr (TypeSel ty) = pretty "type-val(" <> nest 2 (typ ty) <> pretty ")"
+expr (AssertTypeCompat e ty) =
+    pretty "assert-type-compat(" <> nest 2 (expr e <+> pretty "::" <+> typ ty) <> pretty ")"
     
 bindExpr :: Binding -> Expr -> Doc a
 bindExpr n e =

@@ -71,7 +71,7 @@ data Expr =
     | RecordSel [(String,Expr)]
     | TupleGet Expr Int
     | Construct Expr [Expr]
-    | TypeSel Type
+    | AssertTypeCompat Expr Type
     deriving (Eq,Show,Data)
 
 data CaseBinding = CaseBinding [String] [Binding]

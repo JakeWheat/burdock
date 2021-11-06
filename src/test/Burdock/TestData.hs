@@ -121,29 +121,30 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("[list:]", Construct (Iden "list") [])
     ,("[list: 1,2,3]", Construct (Iden "list") [Num 1, Num 2, Num 3])
 
-    ,("type-val(Number)", TypeSel $ TName ["Number"])
-    ,("type-val(X.Something)"
-     ,TypeSel $ TName ["X","Something"])
-    ,("type-val({Number; Boolean})"
-     ,TypeSel $ TTuple [TName ["Number"], TName["Boolean"]])
-    ,("type-val({Number})"
-     ,TypeSel $ TTuple [TName ["Number"]])
-    ,("type-val(List<Number>)"
-     ,TypeSel $ TParam ["List"] [TName ["Number"]])
-    ,("type-val(Stuff<Number, Number>)"
-     ,TypeSel $ TParam ["Stuff"] [TName ["Number"], TName ["Number"]])
-    ,("type-val({x :: Number, y :: String})"
-     ,TypeSel $ TRecord [("x", TName ["Number"]),("y", TName ["String"])])
-    ,("type-val(String, (String -> String) -> String)"
-     ,TypeSel $ TArrow [TName ["String"], TParens (TArrow [TName ["String"]] $ TName ["String"])] $ TName ["String"])
+    ,("assert-type-compat(x :: Number)"
+     ,AssertTypeCompat (Iden "x") (TName ["Number"]))
+    ,("assert-type-compat(x :: X.Something)"
+     ,AssertTypeCompat (Iden "x") (TName ["X","Something"]))
+    ,("assert-type-compat(x :: {Number; Boolean})"
+     ,AssertTypeCompat (Iden "x") (TTuple [TName ["Number"], TName["Boolean"]]))
+    ,("assert-type-compat(x :: {Number})"
+     ,AssertTypeCompat (Iden "x") (TTuple [TName ["Number"]]))
+    ,("assert-type-compat(x :: List<Number>)"
+     ,AssertTypeCompat (Iden "x") (TParam ["List"] [TName ["Number"]]))
+    ,("assert-type-compat(x :: Stuff<Number, Number>)"
+     ,AssertTypeCompat (Iden "x") (TParam ["Stuff"] [TName ["Number"], TName ["Number"]]))
+    ,("assert-type-compat(x :: {x :: Number, y :: String})"
+     ,AssertTypeCompat (Iden "x") (TRecord [("x", TName ["Number"]),("y", TName ["String"])]))
+    ,("assert-type-compat(x :: String, (String -> String) -> String)"
+     ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"], TParens (TArrow [TName ["String"]] $ TName ["String"])] $ TName ["String"]))
 
-    ,("type-val(String, String -> String)"
-     ,TypeSel $ TArrow [TName ["String"], TName ["String"]] $ TName ["String"])
-    ,("type-val(String -> String)"
-     ,TypeSel $ TArrow [TName ["String"]] $ TName ["String"])
-    ,("type-val((s :: String, t :: String) -> String)"
-     ,TypeSel $ TNamedArrow [("s",TName ["String"]), ("t", TName ["String"])] $ TName ["String"])
-    ,("type-val", Iden "type-val")
+    ,("assert-type-compat(x :: String, String -> String)"
+     ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"], TName ["String"]] $ TName ["String"]))
+    ,("assert-type-compat(x :: String -> String)"
+     ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"]] $ TName ["String"]))
+    ,("assert-type-compat(x :: (s :: String, t :: String) -> String)"
+     ,AssertTypeCompat (Iden "x") (TNamedArrow [("s",TName ["String"]), ("t", TName ["String"])] $ TName ["String"]))
+    ,("assert-type-compat", Iden "assert-type-compat")
     ]
   where
     nm x = NameBinding NoShadow x Nothing

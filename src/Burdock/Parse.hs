@@ -238,7 +238,7 @@ term = (do
         ,ifE
         ,block
         ,cases
-        ,typeSel
+        ,assertTypeCompat
         ,Iden <$> identifier
         ,numE
         ,stringE
@@ -379,11 +379,11 @@ caseBinding = CaseBinding <$> nm <*> (option [] caseArgs)
         pure (i:sfs)
     caseArgs = parens (commaSep1 binding)
 
-typeSel :: Parser Expr
-typeSel = do
-    keyword_ "type-val"
-    choice [TypeSel <$> parens typ
-           ,pure $ Iden "type-val"]
+assertTypeCompat :: Parser Expr
+assertTypeCompat = do
+    keyword_ "assert-type-compat"
+    choice [uncurry AssertTypeCompat <$> parens ((,) <$> expr <*> (symbol_ "::" *> typ))
+           ,pure $ Iden "assert-type-compat"]
 
 
 numE :: Parser Expr

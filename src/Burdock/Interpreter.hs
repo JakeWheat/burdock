@@ -963,7 +963,7 @@ interp (Construct (Iden "list") es) = do
 
 interp (Construct {}) = error "todo: construct for non lists"
 
-interp (TypeSel {}) = error "todo: typeselector"
+interp (AssertTypeCompat {}) = error "todo: assert-type-compat"
 
 makeBList :: [Value] -> Value
 makeBList [] = VariantV "empty" []
