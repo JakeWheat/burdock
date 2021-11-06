@@ -22,6 +22,7 @@ data TestTree = TestGroup String [TestTree]
 testdata :: TestTree
 testdata = TestGroup "allTests"
     [exprParseTests
+    ,statementParseTests
     ,scriptParseTests
     ,interpreterTests
     ]
@@ -150,6 +151,116 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     nm x = NameBinding NoShadow x Nothing
     lam as = Lam (FunHeader [] (map nm as) Nothing)
 
+statementParseTests :: TestTree
+statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTest)
+    [("var a = 5"
+     ,VarDecl (nm "a") (Num 5))
+    ,("a := 6"
+     ,SetVar "a" (Num 6))
+    ,("data BTree:\n\
+      \  | node(value, left, right)\n\
+      \  | leaf(value)\n\
+      \end", DataDecl "BTree" [] [VariantDecl "node" [(Con, "value"), (Con, "left"), (Con, "right")]
+                                         ,VariantDecl "leaf" [(Con, "value")]] Nothing)
+
+    ,("data MyEnum:\n\
+      \  | node(left, right)\n\
+      \  | leaf\n\
+      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, "left"), (Con, "right")]
+                    ,VariantDecl "leaf" []] Nothing)
+
+    ,("data MyEnum:\n\
+      \  | node(left, right)\n\
+      \  | leaf()\n\
+      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, "left"), (Con, "right")]
+                    ,VariantDecl "leaf" []] Nothing)
+
+    ,("data Point:\n\
+      \  | pt(x, y)\n\
+      \end", DataDecl "Point" [] [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing)
+
+    ,("data Point: pt(x, y) end"
+     ,DataDecl "Point" [] [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing)
+
+    ,("data Point: pt() end"
+     ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
+
+    ,("data Point: pt end"
+     ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
+
+    ,("fun f(a): a + 1 end"
+     ,FunDecl (nm "f") (fh ["a"]) (BinOp (Iden "a") "+" (Num 1)) Nothing)
+
+    ,("fun f(a):\n\
+      \  a = 1\n\
+      \  a + 1\n\
+      \end", FunDecl (nm "f")
+                        (fh ["a"])
+                        (Block [LetDecl (nm "a") (Num 1)
+                               ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing)
+    ,("fun double(n):\n\
+      \  n + n\n\
+      \where:\n\
+      \  double(10) is 20\n\
+      \  double(15) is 30\n\
+      \end"
+     ,FunDecl (nm "double") (fh ["n"]) (BinOp (Iden "n") "+" (Iden "n"))
+      (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 10]) "is" (Num 20)
+           ,StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 15]) "is" (Num 30)]))
+
+    ,("rec fact = lam(x):\n\
+      \    if x == 0: 1\n\
+      \    else: x * fact(x - 1)\n\
+      \    end\n\
+      \  end"
+
+     ,RecDecl (nm "fact")
+            $ Lam (fh ["x"]) $
+                    If [(BinOp (Iden "x") "==" (Num 0), Num 1)]
+                    (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [] [BinOp (Iden "x") "-" (Num 1)])))
+            )
+
+    ,("provide: * end"
+     ,Provide [ProvideAll])
+
+    ,("provide: a end"
+     ,Provide [ProvideName "a"])
+
+    ,("provide: a,b end"
+     ,Provide [ProvideName "a", ProvideName "b"])
+
+    ,("provide: a as b end"
+     ,Provide [ProvideAlias "a" "b"])
+
+    ,("include file(\"file.tea\")"
+     ,Include (ImportSpecial "file" ["file.tea"]))
+
+    ,("include string-dict"
+     ,Include (ImportName "string-dict"))
+
+    ,("import file(\"file.tea\") as X"
+     ,Import (ImportSpecial "file" ["file.tea"]) "X")
+
+    ,("import string-dict as X"
+     ,Import (ImportName "string-dict") "X")
+
+
+    ,("include from X: * end"
+     ,IncludeFrom "X" [ProvideAll])
+
+    ,("include from X: a end"
+     ,IncludeFrom "X" [ProvideName "a"])
+
+    ,("include from X: a,b end"
+     ,IncludeFrom "X" [ProvideName "a", ProvideName "b"])
+
+    ,("include from X: a as b end"
+     ,IncludeFrom "X" [ProvideAlias "a" "b"])
+
+    ]
+  where
+    nm x = NameBinding NoShadow x Nothing
+    fh as = FunHeader [] (map nm as) Nothing
 
 scriptParseTests :: TestTree
 scriptParseTests = TestGroup "scriptParseTests" $ map (uncurry ScriptParseTest)
@@ -184,142 +295,11 @@ end
                                 
          ])
     ,([R.r|
-       var a = 5
-       a := 6|]
-     ,Script [VarDecl (nm "a") (Num 5)
-             ,SetVar "a" (Num 6)])
-    ,([R.r|
        # data decl|]
      ,Script [])
-
-    ,("data BTree:\n\
-      \  | node(value, left, right)\n\
-      \  | leaf(value)\n\
-      \end", Script [DataDecl "BTree" [] [VariantDecl "node" [(Con, "value"), (Con, "left"), (Con, "right")]
-                                         ,VariantDecl "leaf" [(Con, "value")]] Nothing])
-
-    ,("data MyEnum:\n\
-      \  | node(left, right)\n\
-      \  | leaf\n\
-      \end", Script [DataDecl "MyEnum" [] [VariantDecl "node" [(Con, "left"), (Con, "right")]
-                    ,VariantDecl "leaf" []] Nothing])
-
-    ,("data MyEnum:\n\
-      \  | node(left, right)\n\
-      \  | leaf()\n\
-      \end", Script [DataDecl "MyEnum" [] [VariantDecl "node" [(Con, "left"), (Con, "right")]
-                    ,VariantDecl "leaf" []] Nothing])
-
-    ,("data Point:\n\
-      \  | pt(x, y)\n\
-      \end", Script [DataDecl "Point" [] [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing])
-
-    ,("data Point: pt(x, y) end"
-     ,Script [DataDecl "Point" [] [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing])
-
-    ,("data Point: pt() end"
-     ,Script [DataDecl "Point" [] [VariantDecl "pt" []] Nothing])
-
-    ,("data Point: pt end"
-     ,Script [DataDecl "Point" [] [VariantDecl "pt" []] Nothing])
-
-    ,("fun f(a): a + 1 end"
-     ,Script[FunDecl (nm "f") (fh ["a"]) (BinOp (Iden "a") "+" (Num 1)) Nothing])
-
-    ,("fun f(a):\n\
-      \  a = 1\n\
-      \  a + 1\n\
-      \end", Script [FunDecl (nm "f")
-                        (fh ["a"])
-                        (Block [LetDecl (nm "a") (Num 1)
-                               ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing])
-    ,("fun double(n):\n\
-      \  n + n\n\
-      \where:\n\
-      \  double(10) is 20\n\
-      \  double(15) is 30\n\
-      \end"
-     ,Script [FunDecl (nm "double") (fh ["n"]) (BinOp (Iden "n") "+" (Iden "n"))
-      (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 10]) "is" (Num 20)
-           ,StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 15]) "is" (Num 30)])])
-
-    ,("rec fact = lam(x):\n\
-      \    if x == 0: 1\n\
-      \    else: x * fact(x - 1)\n\
-      \    end\n\
-      \  end"
-
-     ,Script [RecDecl (nm "fact")
-            $ Lam (fh ["x"]) $
-                    If [(BinOp (Iden "x") "==" (Num 0), Num 1)]
-                    (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [] [BinOp (Iden "x") "-" (Num 1)])))
-            ])
-
-    ,("provide: * end\n\
-      \1"
-     ,Script [Provide [ProvideAll]
-             ,StmtExpr $ Num 1])
-
-    ,("provide: a end\n\
-      \1"
-     ,Script [Provide [ProvideName "a"]
-             ,StmtExpr $ Num 1])
-
-    ,("provide: a,b end\n\
-      \1"
-     ,Script [Provide [ProvideName "a", ProvideName "b"]
-             ,StmtExpr $ Num 1])
-
-    ,("provide: a as b end\n\
-      \1"
-     ,Script [Provide [ProvideAlias "a" "b"]
-             ,StmtExpr $ Num 1])
-
-    ,("include file(\"file.tea\")\n\
-      \1"
-     ,Script [Include (ImportSpecial "file" ["file.tea"])
-             ,StmtExpr $ Num 1])
-
-    ,("include string-dict\n\
-      \1"
-     ,Script [Include (ImportName "string-dict")
-             ,StmtExpr $ Num 1])
-
-    ,("import file(\"file.tea\") as X\n\
-      \1"
-     ,Script [Import (ImportSpecial "file" ["file.tea"]) "X"
-             ,StmtExpr $ Num 1])
-
-    ,("import string-dict as X\n\
-      \1"
-     ,Script [Import (ImportName "string-dict") "X"
-             ,StmtExpr $ Num 1])
-
-
-    ,("include from X: * end\n\
-      \1"
-     ,Script [IncludeFrom "X" [ProvideAll]
-             ,StmtExpr $ Num 1])
-
-    ,("include from X: a end\n\
-      \1"
-     ,Script [IncludeFrom "X" [ProvideName "a"]
-             ,StmtExpr $ Num 1])
-
-    ,("include from X: a,b end\n\
-      \1"
-     ,Script [IncludeFrom "X" [ProvideName "a", ProvideName "b"]
-             ,StmtExpr $ Num 1])
-
-    ,("include from X: a as b end\n\
-      \1"
-     ,Script [IncludeFrom "X" [ProvideAlias "a" "b"]
-             ,StmtExpr $ Num 1])
-    
     ]
   where
     nm x = NameBinding NoShadow x Nothing
-    fh as = FunHeader [] (map nm as) Nothing
 
 interpreterTests :: TestTree
 interpreterTests =
