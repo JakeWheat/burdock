@@ -48,7 +48,7 @@ expr (Text s) = dquotes (pretty $ escape s)
     escape [] = []
 expr (Iden n) = pretty n
 expr (Parens e) = parens (expr e)
-expr (App _ e es) = expr e <> parens (commaSep $ map expr es)
+expr (App _ e _ es) = expr e <> parens (commaSep $ map expr es)
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (Lam fh e) = prettyBlocklike sep
     [pretty "lam" <> funHeader fh <> pretty ":"
@@ -159,7 +159,7 @@ stmt (Check nm s) = prettyBlocklike vsep
 stmt (VarDecl pn e) = pretty "var" <+> binding pn <+> pretty "=" <+> expr e
 stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
 
-stmt (DataDecl nm vs w) =
+stmt (DataDecl nm _ vs w) =
     prettyBlocklike vsep
     [pretty "data" <+> pretty nm <+> pretty ":"
     ,vsep $ map vf vs

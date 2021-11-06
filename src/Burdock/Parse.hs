@@ -258,7 +258,7 @@ termSuffixes x = boption x $ do
 appSuffix :: Parser (Expr -> Expr)
 appSuffix = f <$> sourcePos <*> parens (commaSep expr)
   where
-    f sp as x = App sp x as
+    f sp as x = App sp x [] as
 
 sourcePos :: Parser SourcePosition
 sourcePos = do
@@ -508,6 +508,7 @@ varDecl = uncurry VarDecl <$> (keyword_ "var" *> bindExpr)
 dataDecl :: Parser Stmt
 dataDecl = DataDecl
     <$> (keyword_ "data" *> identifier <* symbol_ ":")
+    <*> pure []
     <*> (((:[]) <$> singleVariant) <|> some variant)
     <*> (boptional whereBlock <* keyword_ "end")
   where

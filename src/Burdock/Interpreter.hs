@@ -825,7 +825,7 @@ interp (Iden a) = do
         Just v -> pure v
         Nothing -> error $ "identifier not found: " ++ a
 
-interp (App sp f es) = do
+interp (App sp f _ es) = do
     fv <- interp f
     -- special case apps
     if fv == ForeignFunV "catch-as-either"
@@ -1150,12 +1150,12 @@ _casepattern-x = ...
 
 -}
 
-interpStatement (DataDecl dnm vs whr) = do
+interpStatement (DataDecl dnm _ vs whr) = do
     let makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            $ App appSourcePos (bootstrapRef "is-variant") [Text vnm, Iden "x"]
-        callIs (VariantDecl vnm _) = App appSourcePos (Iden $ "is-" ++ vnm) [Iden "x"]
+            $ App appSourcePos (bootstrapRef "is-variant") [] [Text vnm, Iden "x"]
+        callIs (VariantDecl vnm _) = App appSourcePos (Iden $ "is-" ++ vnm) [] [Iden "x"]
         makeIsDat =
             letDecl ("is-" ++ dnm)
             $ lam ["x"]
@@ -1167,7 +1167,7 @@ interpStatement (DataDecl dnm vs whr) = do
     makeV (VariantDecl vnm fs) =
         [letDecl vnm
          $ (if null fs then id else lam (map snd fs))
-         $ App appSourcePos (bootstrapRef "make-variant")
+         $ App appSourcePos (bootstrapRef "make-variant") []
                 (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
         ,letDecl ("_casepattern-" ++ vnm) $ Text vnm
         ]
@@ -1465,7 +1465,7 @@ doLetRec bs =
     in vars ++ assigned
   where
     makeVar (v,_) = VarDecl v $ Lam (FunHeader [] [] Nothing)
-        $ App appSourcePos (Iden "raise")
+        $ App appSourcePos (Iden "raise") []
             [Text "internal error: uninitialized letrec implementation var"]
     makeAssign (b,v) = SetVar (bindingName b) v
 

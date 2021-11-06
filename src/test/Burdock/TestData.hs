@@ -35,7 +35,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("\"test\"", Text "test") 
     ,("test", Iden "test")
     ,("(2)", Parens (Num 2))
-    ,("a(7)", App Nothing (Iden "a") [Num 7])
+    ,("a(7)", App Nothing (Iden "a") [] [Num 7])
     ,("a + b", BinOp (Iden "a") "+" (Iden "b"))
     ,("a + b + c", BinOp (BinOp (Iden "a") "+" (Iden "b")) "+" (Iden "c"))
 
@@ -78,7 +78,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("let shadow a = 4 : a end"
      ,Let [(NameBinding Shadow "a" Nothing, Num 4)] (Iden "a"))
     ,("a.b", DotExpr (Iden "a") "b")
-    ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [Num 1, Num 2]) "c")
+    ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [] [Num 1, Num 2]) "c")
      ,("cases(List) a:\n\
       \  | empty => \"empty\"\n\
       \  | link(f, r) => \"link\"\n\
@@ -111,7 +111,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("{1}", TupleSel [Num 1])
     -- tuple field get
     ,("myobj4.{0}", TupleGet (Iden "myobj4") 0)
-    ,("f().{1}", TupleGet (App Nothing (Iden "f") []) 1)
+    ,("f().{1}", TupleGet (App Nothing (Iden "f") [] []) 1)
     -- record selector
     ,("{a: \"one\", b : 2, c : x }", RecordSel [("a", Text "one")
                                                ,("b", Num 2)
@@ -176,7 +176,7 @@ end
 
      |], Script
          [LetDecl (nm "a") (Num 5)
-         ,StmtExpr $ App Nothing (Iden "print") [Iden "a"]
+         ,StmtExpr $ App Nothing (Iden "print") [] [Iden "a"]
          ,Check (Just "test-1") [LetDecl (nm "b") (Num 6)
                                 ,StmtExpr $ BinOp (Num 1) "is" (Num 1)]
          ,Check Nothing [StmtExpr $ BinOp (Num 2) "is" (Num 3)]
@@ -194,33 +194,33 @@ end
     ,("data BTree:\n\
       \  | node(value, left, right)\n\
       \  | leaf(value)\n\
-      \end", Script [DataDecl "BTree" [VariantDecl "node" [(Con, "value"), (Con, "left"), (Con, "right")]
-                                      ,VariantDecl "leaf" [(Con, "value")]] Nothing])
+      \end", Script [DataDecl "BTree" [] [VariantDecl "node" [(Con, "value"), (Con, "left"), (Con, "right")]
+                                         ,VariantDecl "leaf" [(Con, "value")]] Nothing])
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf\n\
-      \end", Script [DataDecl "MyEnum" [VariantDecl "node" [(Con, "left"), (Con, "right")]
+      \end", Script [DataDecl "MyEnum" [] [VariantDecl "node" [(Con, "left"), (Con, "right")]
                     ,VariantDecl "leaf" []] Nothing])
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf()\n\
-      \end", Script [DataDecl "MyEnum" [VariantDecl "node" [(Con, "left"), (Con, "right")]
+      \end", Script [DataDecl "MyEnum" [] [VariantDecl "node" [(Con, "left"), (Con, "right")]
                     ,VariantDecl "leaf" []] Nothing])
 
     ,("data Point:\n\
       \  | pt(x, y)\n\
-      \end", Script [DataDecl "Point" [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing])
+      \end", Script [DataDecl "Point" [] [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing])
 
     ,("data Point: pt(x, y) end"
-     ,Script [DataDecl "Point" [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing])
+     ,Script [DataDecl "Point" [] [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing])
 
     ,("data Point: pt() end"
-     ,Script [DataDecl "Point" [VariantDecl "pt" []] Nothing])
+     ,Script [DataDecl "Point" [] [VariantDecl "pt" []] Nothing])
 
     ,("data Point: pt end"
-     ,Script [DataDecl "Point" [VariantDecl "pt" []] Nothing])
+     ,Script [DataDecl "Point" [] [VariantDecl "pt" []] Nothing])
 
     ,("fun f(a): a + 1 end"
      ,Script[FunDecl (nm "f") (fh ["a"]) (BinOp (Iden "a") "+" (Num 1)) Nothing])
@@ -239,8 +239,8 @@ end
       \  double(15) is 30\n\
       \end"
      ,Script [FunDecl (nm "double") (fh ["n"]) (BinOp (Iden "n") "+" (Iden "n"))
-      (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [Num 10]) "is" (Num 20)
-           ,StmtExpr $ BinOp (App Nothing (Iden "double") [Num 15]) "is" (Num 30)])])
+      (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 10]) "is" (Num 20)
+           ,StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 15]) "is" (Num 30)])])
 
     ,("rec fact = lam(x):\n\
       \    if x == 0: 1\n\
@@ -251,7 +251,7 @@ end
      ,Script [RecDecl (nm "fact")
             $ Lam (fh ["x"]) $
                     If [(BinOp (Iden "x") "==" (Num 0), Num 1)]
-                    (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [BinOp (Iden "x") "-" (Num 1)])))
+                    (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [] [BinOp (Iden "x") "-" (Num 1)])))
             ])
 
     ,("provide: * end\n\

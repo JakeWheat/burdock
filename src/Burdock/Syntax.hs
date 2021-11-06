@@ -20,7 +20,7 @@ data Stmt =
     | Check (Maybe String) [Stmt]
     | VarDecl Binding Expr
     | SetVar String Expr
-    | DataDecl String [VariantDecl] (Maybe [Stmt])
+    | DataDecl String [Type] [VariantDecl] (Maybe [Stmt])
     | RecDecl Binding Expr
     | FunDecl
         Binding -- name
@@ -59,7 +59,7 @@ data Expr =
     | Iden String
     | Parens Expr
     | If [(Expr,Expr)] (Maybe Expr)
-    | App SourcePosition Expr [Expr]
+    | App SourcePosition Expr [Type] [Expr]
     | BinOp Expr String Expr
     | Lam FunHeader Expr
     | Let [(Binding,Expr)] Expr
