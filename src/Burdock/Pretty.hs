@@ -51,16 +51,16 @@ expr (Parens e) = parens (expr e)
 expr (App _ e es) = expr e <> parens (commaSep $ map expr es)
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (Lam bs e) = prettyBlocklike sep
-    [pretty "lam" <> parens (commaSep $ map patName bs) <> pretty ":"
+    [pretty "lam" <> parens (commaSep $ map binding bs) <> pretty ":"
     ,expr e]
 expr (Let bs e) = prettyBlocklike sep
     [pretty "let" <+> bs' <> pretty ":"
     ,expr e]
   where
-    bs' | [(n,v)] <- bs = binding n v
-        | otherwise = commaSep $ map (uncurry binding) bs
+    bs' | [(n,v)] <- bs = bindExpr n v
+        | otherwise = commaSep $ map (uncurry bindExpr) bs
 expr (LetRec bs e) = prettyBlocklike sep
-    [pretty "letrec" <+> nest 2 (commaSep $ map (uncurry binding) bs) <> pretty ":"
+    [pretty "letrec" <+> nest 2 (commaSep $ map (uncurry bindExpr) bs) <> pretty ":"
     ,expr e]
 expr (Block ss) = prettyBlocklike vsep
     [pretty "block:"
@@ -97,17 +97,17 @@ expr (Construct e as) =
 
 expr (TypeSel ty) = pretty "type-val(" <> nest 2 (typ ty) <> pretty ")"
     
-binding :: PatName -> Expr -> Doc a
-binding n e =
-    patName n <+> pretty "=" <+> nest 2 (expr e)
+bindExpr :: Binding -> Expr -> Doc a
+bindExpr n e =
+    binding n <+> pretty "=" <+> nest 2 (expr e)
 
 pat :: Pat -> Doc a
-pat (IdenP pn) = patName pn
+pat (IdenP pn) = binding pn
 pat (VariantP q c ps) = maybe mempty (\a -> pretty a <> pretty ".") q
-                        <> pretty c <> parens (commaSep $ map patName ps)
+                        <> pretty c <> parens (commaSep $ map binding ps)
 
-patName :: PatName -> Doc a
-patName (PatName s nm) =
+binding :: Binding -> Doc a
+binding (NameBinding s nm) =
     case s of
         Shadow -> pretty "shadow" <+> pretty nm
         NoShadow -> pretty nm
@@ -149,13 +149,13 @@ prettyBlocklike sp bdy =
 
 stmt :: Stmt -> Doc a
 stmt (StmtExpr e) = expr e
-stmt (LetDecl b e) = nest 2 (binding b e)
+stmt (LetDecl b e) = nest 2 (bindExpr b e)
 stmt (Check nm s) = prettyBlocklike vsep 
         [case nm of
                 Nothing -> pretty "check:"
                 Just nm' -> pretty "check" <+> (expr $ Text nm') <> pretty ":"
         ,stmts s]
-stmt (VarDecl pn e) = pretty "var" <+> patName pn <+> pretty "=" <+> expr e
+stmt (VarDecl pn e) = pretty "var" <+> binding pn <+> pretty "=" <+> expr e
 stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
 
 stmt (DataDecl nm vs w) =
@@ -174,10 +174,10 @@ stmt (DataDecl nm vs w) =
                      _ -> mempty)
                  <+> pretty x
 
-stmt (RecDecl n e) = pretty "rec" <+> binding n e
+stmt (RecDecl n e) = pretty "rec" <+> bindExpr n e
 stmt (FunDecl pn as e w) =
     prettyBlocklike sep
-     [pretty "fun" <+> patName pn <+> parens (commaSep $ map patName as) <> pretty ":"
+     [pretty "fun" <+> binding pn <+> parens (commaSep $ map binding as) <> pretty ":"
      ,expr e
      ,maybe mempty whereBlock w]
 

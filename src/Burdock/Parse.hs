@@ -295,21 +295,21 @@ lamE :: Parser Expr
 lamE = Lam <$> (keyword_ "lam" *> parens (commaSep patName) <* symbol_ ":")
            <*> (expr <* keyword_ "end")
 
-patName :: Parser PatName
-patName = PatName <$> boption NoShadow (Shadow <$ keyword_ "shadow")
-                  <*> identifier
+patName :: Parser Binding
+patName = NameBinding <$> boption NoShadow (Shadow <$ keyword_ "shadow")
+                      <*> identifier
 
 expressionLetRec :: Parser Expr
 expressionLetRec = keyword_ "letrec" *> letBody LetRec
 
 expressionLet :: Parser Expr
 expressionLet = keyword_ "let" *> letBody Let
-
-letBody :: ([(PatName,Expr)] -> Expr -> Expr) -> Parser Expr
+ 
+letBody :: ([(Binding,Expr)] -> Expr -> Expr) -> Parser Expr
 letBody ctor = ctor <$> commaSep1 binding
                     <*> (symbol_ ":" *> expr <* keyword_ "end")
 
-binding :: Parser (PatName,Expr)
+binding :: Parser (Binding,Expr)
 binding = (,) <$> patName
                        <*> (symbol_ "=" *> expr)
 
@@ -387,7 +387,7 @@ casePat = patTerm
         [do
          keyword_ "shadow"
          i <- identifier
-         pure (IdenP $ PatName Shadow i)
+         pure (IdenP $ NameBinding Shadow i)
         ,do
          i <- identifier
          choice [do
@@ -399,7 +399,7 @@ casePat = patTerm
               ,choice [do
                        as <- parens (commaSep patName)
                        pure $ VariantP Nothing i as
-                      ,pure $ IdenP (PatName NoShadow i)]]]
+                      ,pure $ IdenP (NameBinding NoShadow i)]]]
 
 typeSel :: Parser Expr
 typeSel = do
@@ -586,7 +586,7 @@ startsWithExprOrPattern = do
     case ex of
         Iden i -> choice
             [SetVar i <$> ((symbol_ ":=" <?> "") *> expr)
-            ,LetDecl (PatName NoShadow i) <$> ((symbol_ "=" <?> "") *> expr)
+            ,LetDecl (NameBinding NoShadow i) <$> ((symbol_ "=" <?> "") *> expr)
             ,pure $ StmtExpr ex]
         _ -> pure $ StmtExpr ex
 

@@ -236,7 +236,7 @@ formatTestResults ms =
 -- runtime language values
 
 data Value = NumV Scientific
-           -- could also be a variant
+           -- bool could also be a variant
            -- easier like this since it's used a lot
            | BoolV Bool
            | TextV String
@@ -925,14 +925,14 @@ interp (Cases _ty e cs els) = do
     matchb v [] = case els of
                       Just ee -> interp ee
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
-    matches (IdenP (PatName _ s)) v ce = doMatch s [] v ce
+    matches (IdenP (NameBinding _ s)) v ce = doMatch s [] v ce
     matches (VariantP _ s nms) v ce = doMatch s nms v ce
     doMatch s nms (VariantV tag fs) ce = do
         pat <- interp (Iden $ "_pattern-" ++ s)
         case pat of
             TextV nm ->
                 if nm == tag
-                then let letvs = zipWith (\(PatName _ n) (_,v) -> (n,v)) nms fs
+                then let letvs = zipWith (\(NameBinding _ n) (_,v) -> (n,v)) nms fs
                      in pure $ Just $ localScriptEnv (extendEnv letvs) $ interp ce
                 else pure Nothing
             _ -> error $ "pattern lookup returned " ++ show pat
@@ -968,8 +968,8 @@ makeBList (x:xs) = VariantV "link" [("first", x),("rest", makeBList xs)]
 
 
 
-unPat :: PatName -> String
-unPat (PatName _ nm) = nm
+unPat :: Binding -> String
+unPat (NameBinding _ nm) = nm
 
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =
@@ -1165,8 +1165,8 @@ interpStatement (DataDecl dnm vs whr) = do
                 (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
         ,letDecl ("_pattern-" ++ vnm) $ Text vnm
         ]
-    letDecl nm v = LetDecl (PatName NoShadow nm) v
-    lam as e = Lam (map (PatName NoShadow) as) e
+    letDecl nm v = LetDecl (NameBinding NoShadow nm) v
+    lam as e = Lam (map (NameBinding NoShadow) as) e
     orE a b = BinOp a "or" b
 
 ---------------------------------------
@@ -1446,7 +1446,7 @@ if passed any other kind of value, it will do nothing without error
 
 -}
 
-doLetRec :: [(PatName, Expr)] -> [Stmt]
+doLetRec :: [(Binding, Expr)] -> [Stmt]
 doLetRec bs = 
     let vars = map makeVar bs
         assigned = map makeAssign bs

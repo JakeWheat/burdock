@@ -16,15 +16,15 @@ data Script =
 
 data Stmt =
       StmtExpr Expr
-    | LetDecl PatName Expr
+    | LetDecl Binding Expr
     | Check (Maybe String) [Stmt]
-    | VarDecl PatName Expr
+    | VarDecl Binding Expr
     | SetVar String Expr
     | DataDecl String [VariantDecl] (Maybe [Stmt])
-    | RecDecl PatName Expr
+    | RecDecl Binding Expr
     | FunDecl
-        PatName -- name
-        [PatName] -- args
+        Binding -- name
+        [Binding] -- args
         Expr -- body
         (Maybe [Stmt]) -- test block
     | Provide [ProvideItem]
@@ -57,9 +57,9 @@ data Expr =
     | If [(Expr,Expr)] (Maybe Expr)
     | App SourcePosition Expr [Expr]
     | BinOp Expr String Expr
-    | Lam [PatName] Expr
-    | Let [(PatName,Expr)] Expr
-    | LetRec [(PatName,Expr)] Expr
+    | Lam [Binding] Expr
+    | Let [(Binding,Expr)] Expr
+    | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]
     | DotExpr Expr String
     | Cases String Expr [(Pat, Expr)] (Maybe Expr)
@@ -70,12 +70,12 @@ data Expr =
     | TypeSel Type
     deriving (Eq,Show,Data)
 
-data Pat = IdenP PatName
-         | VariantP (Maybe String) String [PatName]
+data Pat = IdenP Binding
+         | VariantP (Maybe String) String [Binding]
           deriving (Eq,Show,Data) 
 
-data PatName =
-      PatName Shadow String
+data Binding =
+      NameBinding Shadow String
     deriving (Eq,Show,Data)
 
 data Shadow = NoShadow | Shadow
