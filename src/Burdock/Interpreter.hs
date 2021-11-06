@@ -1177,6 +1177,10 @@ interpStatement (DataDecl dnm _ vs whr) = do
     orE a b = BinOp a "or" b
     mnm x = NameBinding NoShadow x Nothing
 
+interpStatement (TypeDecl {}) = error $ "TODO: interp typedecl"
+interpStatement (Contract {}) = error $ "TODO: interp contract"
+
+
 ---------------------------------------
 
 -- prelude statements

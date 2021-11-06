@@ -589,17 +589,23 @@ startsWithExprOrBinding = do
     case ex of
         Iden i -> choice
             [SetVar i <$> ((symbol_ ":=" <?> "") *> expr)
-            ,let f t v = LetDecl (NameBinding NoShadow i t) v
-             in f <$> optional (symbol_ "::" *> typ True)
-               <*> ((symbol_ "=" <?> "") *> expr)
+            ,do
+             ty <- (symbol_ "::" <?> "") *> typ True
+             choice [do
+                     v <- (symbol_ "=" <?> "") *> expr
+                     pure $ LetDecl (NameBinding NoShadow i (Just ty)) v
+                    ,pure $ Contract i ty]
+            ,LetDecl (NameBinding NoShadow i Nothing)
+             <$> ((symbol_ "=" <?> "") *> expr)
             ,pure $ StmtExpr ex]
         _ -> pure $ StmtExpr ex
 
 typ :: Bool -> Parser Type
-typ allowImplicitTuple = (startsWithIden allowImplicitTuple
-                         <|> parensOrNamedArrow
-                         <|> ttupleOrRecord)
-                         <?> "type annotation"
+typ allowImplicitTuple =
+    (startsWithIden allowImplicitTuple
+     <|> parensOrNamedArrow
+     <|> ttupleOrRecord)
+    <?> "type annotation"
   where
     startsWithIden it = do
         i <- identifier
@@ -617,9 +623,7 @@ typ allowImplicitTuple = (startsWithIden allowImplicitTuple
     noarrow = parensOrNamedArrow <|> do
         i <- identifier
         noarrowctu i
-    tname i = do
-        sfs <- many (symbol_ "." *> identifier)
-        pure (i:sfs)
+    tname i = (i:) <$> many (symbol_ "." *> identifier)
     noarrowctu i = do
         i1 <- tname i
         choice

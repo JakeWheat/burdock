@@ -199,6 +199,8 @@ stmt (TypeDecl nm ps v) =
            _ -> pretty "<" <> commaSep (map pretty ps) <> pretty ">")
     <+> pretty "=" <+> typ v
 
+stmt (Contract nm ty) = pretty nm <+> pretty "::" <+> typ ty
+
 
 stmt (Provide pis) =
     prettyBlocklike vsep

@@ -345,6 +345,12 @@ end|]
     ,("type Predicate<a> = (a -> Boolean)"
      ,TypeDecl "Predicate" ["a"] (TParens (TArrow [TName ["a"]] $ TName ["Boolean"])))
 
+    ,("a :: Number"
+     ,Contract "a" $ TName ["Number"])
+
+    ,("a :: String, String -> String"
+     ,Contract "a" $ TArrow [TName ["String"], TName ["String"]] $ TName ["String"])
+
 
     ,("provide: * end"
      ,Provide [ProvideAll])
