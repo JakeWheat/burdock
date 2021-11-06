@@ -863,13 +863,13 @@ interp (BinOp e0 op e1) = do
 
 interp (Lam ps e) = do
     env <- askEnv
-    pure $ FunV (map unPat ps) e env
+    pure $ FunV (map bindingName ps) e env
 
 interp (Let bs e) = do
     let newEnv [] = interp e
         newEnv ((b,ex):bs') = do
             v <- interp ex
-            localScriptEnv (extendEnv [(unPat b,v)]) $ newEnv bs'
+            localScriptEnv (extendEnv [(bindingName b,v)]) $ newEnv bs'
     newEnv bs
 
 interp (Block ss) =
@@ -908,7 +908,7 @@ interp (DotExpr e f) = do
 
 {-
 run through each branch
-if the variant tag in the value matches the variant tag in the pattern
+if the variant tag in the value matches the variant tag in the casebranch
 run that branch
 if there are members with names, bind these before running the branch
 
@@ -929,14 +929,14 @@ interp (Cases _ty e cs els) = do
     doMatch s' nms (VariantV tag fs) ce = do
         -- todo: lookup the full path
         let s = last s'
-        pat <- interp (Iden $ "_pattern-" ++ s)
-        case pat of
+        caseName <- interp (Iden $ "_casepattern-" ++ s)
+        case caseName of
             TextV nm ->
                 if nm == tag
                 then let letvs = zipWith (\(NameBinding _ n _) (_,v) -> (n,v)) nms fs
                      in pure $ Just $ localScriptEnv (extendEnv letvs) $ interp ce
                 else pure Nothing
-            _ -> error $ "pattern lookup returned " ++ show pat
+            _ -> error $ "casepattern lookup returned " ++ show caseName
     doMatch _ _ _ _ = pure Nothing
 
 interp (TupleSel es) = do
@@ -969,8 +969,8 @@ makeBList (x:xs) = VariantV "link" [("first", x),("rest", makeBList xs)]
 
 
 
-unPat :: Binding -> String
-unPat (NameBinding _ nm _) = nm
+bindingName :: Binding -> String
+bindingName (NameBinding _ nm _) = nm
 
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =
@@ -1025,7 +1025,7 @@ interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
   where
     getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
     getRecs accdecls accchks (FunDecl nm args bdy whr : ss') =
-        let accchks' = maybe accchks (\w -> Check (Just $ unPat nm) w : accchks) whr
+        let accchks' = maybe accchks (\w -> Check (Just $ bindingName nm) w : accchks) whr
         in getRecs ((nm, Lam args bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
@@ -1112,13 +1112,13 @@ interpStatement (Check mnm ss) = do
     
 interpStatement (LetDecl b e) = do
     v <- interp e
-    letValue (unPat b) v
+    letValue (bindingName b) v
     pure nothing
 
 interpStatement (VarDecl b e) = do
     v <- interp e
     vr <- liftIO $ newIORef v
-    letValue (unPat b) (BoxV vr)
+    letValue (bindingName b) (BoxV vr)
     pure nothing
 
 interpStatement (SetVar nm e) = do
@@ -1139,8 +1139,8 @@ an is-x function for each variant
 an is-dat function for the data type
 a make function for each variant, with the name of the variant, e.g.
 pt(...)
-a support binding for pattern matching variants, for each variant x:
-_pattern-x = ...
+a support binding for cases, for each variant x:
+_casepattern-x = ...
 
 
 -}
@@ -1164,7 +1164,7 @@ interpStatement (DataDecl dnm vs whr) = do
          $ (if null fs then id else lam (map snd fs))
          $ App appSourcePos (bootstrapRef "make-variant")
                 (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
-        ,letDecl ("_pattern-" ++ vnm) $ Text vnm
+        ,letDecl ("_casepattern-" ++ vnm) $ Text vnm
         ]
     letDecl nm v = LetDecl (NameBinding NoShadow nm Nothing) v
     lam as e = Lam (map (\x -> NameBinding NoShadow x Nothing) as) e
@@ -1456,7 +1456,7 @@ doLetRec bs =
     makeVar (v,_) = VarDecl v $ Lam []
         $ App appSourcePos (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
-    makeAssign (b,v) = SetVar (unPat b) v
+    makeAssign (b,v) = SetVar (bindingName b) v
 
 -- placeholder to mark the places where need to fix the source
 -- position

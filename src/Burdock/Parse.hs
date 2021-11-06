@@ -367,7 +367,7 @@ cases = do
         symbol_ "|"
         choice
             [Right <$> (keyword_ "else" *> symbol_ "=>" *> expr)
-            ,Left <$> ((,) <$> (caseBinding <?> "pattern") <*> (symbol_ "=>" *> expr))]
+            ,Left <$> ((,) <$> (caseBinding <?> "case pattern") <*> (symbol_ "=>" *> expr))]
     endCase ty t cs el = keyword_ "end" *> pure (Cases ty t (reverse cs) el)
 
 caseBinding :: Parser CaseBinding
@@ -476,7 +476,7 @@ stmt = choice
     ,provide
     ,include
     ,importStmt
-    ,startsWithExprOrPattern]
+    ,startsWithExprOrBinding]
 
 stmts :: Parser [Stmt]
 stmts = many stmt
@@ -558,8 +558,8 @@ importStmt = keyword_ "import" *> (Import <$> importSource
                       <*> (keyword_ "as" *> identifier))
 
 
-startsWithExprOrPattern :: Parser Stmt
-startsWithExprOrPattern = do
+startsWithExprOrBinding :: Parser Stmt
+startsWithExprOrBinding = do
     ex <- expr
     case ex of
         Iden i -> choice

@@ -26,8 +26,8 @@ provide:
   empty,
   link,
   # todo: make this automagical
-  _pattern-empty,
-  _pattern-link,
+  _casepattern-empty,
+  _casepattern-link,
 
   is-nothing,
   is-Nothing,
