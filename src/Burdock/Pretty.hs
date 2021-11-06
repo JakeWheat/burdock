@@ -107,7 +107,7 @@ pat (VariantP q c ps) = maybe mempty (\a -> pretty a <> pretty ".") q
                         <> pretty c <> parens (commaSep $ map binding ps)
 
 binding :: Binding -> Doc a
-binding (NameBinding s nm) =
+binding (NameBinding s nm _) =
     case s of
         Shadow -> pretty "shadow" <+> pretty nm
         NoShadow -> pretty nm

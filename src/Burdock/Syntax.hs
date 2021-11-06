@@ -75,7 +75,7 @@ data Pat = IdenP Binding
           deriving (Eq,Show,Data) 
 
 data Binding =
-      NameBinding Shadow String
+      NameBinding Shadow String (Maybe Type)
     deriving (Eq,Show,Data)
 
 data Shadow = NoShadow | Shadow

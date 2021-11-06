@@ -76,7 +76,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
      ,If [(BinOp (Iden "n") "==" (Num 1), Num 0)
          ,(BinOp (Iden "n") "==" (Num 2), Num 1)] (Just (Num 2)))
     ,("let shadow a = 4 : a end"
-     ,Let [(NameBinding Shadow "a", Num 4)] (Iden "a"))
+     ,Let [(NameBinding Shadow "a" Nothing, Num 4)] (Iden "a"))
     ,("a.b", DotExpr (Iden "a") "b")
     ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [Num 1, Num 2]) "c")
      ,("cases(List) a:\n\
@@ -146,7 +146,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("type-val", Iden "type-val")
     ]
   where
-    nm = NameBinding NoShadow
+    nm x = NameBinding NoShadow x Nothing
 
 
 scriptParseTests :: TestTree
@@ -222,20 +222,21 @@ end
      ,Script [DataDecl "Point" [VariantDecl "pt" []] Nothing])
 
     ,("fun f(a): a + 1 end"
-     ,Script[FunDecl (NameBinding NoShadow "f") [nm "a"] (BinOp (Iden "a") "+" (Num 1)) Nothing])
+     ,Script[FunDecl (NameBinding NoShadow "f" Nothing) [nm "a"] (BinOp (Iden "a") "+" (Num 1)) Nothing])
 
     ,("fun f(a):\n\
       \  a = 1\n\
       \  a + 1\n\
-      \end", Script [FunDecl (NameBinding NoShadow "f") [nm "a"] (Block [LetDecl (nm "a") (Num 1)
-                                             ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing])
+      \end", Script [FunDecl (NameBinding NoShadow "f" Nothing)
+                        [nm "a"] (Block [LetDecl (nm "a") (Num 1)
+                                        ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing])
     ,("fun double(n):\n\
       \  n + n\n\
       \where:\n\
       \  double(10) is 20\n\
       \  double(15) is 30\n\
       \end"
-     ,Script [FunDecl (NameBinding NoShadow "double") [nm "n"] (BinOp (Iden "n") "+" (Iden "n"))
+     ,Script [FunDecl (NameBinding NoShadow "double" Nothing) [nm "n"] (BinOp (Iden "n") "+" (Iden "n"))
       (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [Num 10]) "is" (Num 20)
            ,StmtExpr $ BinOp (App Nothing (Iden "double") [Num 15]) "is" (Num 30)])])
 
@@ -314,7 +315,7 @@ end
     
     ]
   where
-    nm = NameBinding NoShadow
+    nm x = NameBinding NoShadow x Nothing
 
 interpreterTests :: TestTree
 interpreterTests =

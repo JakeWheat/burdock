@@ -925,14 +925,14 @@ interp (Cases _ty e cs els) = do
     matchb v [] = case els of
                       Just ee -> interp ee
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
-    matches (IdenP (NameBinding _ s)) v ce = doMatch s [] v ce
+    matches (IdenP (NameBinding _ s _)) v ce = doMatch s [] v ce
     matches (VariantP _ s nms) v ce = doMatch s nms v ce
     doMatch s nms (VariantV tag fs) ce = do
         pat <- interp (Iden $ "_pattern-" ++ s)
         case pat of
             TextV nm ->
                 if nm == tag
-                then let letvs = zipWith (\(NameBinding _ n) (_,v) -> (n,v)) nms fs
+                then let letvs = zipWith (\(NameBinding _ n _) (_,v) -> (n,v)) nms fs
                      in pure $ Just $ localScriptEnv (extendEnv letvs) $ interp ce
                 else pure Nothing
             _ -> error $ "pattern lookup returned " ++ show pat
@@ -969,7 +969,7 @@ makeBList (x:xs) = VariantV "link" [("first", x),("rest", makeBList xs)]
 
 
 unPat :: Binding -> String
-unPat (NameBinding _ nm) = nm
+unPat (NameBinding _ nm _) = nm
 
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =
@@ -1165,8 +1165,8 @@ interpStatement (DataDecl dnm vs whr) = do
                 (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
         ,letDecl ("_pattern-" ++ vnm) $ Text vnm
         ]
-    letDecl nm v = LetDecl (NameBinding NoShadow nm) v
-    lam as e = Lam (map (NameBinding NoShadow) as) e
+    letDecl nm v = LetDecl (NameBinding NoShadow nm Nothing) v
+    lam as e = Lam (map (\x -> NameBinding NoShadow x Nothing) as) e
     orE a b = BinOp a "or" b
 
 ---------------------------------------
