@@ -1260,10 +1260,18 @@ interpStatement (Provide pis) = do
     pure nothing
 
 internalsRef :: String -> Expr
-internalsRef nm = DotExpr (DotExpr (DotExpr (Iden "_system") "modules") "_internals") nm
+internalsRef nm = makeDotPathExpr ["_system", "modules", "_internals", nm]
 
 bootstrapRef :: String -> Expr
-bootstrapRef nm = DotExpr (DotExpr (DotExpr (Iden "_system") "modules") "_bootstrap") nm
+bootstrapRef nm = makeDotPathExpr ["_system", "modules", "_bootstrap", nm]
+
+makeDotPathExpr :: [String] -> Expr
+makeDotPathExpr [] = error "empty makedotpathexpr"
+makeDotPathExpr [n] = Iden n
+makeDotPathExpr (n':nms') = f (Iden n') nms'
+  where
+    f e (n:nms) = f (DotExpr e n) nms
+    f e [] = e
 
 ------------------------------------------------------------------------------
 
@@ -1286,7 +1294,7 @@ resolveImportPath _moduleSearchPath is = do
 
 ensureModuleLoaded :: String -> FilePath -> Interpreter ()
 ensureModuleLoaded moduleName moduleFile = do
-    modRec <- interp (DotExpr (Iden "_system") "modules")
+    modRec <- interp $ makeDotPathExpr ["_system", "modules"]
     case modRec of
         VariantV "record" fs
             | moduleName `notElem` map fst fs -> do
@@ -1351,14 +1359,10 @@ aliasModule modName pis = do
     pure $ aliasSomething modEnv pis
     -- pure $ concat $ map (apis modEnv) pis
   where
-    mk [] = error $ "alias module: empty path"
-    mk [p] = Iden p
-    mk [r,p] = DotExpr (Iden r) p
-    mk [s,r,p] = DotExpr (DotExpr (Iden s) r) p
-    mk _ = error $ "todo: aliasmodule, find someone who is better at programming than me"
+
     ex (VariantV "record" r) = r
     ex x = error $ "aliasmodule: module value is not a record: " ++ show x
-    lkp = interp $ mk $ modulePath modName
+    lkp = interp $ makeDotPathExpr $ modulePath modName
 
 aliasSomething :: [(String,Value)] -> [ProvideItem] -> [(String,Value)]
 aliasSomething rc pis = concat $ map apis pis
