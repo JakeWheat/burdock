@@ -27,8 +27,8 @@ data Stmt =
         FunHeader
         Expr -- body
         (Maybe [Stmt]) -- test block
-    | TypeDecl String [String] Type
-    | Contract String Type
+    | TypeDecl String [String] TypeAnnotation
+    | Contract String TypeAnnotation
     | Provide [ProvideItem]
     | Import ImportSource String
     | Include ImportSource
@@ -36,7 +36,7 @@ data Stmt =
     deriving (Eq,Show,Data)
 
 -- ty params args return ann
-data FunHeader = FunHeader [String] [Binding] (Maybe Type)
+data FunHeader = FunHeader [String] [Binding] (Maybe TypeAnnotation)
     deriving (Eq,Show,Data)
 
 data VariantDecl = VariantDecl String [(Ref,Binding)]
@@ -61,36 +61,36 @@ data Expr =
     | Iden String
     | Parens Expr
     | If [(Expr,Expr)] (Maybe Expr)
-    | App SourcePosition Expr [Type] [Expr]
+    | App SourcePosition Expr [TypeAnnotation] [Expr]
     | BinOp Expr String Expr
     | Lam FunHeader Expr
     | Let [(Binding,Expr)] Expr
     | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]
     | DotExpr Expr String
-    | Cases Type Expr [(CaseBinding, Expr)] (Maybe Expr)
+    | Cases TypeAnnotation Expr [(CaseBinding, Expr)] (Maybe Expr)
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TupleGet Expr Int
     | Construct Expr [Expr]
-    | AssertTypeCompat Expr Type
+    | AssertTypeCompat Expr TypeAnnotation
     deriving (Eq,Show,Data)
 
 data CaseBinding = CaseBinding [String] [Binding]
                  deriving (Eq,Show,Data) 
 
 data Binding =
-      NameBinding Shadow String (Maybe Type)
+      NameBinding Shadow String (Maybe TypeAnnotation)
     deriving (Eq,Show,Data)
 
 data Shadow = NoShadow | Shadow
           deriving (Eq,Show,Data) 
 
-data Type = TName [String]
-          | TTuple [Type]
-          | TRecord [(String,Type)]
-          | TParam [String] [Type]
-          | TArrow [Type] Type
-          | TNamedArrow [(String,Type)] Type
-          | TParens Type
-          deriving (Eq,Show,Data)
+data TypeAnnotation = TName [String]
+                    | TTuple [TypeAnnotation]
+                    | TRecord [(String,TypeAnnotation)]
+                    | TParam [String] [TypeAnnotation]
+                    | TArrow [TypeAnnotation] TypeAnnotation
+                    | TNamedArrow [(String,TypeAnnotation)] TypeAnnotation
+                    | TParens TypeAnnotation
+                    deriving (Eq,Show,Data)

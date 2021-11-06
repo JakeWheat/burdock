@@ -126,7 +126,7 @@ whereBlock ts = vsep
     ,nest 2 (stmts ts)]
 
 
-typ :: Type -> Doc a
+typ :: TypeAnnotation -> Doc a
 typ (TName nms) = xSep "." $ map pretty nms
 typ (TTuple ts) = pretty "{" <> nest 2 (xSep ";" $ map typ ts) <> pretty "}"
 typ (TRecord fs) = pretty "{" <> nest 2 (xSep "," $ map f fs) <> pretty "}"

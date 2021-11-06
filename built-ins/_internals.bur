@@ -47,8 +47,8 @@ data Either:
   | right(v)
 end
 
-data List:
-  | link(first, rest)
+data List<A>:
+  | link(first :: A, rest :: List<A>)
   | empty
 end
 

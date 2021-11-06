@@ -289,7 +289,7 @@ valueToString v = case v of
 nothing :: Value
 nothing = VariantV "nothing" []
 
-typeOfValue :: Value -> Interpreter Type
+typeOfValue :: Value -> Interpreter TypeAnnotation
 typeOfValue (NumV _) = pure $ TName ["Number"]
 typeOfValue (TextV _) = pure $ TName ["String"]
 typeOfValue (BoolV _) = pure $ TName ["Boolean"]
@@ -299,14 +299,14 @@ typeOfValue _ = error "type of value"
 -- types
 -- check the type referred to by the given type annotation is a valid
 -- type (e.g. it exists, and it doesn't have the wrong type params, ...
-typeOfTypeSyntax :: Type -> Interpreter Type
+typeOfTypeSyntax :: TypeAnnotation -> Interpreter TypeAnnotation
 typeOfTypeSyntax x = pure x -- error "typeOfTypeSyntax"
 
-shallowizeType :: Type -> Type
+shallowizeType :: TypeAnnotation -> TypeAnnotation
 shallowizeType x@(TName {}) = x
 shallowizeType _ =  error "shallowizeType"
 
-typeIsCompatibleWith :: Type -> Type -> Bool
+typeIsCompatibleWith :: TypeAnnotation -> TypeAnnotation -> Bool
 typeIsCompatibleWith (TName a) (TName b) = a == b
 typeIsCompatibleWith _ _ = error "typeIsCompatibleWith"
 

@@ -260,7 +260,7 @@ appSuffix = f <$> sourcePos <*> option [] tyParamList <*> parens (commaSep expr)
   where
     f sp ts as x = App sp x ts as
 
-tyParamList :: Parser [Type]
+tyParamList :: Parser [TypeAnnotation]
 tyParamList = symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">"
 
 sourcePos :: Parser SourcePosition
@@ -601,7 +601,7 @@ startsWithExprOrBinding = do
             ,pure $ StmtExpr ex]
         _ -> pure $ StmtExpr ex
 
-typ :: Bool -> Parser Type
+typ :: Bool -> Parser TypeAnnotation
 typ allowImplicitTuple =
     (startsWithIden allowImplicitTuple
      <|> parensOrNamedArrow
