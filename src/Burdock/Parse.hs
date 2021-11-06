@@ -292,11 +292,11 @@ binOpSym = choice ([symbol "+"
 
 
 lamE :: Parser Expr
-lamE = Lam <$> (keyword_ "lam" *> parens (commaSep patName) <* symbol_ ":")
+lamE = Lam <$> (keyword_ "lam" *> parens (commaSep binding) <* symbol_ ":")
            <*> (expr <* keyword_ "end")
 
-patName :: Parser Binding
-patName = NameBinding <$> boption NoShadow (Shadow <$ keyword_ "shadow")
+binding :: Parser Binding
+binding = NameBinding <$> boption NoShadow (Shadow <$ keyword_ "shadow")
                       <*> identifier
                       <*> pure Nothing
 
@@ -307,12 +307,11 @@ expressionLet :: Parser Expr
 expressionLet = keyword_ "let" *> letBody Let
  
 letBody :: ([(Binding,Expr)] -> Expr -> Expr) -> Parser Expr
-letBody ctor = ctor <$> commaSep1 binding
+letBody ctor = ctor <$> commaSep1 bindExpr
                     <*> (symbol_ ":" *> expr <* keyword_ "end")
 
-binding :: Parser (Binding,Expr)
-binding = (,) <$> patName
-                       <*> (symbol_ "=" *> expr)
+bindExpr :: Parser (Binding,Expr)
+bindExpr = (,) <$> binding <*> (symbol_ "=" *> expr)
 
 ifE :: Parser Expr
 ifE = do
@@ -363,44 +362,22 @@ cases = do
                     Right el -> endCase ty t cs (Just el)
                     Left c -> nextCase ty t (c:cs)
                ,endCase ty t cs Nothing]
-    casePart :: Parser (Either (Pat,Expr) Expr)
+    casePart :: Parser (Either (CaseBinding,Expr) Expr)
     casePart = do
         symbol_ "|"
         choice
             [Right <$> (keyword_ "else" *> symbol_ "=>" *> expr)
-            ,Left <$> ((,) <$> (casePat <?> "pattern") <*> (symbol_ "=>" *> expr))]
+            ,Left <$> ((,) <$> (caseBinding <?> "pattern") <*> (symbol_ "=>" *> expr))]
     endCase ty t cs el = keyword_ "end" *> pure (Cases ty t (reverse cs) el)
 
-{-
-a case pattern can be:
-an (optionally dotted) identifier
-a (optionally dotted) shadow identifier
-a arged variant which is an (optionally dotted) identifier then parens commasep case pattern
-a case pattern with an as suffix
-
-a dotted identifier will parse as a variant with no args, it's a bit hacky
--}
-
-casePat :: Parser Pat
-casePat = patTerm
+caseBinding :: Parser CaseBinding
+caseBinding = CaseBinding <$> nm <*> (option [] caseArgs)
   where
-    patTerm = choice
-        [do
-         keyword_ "shadow"
-         i <- identifier
-         pure (IdenP $ NameBinding Shadow i Nothing)
-        ,do
-         i <- identifier
-         choice [do
-               j <- char '.' *> identifier
-               choice [do
-                       as <- parens (commaSep patName)
-                       pure $ VariantP (Just i) j as
-                      ,pure $ VariantP (Just i) j []]
-              ,choice [do
-                       as <- parens (commaSep patName)
-                       pure $ VariantP Nothing i as
-                      ,pure $ IdenP (NameBinding NoShadow i Nothing)]]]
+    nm = do
+        i <- identifier
+        sfs <- many (symbol_ "." *> identifier)
+        pure (i:sfs)
+    caseArgs = parens (commaSep1 binding)
 
 typeSel :: Parser Expr
 typeSel = do
@@ -505,12 +482,12 @@ stmts :: Parser [Stmt]
 stmts = many stmt
 
 recDecl :: Parser Stmt
-recDecl = uncurry RecDecl <$> (keyword_ "rec" *> binding)
+recDecl = uncurry RecDecl <$> (keyword_ "rec" *> bindExpr)
 
 funDecl :: Parser Stmt
 funDecl = FunDecl
-    <$> (keyword "fun" *> patName)
-    <*> parens (commaSep patName)
+    <$> (keyword "fun" *> binding)
+    <*> parens (commaSep binding)
     <*> (symbol_ ":" *> (unwrapSingle <$>
          (Block <$> some stmt)))
     <*> (boptional whereBlock <* keyword_ "end")
@@ -523,7 +500,7 @@ whereBlock :: Parser [Stmt]
 whereBlock = keyword_ "where" *> symbol_ ":" *> many stmt
 
 varDecl :: Parser Stmt
-varDecl = uncurry VarDecl <$> (keyword_ "var" *> binding)
+varDecl = uncurry VarDecl <$> (keyword_ "var" *> bindExpr)
 
 dataDecl :: Parser Stmt
 dataDecl = DataDecl

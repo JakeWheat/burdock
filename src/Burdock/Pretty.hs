@@ -83,7 +83,7 @@ expr (Cases ty e mats els) =
     ,vsep (map mf mats ++
            [maybe mempty (\x -> pretty "|" <+> pretty "else" <+> pretty "=>" <+> expr x) els])]
   where
-    mf (p, e1) = pretty "|" <+> pat p <+> pretty "=>" <+> expr e1
+    mf (p, e1) = pretty "|" <+> caseBinding p <+> pretty "=>" <+> expr e1
 
 expr (TupleSel es) = pretty "{" <> nest 2 (xSep ";" (map expr es) <> pretty "}")
 expr (RecordSel flds) = pretty "{" <> nest 2 (commaSep (map fld flds) <> pretty "}")
@@ -101,10 +101,11 @@ bindExpr :: Binding -> Expr -> Doc a
 bindExpr n e =
     binding n <+> pretty "=" <+> nest 2 (expr e)
 
-pat :: Pat -> Doc a
-pat (IdenP pn) = binding pn
-pat (VariantP q c ps) = maybe mempty (\a -> pretty a <> pretty ".") q
-                        <> pretty c <> parens (commaSep $ map binding ps)
+caseBinding :: CaseBinding -> Doc a
+caseBinding (CaseBinding nms []) =
+    xSep "." $ map pretty nms
+caseBinding (CaseBinding nms ps) =
+    xSep "." (map pretty nms) <> parens (commaSep $ map binding ps)
 
 binding :: Binding -> Doc a
 binding (NameBinding s nm _) =

@@ -84,8 +84,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | link(f, r) => \"link\"\n\
       \end"
      ,Cases "List" (Iden "a")
-        [(IdenP $ nm "empty", Text "empty")
-        ,(VariantP Nothing "link" [nm "f", nm "r"], Text "link")]
+        [(CaseBinding ["empty"] [], Text "empty")
+        ,(CaseBinding ["link"] [nm "f", nm "r"], Text "link")]
         Nothing)
 
     ,("cases(List) a:\n\
@@ -93,7 +93,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | else => \"else\"\n\
       \end"
      ,Cases "List" (Iden "a")
-        [(IdenP $ nm "empty", Text "empty")]
+        [(CaseBinding ["empty"] [], Text "empty")]
         (Just $ Text "else"))
 
     ,("cases(z.List) a:\n\
@@ -102,8 +102,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | else => \"else\"\n\
       \end"
      ,Cases "z.List" (Iden "a")
-        [(VariantP (Just "z") "empty" [], Text "empty")
-        ,(VariantP (Just "z") "link" [nm "f", nm "r"], Iden "x")]
+        [(CaseBinding ["z","empty"] [], Text "empty")
+        ,(CaseBinding ["z","link"] [nm "f", nm "r"], Iden "x")]
         (Just $ Text "else"))
 
     -- tuple selector

@@ -62,7 +62,7 @@ data Expr =
     | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]
     | DotExpr Expr String
-    | Cases String Expr [(Pat, Expr)] (Maybe Expr)
+    | Cases String Expr [(CaseBinding, Expr)] (Maybe Expr)
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TupleGet Expr Int
@@ -70,9 +70,8 @@ data Expr =
     | TypeSel Type
     deriving (Eq,Show,Data)
 
-data Pat = IdenP Binding
-         | VariantP (Maybe String) String [Binding]
-          deriving (Eq,Show,Data) 
+data CaseBinding = CaseBinding [String] [Binding]
+                 deriving (Eq,Show,Data) 
 
 data Binding =
       NameBinding Shadow String (Maybe Type)

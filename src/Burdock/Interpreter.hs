@@ -925,9 +925,10 @@ interp (Cases _ty e cs els) = do
     matchb v [] = case els of
                       Just ee -> interp ee
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
-    matches (IdenP (NameBinding _ s _)) v ce = doMatch s [] v ce
-    matches (VariantP _ s nms) v ce = doMatch s nms v ce
-    doMatch s nms (VariantV tag fs) ce = do
+    matches (CaseBinding s nms) v ce = doMatch s nms v ce
+    doMatch s' nms (VariantV tag fs) ce = do
+        -- todo: lookup the full path
+        let s = last s'
         pat <- interp (Iden $ "_pattern-" ++ s)
         case pat of
             TextV nm ->
