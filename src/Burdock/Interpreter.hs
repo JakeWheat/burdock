@@ -300,9 +300,14 @@ data TypeInfo
     deriving (Eq, Show)
 
 typeOfValue :: Value -> Interpreter TypeInfo
-typeOfValue (NumV _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Number"]
-typeOfValue (TextV _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","String"]
-typeOfValue (BoolV _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Boolean"]
+typeOfValue (NumV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Number"]
+typeOfValue (TextV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","String"]
+typeOfValue (BoolV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Boolean"]
+-- temp
+typeOfValue (VariantV "tuple" _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Tuple"]
+typeOfValue (VariantV "record" _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Record"]
+typeOfValue (FunV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Function"]
+typeOfValue (ForeignFunV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Function"]
 typeOfValue _ = error "type of value"
 
 -- todo: split the runtime type tag and the type annotation syntax
@@ -1422,6 +1427,12 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
              $ SimpleTypeInfo ["_system","modules","_bootstrap","String"])
         ,("_typeinfo-Boolean", FFIValue $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Boolean"])
+        ,("_typeinfo-Tuple", FFIValue $ toDyn
+             $ SimpleTypeInfo ["_system","modules","_bootstrap","Tuple"])
+        ,("_typeinfo-Record", FFIValue $ toDyn
+             $ SimpleTypeInfo ["_system","modules","_bootstrap","Record"])
+        ,("_typeinfo-Function", FFIValue $ toDyn
+             $ SimpleTypeInfo ["_system","modules","_bootstrap","Function"])
         ]
 
 runModule :: String -> String -> Interpreter () -> Interpreter ()        

@@ -39,7 +39,11 @@ provide:
   # todo: fix this when implement type provide-spec
   _typeinfo-Number,
   _typeinfo-String,
-  _typeinfo-Boolean
+  _typeinfo-Boolean,
+
+  _typeinfo-Tuple,
+  _typeinfo-Record,
+  _typeinfo-Function
 
 end
 
