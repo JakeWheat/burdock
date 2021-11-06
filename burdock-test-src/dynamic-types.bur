@@ -11,6 +11,13 @@ check "simplest type tag checks":
 
   assert-type-compat('a' :: String) is 'a'
   let x :: String = 'b': x end is 'b'
+
+
+  # revisit when working on anomaly tests/ error messages
+  assert-type-compat('a' :: Four) raises 'identifier not found'
+  let x :: Four = 'b': x end raises 'identifier not found'
+
+  
   
   
 end

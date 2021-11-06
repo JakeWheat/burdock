@@ -289,26 +289,50 @@ valueToString v = case v of
 nothing :: Value
 nothing = VariantV "nothing" []
 
-typeOfValue :: Value -> Interpreter TypeAnnotation
-typeOfValue (NumV _) = pure $ TName ["Number"]
-typeOfValue (TextV _) = pure $ TName ["String"]
-typeOfValue (BoolV _) = pure $ TName ["Boolean"]
+
+-- represents info for a "type" at runtime
+-- not sure if this is a type-tag, or something different,
+-- because it can be abstract/partial
+data TypeInfo
+    = SimpleTypeInfo
+    {tiID :: [String] -- TODO: path to the system module [_system.modules.module-name.type-name]
+    }
+    deriving (Eq, Show)
+
+typeOfValue :: Value -> Interpreter TypeInfo
+typeOfValue (NumV _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Number"]
+typeOfValue (TextV _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","String"]
+typeOfValue (BoolV _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Boolean"]
 typeOfValue _ = error "type of value"
 
 -- todo: split the runtime type tag and the type annotation syntax
 -- types
 -- check the type referred to by the given type annotation is a valid
 -- type (e.g. it exists, and it doesn't have the wrong type params, ...
-typeOfTypeSyntax :: TypeAnnotation -> Interpreter TypeAnnotation
-typeOfTypeSyntax x = pure x -- error "typeOfTypeSyntax"
+typeOfTypeSyntax :: TypeAnnotation -> Interpreter TypeInfo
+typeOfTypeSyntax (TName x) = do
+    v <- interp (makeDotPathExpr $ prefixLast "_typeinfo-" x)
+    pure $ case v of
+               FFIValue v' | Just z <- fromDynamic v' -> (z :: TypeInfo)
+                           | otherwise -> error $ "type info reference isn't a type info: " ++ show v'
+               _ -> error $ "type info reference isn't a type info: " ++ show v
+typeOfTypeSyntax _ = error "typeOfTypeSyntax"
 
-shallowizeType :: TypeAnnotation -> TypeAnnotation
-shallowizeType x@(TName {}) = x
-shallowizeType _ =  error "shallowizeType"
+shallowizeType :: TypeInfo -> TypeInfo
+shallowizeType x = x
+-- shallowizeType _ =  error "shallowizeType"
 
-typeIsCompatibleWith :: TypeAnnotation -> TypeAnnotation -> Bool
-typeIsCompatibleWith (TName a) (TName b) = a == b
-typeIsCompatibleWith _ _ = error "typeIsCompatibleWith"
+typeIsCompatibleWith :: TypeInfo -> TypeInfo -> Bool
+typeIsCompatibleWith (SimpleTypeInfo a) (SimpleTypeInfo b) = a == b
+-- typeIsCompatibleWith _ _ = error "typeIsCompatibleWith"
+
+prefixLast :: [a] -> [[a]] -> [[a]]
+prefixLast pre is = f is
+  where
+    f [] = []
+    f [x] = [pre ++ x]
+    f (x:xs) = x : f xs
+
 
 ------------------------------------------------------------------------------
 
@@ -953,10 +977,7 @@ interp (Cases _ty e cs els) = do
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
     matches (CaseBinding s nms) v ce = doMatch s nms v ce
     doMatch s' nms (VariantV tag fs) ce = do
-        let s = f s'
-            f [] = []
-            f [x] = ["_casepattern-" ++ x]
-            f (x:xs) = x : f xs
+        let s = prefixLast "_casepattern-" s'
         caseName <- interp $ makeDotPathExpr s
         case caseName of
             TextV nm ->
@@ -1395,6 +1416,12 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
         ,("get-ffi-value", ForeignFunV "get-ffi-value")
         ,("make-variant", ForeignFunV "make-variant")
         ,("is-variant", ForeignFunV "is-variant")
+        ,("_typeinfo-Number", FFIValue $ toDyn
+             $ SimpleTypeInfo ["_system","modules","_bootstrap","Number"])
+        ,("_typeinfo-String", FFIValue $ toDyn
+             $ SimpleTypeInfo ["_system","modules","_bootstrap","String"])
+        ,("_typeinfo-Boolean", FFIValue $ toDyn
+             $ SimpleTypeInfo ["_system","modules","_bootstrap","Boolean"])
         ]
 
 runModule :: String -> String -> Interpreter () -> Interpreter ()        

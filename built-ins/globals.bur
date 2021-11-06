@@ -34,7 +34,12 @@ provide:
   nothing,
 
   is-tuple,
-  is-record
+  is-record,
+
+  # todo: fix this when implement type provide-spec
+  _typeinfo-Number,
+  _typeinfo-String,
+  _typeinfo-Boolean
 
 end
 
