@@ -6,6 +6,11 @@ check:
   right(4) is catch-as-either(4)
   left(5) is catch-as-either(raise(5))
 
-  # todo: raise, raises-satisfies, does-not-raise
+  # todo: raises-satisfies, does-not-raise
+
+  raise(5) raises "5"
+  #raise(5) raises 6
+  #5 raises "test"
+
   
 end

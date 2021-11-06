@@ -291,6 +291,7 @@ binOpSym = choice ([symbol "+"
                   ["and"
                   ,"or"
                   ,"is"
+                  ,"raises"
                   ])
 
 

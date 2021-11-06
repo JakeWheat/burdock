@@ -405,6 +405,14 @@ end
      |], Script [Check Nothing
                  [StmtExpr $ BinOp (Num 1) "is" (Num 1)
                  ,StmtExpr $ BinOp (Text "test") "is"(Text "test")]])
+
+    ,([R.r|
+check:
+  f(x) raises "something"
+end
+     |], Script [Check Nothing
+                 [StmtExpr $ BinOp (App Nothing (Iden "f") [] [Iden "x"])
+                             "raises" (Text "something")]])
     ,([R.r|
 
 a = 5

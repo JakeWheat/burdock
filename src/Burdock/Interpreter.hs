@@ -1,4 +1,3 @@
-
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LambdaCase #-}
 module Burdock.Interpreter
@@ -39,6 +38,7 @@ import Control.Monad (forM_
 import Data.List (intercalate
                  ,sortOn
                  ,partition
+                 ,isInfixOf
                  )
 
 import Data.IORef (IORef
@@ -840,6 +840,7 @@ interp (App sp f _ es) = do
 
 -- special case binops
 interp (BinOp _ "is" _) = error $ "'is' test predicate only allowed in check block"
+interp (BinOp _ "raises" _) = error $ "'raises' test predicate only allowed in check block"
 
 interp (BinOp e0 "and" e1) = do
     x <- interp e0
@@ -1069,7 +1070,7 @@ interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
     v1 <- bToHEither <$> catchAsEither [e1]
     st <- ask
     ti <- liftIO $ readIORef (isTestInfo st)
-    let cbn = maybe (error "is precated not in check block")
+    let cbn = maybe (error "is predicate not in check block")
               id $ tiCurrentCheckblock ti
     let atr = addTestResult (tiCurrentSource ti) cbn
 
@@ -1095,6 +1096,33 @@ interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
     pure nothing
   where
     msg = prettyStmt s
+
+-- todo: factor with the "is" test above
+interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) = do
+    v0 <- bToHEither <$> catchAsEither [e0]
+    v1 <- bToHEither <$> catchAsEither [e1]
+    st <- ask
+    ti <- liftIO $ readIORef (isTestInfo st)
+    let cbn = maybe (error "is predicate not in check block")
+              id $ tiCurrentCheckblock ti
+    let atr = addTestResult (tiCurrentSource ti) cbn
+    case (v0,v1) of
+        (Right _, Right _) ->
+            atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
+        (_, Left er1) -> do
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
+        (Left er0, Right (TextV v)) -> do
+            val <- liftIO $ torepr' er0
+            if v `isInfixOf` val
+                then atr $ TestPass msg
+                else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ v)
+        (Left _, Right v) -> do
+            atr $ TestFail msg (prettyExpr e1 ++ " failed, expected String, got: " ++ show v)
+    pure nothing
+  where
+    msg = prettyStmt s
+
 
 interpStatement (StmtExpr e) = interp e
 interpStatement (Check mnm ss) = do
