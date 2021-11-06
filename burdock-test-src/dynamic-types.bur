@@ -1,0 +1,12 @@
+
+check "simplest type tag checks":
+  assert-type-compat(3 :: Number) is 3
+  assert-type-compat('a' :: Number) raises "type not compatible"
+
+  let x :: Number = 3: x end is 3
+
+  let x :: Boolean = 3: x end raises "type not compatible"
+
+  # todo: bool, text
+  
+end

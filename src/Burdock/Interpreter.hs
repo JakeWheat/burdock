@@ -289,6 +289,27 @@ valueToString v = case v of
 nothing :: Value
 nothing = VariantV "nothing" []
 
+typeOfValue :: Value -> Interpreter Type
+typeOfValue (NumV _) = pure $ TName ["Number"]
+typeOfValue (TextV _) = pure $ TName ["String"]
+typeOfValue (BoolV _) = pure $ TName ["Boolean"]
+typeOfValue _ = error "type of value"
+
+-- todo: split the runtime type tag and the type annotation syntax
+-- types
+-- check the type referred to by the given type annotation is a valid
+-- type (e.g. it exists, and it doesn't have the wrong type params, ...
+typeOfTypeSyntax :: Type -> Interpreter Type
+typeOfTypeSyntax x = pure x -- error "typeOfTypeSyntax"
+
+shallowizeType :: Type -> Type
+shallowizeType x@(TName {}) = x
+shallowizeType _ =  error "shallowizeType"
+
+typeIsCompatibleWith :: Type -> Type -> Bool
+typeIsCompatibleWith (TName a) (TName b) = a == b
+typeIsCompatibleWith _ _ = error "typeIsCompatibleWith"
+
 ------------------------------------------------------------------------------
 
 -- environment, interpreter state, intepreter monad helper functions
@@ -869,7 +890,11 @@ interp (Lam ps e) = do
 interp (Let bs e) = do
     let newEnv [] = interp e
         newEnv ((b,ex):bs') = do
-            v <- interp ex
+            let at = case b of
+                    NameBinding _ _ (Just t) ->
+                        AssertTypeCompat ex t
+                    _ -> ex
+            v <- interp at
             localScriptEnv (extendEnv [(bindingName b,v)]) $ newEnv bs'
     newEnv bs
 
@@ -964,7 +989,17 @@ interp (Construct (Iden "list") es) = do
 
 interp (Construct {}) = error "todo: construct for non lists"
 
-interp (AssertTypeCompat {}) = error "todo: assert-type-compat"
+interp (AssertTypeCompat e t) = do
+    v <- interp e
+    ty <- typeOfValue v
+    ty' <- shallowizeType <$> typeOfTypeSyntax t
+    if ty `typeIsCompatibleWith` ty'
+        then pure v
+        else do
+            cs <- readCallStack
+            r <- liftIO $ torepr' v
+            throwM $ ValueException cs
+                $ TextV $ "type not compatible " ++ r ++ " :: " ++ show ty ++ " // " ++ show ty'
 
 makeBList :: [Value] -> Value
 makeBList [] = VariantV "empty" []
@@ -1116,7 +1151,7 @@ interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) = do
             val <- liftIO $ torepr' er0
             if v `isInfixOf` val
                 then atr $ TestPass msg
-                else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ v)
+                else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ "\"" ++ v ++ "\"")
         (Left _, Right v) -> do
             atr $ TestFail msg (prettyExpr e1 ++ " failed, expected String, got: " ++ show v)
     pure nothing
