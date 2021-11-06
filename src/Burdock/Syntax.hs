@@ -27,6 +27,7 @@ data Stmt =
         FunHeader
         Expr -- body
         (Maybe [Stmt]) -- test block
+    | TypeDecl String [String] Type
     | Provide [ProvideItem]
     | Import ImportSource String
     | Include ImportSource

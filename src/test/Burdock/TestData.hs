@@ -339,6 +339,13 @@ end|]
                     (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [] [BinOp (Iden "x") "-" (Num 1)])))
             )
 
+    ,("type NumPredicate = (Number -> Boolean)"
+     ,TypeDecl "NumPredicate" [] (TParens (TArrow [TName ["Number"]] $ TName ["Boolean"])))
+
+    ,("type Predicate<a> = (a -> Boolean)"
+     ,TypeDecl "Predicate" ["a"] (TParens (TArrow [TName ["a"]] $ TName ["Boolean"])))
+
+
     ,("provide: * end"
      ,Provide [ProvideAll])
 

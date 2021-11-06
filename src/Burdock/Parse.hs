@@ -259,7 +259,9 @@ appSuffix :: Parser (Expr -> Expr)
 appSuffix = f <$> sourcePos <*> option [] tyParamList <*> parens (commaSep expr)
   where
     f sp ts as x = App sp x ts as
-    tyParamList = symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">"
+
+tyParamList :: Parser [Type]
+tyParamList = symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">"
 
 sourcePos :: Parser SourcePosition
 sourcePos = do
@@ -477,6 +479,7 @@ stmt = choice
     ,varDecl
     ,dataDecl
     ,checkBlock
+    ,typeDecl
     ,provide
     ,include
     ,importStmt
@@ -538,6 +541,13 @@ checkBlock = do
     ss <- many stmt
     keyword_ "end"
     pure $ Check nm ss
+
+typeDecl :: Parser Stmt
+typeDecl =
+    TypeDecl
+    <$> (keyword_ "type" *> identifier)
+    <*> option [] tyNameList
+    <*> (symbol_ "=" *> typ True)
 
 provide :: Parser Stmt
 provide = Provide <$> (keyword_ "provide"

@@ -192,6 +192,14 @@ stmt (FunDecl pn hdr e w) =
      ,expr e
      ,maybe mempty whereBlock w]
 
+stmt (TypeDecl nm ps v) =
+    pretty "type" <+> pretty nm <>
+       (case ps of
+           [] -> mempty
+           _ -> pretty "<" <> commaSep (map pretty ps) <> pretty ">")
+    <+> pretty "=" <+> typ v
+
+
 stmt (Provide pis) =
     prettyBlocklike vsep
          [pretty "provide:"
