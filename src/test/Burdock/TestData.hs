@@ -84,7 +84,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | empty => \"empty\"\n\
       \  | link(f, r) => \"link\"\n\
       \end"
-     ,Cases "List" (Iden "a")
+     ,Cases (TName ["List"]) (Iden "a")
         [(CaseBinding ["empty"] [], Text "empty")
         ,(CaseBinding ["link"] [nm "f", nm "r"], Text "link")]
         Nothing)
@@ -93,16 +93,16 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | empty => \"empty\"\n\
       \  | else => \"else\"\n\
       \end"
-     ,Cases "List" (Iden "a")
+     ,Cases (TName ["List"]) (Iden "a")
         [(CaseBinding ["empty"] [], Text "empty")]
         (Just $ Text "else"))
-
+   
     ,("cases(z.List) a:\n\
       \  | z.empty => \"empty\"\n\
       \  | z.link(f, r) => x\n\
       \  | else => \"else\"\n\
       \end"
-     ,Cases "z.List" (Iden "a")
+     ,Cases (TName ["z", "List"]) (Iden "a")
         [(CaseBinding ["z","empty"] [], Text "empty")
         ,(CaseBinding ["z","link"] [nm "f", nm "r"], Iden "x")]
         (Just $ Text "else"))
@@ -146,9 +146,57 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("assert-type-compat(x :: (s :: String, t :: String) -> String)"
      ,AssertTypeCompat (Iden "x") (TNamedArrow [("s",TName ["String"]), ("t", TName ["String"])] $ TName ["String"]))
     ,("assert-type-compat", Iden "assert-type-compat")
+
+    ,("let a :: MyType = 4: a end"
+     ,Let [(NameBinding NoShadow "a" (Just $ TName ["MyType"]), Num 4)] (Iden "a"))
+
+    ,("callf<A,B>(x)"
+     ,App Nothing (Iden "callf") [TName ["A"], TName ["B"]] [Iden "x"])
+    ,("callg<Predicate<A>>(x)"
+     ,App Nothing (Iden "callg") [TParam ["Predicate"] [TName ["A"]]] [Iden "x"])
+
+    ,([R.r|
+lam(x :: Number):
+  x + 1
+end|]
+     ,Lam (FunHeader [] [nmt "x" "Number"] Nothing)
+      (BinOp (Iden "x") "+" (Num 1)))
+
+    ,([R.r|
+lam(x) -> Number:
+  x + 1
+end|]
+     ,Lam (FunHeader [] [nm "x"] (Just $ TName ["Number"]))
+      (BinOp (Iden "x") "+" (Num 1)))
+
+    ,([R.r|
+lam(x :: Number) -> Number:
+  x + 1
+end|]
+     ,Lam (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"]))
+      (BinOp (Iden "x") "+" (Num 1)))
+
+    ,([R.r|
+lam<a>(x :: List<a>) -> Boolean:
+  cases (List<a>) x:
+    | empty => true
+    | link(_,_) => false
+  end
+end|]
+     ,Lam (FunHeader
+            ["a"]
+            [NameBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
+            (Just $ TName ["Boolean"]))
+      $ Cases (TParam ["List"] [TName ["a"]]) (Iden "x")
+        [(CaseBinding ["empty"] [], Iden "true")
+        ,(CaseBinding ["link"] [nm "_", nm "_"], Iden "false")]
+        Nothing)
+
+     
     ]
   where
     nm x = NameBinding NoShadow x Nothing
+    nmt x t = NameBinding NoShadow x (Just $ TName [t])
     lam as = Lam (FunHeader [] (map nm as) Nothing)
 
 statementParseTests :: TestTree
@@ -160,27 +208,27 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
     ,("data BTree:\n\
       \  | node(value, left, right)\n\
       \  | leaf(value)\n\
-      \end", DataDecl "BTree" [] [VariantDecl "node" [(Con, "value"), (Con, "left"), (Con, "right")]
-                                         ,VariantDecl "leaf" [(Con, "value")]] Nothing)
+      \end", DataDecl "BTree" [] [VariantDecl "node" [(Con, nm "value"), (Con, nm "left"), (Con, nm "right")]
+                                 ,VariantDecl "leaf" [(Con, nm "value")]] Nothing)
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf\n\
-      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, "left"), (Con, "right")]
+      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, nm "left"), (Con, nm "right")]
                     ,VariantDecl "leaf" []] Nothing)
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf()\n\
-      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, "left"), (Con, "right")]
+      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, nm "left"), (Con, nm "right")]
                     ,VariantDecl "leaf" []] Nothing)
 
     ,("data Point:\n\
       \  | pt(x, y)\n\
-      \end", DataDecl "Point" [] [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing)
+      \end", DataDecl "Point" [] [VariantDecl "pt" [(Con, nm "x"), (Con, nm "y")]] Nothing)
 
     ,("data Point: pt(x, y) end"
-     ,DataDecl "Point" [] [VariantDecl "pt" [(Con, "x"), (Con, "y")]] Nothing)
+     ,DataDecl "Point" [] [VariantDecl "pt" [(Con, nm "x"), (Con, nm "y")]] Nothing)
 
     ,("data Point: pt() end"
      ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
@@ -188,6 +236,39 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
     ,("data Point: pt end"
      ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
 
+    ,("PI :: Number = 3.141592"
+     ,LetDecl (NameBinding NoShadow "PI" (Just $ TName ["Number"])) (Num 3.141592))
+
+
+    
+   ,([R.r|
+data BinTree:
+  | leaf
+  | node(value :: Number, left :: BinTree, right :: BinTree)
+end
+  |]
+    ,DataDecl "BinTree" []
+      [VariantDecl "leaf" []
+      ,VariantDecl "node" [(Con, nmt "value" "Number")
+                          ,(Con, nmt "left" "BinTree")
+                          ,(Con, nmt "right" "BinTree")]
+      ]
+      Nothing)
+
+   ,([R.r|
+data List<A>:
+  | empty
+  | link(first :: A, rest :: List<A>)
+end
+  |]
+    ,DataDecl "List" ["A"]
+      [VariantDecl "empty" []
+      ,VariantDecl "link" [(Con, nmt "first" "A")
+                          ,(Con, NameBinding NoShadow "rest" (Just $ TParam ["List"] [TName ["A"]]))]
+      ]
+      Nothing)
+
+    
     ,("fun f(a): a + 1 end"
      ,FunDecl (nm "f") (fh ["a"]) (BinOp (Iden "a") "+" (Num 1)) Nothing)
 
@@ -208,6 +289,44 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
       (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 10]) "is" (Num 20)
            ,StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 15]) "is" (Num 30)]))
 
+    ,([R.r|
+fun f(x :: Number):
+  x + 1
+end|]
+     ,FunDecl (nm "f") (FunHeader [] [nmt "x" "Number"] Nothing)
+      (BinOp (Iden "x") "+" (Num 1)) Nothing)
+
+    ,([R.r|
+fun f(x) -> Number:
+  x + 1
+end|]
+     ,FunDecl (nm "f") (FunHeader [] [nm "x"] (Just $ TName ["Number"]))
+      (BinOp (Iden "x") "+" (Num 1)) Nothing)
+
+    ,([R.r|
+fun f(x :: Number) -> Number:
+  x + 1
+end|]
+     ,FunDecl (nm "f") (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"]))
+      (BinOp (Iden "x") "+" (Num 1)) Nothing)
+
+    ,([R.r|
+fun f<a>(x :: List<a>) -> Boolean:
+  cases (List<a>) x:
+    | empty => true
+    | link(_,_) => false
+  end
+end|]
+     ,FunDecl (nm "f") (FunHeader
+            ["a"]
+            [NameBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
+            (Just $ TName ["Boolean"]))
+      (Cases (TParam ["List"] [TName ["a"]]) (Iden "x")
+        [(CaseBinding ["empty"] [], Iden "true")
+        ,(CaseBinding ["link"] [nm "_", nm "_"], Iden "false")]
+        Nothing) Nothing)
+
+    
     ,("rec fact = lam(x):\n\
       \    if x == 0: 1\n\
       \    else: x * fact(x - 1)\n\
@@ -261,6 +380,7 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
   where
     nm x = NameBinding NoShadow x Nothing
     fh as = FunHeader [] (map nm as) Nothing
+    nmt x t = NameBinding NoShadow x (Just $ TName [t])
 
 scriptParseTests :: TestTree
 scriptParseTests = TestGroup "scriptParseTests" $ map (uncurry ScriptParseTest)

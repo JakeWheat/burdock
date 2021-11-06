@@ -16,6 +16,7 @@ import Prettyprinter (pretty
                      ,dquotes
                      ,vsep
                      )
+import Data.Maybe (catMaybes)
 
 import Burdock.Syntax
 
@@ -48,7 +49,10 @@ expr (Text s) = dquotes (pretty $ escape s)
     escape [] = []
 expr (Iden n) = pretty n
 expr (Parens e) = parens (expr e)
-expr (App _ e _ es) = expr e <> parens (commaSep $ map expr es)
+expr (App _ e ts es) = expr e <> tpl ts <> parens (commaSep $ map expr es)
+  where
+    tpl [] = mempty
+    tpl xs = pretty "<" <> commaSep (map typ xs) <> pretty ">"
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (Lam fh e) = prettyBlocklike sep
     [pretty "lam" <> funHeader fh <> pretty ":"
@@ -79,7 +83,7 @@ expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
 expr (DotExpr e i) = expr e <> pretty "." <> pretty i
 expr (Cases ty e mats els) =
     prettyBlocklike vsep
-    [pretty "cases" <> parens (pretty ty) <+> expr e <> pretty ":"
+    [pretty "cases" <> (parens $ typ ty) <+> expr e <> pretty ":"
     ,vsep (map mf mats ++
            [maybe mempty (\x -> pretty "|" <+> pretty "else" <+> pretty "=>" <+> expr x) els])]
   where
@@ -109,10 +113,12 @@ caseBinding (CaseBinding nms ps) =
     xSep "." (map pretty nms) <> parens (commaSep $ map binding ps)
 
 binding :: Binding -> Doc a
-binding (NameBinding s nm _) =
-    case s of
-        Shadow -> pretty "shadow" <+> pretty nm
-        NoShadow -> pretty nm
+binding (NameBinding s nm ty) =
+    sep $ catMaybes [case s of
+                        Shadow -> Just $ pretty "shadow"
+                        NoShadow -> Nothing
+                   ,Just $ pretty nm
+                   ,fmap (\t -> pretty "::" <+> typ t) ty]
 
 whereBlock :: [Stmt] -> Doc a
 whereBlock ts = vsep
@@ -160,9 +166,9 @@ stmt (Check nm s) = prettyBlocklike vsep
 stmt (VarDecl pn e) = pretty "var" <+> binding pn <+> pretty "=" <+> expr e
 stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
 
-stmt (DataDecl nm _ vs w) =
+stmt (DataDecl nm ts vs w) =
     prettyBlocklike vsep
-    [pretty "data" <+> pretty nm <+> pretty ":"
+    [pretty "data" <+> pretty nm <> tnl ts <> pretty ":"
     ,vsep $ map vf vs
     ,maybe mempty whereBlock w
     ]
@@ -174,7 +180,10 @@ stmt (DataDecl nm _ vs w) =
       f (m, x) = (case m of
                      Ref -> pretty "ref"
                      _ -> mempty)
-                 <+> pretty x
+                 <+> binding x
+      tnl [] = mempty
+      tnl xs = pretty "<" <> commaSep (map pretty xs) <> pretty ">"
+
 
 stmt (RecDecl n e) = pretty "rec" <+> bindExpr n e
 stmt (FunDecl pn hdr e w) =
@@ -194,8 +203,14 @@ stmt (IncludeFrom a pis) =
          ,nest 2 $ commaSep $ map provideItem pis]
 stmt (Import is a) = pretty "import" <+> importSource is <+> pretty "as" <+> pretty a
 
+
 funHeader :: FunHeader -> Doc a
-funHeader (FunHeader _ as _) =  parens (commaSep $ map binding as)
+funHeader (FunHeader ts as rt) =
+    (case ts of
+         [] -> mempty
+         _ -> pretty "<" <> commaSep (map pretty ts) <> pretty ">")
+    <> parens (commaSep $ map binding as)
+    <> maybe mempty (\t -> pretty " ->" <+> typ t) rt
 
 provideItem :: ProvideItem -> Doc a
 provideItem ProvideAll = pretty "*"

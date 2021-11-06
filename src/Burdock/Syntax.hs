@@ -20,7 +20,7 @@ data Stmt =
     | Check (Maybe String) [Stmt]
     | VarDecl Binding Expr
     | SetVar String Expr
-    | DataDecl String [Type] [VariantDecl] (Maybe [Stmt])
+    | DataDecl String [String] [VariantDecl] (Maybe [Stmt])
     | RecDecl Binding Expr
     | FunDecl
         Binding -- name
@@ -34,10 +34,10 @@ data Stmt =
     deriving (Eq,Show,Data)
 
 -- ty params args return ann
-data FunHeader = FunHeader [Type] [Binding] (Maybe Type)
+data FunHeader = FunHeader [String] [Binding] (Maybe Type)
     deriving (Eq,Show,Data)
 
-data VariantDecl = VariantDecl String [(Ref,String)]
+data VariantDecl = VariantDecl String [(Ref,Binding)]
                  deriving (Eq,Show,Data) 
 
 data Ref = Ref | Con
@@ -66,7 +66,7 @@ data Expr =
     | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]
     | DotExpr Expr String
-    | Cases String Expr [(CaseBinding, Expr)] (Maybe Expr)
+    | Cases Type Expr [(CaseBinding, Expr)] (Maybe Expr)
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TupleGet Expr Int

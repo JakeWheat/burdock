@@ -50,7 +50,7 @@ import Control.Monad (when
                      )
 
 import Text.Read (readMaybe)
-
+import Data.Maybe (catMaybes)
 
 import Data.Void (Void)
 
@@ -256,9 +256,10 @@ termSuffixes x = boption x $ do
     termSuffixes y
 
 appSuffix :: Parser (Expr -> Expr)
-appSuffix = f <$> sourcePos <*> parens (commaSep expr)
+appSuffix = f <$> sourcePos <*> option [] tyParamList <*> parens (commaSep expr)
   where
-    f sp as x = App sp x [] as
+    f sp ts as x = App sp x ts as
+    tyParamList = symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">"
 
 sourcePos :: Parser SourcePosition
 sourcePos = do
@@ -295,10 +296,20 @@ lamE :: Parser Expr
 lamE = Lam <$> (keyword_ "lam" *> funHeader <* symbol_ ":")
            <*> (expr <* keyword_ "end")
 
-binding :: Parser Binding
-binding = NameBinding <$> boption NoShadow (Shadow <$ keyword_ "shadow")
-                      <*> identifier
-                      <*> pure Nothing
+{-
+special case for bindings in commasep list -
+in some contexts, the parser will parse a type tuple with implicit parens
+but this isn't allowed when it can be ambiguous and the , could mean something
+else too,
+-}
+
+binding :: Bool -> Parser Binding
+binding allowImplicitTypeTuple =
+    NameBinding <$> boption NoShadow (Shadow <$ keyword_ "shadow")
+    <*> identifier
+    <*> optional (symbol_ "::" *> typ allowImplicitTypeTuple)
+
+
 
 expressionLetRec :: Parser Expr
 expressionLetRec = keyword_ "letrec" *> letBody LetRec
@@ -311,7 +322,7 @@ letBody ctor = ctor <$> commaSep1 bindExpr
                     <*> (symbol_ ":" *> expr <* keyword_ "end")
 
 bindExpr :: Parser (Binding,Expr)
-bindExpr = (,) <$> binding <*> (symbol_ "=" *> expr)
+bindExpr = (,) <$> binding True <*> (symbol_ "=" *> expr)
 
 ifE :: Parser Expr
 ifE = do
@@ -344,17 +355,10 @@ block = Block <$>
 
 cases :: Parser Expr
 cases = do
-    ty <- keyword_ "cases" *> parens typeName
+    ty <- keyword_ "cases" *> parens (typ True)
     t <- (expr <* symbol_ ":")
     nextCase ty t []
   where
-    typeName = (do
-        i <- identifier
-        -- todo: don't allow whitespace?
-        choice [do
-                j <- char '.' *> identifier
-                pure $ i ++ "." ++ j
-               ,pure i]) <?> "type name"
     nextCase ty t cs =
         choice [do
                 x <- casePart
@@ -377,12 +381,12 @@ caseBinding = CaseBinding <$> nm <*> (option [] caseArgs)
         i <- identifier
         sfs <- many (symbol_ "." *> identifier)
         pure (i:sfs)
-    caseArgs = parens (commaSep1 binding)
+    caseArgs = parens (commaSep (binding False))
 
 assertTypeCompat :: Parser Expr
 assertTypeCompat = do
     keyword_ "assert-type-compat"
-    choice [uncurry AssertTypeCompat <$> parens ((,) <$> expr <*> (symbol_ "::" *> typ))
+    choice [uncurry AssertTypeCompat <$> parens ((,) <$> expr <*> (symbol_ "::" *> typ True))
            ,pure $ Iden "assert-type-compat"]
 
 
@@ -486,7 +490,7 @@ recDecl = uncurry RecDecl <$> (keyword_ "rec" *> bindExpr)
 
 funDecl :: Parser Stmt
 funDecl = FunDecl
-    <$> (keyword "fun" *> binding)
+    <$> (keyword "fun" *> binding True)
     <*> funHeader
     <*> (symbol_ ":" *> (unwrapSingle <$>
          (Block <$> some stmt)))
@@ -497,7 +501,11 @@ funDecl = FunDecl
       unwrapSingle x = x
 
 funHeader :: Parser FunHeader
-funHeader = FunHeader [] <$> parens (commaSep binding) <*> pure Nothing
+funHeader =
+    FunHeader
+    <$> option [] tyNameList
+    <*> parens (commaSep (binding False))
+    <*> optional (symbol_ "->" *> typ True)
 
 whereBlock :: Parser [Stmt]
 whereBlock = keyword_ "where" *> symbol_ ":" *> many stmt
@@ -507,9 +515,9 @@ varDecl = uncurry VarDecl <$> (keyword_ "var" *> bindExpr)
 
 dataDecl :: Parser Stmt
 dataDecl = DataDecl
-    <$> (keyword_ "data" *> identifier <* symbol_ ":")
-    <*> pure []
-    <*> (((:[]) <$> singleVariant) <|> some variant)
+    <$> (keyword_ "data" *> identifier)
+    <*> option [] tyNameList
+    <*> (symbol_ ":" *> (((:[]) <$> singleVariant) <|> some variant))
     <*> (boptional whereBlock <* keyword_ "end")
   where
     singleVariant = VariantDecl
@@ -517,7 +525,10 @@ dataDecl = DataDecl
     variant = VariantDecl
               <$> (symbol_ "|" *> identifier)
               <*> boption [] (parens (commaSep fld))
-    fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> identifier
+    fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> binding False
+
+tyNameList :: Parser [String]
+tyNameList = symbol_ "<" *> commaSep1 identifier <* symbol_ ">"
 
 checkBlock :: Parser Stmt
 checkBlock = do
@@ -568,24 +579,31 @@ startsWithExprOrBinding = do
     case ex of
         Iden i -> choice
             [SetVar i <$> ((symbol_ ":=" <?> "") *> expr)
-            ,LetDecl (NameBinding NoShadow i Nothing) <$> ((symbol_ "=" <?> "") *> expr)
+            ,let f t v = LetDecl (NameBinding NoShadow i t) v
+             in f <$> optional (symbol_ "::" *> typ True)
+               <*> ((symbol_ "=" <?> "") *> expr)
             ,pure $ StmtExpr ex]
         _ -> pure $ StmtExpr ex
 
-typ :: Parser Type
-typ = startsWithIden <|> parensOrNamedArrow <|> ttupleOrRecord
+typ :: Bool -> Parser Type
+typ allowImplicitTuple = (startsWithIden allowImplicitTuple
+                         <|> parensOrNamedArrow
+                         <|> ttupleOrRecord)
+                         <?> "type annotation"
   where
-    startsWithIden = do
+    startsWithIden it = do
         i <- identifier
-        ctu i
-    ctu i = do
+        ctu it i
+    ctu it i = do
         i1 <- tname i
-        choice
-              [TParam i1 <$> (symbol_ "<" *> commaSep1 noarrow <* symbol_ ">")
-              ,(\is r -> TArrow (TName i1:is) r)
-              <$> (many (symbol_ "," *> noarrow))
-              <*> (symbol_ "->" *> noarrow)
-              ,pure $ TName i1]
+        choice $ catMaybes
+              [Just $ TParam i1 <$> (symbol_ "<" *> commaSep1 noarrow <* symbol_ ">")
+              ,if it
+               then Just $ (\is r -> TArrow (TName i1:is) r)
+                  <$> (many (symbol_ "," *> noarrow))
+                  <*> (symbol_ "->" *> noarrow)
+               else Nothing
+              ,Just $ pure $ TName i1]
     noarrow = parensOrNamedArrow <|> do
         i <- identifier
         noarrowctu i
@@ -595,7 +613,7 @@ typ = startsWithIden <|> parensOrNamedArrow <|> ttupleOrRecord
     noarrowctu i = do
         i1 <- tname i
         choice
-              [TParam i1 <$> (symbol_ "<" *> commaSep1 typ <* symbol_ ">")
+              [TParam i1 <$> (symbol_ "<" *> commaSep1 (typ True) <* symbol_ ">")
               ,pure $ TName i1]
     parensOrNamedArrow = symbol_ "(" *> do
         i <- identifier
@@ -605,10 +623,8 @@ typ = startsWithIden <|> parensOrNamedArrow <|> ttupleOrRecord
                 r <- symbol_ ")" *> symbol_ "->" *> noarrow
                 pure $ TNamedArrow ((i,x):xs) r
                ,do
-                i1 <- ctu i <* symbol_ ")"
+                i1 <- ctu True i <* symbol_ ")"
                 pure $ TParens i1]
-               
-
     ttupleOrRecord = symbol_ "{" *> f <* symbol_ "}"
       where
         f = do

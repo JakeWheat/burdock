@@ -1166,9 +1166,9 @@ interpStatement (DataDecl dnm _ vs whr) = do
     makeV :: VariantDecl -> [Stmt]
     makeV (VariantDecl vnm fs) =
         [letDecl vnm
-         $ (if null fs then id else lam (map snd fs))
+         $ (if null fs then id else Lam (fh $ map snd fs))
          $ App appSourcePos (bootstrapRef "make-variant") []
-                (Text vnm : concat (map ((\x -> [Text x, Iden x]) . snd) fs))
+                (Text vnm : concat (map ((\x -> [Text x, Iden x]) . bindingName . snd) fs))
         ,letDecl ("_casepattern-" ++ vnm) $ Text vnm
         ]
     letDecl nm v = LetDecl (mnm nm) v
