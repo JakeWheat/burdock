@@ -937,6 +937,7 @@ interp :: Expr -> Interpreter Value
 interp (Num n) = pure $ NumV n
 interp (Text s) = pure $ TextV s
 interp (Parens e) = interp e
+interp (Iden "_") = error $ "todo: partial app not supported"
 interp (Iden a) = do
     mv <- lookupEnv a
     case mv of
@@ -993,7 +994,10 @@ interp (Let bs e) = do
                         AssertTypeCompat ex t
                     _ -> ex
             v <- interp at
-            localScriptEnv (extendEnv [(bindingName b,v)]) $ newEnv bs'
+            (if bindingName b == "_"
+                then id
+                else localScriptEnv (extendEnv [(bindingName b,v)]))
+                 $ newEnv bs'
     newEnv bs
 
 interp (Block ss) =
@@ -1057,7 +1061,8 @@ interp (Cases _ty e cs els) = do
             FFIValue fgt | Just (ptg, pnm) <- fromDynamic fgt ->
                 if ptg == tg && pnm == vnm
                 then let letvs = zipWith (\(NameBinding _ n _) (_,v) -> (n,v)) nms fs
-                     in pure $ Just $ localScriptEnv (extendEnv letvs) $ interp ce
+                         letvs' = filter ((/="_") . fst) letvs
+                     in pure $ Just $ localScriptEnv (extendEnv letvs') $ interp ce
                 else pure Nothing
             _ -> error $ "casepattern lookup returned " ++ show caseName
     doMatch _ _ _ _ = pure Nothing
@@ -1112,7 +1117,8 @@ app fv vs =
     case fv of
         FunV ps bdy env -> do
             as <- safeZip ps vs
-            localScriptEnv (const $ extendEnv as env) $ interp bdy
+            let as' = filter ((/="_") . fst) as
+            localScriptEnv (const $ extendEnv as' env) $ interp bdy
         ForeignFunV nm -> do
             ffs <- askFF
             case lookup nm ffs of
@@ -1607,6 +1613,7 @@ modifySystemExtendRecord pth v = do
 
 
 letValue :: String -> Value -> Interpreter ()
+letValue "_" _ = pure ()
 letValue nm v = do
     modifyScriptEnv (extendEnv [(nm,v)])
 
