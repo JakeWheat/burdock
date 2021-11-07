@@ -123,8 +123,8 @@ check "arrow types":
 end
 
 check "Any":
-  # let x :: Any = {}: x end is {}
-  # assert-type-compat(empty :: List<Any>) is empty
+  let x :: Any = {}: x end is {}
+  assert-type-compat(empty :: List<Any>) is empty
   
 end
 

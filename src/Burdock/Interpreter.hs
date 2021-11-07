@@ -352,6 +352,9 @@ shallowizeType (ParamTypeInfo nmt _) = nmt
 shallowizeType x = x
 
 typeIsCompatibleWith :: Value -> TypeInfo -> Bool
+
+typeIsCompatibleWith _ b | b == bootstrapType "Any" = True
+
 typeIsCompatibleWith (NumV {}) b | b == bootstrapType "Number" = True
 typeIsCompatibleWith (TextV {}) b | b == bootstrapType "String" = True
 typeIsCompatibleWith (BoolV {}) b | b == bootstrapType "Boolean" = True
@@ -1502,6 +1505,8 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
         ,("get-ffi-value", ForeignFunV "get-ffi-value")
         ,("make-variant", ForeignFunV "make-variant")
         ,("is-variant", ForeignFunV "is-variant")
+        ,("_typeinfo-Any", FFIValue $ toDyn
+             $ SimpleTypeInfo ["_system","modules","_bootstrap","Any"])
         ,("_typeinfo-Number", FFIValue $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Number"])
         ,("_typeinfo-String", FFIValue $ toDyn

@@ -38,6 +38,7 @@ provide:
   is-record,
 
   # todo: fix this when implement type provide-spec
+  _typeinfo-Any,
   _typeinfo-Number,
   _typeinfo-String,
   _typeinfo-Boolean,
