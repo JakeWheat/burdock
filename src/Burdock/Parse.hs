@@ -238,6 +238,7 @@ term = (do
         ,ifE
         ,block
         ,cases
+        ,typeLet
         ,assertTypeCompat
         ,Iden <$> identifier
         ,numE
@@ -386,6 +387,11 @@ caseBinding = CaseBinding <$> nm <*> (option [] caseArgs)
         pure (i:sfs)
     caseArgs = parens (commaSep (binding False))
 
+typeLet :: Parser Expr
+typeLet = TypeLet
+    <$> (keyword_ "type-let" *> commaSep1 (typeDecl False))
+    <*> (symbol_ ":" *> expr <* keyword_ "end")
+
 assertTypeCompat :: Parser Expr
 assertTypeCompat = do
     keyword_ "assert-type-compat"
@@ -480,7 +486,7 @@ stmt = choice
     ,varDecl
     ,dataDecl
     ,checkBlock
-    ,typeDecl
+    ,typeStmt
     ,provide
     ,include
     ,importStmt
@@ -543,12 +549,14 @@ checkBlock = do
     keyword_ "end"
     pure $ Check nm ss
 
-typeDecl :: Parser Stmt
-typeDecl =
-    TypeDecl
-    <$> (keyword_ "type" *> identifier)
+typeStmt :: Parser Stmt
+typeStmt = TypeStmt <$> (keyword_ "type" *> typeDecl True)
+
+typeDecl :: Bool -> Parser TypeDecl
+typeDecl allowImplicitTuple = TypeDecl
+    <$>  identifier
     <*> option [] tyNameList
-    <*> (symbol_ "=" *> typ True)
+    <*> (symbol_ "=" *> typ allowImplicitTuple)
 
 provide :: Parser Stmt
 provide = Provide <$> (keyword_ "provide"

@@ -122,6 +122,11 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("[List:]", Construct (Iden "List") [])
     ,("[List: 1,2,3]", Construct (Iden "List") [Num 1, Num 2, Num 3])
 
+    ,("type-let a = b: c end"
+     ,TypeLet [TypeDecl "a" [] (TName ["b"])] (Iden "c"))
+    ,("type-let a<x> = b: c end"
+     ,TypeLet [TypeDecl "a" ["x"] (TName ["b"])] (Iden "c"))
+    
     ,("assert-type-compat(x :: Number)"
      ,AssertTypeCompat (Iden "x") (TName ["Number"]))
     ,("assert-type-compat(x :: X.Something)"
@@ -346,10 +351,10 @@ end|]
             )
 
     ,("type NumPredicate = (Number -> Boolean)"
-     ,TypeDecl "NumPredicate" [] (TParens (TArrow [TName ["Number"]] $ TName ["Boolean"])))
+     ,TypeStmt $ TypeDecl "NumPredicate" [] (TParens (TArrow [TName ["Number"]] $ TName ["Boolean"])))
 
     ,("type Predicate<a> = (a -> Boolean)"
-     ,TypeDecl "Predicate" ["a"] (TParens (TArrow [TName ["a"]] $ TName ["Boolean"])))
+     ,TypeStmt $ TypeDecl "Predicate" ["a"] (TParens (TArrow [TName ["a"]] $ TName ["Boolean"])))
 
     ,("a :: Number"
      ,Contract "a" $ TName ["Number"])

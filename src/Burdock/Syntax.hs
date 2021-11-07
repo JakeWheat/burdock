@@ -27,7 +27,7 @@ data Stmt =
         FunHeader
         Expr -- body
         (Maybe [Stmt]) -- test block
-    | TypeDecl String [String] TypeAnnotation
+    | TypeStmt TypeDecl
     | Contract String TypeAnnotation
     | Provide [ProvideItem]
     | Import ImportSource String
@@ -74,7 +74,11 @@ data Expr =
     | TupleGet Expr Int
     | Construct Expr [Expr]
     | AssertTypeCompat Expr TypeAnnotation
+    | TypeLet [TypeDecl] Expr
     deriving (Eq,Show,Data)
+
+data TypeDecl = TypeDecl String [String] TypeAnnotation
+              deriving (Eq,Show,Data)
 
 data CaseBinding = CaseBinding [String] [Binding]
                  deriving (Eq,Show,Data) 

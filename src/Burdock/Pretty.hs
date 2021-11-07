@@ -101,6 +101,11 @@ expr (Construct e as) =
 
 expr (AssertTypeCompat e ty) =
     pretty "assert-type-compat(" <> nest 2 (expr e <+> pretty "::" <+> typ ty) <> pretty ")"
+
+expr (TypeLet tds e) =
+    prettyBlocklike sep
+    [pretty "type-let" <+> commaSep (map typeDecl tds) <> pretty ":"
+    ,expr e]
     
 bindExpr :: Binding -> Expr -> Doc a
 bindExpr n e =
@@ -140,6 +145,14 @@ typ (TNamedArrow ts t) = pretty "(" <> xSep "," (map f ts) <> pretty ")" <+> pre
   where
     f(n,u) = pretty n <+> pretty "::" <+> typ u
 typ (TParens t) = pretty "(" <> typ t <> pretty ")"
+
+typeDecl :: TypeDecl -> Doc a
+typeDecl (TypeDecl nm ps v) =
+    pretty nm <>
+       (case ps of
+           [] -> mempty
+           _ -> pretty "<" <> commaSep (map pretty ps) <> pretty ">")
+    <+> pretty "=" <+> typ v
 
 
 -- first line
@@ -192,13 +205,8 @@ stmt (FunDecl pn hdr e w) =
      ,expr e
      ,maybe mempty whereBlock w]
 
-stmt (TypeDecl nm ps v) =
-    pretty "type" <+> pretty nm <>
-       (case ps of
-           [] -> mempty
-           _ -> pretty "<" <> commaSep (map pretty ps) <> pretty ">")
-    <+> pretty "=" <+> typ v
-
+stmt (TypeStmt td) = 
+    pretty "type" <+> typeDecl td
 stmt (Contract nm ty) = pretty nm <+> pretty "::" <+> typ ty
 
 
