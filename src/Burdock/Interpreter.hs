@@ -309,33 +309,6 @@ bootstrapType x = SimpleTypeInfo ["_system","modules","_bootstrap",x]
 internalsType :: String -> TypeInfo
 internalsType x = SimpleTypeInfo ["_system","modules","_internals",x]
 
--- todo: this approach is no good
--- it will either descend into the entire value to get the whole
--- type even if you don't need it
--- or if it doesn't, you won't be able to do deep type checks
--- solution: pass the value and the type to check against to the type
--- compat function in haskell, so it can descend as much as it needs
--- this is less of an issue until a strictness pass is done on the code
--- don't want to rely on haskell laziness to keep this working efficiently
-typeOfValue :: Value -> Interpreter TypeInfo
-typeOfValue (NumV {}) =
-    pure $ bootstrapType "Number"
-typeOfValue (TextV {}) =
-    pure $ bootstrapType "String"
-typeOfValue (BoolV {}) =
-    pure $ bootstrapType "Boolean"
-typeOfValue (VariantV tg "tuple" fs) | tg == bootstrapType "Tuple" =
-    -- assumes the fields are in order
-    TupleTypeInfo <$> mapM (typeOfValue . snd) fs
-typeOfValue (VariantV tg "record" fs) | tg == bootstrapType "Record" =
-    RecordTypeInfo <$> mapM (secondM typeOfValue) fs
-typeOfValue (FunV {}) =
-    pure $ bootstrapType "Function"
-typeOfValue (ForeignFunV {}) =
-    pure $ bootstrapType "Function"
-typeOfValue _ = error "type of value"
-
-
 -- todo: split the runtime type tag and the type annotation syntax
 -- types
 -- check the type referred to by the given type annotation is a valid
@@ -359,33 +332,49 @@ typeOfTypeSyntax x = error $ "typeOfTypeSyntax: " ++ show x
 secondM :: Functor m => (b -> m b') -> (a, b) -> m (a, b')
 secondM f (a,b) = (a,) <$> f b
 
+-- shrink types according to default pyret type checking,
+-- e.g. checking a value against a List<Number>
+-- only actually checks it's a List
+-- this is so the typeIsCompatibleWith will be able to do
+-- complete type checks, but if wanted, the default
+-- language checks will just be shallow checks like pyret does it
 shallowizeType :: TypeInfo -> TypeInfo
 shallowizeType x = x
--- shallowizeType _ =  error "shallowizeType"
 
-typeIsCompatibleWith :: TypeInfo -> TypeInfo -> Bool
-typeIsCompatibleWith (SimpleTypeInfo a) (SimpleTypeInfo b) = a == b
+typeIsCompatibleWith :: Value -> TypeInfo -> Bool
+typeIsCompatibleWith (NumV {}) b | b == bootstrapType "Number" = True
+typeIsCompatibleWith (TextV {}) b | b == bootstrapType "String" = True
+typeIsCompatibleWith (BoolV {}) b | b == bootstrapType "Boolean" = True
 
-typeIsCompatibleWith (TupleTypeInfo as) (TupleTypeInfo bs) =
+typeIsCompatibleWith (VariantV tg "tuple" fs) (TupleTypeInfo bs)
+    | tg == bootstrapType "Tuple" =
     -- todo: do this efficiently
     -- if there's an issue, collect all the incompatible messages
     -- instead of just reporting the first
-    length as == length bs && and (zipWith typeIsCompatibleWith as bs)
-typeIsCompatibleWith (TupleTypeInfo {}) b
-    | b == bootstrapType "Tuple" = True
-    | otherwise = False
+    length fs == length bs && and (zipWith typeIsCompatibleWith (map snd fs) bs)
+typeIsCompatibleWith (VariantV tg "tuple" _) b
+    | b == bootstrapType "Tuple"
+    , tg == bootstrapType "Tuple" = True
 
-typeIsCompatibleWith (RecordTypeInfo as) (RecordTypeInfo bs) =
+typeIsCompatibleWith (VariantV tg "record" fs) (RecordTypeInfo bs)
+    | tg == bootstrapType "Record" =
     -- todo: do this efficiently
     -- if there's an issue, collect all the incompatible messages
     -- instead of just reporting the first
     let f = sortOn fst
         tc a b = fst a == fst b && typeIsCompatibleWith (snd a) (snd b)
-    in length as == length bs && and (zipWith tc (f as) (f bs))
-typeIsCompatibleWith (RecordTypeInfo {}) b
-    | b == bootstrapType "Record" = True
-    | otherwise = False
+    in length fs == length bs && and (zipWith tc (f fs) (f bs))
+typeIsCompatibleWith (VariantV tg "record" _) b
+    | b == bootstrapType "Record"
+    , tg == bootstrapType "Record" = True
 
+typeIsCompatibleWith v b
+    | b == bootstrapType "Function"
+    , isFunVal v = True
+  where
+    isFunVal (FunV {}) = True
+    isFunVal (ForeignFunV {}) = True
+    isFunVal _ = False
     
 
 typeIsCompatibleWith _ _ = False
@@ -1083,15 +1072,14 @@ interp (Construct {}) = error "todo: construct for non lists"
 
 interp (AssertTypeCompat e t) = do
     v <- interp e
-    ty <- typeOfValue v
     ty' <- shallowizeType <$> typeOfTypeSyntax t
-    if ty `typeIsCompatibleWith` ty'
+    if v `typeIsCompatibleWith` ty'
         then pure v
         else do
             cs <- readCallStack
             r <- liftIO $ torepr' v
             throwM $ ValueException cs
-                $ TextV $ "type not compatible " ++ r ++ " :: " ++ show ty ++ " // " ++ show ty'
+                $ TextV $ "type not compatible " ++ r ++ " :: " ++ show v ++ " // " ++ show ty'
 
 makeBList :: [Value] -> Value
 makeBList [] = VariantV (internalsType "List") "empty" []
