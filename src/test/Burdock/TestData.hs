@@ -130,12 +130,18 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
      ,AssertTypeCompat (Iden "x") (TTuple [TName ["Number"], TName["Boolean"]]))
     ,("assert-type-compat(x :: {Number})"
      ,AssertTypeCompat (Iden "x") (TTuple [TName ["Number"]]))
+
+    ,("assert-type-compat(x :: {Number})"
+     ,AssertTypeCompat (Iden "x") (TTuple [TName ["Number"]]))
     ,("assert-type-compat(x :: List<Number>)"
      ,AssertTypeCompat (Iden "x") (TParam ["List"] [TName ["Number"]]))
     ,("assert-type-compat(x :: Stuff<Number, Number>)"
      ,AssertTypeCompat (Iden "x") (TParam ["Stuff"] [TName ["Number"], TName ["Number"]]))
     ,("assert-type-compat(x :: {x :: Number, y :: String})"
      ,AssertTypeCompat (Iden "x") (TRecord [("x", TName ["Number"]),("y", TName ["String"])]))
+    ,("assert-type-compat(x :: {})"
+     ,AssertTypeCompat (Iden "x") (TRecord []))
+
     ,("assert-type-compat(x :: String, (String -> String) -> String)"
      ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"], TParens (TArrow [TName ["String"]] $ TName ["String"])] $ TName ["String"]))
 

@@ -640,7 +640,7 @@ typ allowImplicitTuple =
                ,do
                 i1 <- ctu True i <* symbol_ ")"
                 pure $ TParens i1]
-    ttupleOrRecord = symbol_ "{" *> f <* symbol_ "}"
+    ttupleOrRecord = symbol_ "{" *> (f <|> pure (TRecord [])) <* symbol_ "}"
       where
         f = do
             i <- identifier

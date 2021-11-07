@@ -31,6 +31,7 @@ check "special built in types":
   assert-type-compat({a:3,b:4} :: Number) raises "type not compatible"
   assert-type-compat(2 :: Record) raises "type not compatible"
   assert-type-compat({5;6} :: Record) raises "type not compatible"
+  assert-type-compat({} :: Record) is {}
   #assert-type-compat(empty :: Record) raises "type not compatible"
   let x :: Record = {a:true,b:false}: x end is {a:true,b:false}
 
@@ -49,6 +50,15 @@ check "tuple and record types":
   assert-type-compat({7;4} :: {Number;String}) raises "type not compatible"
   assert-type-compat({7;4} :: {Number;Four}) raises 'identifier not found'
   assert-type-compat({true} :: {Boolean}) is {true}
+
+  assert-type-compat({a:8,b:5} :: {a::Number,b::Number}) is {a:8,b:5}
+  assert-type-compat({a:true,b:5} :: {b::Number,a::Boolean}) is {a:true,b:5}
+  assert-type-compat({a:8,b:5} :: {a::Number,b::String}) raises "type not compatible"
+  assert-type-compat({a:8,b:5} :: {a::Four,b::Number}) raises 'identifier not found'
+  #todo: the parse error message for this is not good:
+  #assert-type-compat(({a:8,b:5} :: {a::Four,b::Number})) raises 'identifier not found'
+  assert-type-compat({} :: {}) is {}
+  
   
 end
 

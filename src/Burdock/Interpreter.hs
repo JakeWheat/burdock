@@ -295,9 +295,10 @@ nothing = VariantV "nothing" []
 -- because it can be abstract/partial
 data TypeInfo
     = SimpleTypeInfo
-    {tiID :: [String] -- TODO: path to the system module [_system.modules.module-name.type-name]
-    }
+      {tiID :: [String] -- TODO: path to the system module [_system.modules.module-name.type-name]
+      }
     | TupleTypeInfo [TypeInfo]
+    | RecordTypeInfo [(String,TypeInfo)]
     deriving (Eq, Show)
 
 bootstrapType :: String -> TypeInfo
@@ -322,8 +323,8 @@ typeOfValue (BoolV {}) =
 typeOfValue (VariantV "tuple" fs) =
     -- assumes the fields are in order
     TupleTypeInfo <$> mapM (typeOfValue . snd) fs
-typeOfValue (VariantV "record" _) =
-    pure $ bootstrapType "Record"
+typeOfValue (VariantV "record" fs) =
+    RecordTypeInfo <$> mapM (secondM typeOfValue) fs
 typeOfValue (FunV {}) =
     pure $ bootstrapType "Function"
 typeOfValue (ForeignFunV {}) =
@@ -344,8 +345,14 @@ typeOfTypeSyntax (TName x) = do
 typeOfTypeSyntax (TTuple xs) = do
     fs <- mapM typeOfTypeSyntax xs
     pure $ TupleTypeInfo fs
+typeOfTypeSyntax (TRecord xs) = do
+    fs <- mapM (secondM typeOfTypeSyntax) xs
+    pure $ RecordTypeInfo fs
 
 typeOfTypeSyntax x = error $ "typeOfTypeSyntax: " ++ show x
+
+secondM :: Functor m => (b -> m b') -> (a, b) -> m (a, b')
+secondM f (a,b) = (a,) <$> f b
 
 shallowizeType :: TypeInfo -> TypeInfo
 shallowizeType x = x
@@ -362,6 +369,18 @@ typeIsCompatibleWith (TupleTypeInfo as) (TupleTypeInfo bs) =
 typeIsCompatibleWith (TupleTypeInfo {}) b
     | b == bootstrapType "Tuple" = True
     | otherwise = False
+
+typeIsCompatibleWith (RecordTypeInfo as) (RecordTypeInfo bs) =
+    -- todo: do this efficiently
+    -- if there's an issue, collect all the incompatible messages
+    -- instead of just reporting the first
+    let f = sortOn fst
+        tc a b = fst a == fst b && typeIsCompatibleWith (snd a) (snd b)
+    in length as == length bs && and (zipWith tc (f as) (f bs))
+typeIsCompatibleWith (RecordTypeInfo {}) b
+    | b == bootstrapType "Record" = True
+    | otherwise = False
+
     
 
 typeIsCompatibleWith _ _ = False
