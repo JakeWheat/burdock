@@ -113,8 +113,6 @@ check "parameterized types":
 
   assert-type-compat(empty :: List<Number>) is empty
   assert-type-compat(empty :: List<Blah>) raises 'identifier not found'
-  # assert-type-compat(empty :: List<Number,Number>) raises 'wrong number of type params'
-  # assert-type-compat(1 :: Number<Number>) raises 'wrong number of type params'
   assert-type-compat(link(1,empty) :: List<Number>) is link(1,empty)
 
   # demostrate the type shallowing, it ignores the parameter as long
@@ -123,6 +121,8 @@ check "parameterized types":
 
   assert-type-compat(3 :: List<Number>) raises "type not compatible"
   
+  # assert-type-compat(empty :: List<Number,Number>) raises 'wrong number of type params'
+  # assert-type-compat(1 :: Number<Number>) raises 'wrong number of type params'
   
 end
 
@@ -147,4 +147,74 @@ check "ffi types":
 end
 
 # all the other regular type annotation syntax tests:
+
+data MyList<a>:
+  | my-empty
+  | my-link(my-first :: a, my-rest :: MyList<a>)
+end
+
+data MyPoint:
+  | my-pt(x :: Number, y :: Number)
+end
+
+check "variant selector expressions":
+  let x :: MyList = my-empty: x end is my-empty
+  let x :: MyList<Any> = my-empty: x end is my-empty
+  let x :: MyList<Number> = my-empty: x end is my-empty
+  let x :: MyList = my-empty<Number>: x end is my-empty
+  let x :: MyList = my-empty: x end is my-empty<Number> 
+  let x :: MyList = my-empty<Number>: x end is my-empty<Number>
+
+  let y :: MyList = my-link(1,my-empty): y end is my-link(1,my-empty)
+  let y :: MyList<Number> = my-link(1,my-empty): y end is my-link(1,my-empty)
+  let y :: MyList<Number> = my-link<Number>(1,my-empty): y end is my-link(1,my-empty)
+  let y :: MyList<Number> = my-link(1,my-empty): y end is my-link<Number>(1,my-empty)
+  let y :: MyList<Number> = my-link<Number>(1,my-empty): y end is my-link<Number>(1,my-empty)
+
+  # doesn't work because of the dynamic types stripping type params before checking
+  # always
+  #let y :: MyList<Number> = my-link(true,my-empty): y end raises "type not compatible"
+  #let y :: MyList = my-link<Number>(true,my-empty): y end raises "type not compatible"
+  #let y :: Number = my-empty: y end raises "type not compatible"
+  
+  let y :: MyList = my-empty<Blah>: y end raises 'identifier not found'
+  # let y :: MyList = my-empty<Number,Number>: y end raises 'wrong number of type params'
+
+  # same as pyret - will check a parameterized type member is at least
+  # the right type without checking for parameter consistency
+  let y :: MyList = my-link(true,1): y end raises "type not compatible"
+
+  # doesn't do a deep check, like pyret
+  let y :: MyList<Number> = my-link(1,my-link(true,my-empty)): y end
+    is my-link(1,my-link(true,my-empty))
+
+  let z = my-pt(3,4): z end is my-pt(3,4)
+  let z = my-pt(true,4): z end raises "type not compatible"
+end
+
+check "cases type syntax":
+  # check the value is consistent with the type of the cases
+  # check all the patterns are consistent with the type of the cases if given
+  # check annotations of fields in patterns are checked
+end
+
+check "basic sugar":
+  # letdecl
+  # vardecl
+  # letrec
+end
+
+check "fun sugar":
+  # fundecl
+  # lam
+  # letrec
+end
+
+check "contracts":
+  
+end
+
+check "type stmt":
+  
+end
 

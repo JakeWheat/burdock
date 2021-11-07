@@ -166,6 +166,9 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("callg<Predicate<A>>(x)"
      ,App Nothing (Iden "callg") [TParam ["Predicate"] [TName ["A"]]] [Iden "x"])
 
+    ,("ctor<a>"
+     ,PIden "ctor" [TName ["a"]])
+
     ,([R.r|
 lam(x :: Number):
   x + 1

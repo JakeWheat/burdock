@@ -47,6 +47,8 @@ import Data.IORef (IORef
                   ,modifyIORef
                   ,writeIORef)
 
+import Data.Maybe (catMaybes)
+
 import Burdock.Scientific
 import Burdock.Syntax
 import Burdock.Pretty
@@ -945,6 +947,13 @@ interp (Iden a) = do
         Just v -> pure v
         Nothing -> error $ "identifier not found: " ++ a
 
+interp (PIden a ps) = do
+    -- todo: add type check - check the ty param list has valid types
+    -- and the type of a accepts this many type params
+    mapM_ typeOfTypeSyntax ps
+    interp (Iden a)
+
+
 interp (App sp f _ es) = do
     fv <- interp f
     -- special case apps
@@ -1323,7 +1332,7 @@ _typeinfo-Pt = simpletypeinfo ["_system","modules",currentModuleName, "Pt"]
 
 -}
 
-interpStatement (DataDecl dnm _ vs whr) = do
+interpStatement (DataDecl dnm dpms vs whr) = do
     let makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
@@ -1347,15 +1356,28 @@ interpStatement (DataDecl dnm _ vs whr) = do
     forM_ vs $ \(VariantDecl vnm _) -> letValue ("_casepattern-" ++ vnm)
         $ FFIValue $ toDyn (SimpleTypeInfo ["_system", "modules", moduleName, dnm], vnm)
     let desugared = (map makeV vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
+    -- liftIO $ putStrLn $ prettyScript (Script desugared)
     interpStatements desugared
   where
     typeInfoName = "_typeinfo-" ++ dnm
     --makeV :: VariantDecl -> [Stmt]
     makeV (VariantDecl vnm fs) =
-         letDecl vnm
-         $ (if null fs then id else Lam (fh $ map snd fs))
-         $ App appSourcePos (bootstrapRef "make-variant") []
-                (Iden typeInfoName : Text vnm : concat (map ((\x -> [Text x, Iden x]) . bindingName . snd) fs))
+        let appMakeV = App appSourcePos (bootstrapRef "make-variant") []
+                       (Iden typeInfoName : Text vnm
+                        : concat (map ((\x -> [Text x, Iden x]) . bindingName . snd) fs))
+            tcs = catMaybes $ map (\case
+                NameBinding _ nm (Just ta) -> Just (nm,ta)
+                _ -> Nothing) $ map snd fs
+            typeletthing = case dpms of
+                [] -> id
+                _ -> TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) dpms)
+            typeCheck = case tcs of
+                [] -> id
+                _ -> typeletthing .
+                    Let (map (\(nm,ta) -> (NameBinding NoShadow "_" (Just ta), Iden nm)) tcs)
+        in letDecl vnm
+           $ (if null fs then id else Lam (fh $ map snd fs))
+           $ typeCheck $ appMakeV
         
     letDecl nm v = LetDecl (mnm nm) v
     lam as e = Lam (fh $ map mnm as) e

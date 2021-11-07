@@ -48,6 +48,7 @@ expr (Text s) = dquotes (pretty $ escape s)
     escape (x:xs) = x : escape xs
     escape [] = []
 expr (Iden n) = pretty n
+expr (PIden n ps) = pretty n <> pretty "<" <> commaSep (map typ ps) <> pretty ">"
 expr (Parens e) = parens (expr e)
 expr (App _ e ts es) = expr e <> tpl ts <> parens (commaSep $ map expr es)
   where

@@ -257,9 +257,17 @@ termSuffixes x = boption x $ do
     termSuffixes y
 
 appSuffix :: Parser (Expr -> Expr)
-appSuffix = f <$> sourcePos <*> option [] tyParamList <*> parens (commaSep expr)
+appSuffix = do
+    sp <- sourcePos
+    choice [do
+            tys <- tyParamList
+            choice [f sp tys <$> parens (commaSep expr)
+                   ,pure $ fi tys]
+           ,f sp [] <$> parens (commaSep expr)]
   where
     f sp ts as x = App sp x ts as
+    fi ts (Iden x) = PIden x ts
+    -- not sure how to do this properly right now
 
 tyParamList :: Parser [TypeAnnotation]
 tyParamList = symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">"
