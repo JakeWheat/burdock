@@ -269,9 +269,10 @@ instance Eq Value where
     NumV a == NumV b = a == b
     BoolV a == BoolV b = a == b
     TextV a == TextV b = a == b
-    VariantV _tg "record" as == VariantV _tg' "record" bs =
-        sortOn fst as == sortOn fst bs
-    VariantV _tg nm fs == VariantV _tg' lm gs = (nm,fs) == (lm,gs)
+    VariantV tg "record" as == VariantV tg' "record" bs
+        | tg == bootstrapType "Record" && tg == tg' 
+        = sortOn fst as == sortOn fst bs
+    VariantV tg nm fs == VariantV tg' lm gs = tg == tg' && (nm,fs) == (lm,gs)
     ForeignFunV x == ForeignFunV y = x == y
     -- todo: funv, boxv ..., ffivalue
     -- ioref has an eq instance for pointer equality
@@ -283,7 +284,7 @@ instance Eq Value where
 
 valueToString :: Value -> IO (Maybe String)
 valueToString v = case v of
-    VariantV _tg "nothing" [] -> pure $ Nothing
+    VariantV tg "nothing" [] | tg == bootstrapType "Nothing" -> pure $ Nothing
     _ -> Just <$> torepr' v
 
 -- temp?
@@ -305,8 +306,8 @@ data TypeInfo
 bootstrapType :: String -> TypeInfo
 bootstrapType x = SimpleTypeInfo ["_system","modules","_bootstrap",x]
 
-internalType :: String -> TypeInfo
-internalType x = SimpleTypeInfo ["_system","modules","_internals",x]
+internalsType :: String -> TypeInfo
+internalsType x = SimpleTypeInfo ["_system","modules","_internals",x]
 
 -- todo: this approach is no good
 -- it will either descend into the entire value to get the whole
@@ -323,10 +324,10 @@ typeOfValue (TextV {}) =
     pure $ bootstrapType "String"
 typeOfValue (BoolV {}) =
     pure $ bootstrapType "Boolean"
-typeOfValue (VariantV _tg "tuple" fs) =
+typeOfValue (VariantV tg "tuple" fs) | tg == bootstrapType "Tuple" =
     -- assumes the fields are in order
     TupleTypeInfo <$> mapM (typeOfValue . snd) fs
-typeOfValue (VariantV _tg "record" fs) =
+typeOfValue (VariantV tg "record" fs) | tg == bootstrapType "Record" =
     RecordTypeInfo <$> mapM (secondM typeOfValue) fs
 typeOfValue (FunV {}) =
     pure $ bootstrapType "Function"
@@ -623,8 +624,8 @@ emptyInterpreterState = do
 
 baseEnv :: [(String,Value)]
 baseEnv =
-    [("_system", VariantV (bootstrapType "internal-record") "record"
-         [("modules", VariantV (bootstrapType "internal-record") "record" [])])
+    [("_system", VariantV (bootstrapType "Record") "record"
+         [("modules", VariantV (bootstrapType "Record") "record" [])])
     -- come back to dealing with these properly when decide how to
     -- do ad hoc polymorphism
     -- but definitely also want a way to refer to these as regular
@@ -682,8 +683,8 @@ runInterp (Handle h) f = do
 -- convert a burdock either value to a haskell one
 
 bToHEither :: Value -> Either Value Value
-bToHEither (VariantV _tg "left" [(_,e)]) = Left e
-bToHEither (VariantV _tg "right" [(_,r)]) = Right r
+bToHEither (VariantV tg "left" [(_,e)]) | tg == internalsType "Either" = Left e
+bToHEither (VariantV tg "right" [(_,r)]) | tg == internalsType "Either" = Right r
 bToHEither x = error $ "non either passed to btoheither: " ++ show x
 
 
@@ -762,10 +763,10 @@ toreprx (BoxV b) = do
     v <- toreprx bv
     pure $ P.pretty "<Box:" <> v <> P.pretty ">"
 
-toreprx (VariantV _tg "tuple" fs) = do
+toreprx (VariantV tg "tuple" fs) | tg == bootstrapType "Tuple" = do
     vs <- mapM (toreprx . snd) fs
     pure $ P.pretty "{" <> P.nest 2 (xSep ";" vs) <> P.pretty "}"
-toreprx (VariantV _tg "record" fs) = do
+toreprx (VariantV tg "record" fs) | tg == bootstrapType "Record" = do
     vs <- mapM f fs
     pure $ P.pretty "{" <> P.nest 2 (xSep "," vs) <> P.pretty "}"
   where
@@ -842,17 +843,17 @@ isVariant [FFIValue _, TextV _nm, _] = pure $ BoolV False
 isVariant _ = error $ "wrong args to is-variant"
 
 isNothing :: [Value] -> Interpreter Value
-isNothing [VariantV _tg "nothing" _] = pure $ BoolV True
+isNothing [VariantV tg "nothing" _] | tg == bootstrapType "Nothing" = pure $ BoolV True
 isNothing [_] = pure $ BoolV False
 isNothing _ = error $ "wrong args to is-nothing/is-Nothing"
 
 isTuple :: [Value] -> Interpreter Value
-isTuple [VariantV _tg "tuple" _] = pure $ BoolV True
+isTuple [VariantV tg "tuple" _] | tg == bootstrapType "Tuple" = pure $ BoolV True
 isTuple [_] = pure $ BoolV False
 isTuple _ = error $ "wrong args to is-tuple"
 
 isRecord :: [Value] -> Interpreter Value
-isRecord [VariantV _tg "record" _] = pure $ BoolV True
+isRecord [VariantV tg "record" _] | tg == bootstrapType "Record" = pure $ BoolV True
 isRecord [_] = pure $ BoolV False
 isRecord _ = error $ "wrong args to is-record"
 
@@ -1069,7 +1070,7 @@ interp (RecordSel fs) = do
 interp (TupleGet e f) = do
     v <- interp e
     case v of
-        VariantV _tg "tuple" fs ->
+        VariantV tg "tuple" fs | tg == bootstrapType "Tuple" ->
             maybe (error $ "tuple field not found: " ++ show f ++ ", " ++ show v) pure
                  $ lookup (show f) fs
         _ -> error $ "tuple get called on non tuple value: " ++ show v
@@ -1093,8 +1094,8 @@ interp (AssertTypeCompat e t) = do
                 $ TextV $ "type not compatible " ++ r ++ " :: " ++ show ty ++ " // " ++ show ty'
 
 makeBList :: [Value] -> Value
-makeBList [] = VariantV (internalType "List") "empty" []
-makeBList (x:xs) = VariantV (internalType "List") "link" [("first", x),("rest", makeBList xs)]
+makeBList [] = VariantV (internalsType "List") "empty" []
+makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest", makeBList xs)]
 
 
 
@@ -1398,7 +1399,7 @@ qualifier
 interpStatement (IncludeFrom nm pis) = do
     v <- interp (Iden nm)
     case v of
-        VariantV _tg "record" fs -> do
+        VariantV tg "record" fs | tg == bootstrapType "Record" -> do
             let as = aliasSomething fs pis
             mapM_ (uncurry letValue) as
         _ -> error $ "trying to alias from something that isn't a record: " ++ show v
@@ -1472,11 +1473,13 @@ ensureModuleLoaded :: String -> FilePath -> Interpreter ()
 ensureModuleLoaded moduleName moduleFile = do
     modRec <- interp $ makeDotPathExpr ["_system", "modules"]
     case modRec of
-        VariantV _tg "record" fs
-            | moduleName `notElem` map fst fs -> do
+        VariantV tg "record" fs
+            | tg == bootstrapType "Record"
+            , moduleName `notElem` map fst fs -> do
                 --liftIO $ putStrLn $ "loading module: " ++ moduleFile
                 loadModule True moduleName moduleFile
-            | otherwise -> pure ()
+            | tg == bootstrapType "Record"
+            , otherwise -> pure ()
         _ -> error $ "_system.modules is not a record??"
 
 -- bootstrap is a special built in module which carefully creates
@@ -1549,7 +1552,7 @@ aliasModule modName pis = do
     -- pure $ concat $ map (apis modEnv) pis
   where
 
-    ex (VariantV _tg "record" r) = r
+    ex (VariantV tg "record" r) | tg == bootstrapType "Record" = r
     ex x = error $ "aliasmodule: module value is not a record: " ++ show x
     lkp = interp $ makeDotPathExpr $ modulePath modName
 
@@ -1584,7 +1587,7 @@ modifySystemExtendRecord pth v = do
         f r (p:ps) =
             case lookup p r of
                 Nothing -> error $ "internal error: modifySystemExtendRecord path not found: " ++ show pth ++ " " ++ p
-                Just (VariantV _tg "record" s) ->
+                Just (VariantV tg "record" s) | tg == bootstrapType "Record" ->
                     let s' = VariantV (bootstrapType "Record") "record" $ f s ps
                     in updateEntry p s' r
                 Just x -> error $ "internal error: modifySystemExtendRecord non record " ++ show pth ++ ": " ++ show x
