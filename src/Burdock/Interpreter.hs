@@ -297,17 +297,37 @@ data TypeInfo
     = SimpleTypeInfo
     {tiID :: [String] -- TODO: path to the system module [_system.modules.module-name.type-name]
     }
+    | TupleTypeInfo [TypeInfo]
     deriving (Eq, Show)
 
+bootstrapType :: String -> TypeInfo
+bootstrapType x = SimpleTypeInfo ["_system","modules","_bootstrap",x]
+
+-- todo: this approach is no good
+-- it will either descend into the entire value to get the whole
+-- type even if you don't need it
+-- or if it doesn't, you won't be able to do deep type checks
+-- solution: pass the value and the type to check against to the type
+-- compat function in haskell, so it can descend as much as it needs
+-- this is less of an issue until a strictness pass is done on the code
+-- don't want to rely on haskell laziness to keep this working efficiently
 typeOfValue :: Value -> Interpreter TypeInfo
-typeOfValue (NumV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Number"]
-typeOfValue (TextV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","String"]
-typeOfValue (BoolV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Boolean"]
+typeOfValue (NumV {}) =
+    pure $ bootstrapType "Number"
+typeOfValue (TextV {}) =
+    pure $ bootstrapType "String"
+typeOfValue (BoolV {}) =
+    pure $ bootstrapType "Boolean"
 -- temp
-typeOfValue (VariantV "tuple" _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Tuple"]
-typeOfValue (VariantV "record" _) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Record"]
-typeOfValue (FunV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Function"]
-typeOfValue (ForeignFunV {}) = pure $ SimpleTypeInfo ["_system","modules","_bootstrap","Function"]
+typeOfValue (VariantV "tuple" fs) =
+    -- assumes the fields are in order
+    TupleTypeInfo <$> mapM (typeOfValue . snd) fs
+typeOfValue (VariantV "record" _) =
+    pure $ bootstrapType "Record"
+typeOfValue (FunV {}) =
+    pure $ bootstrapType "Function"
+typeOfValue (ForeignFunV {}) =
+    pure $ bootstrapType "Function"
 typeOfValue _ = error "type of value"
 
 -- todo: split the runtime type tag and the type annotation syntax
@@ -321,7 +341,11 @@ typeOfTypeSyntax (TName x) = do
                FFIValue v' | Just z <- fromDynamic v' -> (z :: TypeInfo)
                            | otherwise -> error $ "type info reference isn't a type info: " ++ show v'
                _ -> error $ "type info reference isn't a type info: " ++ show v
-typeOfTypeSyntax _ = error "typeOfTypeSyntax"
+typeOfTypeSyntax (TTuple xs) = do
+    fs <- mapM typeOfTypeSyntax xs
+    pure $ TupleTypeInfo fs
+
+typeOfTypeSyntax x = error $ "typeOfTypeSyntax: " ++ show x
 
 shallowizeType :: TypeInfo -> TypeInfo
 shallowizeType x = x
@@ -329,7 +353,18 @@ shallowizeType x = x
 
 typeIsCompatibleWith :: TypeInfo -> TypeInfo -> Bool
 typeIsCompatibleWith (SimpleTypeInfo a) (SimpleTypeInfo b) = a == b
--- typeIsCompatibleWith _ _ = error "typeIsCompatibleWith"
+
+typeIsCompatibleWith (TupleTypeInfo as) (TupleTypeInfo bs) =
+    -- todo: do this efficiently
+    -- if there's an issue, collect all the incompatible messages
+    -- instead of just reporting the first
+    length as == length bs && and (zipWith typeIsCompatibleWith as bs)
+typeIsCompatibleWith (TupleTypeInfo {}) b
+    | b == bootstrapType "Tuple" = True
+    | otherwise = False
+    
+
+typeIsCompatibleWith _ _ = False
 
 prefixLast :: [a] -> [[a]] -> [[a]]
 prefixLast pre is = f is

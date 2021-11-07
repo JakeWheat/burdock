@@ -40,14 +40,20 @@ check "special built in types":
   assert-type-compat({5;6} :: Function) raises "type not compatible"
   #assert-type-compat(empty :: Function) raises "type not compatible"
   let x :: Function = lam(): 'a' end: x() end is 'a'
-
-  
-
   
 end
 
-check "record and tuple types":
+check "tuple and record types":
 
+  assert-type-compat({7;4} :: {Number;Number}) is {7;4}
+  assert-type-compat({7;4} :: {Number;String}) raises "type not compatible"
+  assert-type-compat({7;4} :: {Number;Four}) raises 'identifier not found'
+  assert-type-compat({true} :: {Boolean}) is {true}
+  
+end
+
+check "data decl types":
+  
 end
 
 check "parameterized types":
@@ -56,4 +62,8 @@ end
 
 check "arrow types":
 
+end
+
+check "ffi types":
+  
 end

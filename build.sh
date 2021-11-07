@@ -15,4 +15,4 @@ fi
 
 ghc -Wall --make Shakefile.hs -rtsopts -threaded -with-rtsopts=-I0 -outputdir=_build/shakefile-build -o _build/bin/shakefile -package-env _build/shakefile-packages
 
-_build/bin/shakefile +RTS -N -RTS "$@"
+_build/bin/shakefile +RTS -N -RTS -j "$@"
