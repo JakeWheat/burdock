@@ -28,6 +28,14 @@ check "simplest type tag checks":
   
 end
 
+check "type-let":
+
+  type-let x = Number: let y :: x = 3: y end end is 3
+  type-let x = String: let y :: x = 3: y end end raises "type not compatible"
+  
+  # todo: parameterized type-let
+end
+
 check "special built in types":
 
   assert-type-compat({3;4} :: Tuple) is {3;4}

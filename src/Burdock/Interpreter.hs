@@ -1100,6 +1100,15 @@ interp (AssertTypeCompat e t) = do
             throwM $ ValueException cs
                 $ TextV $ "type not compatible " ++ r ++ " :: " ++ show v ++ " // " ++ show ty'
 
+interp (TypeLet tds e) = do
+    let newEnv [] = interp e
+        newEnv (TypeDecl _ (_:_) _ : _) = error $ "todo: parameterized type-let"
+        newEnv (TypeDecl n _ t:tds') = do
+            ty <- typeOfTypeSyntax t
+            localScriptEnv (extendEnv [("_typeinfo-" ++ n,FFIValue $ toDyn ty)])
+                 $ newEnv tds'
+    newEnv tds
+    
 makeBList :: [Value] -> Value
 makeBList [] = VariantV (internalsType "List") "empty" []
 makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest", makeBList xs)]

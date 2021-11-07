@@ -398,7 +398,6 @@ assertTypeCompat = do
     choice [uncurry AssertTypeCompat <$> parens ((,) <$> expr <*> (symbol_ "::" *> typ True))
            ,pure $ Iden "assert-type-compat"]
 
-
 numE :: Parser Expr
 numE = do
     x <- num
