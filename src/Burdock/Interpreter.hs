@@ -301,6 +301,7 @@ data TypeInfo
       }
     | TupleTypeInfo [TypeInfo]
     | RecordTypeInfo [(String,TypeInfo)]
+    | ParamTypeInfo TypeInfo [TypeInfo]
     deriving (Eq, Show)
 
 bootstrapType :: String -> TypeInfo
@@ -327,6 +328,14 @@ typeOfTypeSyntax (TRecord xs) = do
     fs <- mapM (secondM typeOfTypeSyntax) xs
     pure $ RecordTypeInfo fs
 
+typeOfTypeSyntax (TParam nm ps) = do
+    -- check the ps are valid
+    pst <- mapM typeOfTypeSyntax ps
+    -- check the nm is valid
+    nmt <- typeOfTypeSyntax (TName nm)
+    -- check the number of ps matches what nm allows
+    pure $ ParamTypeInfo nmt pst
+
 typeOfTypeSyntax x = error $ "typeOfTypeSyntax: " ++ show x
 
 secondM :: Functor m => (b -> m b') -> (a, b) -> m (a, b')
@@ -339,6 +348,7 @@ secondM f (a,b) = (a,) <$> f b
 -- complete type checks, but if wanted, the default
 -- language checks will just be shallow checks like pyret does it
 shallowizeType :: TypeInfo -> TypeInfo
+shallowizeType (ParamTypeInfo nmt _) = nmt
 shallowizeType x = x
 
 typeIsCompatibleWith :: Value -> TypeInfo -> Bool

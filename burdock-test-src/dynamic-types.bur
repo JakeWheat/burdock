@@ -1,4 +1,14 @@
 
+# testing assert-type-compat which is the internals primitive
+# and type annotations in let x :: Ty = ...: ... end
+# when move to checking identifiers statically, some of the tests
+# below will also give static errors, which means they won't work
+# as is since the test code won't run at all, one option is to use an
+# eval function to wrap bits of code which fail with static checks
+# another might be to use ghc style 'defer static checks' which will
+# raise each static failure at runtime when you get to the line
+# of code that failed the static check
+
 check "simplest type tag checks":
 
   assert-type-compat(3 :: Number) is 3
@@ -84,14 +94,49 @@ check "data decl types basics":
   
 end
 
+
 check "parameterized types":
 
+  # todo: extend assert-type-compat to be able to do a complete
+  # check on the value
+  # plus maybe add a language flag which states which dynamic check
+  # is used with all the other type annotations: shallow check like pyret
+  # or full checks (at least useful for debugging/troubleshooting?)
+
+  assert-type-compat(empty :: List<Number>) is empty
+  assert-type-compat(empty :: List<Blah>) raises 'identifier not found'
+  # assert-type-compat(empty :: List<Number,Number>) raises 'wrong number of type params'
+  # assert-type-compat(1 :: Number<Number>) raises 'wrong number of type params'
+  assert-type-compat(link(1,empty) :: List<Number>) is link(1,empty)
+
+  # demostrate the type shallowing, it ignores the parameter as long
+  # as it names a correct type when checking
+  assert-type-compat(link(1,empty) :: List<String>) is link(1,empty)
+
+  assert-type-compat(3 :: List<Number>) raises "type not compatible"
+  
+  
 end
 
 check "arrow types":
 
 end
 
+check "Any":
+  # let x :: Any = {}: x end is {}
+  # assert-type-compat(empty :: List<Any>) is empty
+  
+end
+
+check "wildcards":
+  # let x :: _ = {}: x end is {}
+  # assert-type-compat(empty :: List<_>) is empty
+end
+
+
 check "ffi types":
   
 end
+
+# all the other regular type annotation syntax tests:
+
