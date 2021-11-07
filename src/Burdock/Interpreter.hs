@@ -1047,12 +1047,12 @@ interp (Cases _ty e cs els) = do
                       Just ee -> interp ee
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
     matches (CaseBinding s nms) v ce = doMatch s nms v ce
-    doMatch s' nms (VariantV _tg vnm fs) ce = do
+    doMatch s' nms (VariantV tg vnm fs) ce = do
         let s = prefixLast "_casepattern-" s'
         caseName <- interp $ makeDotPathExpr s
         case caseName of
-            TextV nm ->
-                if nm == vnm
+            FFIValue fgt | Just (ptg, pnm) <- fromDynamic fgt ->
+                if ptg == tg && pnm == vnm
                 then let letvs = zipWith (\(NameBinding _ n _) (_,v) -> (n,v)) nms fs
                      in pure $ Just $ localScriptEnv (extendEnv letvs) $ interp ce
                 else pure Nothing
@@ -1325,18 +1325,21 @@ interpStatement (DataDecl dnm _ vs whr) = do
         pure $ tiModuleName ti
     letValue typeInfoName $ FFIValue $ toDyn
         $ SimpleTypeInfo ["_system", "modules", moduleName, dnm]
-    let desugared = (concatMap makeV vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
+    -- todo: use either a burdock value or a proper ffi value for the casepattern
+    -- instead of a haskell tuple
+    forM_ vs $ \(VariantDecl vnm _) -> letValue ("_casepattern-" ++ vnm)
+        $ FFIValue $ toDyn (SimpleTypeInfo ["_system", "modules", moduleName, dnm], vnm)
+    let desugared = (map makeV vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
     interpStatements desugared
   where
     typeInfoName = "_typeinfo-" ++ dnm
-    makeV :: VariantDecl -> [Stmt]
+    --makeV :: VariantDecl -> [Stmt]
     makeV (VariantDecl vnm fs) =
-        [letDecl vnm
+         letDecl vnm
          $ (if null fs then id else Lam (fh $ map snd fs))
          $ App appSourcePos (bootstrapRef "make-variant") []
                 (Iden typeInfoName : Text vnm : concat (map ((\x -> [Text x, Iden x]) . bindingName . snd) fs))
-        ,letDecl ("_casepattern-" ++ vnm) $ Text vnm
-        ]
+        
     letDecl nm v = LetDecl (mnm nm) v
     lam as e = Lam (fh $ map mnm as) e
     fh as = FunHeader [] as Nothing
