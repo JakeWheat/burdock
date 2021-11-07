@@ -74,13 +74,14 @@ check "data decl types basics":
 
   # only checks matching types to values, the other type checking for data
   # decls which uses desugaring is below
-  #|
   assert-type-compat({7;45} :: Pt) raises "type not compatible"
   assert-type-compat(pt(1,2) :: Pt) is pt(1,2)
   assert-type-compat(empty :: List) is empty
   assert-type-compat(link(1,empty) :: List) is link(1,empty)
   assert-type-compat(3 :: List) raises "type not compatible"
-     |#
+
+  let x :: List = [List:1,2]: x end is [List: 1,2]
+  
 end
 
 check "parameterized types":

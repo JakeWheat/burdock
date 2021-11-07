@@ -375,7 +375,8 @@ typeIsCompatibleWith v b
     isFunVal (FunV {}) = True
     isFunVal (ForeignFunV {}) = True
     isFunVal _ = False
-    
+
+typeIsCompatibleWith (VariantV tg _ _) b | tg == b = True
 
 typeIsCompatibleWith _ _ = False
 

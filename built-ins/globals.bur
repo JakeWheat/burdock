@@ -28,6 +28,7 @@ provide:
   # todo: make this automagical
   _casepattern-empty,
   _casepattern-link,
+  _typeinfo-List,
 
   is-nothing,
   is-Nothing,
@@ -44,6 +45,7 @@ provide:
   _typeinfo-Tuple,
   _typeinfo-Record,
   _typeinfo-Function
+
 
 end
 
