@@ -9,14 +9,14 @@ end
 |#
 
 check:
-  empty is [list:]
-  link(1, empty) is [list: 1]
-  link(1, link(2, empty)) is [list: 1,2]
+  empty is [List:]
+  link(1, empty) is [List: 1]
+  link(1, link(2, empty)) is [List: 1,2]
 
 end
 
 check:
-  l1 = [list: 1]
+  l1 = [List: 1]
   mt = empty
   is-empty(mt) is true
   is-empty(l1) is false
@@ -28,30 +28,30 @@ check:
 end
 
 check:
-  l1 = [list: 1,2,3]
+  l1 = [List: 1,2,3]
   l1.first is 1
-  l1.rest is [list: 2,3]
+  l1.rest is [List: 2,3]
 end
 
 check:
-  list1 = [list: 2,3]
+  list1 = [List: 2,3]
   list2 = link(1, list1)
-  list2 is [list: 1,2,3]
+  list2 is [List: 1,2,3]
 
-  [list: 1,2,3].first is 1
-  [list: 1,2,3].rest  is [list: 2,3]
+  [List: 1,2,3].first is 1
+  [List: 1,2,3].rest  is [List: 2,3]
 end
 
 check:
-  empty is [list:]
-  link(1, empty) is [list: 1]
-  link(1, link(2, empty)) is [list: 1,2]
-  link(empty, link(empty, [list: ])) is [list: [list:],[list:]]
+  empty is [List:]
+  link(1, empty) is [List: 1]
+  link(1, link(2, empty)) is [List: 1,2]
+  link(empty, link(empty, [List: ])) is [List: [List:],[List:]]
 end
 
 #|
 check:
-  x = [list: 1,2,3]
+  x = [List: 1,2,3]
   # -> link(1, link(2, link (3,empty)))
   # test variant binding
   
@@ -59,10 +59,10 @@ check:
   a is 1
   link(_,link(c,d)) = x
   c is 2
-  d is [list: 3]
+  d is [List: 3]
   w = let link(y,z) = x: {y;z} end
-  w is {1;[list:2,3]}
-  a0 = [list:]
+  w is {1;[List:2,3]}
+  a0 = [List:]
   # this seems pretty dodgy: pattern match on a no arg variant
   # instead of binding to an identifier called empty
   empty = a0
@@ -72,22 +72,22 @@ end
    |#
 
 check:
-  x = [list:1]
-  cases(list) x:
+  x = [List:1]
+  cases(List) x:
     | empty => true
     | else => false
   end is false
 
   #shadow
-  x = [list:]
-  cases(list) x:
+  x = [List:]
+  cases(List) x:
     | empty => true
     | else => false
   end is true
 
   #shadow
-  x = [list:1]
-  cases(list) x:
+  x = [List:1]
+  cases(List) x:
     | link(a,b) => block:
         a is 1
         b is empty
@@ -115,10 +115,11 @@ end
 
 check:
   l1 = empty
-  l2 = [list: 1,2,3]
+  l2 = [List: 1,2,3]
   my-is-empty(l1) is true
   my-is-empty(l2) is false
 
   length(l1) is 0
   length(l2) is 3
 end
+

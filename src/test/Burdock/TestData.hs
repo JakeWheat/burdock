@@ -119,8 +119,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
                                                ,("c", Iden "x")])
     ,("{}", RecordSel [])
 
-    ,("[list:]", Construct (Iden "list") [])
-    ,("[list: 1,2,3]", Construct (Iden "list") [Num 1, Num 2, Num 3])
+    ,("[List:]", Construct (Iden "List") [])
+    ,("[List: 1,2,3]", Construct (Iden "List") [Num 1, Num 2, Num 3])
 
     ,("assert-type-compat(x :: Number)"
      ,AssertTypeCompat (Iden "x") (TName ["Number"]))

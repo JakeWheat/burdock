@@ -242,7 +242,7 @@ data Value = NumV Scientific
            | TextV String
            | FunV [String] Expr Env
            | ForeignFunV String
-           | VariantV String [(String,Value)]
+           | VariantV TypeInfo String [(String,Value)]
            | BoxV (IORef Value)
            | FFIValue Dynamic
 
@@ -253,7 +253,8 @@ instance Show Value where
   show (NumV n) = "NumV " ++ show n
   show (TextV n) = "TextV " ++ show n
   show (BoolV n) = "BoolV " ++ show n
-  show (VariantV nm fs) = "VariantV " ++ nm ++ "[" ++ intercalate "," (map show fs) ++ "]"
+  -- todo: add the last element of the t?
+  show (VariantV _t nm fs) = "VariantV " ++ nm ++ "[" ++ intercalate "," (map show fs) ++ "]"
   show (FunV as bdy _env) = "FunV " ++ show as ++ "\n" ++ prettyExpr bdy
   show (ForeignFunV n) = "ForeignFunV " ++ show n
   show (BoxV _n) = "BoxV XX" -- ++ show n
@@ -268,9 +269,9 @@ instance Eq Value where
     NumV a == NumV b = a == b
     BoolV a == BoolV b = a == b
     TextV a == TextV b = a == b
-    VariantV "record" as == VariantV "record" bs =
+    VariantV _tg "record" as == VariantV _tg' "record" bs =
         sortOn fst as == sortOn fst bs
-    VariantV nm fs == VariantV lm gs = (nm,fs) == (lm,gs)
+    VariantV _tg nm fs == VariantV _tg' lm gs = (nm,fs) == (lm,gs)
     ForeignFunV x == ForeignFunV y = x == y
     -- todo: funv, boxv ..., ffivalue
     -- ioref has an eq instance for pointer equality
@@ -282,12 +283,12 @@ instance Eq Value where
 
 valueToString :: Value -> IO (Maybe String)
 valueToString v = case v of
-    VariantV "nothing" [] -> pure $ Nothing
+    VariantV _tg "nothing" [] -> pure $ Nothing
     _ -> Just <$> torepr' v
 
 -- temp?
 nothing :: Value
-nothing = VariantV "nothing" []
+nothing = VariantV (bootstrapType "Nothing") "nothing" []
 
 
 -- represents info for a "type" at runtime
@@ -304,6 +305,9 @@ data TypeInfo
 bootstrapType :: String -> TypeInfo
 bootstrapType x = SimpleTypeInfo ["_system","modules","_bootstrap",x]
 
+internalType :: String -> TypeInfo
+internalType x = SimpleTypeInfo ["_system","modules","_internals",x]
+
 -- todo: this approach is no good
 -- it will either descend into the entire value to get the whole
 -- type even if you don't need it
@@ -319,17 +323,17 @@ typeOfValue (TextV {}) =
     pure $ bootstrapType "String"
 typeOfValue (BoolV {}) =
     pure $ bootstrapType "Boolean"
--- temp
-typeOfValue (VariantV "tuple" fs) =
+typeOfValue (VariantV _tg "tuple" fs) =
     -- assumes the fields are in order
     TupleTypeInfo <$> mapM (typeOfValue . snd) fs
-typeOfValue (VariantV "record" fs) =
+typeOfValue (VariantV _tg "record" fs) =
     RecordTypeInfo <$> mapM (secondM typeOfValue) fs
 typeOfValue (FunV {}) =
     pure $ bootstrapType "Function"
 typeOfValue (ForeignFunV {}) =
     pure $ bootstrapType "Function"
 typeOfValue _ = error "type of value"
+
 
 -- todo: split the runtime type tag and the type annotation syntax
 -- types
@@ -588,6 +592,7 @@ data TestInfo
     {tiCurrentSource :: String
     ,tiCurrentCheckblock :: Maybe String
     ,tiNextAnonCheckblockNum :: Int
+    ,tiModuleName :: String
     }
 
 readCallStack :: Interpreter CallStack
@@ -604,6 +609,7 @@ emptyInterpreterState = do
         {tiCurrentSource = "runScript-api"
         ,tiCurrentCheckblock = Nothing
         ,tiNextAnonCheckblockNum = 1
+        ,tiModuleName = "runScript-api"
         }
     trs <- newIORef []
     ffs <- newIORef []
@@ -617,8 +623,8 @@ emptyInterpreterState = do
 
 baseEnv :: [(String,Value)]
 baseEnv =
-    [("_system", VariantV "record" [("modules", VariantV "record" [])])
-
+    [("_system", VariantV (bootstrapType "internal-record") "record"
+         [("modules", VariantV (bootstrapType "internal-record") "record" [])])
     -- come back to dealing with these properly when decide how to
     -- do ad hoc polymorphism
     -- but definitely also want a way to refer to these as regular
@@ -676,8 +682,8 @@ runInterp (Handle h) f = do
 -- convert a burdock either value to a haskell one
 
 bToHEither :: Value -> Either Value Value
-bToHEither (VariantV "left" [(_,e)]) = Left e
-bToHEither (VariantV "right" [(_,r)]) = Right r
+bToHEither (VariantV _tg "left" [(_,e)]) = Left e
+bToHEither (VariantV _tg "right" [(_,r)]) = Right r
 bToHEither x = error $ "non either passed to btoheither: " ++ show x
 
 
@@ -756,16 +762,19 @@ toreprx (BoxV b) = do
     v <- toreprx bv
     pure $ P.pretty "<Box:" <> v <> P.pretty ">"
 
-toreprx (VariantV "tuple" fs) = do
+toreprx (VariantV _tg "tuple" fs) = do
     vs <- mapM (toreprx . snd) fs
     pure $ P.pretty "{" <> P.nest 2 (xSep ";" vs) <> P.pretty "}"
-toreprx (VariantV "record" fs) = do
+toreprx (VariantV _tg "record" fs) = do
     vs <- mapM f fs
     pure $ P.pretty "{" <> P.nest 2 (xSep "," vs) <> P.pretty "}"
   where
     f (a,b) = ((P.pretty a P.<+> P.pretty "=") P.<+>) <$> toreprx b
-toreprx (VariantV nm []) = pure $ P.pretty nm
-toreprx (VariantV nm fs) = do
+-- todo: should this try to use the local name of the variant
+-- including qualifier if there is one
+-- how can this work?
+toreprx (VariantV _ nm []) = pure $ P.pretty nm
+toreprx (VariantV _ nm fs) = do
     vs <- mapM (toreprx . snd) fs
     pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
 
@@ -817,8 +826,8 @@ getFFIValue _ = error "wrong args to get-ffi-value"
     
 
 makeVariant :: [Value] -> Interpreter Value
-makeVariant (TextV nm : as) =
-    pure $ VariantV nm (f as)
+makeVariant (FFIValue ftg : TextV nm : as) | Just tg <- fromDynamic ftg =
+    pure $ VariantV tg nm (f as)
   where
     f [] = []
     f (TextV fnm : v : as') = (fnm,v): f as'
@@ -826,22 +835,24 @@ makeVariant (TextV nm : as) =
 makeVariant x = error $ "wrong args to make-variant: " ++ show x
 
 isVariant :: [Value] -> Interpreter Value
-isVariant [TextV nm, VariantV vt _] = pure $ BoolV $ nm == vt
-isVariant [TextV _nm, _] = pure $ BoolV False
+isVariant [FFIValue ftg, TextV nm, VariantV vtg vt _]
+    | Just tg <- fromDynamic ftg
+    = pure $ BoolV $ tg == vtg && nm == vt
+isVariant [FFIValue _, TextV _nm, _] = pure $ BoolV False
 isVariant _ = error $ "wrong args to is-variant"
 
 isNothing :: [Value] -> Interpreter Value
-isNothing [VariantV "nothing" _] = pure $ BoolV True
+isNothing [VariantV _tg "nothing" _] = pure $ BoolV True
 isNothing [_] = pure $ BoolV False
 isNothing _ = error $ "wrong args to is-nothing/is-Nothing"
 
 isTuple :: [Value] -> Interpreter Value
-isTuple [VariantV "tuple" _] = pure $ BoolV True
+isTuple [VariantV _tg "tuple" _] = pure $ BoolV True
 isTuple [_] = pure $ BoolV False
 isTuple _ = error $ "wrong args to is-tuple"
 
 isRecord :: [Value] -> Interpreter Value
-isRecord [VariantV "record" _] = pure $ BoolV True
+isRecord [VariantV _tg "record" _] = pure $ BoolV True
 isRecord [_] = pure $ BoolV False
 isRecord _ = error $ "wrong args to is-record"
 
@@ -1003,14 +1014,14 @@ interp (LetRec bs e) =
 interp (DotExpr e f) = do
     v <- interp e
     case v of
-        VariantV _ fs | Just fv <- lookup f fs ->
+        VariantV _ _ fs | Just fv <- lookup f fs ->
                             -- not quite sure about this?
                             -- it's needed for referencing vars in a module
                             -- (including fun which is desugared to a var)
                             case fv of
                                 BoxV vr -> liftIO $ readIORef vr
                                 _ -> pure fv
-                      | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
+                        | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
                                              ++ "\nfields are: " ++ show fs
         _ -> error $ "dot called on non variant: " ++ show v
 
@@ -1035,12 +1046,12 @@ interp (Cases _ty e cs els) = do
                       Just ee -> interp ee
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
     matches (CaseBinding s nms) v ce = doMatch s nms v ce
-    doMatch s' nms (VariantV tag fs) ce = do
+    doMatch s' nms (VariantV _tg vnm fs) ce = do
         let s = prefixLast "_casepattern-" s'
         caseName <- interp $ makeDotPathExpr s
         case caseName of
             TextV nm ->
-                if nm == tag
+                if nm == vnm
                 then let letvs = zipWith (\(NameBinding _ n _) (_,v) -> (n,v)) nms fs
                      in pure $ Just $ localScriptEnv (extendEnv letvs) $ interp ce
                 else pure Nothing
@@ -1049,21 +1060,21 @@ interp (Cases _ty e cs els) = do
 
 interp (TupleSel es) = do
     vs <- mapM interp es
-    pure $ VariantV "tuple" $ zipWith (\n v -> (show n, v)) [(0::Int)..] vs
+    pure $ VariantV (bootstrapType "Tuple") "tuple" $ zipWith (\n v -> (show n, v)) [(0::Int)..] vs
 
 interp (RecordSel fs) = do
     vs <- mapM (\(n,e) -> (n,) <$> interp e) fs
-    pure $ VariantV "record" vs
+    pure $ VariantV (bootstrapType "Record") "record" vs
 
 interp (TupleGet e f) = do
     v <- interp e
     case v of
-        VariantV "tuple" fs ->
+        VariantV _tg "tuple" fs ->
             maybe (error $ "tuple field not found: " ++ show f ++ ", " ++ show v) pure
                  $ lookup (show f) fs
         _ -> error $ "tuple get called on non tuple value: " ++ show v
 
-interp (Construct (Iden "list") es) = do
+interp (Construct (Iden "List") es) = do
     vs <- mapM interp es
     pure $ makeBList vs
 
@@ -1082,8 +1093,8 @@ interp (AssertTypeCompat e t) = do
                 $ TextV $ "type not compatible " ++ r ++ " :: " ++ show ty ++ " // " ++ show ty'
 
 makeBList :: [Value] -> Value
-makeBList [] = VariantV "empty" []
-makeBList (x:xs) = VariantV "link" [("first", x),("rest", makeBList xs)]
+makeBList [] = VariantV (internalType "List") "empty" []
+makeBList (x:xs) = VariantV (internalType "List") "link" [("first", x),("rest", makeBList xs)]
 
 
 
@@ -1156,7 +1167,7 @@ interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
 -- return value if it's the last statement
 interpStatements [s] = interpStatement s
 interpStatements (s:ss) = interpStatement s >> interpStatements ss
-interpStatements [] = pure $ VariantV "nothing" []
+interpStatements [] = pure $ VariantV (bootstrapType "Nothing") "nothing" []
 
 
 interpStatement :: Stmt -> Interpreter Value
@@ -1289,7 +1300,8 @@ a make function for each variant, with the name of the variant, e.g.
 pt(...)
 a support binding for cases, for each variant x:
 _casepattern-x = ...
-
+support for the dynamic type tags:
+_typeinfo-Pt = simpletypeinfo ["_system","modules",currentModuleName, "Pt"]
 
 -}
 
@@ -1297,21 +1309,31 @@ interpStatement (DataDecl dnm _ vs whr) = do
     let makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            $ App appSourcePos (bootstrapRef "is-variant") [] [Text vnm, Iden "x"]
+            $ App appSourcePos (bootstrapRef "is-variant") [] [Iden typeInfoName, Text vnm, Iden "x"]
         callIs (VariantDecl vnm _) = App appSourcePos (Iden $ "is-" ++ vnm) [] [Iden "x"]
+        -- use the type tag instead
         makeIsDat =
             letDecl ("is-" ++ dnm)
             $ lam ["x"]
             $ foldl1 orE $ map callIs vs
         chk = maybe [] (\w -> [Check (Just dnm) w]) whr
-    interpStatements (concatMap makeV vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
+    moduleName <- do
+        -- todo: move this from the testinfo now it's used outside the testing
+        st <- ask
+        ti <- liftIO $ readIORef (isTestInfo st)
+        pure $ tiModuleName ti
+    letValue typeInfoName $ FFIValue $ toDyn
+        $ SimpleTypeInfo ["_system", "modules", moduleName, dnm]
+    let desugared = (concatMap makeV vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
+    interpStatements desugared
   where
+    typeInfoName = "_typeinfo-" ++ dnm
     makeV :: VariantDecl -> [Stmt]
     makeV (VariantDecl vnm fs) =
         [letDecl vnm
          $ (if null fs then id else Lam (fh $ map snd fs))
          $ App appSourcePos (bootstrapRef "make-variant") []
-                (Text vnm : concat (map ((\x -> [Text x, Iden x]) . bindingName . snd) fs))
+                (Iden typeInfoName : Text vnm : concat (map ((\x -> [Text x, Iden x]) . bindingName . snd) fs))
         ,letDecl ("_casepattern-" ++ vnm) $ Text vnm
         ]
     letDecl nm v = LetDecl (mnm nm) v
@@ -1361,7 +1383,7 @@ interpStatement (Import is al) =  do
     (modName,fn) <- resolveImportPath [] is
     ensureModuleLoaded modName fn
     as <- aliasModule modName [ProvideAll]
-    letValue al $ VariantV "record" as
+    letValue al $ VariantV (bootstrapType "Record") "record" as
     pure nothing
 {-
 include from X: a end
@@ -1376,7 +1398,7 @@ qualifier
 interpStatement (IncludeFrom nm pis) = do
     v <- interp (Iden nm)
     case v of
-        VariantV "record" fs -> do
+        VariantV _tg "record" fs -> do
             let as = aliasSomething fs pis
             mapM_ (uncurry letValue) as
         _ -> error $ "trying to alias from something that isn't a record: " ++ show v
@@ -1450,7 +1472,7 @@ ensureModuleLoaded :: String -> FilePath -> Interpreter ()
 ensureModuleLoaded moduleName moduleFile = do
     modRec <- interp $ makeDotPathExpr ["_system", "modules"]
     case modRec of
-        VariantV "record" fs
+        VariantV _tg "record" fs
             | moduleName `notElem` map fst fs -> do
                 --liftIO $ putStrLn $ "loading module: " ++ moduleFile
                 loadModule True moduleName moduleFile
@@ -1468,7 +1490,7 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
     mapM_ (uncurry letValue)
         [("true", BoolV True)
         ,("false", BoolV False)
-        ,("nothing", VariantV "nothing" [])
+        ,("nothing", VariantV (bootstrapType "Nothing") "nothing" [])
         ,("is-nothing", ForeignFunV "is-nothing")
         ,("is-Nothing", ForeignFunV "is-Nothing")
         -- todo: complete the boolean (and nothing?) types
@@ -1492,13 +1514,14 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
 runModule :: String -> String -> Interpreter () -> Interpreter ()        
 runModule filename moduleName f =
     localScriptEnv (const emptyEnv)
-        $ localTestInfo (\cti -> cti {tiCurrentSource = filename}) $ do
+        $ localTestInfo (\cti -> cti {tiCurrentSource = filename
+                                     ,tiModuleName = moduleName}) $ do
         f
         moduleEnv <- askScriptEnv
         -- get the pis and make a record from the env using them
         pis <- (\case [] -> [ProvideAll]
                       x -> x) <$> askScriptProvides
-        let moduleRecord = VariantV "record" $ aliasSomething moduleEnv pis
+        let moduleRecord = VariantV (bootstrapType "Record") "record" $ aliasSomething moduleEnv pis
             sp = modulePath moduleName
         modifySystemExtendRecord sp moduleRecord
 
@@ -1526,7 +1549,7 @@ aliasModule modName pis = do
     -- pure $ concat $ map (apis modEnv) pis
   where
 
-    ex (VariantV "record" r) = r
+    ex (VariantV _tg "record" r) = r
     ex x = error $ "aliasmodule: module value is not a record: " ++ show x
     lkp = interp $ makeDotPathExpr $ modulePath modName
 
@@ -1561,8 +1584,8 @@ modifySystemExtendRecord pth v = do
         f r (p:ps) =
             case lookup p r of
                 Nothing -> error $ "internal error: modifySystemExtendRecord path not found: " ++ show pth ++ " " ++ p
-                Just (VariantV "record" s) ->
-                    let s' = VariantV "record" $ f s ps
+                Just (VariantV _tg "record" s) ->
+                    let s' = VariantV (bootstrapType "Record") "record" $ f s ps
                     in updateEntry p s' r
                 Just x -> error $ "internal error: modifySystemExtendRecord non record " ++ show pth ++ ": " ++ show x
 

@@ -85,9 +85,9 @@ fun length(l):
     | link(f, r) => 1 + length(r)
   end
 where:
-  length([list:]) is 0
-  length([list:1]) is 1
-  length([list:2,1]) is 2
+  length([List:]) is 0
+  length([List:1]) is 1
+  length([List:2,1]) is 2
 end
 
 fun get(l, i):

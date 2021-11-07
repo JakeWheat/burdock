@@ -51,6 +51,9 @@ check "tuple and record types":
   assert-type-compat({7;4} :: {Number;Four}) raises 'identifier not found'
   assert-type-compat({true} :: {Boolean}) is {true}
 
+  let x :: {Number;Number} = {7;4}: x end is {7;4}
+  let x :: {Number;String} = {7;4}: x end raises "type not compatible"
+
   assert-type-compat({a:8,b:5} :: {a::Number,b::Number}) is {a:8,b:5}
   assert-type-compat({a:true,b:5} :: {b::Number,a::Boolean}) is {a:true,b:5}
   assert-type-compat({a:8,b:5} :: {a::Number,b::String}) raises "type not compatible"
@@ -58,12 +61,26 @@ check "tuple and record types":
   #todo: the parse error message for this is not good:
   #assert-type-compat(({a:8,b:5} :: {a::Four,b::Number})) raises 'identifier not found'
   assert-type-compat({} :: {}) is {}
-  
-  
+
+  let x :: {} = {}: x end is {}
+  let x :: Number = {}: x end raises "type not compatible"
+  let x :: {a::Number,b::Number} = {a:8,b:5}: x end is {a:8,b:5}
+
 end
 
-check "data decl types":
-  
+data Pt: pt(a,b) end
+
+check "data decl types basics":
+
+  # only checks matching types to values, the other type checking for data
+  # decls which uses desugaring is below
+  #|
+  assert-type-compat({7;45} :: Pt) raises "type not compatible"
+  assert-type-compat(pt(1,2) :: Pt) is pt(1,2)
+  assert-type-compat(empty :: List) is empty
+  assert-type-compat(link(1,empty) :: List) is link(1,empty)
+  assert-type-compat(3 :: List) raises "type not compatible"
+     |#
 end
 
 check "parameterized types":
