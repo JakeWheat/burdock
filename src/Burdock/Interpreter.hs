@@ -1003,9 +1003,32 @@ interp (BinOp e0 op e1) = do
     v1 <- interp e1
     app opv [v0,v1]
 
-interp (Lam ps e) = do
+{-
+Type checking for lam:
+
+lam(x :: T) -> U: [bdy] end
+->
+
+lam(x):
+   assert-type-compat(block:
+     assert-type-compat(x :: T)
+     [bdy]
+   end :: U)
+end
+
+-}
+
+interp (Lam (FunHeader _ bs rt) e) = do
     env <- askEnv
-    pure $ FunV (map bindingName $ funHeaderArgs ps) e env
+    pure $ FunV (map bindingName bs) wrapRt env
+  where
+    argAsserts =
+        catMaybes $ flip map bs $ \(NameBinding _ nm ta)
+            -> fmap (StmtExpr . AssertTypeCompat (Iden nm)) ta
+    wrapArgAsserts = case argAsserts of
+        [] -> e
+        _ -> Block (argAsserts ++ [StmtExpr e])
+    wrapRt = maybe wrapArgAsserts (AssertTypeCompat wrapArgAsserts) rt
 
 interp (Let bs e) = do
     let newEnv [] = interp e
@@ -1128,13 +1151,8 @@ makeBList :: [Value] -> Value
 makeBList [] = VariantV (internalsType "List") "empty" []
 makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest", makeBList xs)]
 
-
-
 bindingName :: Binding -> String
 bindingName (NameBinding _ nm _) = nm
-
-funHeaderArgs :: FunHeader -> [Binding]
-funHeaderArgs (FunHeader _ as _) = as
 
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =
@@ -1402,9 +1420,9 @@ interpStatement (DataDecl dnm dpms vs whr) = do
                 _ -> TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) dpms)
             typeCheck = case tcs of
                 [] -> id
-                _ -> typeletthing .
-                    Let (map (\(nm,ta) -> (NameBinding NoShadow "_" (Just ta), Iden nm)) tcs)
+                _ -> Let (map (\(nm,ta) -> (NameBinding NoShadow "_" (Just ta), Iden nm)) tcs)
         in letDecl vnm
+           $ typeletthing
            $ (if null fs then id else Lam (fh $ map snd fs))
            $ typeCheck $ appMakeV
         

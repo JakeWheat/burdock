@@ -243,14 +243,27 @@ check "basic let sugar variations":
   letrec fact :: Number = lam(n):
       if n == 1: 1 else: n * fact(n - 1) end
   end: fact(5) end raises "type not compatible"
-
   
 end
 
 check "fun sugar":
   # lam
+  let f = lam(x): x + 1 end: f(2) end is 3
+  let f = lam(x :: Number): x + 1 end: f(2) end is 3
+  let f = lam(x :: String): x + 1 end: f(2) end raises "type not compatible"
+  let f = lam(x) -> Number: x + 1 end: f(2) end is 3
+  let f = lam(x) -> String: x + 1 end: f(2) end raises "type not compatible"
+
+  let f = lam(x :: Number) -> Number: x + 1 end: f(2) end is 3
+  let f = lam(x :: String) -> Number: x + 1 end: f(2) end raises "type not compatible"
+  let f = lam(x :: Number) -> String: x + 1 end: f(2) end raises "type not compatible"
+
+  # parametrized lam
+  
   # fundecl
+  
   # recdecl
+  
 end
 
 check "contracts":
