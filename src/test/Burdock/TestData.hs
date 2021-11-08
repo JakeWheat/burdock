@@ -215,7 +215,9 @@ end|]
 
 statementParseTests :: TestTree
 statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTest)
-    [("var a = 5"
+    [("when x == 3: 4 end"
+     ,When (BinOp (Iden "x") "==" (Num 3)) (Num 4))
+    ,("var a = 5"
      ,VarDecl (nm "a") (Num 5))
     ,("a := 6"
      ,SetVar "a" (Num 6))
@@ -459,7 +461,7 @@ end
 interpreterTests :: TestTree
 interpreterTests =
     TestGroup "interpreterTests"
-    $ map InterpreterTestsFile
+    [TestGroup "language" $ map InterpreterTestsFile
      ["burdock-test-src/basics.bur"
      ,"burdock-test-src/letrec.bur"
      ,"burdock-test-src/fun.bur"
@@ -475,5 +477,10 @@ interpreterTests =
      ,"burdock-test-src/include-from-simple-3.bur"
      ,"burdock-test-src/include-simple.bur"
      ,"burdock-test-src/raise.bur"
-     ,"burdock-test-src/dynamic-types.bur"
+     ,"burdock-test-src/dynamic-types.bur"]
+    ,TestGroup "built-in modules" $ map InterpreterTestsFile
+     ["built-ins/lists.bur"
+     ,"built-ins/globals.bur"
+     ,"built-ins/either.bur"
      ]
+    ]

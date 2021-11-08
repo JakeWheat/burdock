@@ -269,8 +269,9 @@ appSuffix = do
     fi ts (Iden x) = PIden x ts
     -- not sure how to do this properly right now
 
+-- todo: remove the try when implement the whitespace rules
 tyParamList :: Parser [TypeAnnotation]
-tyParamList = symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">"
+tyParamList = try (symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">")
 
 sourcePos :: Parser SourcePosition
 sourcePos = do
@@ -497,6 +498,7 @@ stmt = choice
     ,provide
     ,include
     ,importStmt
+    ,whenStmt
     ,startsWithExprOrBinding]
 
 stmts :: Parser [Stmt]
@@ -544,8 +546,9 @@ dataDecl = DataDecl
               <*> boption [] (parens (commaSep fld))
     fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> binding False
 
+-- todo: remove the try when implement the whitespace rules
 tyNameList :: Parser [String]
-tyNameList = symbol_ "<" *> (commaSep1 identifier <?> "type parameter") <* symbol_ ">"
+tyNameList = try (symbol_ "<" *> (commaSep1 identifier <?> "type parameter") <* symbol_ ">")
 
 checkBlock :: Parser Stmt
 checkBlock = do
@@ -598,6 +601,11 @@ importStmt :: Parser Stmt
 importStmt = keyword_ "import" *> (Import <$> importSource
                       <*> (keyword_ "as" *> identifier))
 
+
+whenStmt :: Parser Stmt
+whenStmt = When
+           <$> (keyword_ "when" *> expr)
+           <*> (symbol_ ":" *> expr <* keyword_ "end")
 
 startsWithExprOrBinding :: Parser Stmt
 startsWithExprOrBinding = do

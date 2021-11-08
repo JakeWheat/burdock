@@ -1438,6 +1438,13 @@ interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) = do
 
 
 interpStatement (StmtExpr e) = interp e
+interpStatement (When t b) = do
+    tv <- interp t
+    case tv of
+        BoolV True -> interp b
+        BoolV False -> pure nothing
+        _ -> error $ "expected when test to have boolean type, but is " ++ show tv
+
 interpStatement (Check mnm ss) = do
     runTestsEnabled <- interp $ internalsRef "auto-run-tests"
     case runTestsEnabled of

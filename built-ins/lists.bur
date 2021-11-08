@@ -1,7 +1,7 @@
 
 #|
 
-   The following list things are built into the interpreter:
+   The following list things are part of the globals module:
 
    List
    empty
@@ -10,9 +10,8 @@
    is-link
    [list: ... ]
 
-   todo: these are always available, even if you don't import lists
-   pyret has some of this behaviour too
-
+   todo: make sure when support use context, and these are not imported from the context,
+   that you get them all if you import this lists module
 
    functions todo: 
    take
@@ -72,12 +71,12 @@
 
 |#
 
-#|provide:
+provide:
   length,
   get,
   set
 end
-|#
+
 
 fun length(l :: List):
   cases l:
@@ -90,10 +89,10 @@ where:
   length([List:2,1]) is 2
 end
 
-fun get(l :: List, i :: Number):
-  #when i < 0:
-  #  raise("invalid argument")
-  #end
+fun get<a>(l :: List<a>, i :: Number) -> a:
+  when i < 0:
+    raise("invalid argument")
+  end
   cases l:
     | empty => raise("too large")
     | link(f, r) =>
@@ -104,10 +103,10 @@ fun get(l :: List, i :: Number):
   end
 end
 
-fun set(l, i, v):
-  #when i < 0:
-  #  raise("invalid argument")
-  #end
+fun set<a>(l :: List<a>, i :: Number, v :: a) -> List<a>:
+  when i < 0:
+    raise("invalid argument")
+  end
   cases l:
     | empty => raise("too large")
     | link(f, r) =>

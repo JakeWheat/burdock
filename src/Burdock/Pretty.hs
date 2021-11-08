@@ -172,6 +172,8 @@ prettyBlocklike sp bdy =
 
 stmt :: Stmt -> Doc a
 stmt (StmtExpr e) = expr e
+stmt (When c t) =
+    pretty "when" <+> expr c <> pretty ":" <+> nest 2 (expr t) <+> pretty "end"
 stmt (LetDecl b e) = nest 2 (bindExpr b e)
 stmt (Check nm s) = prettyBlocklike vsep 
         [case nm of

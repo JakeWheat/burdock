@@ -52,3 +52,20 @@ check "short circuiting":
   true or raise("fail") is true
   false and raise("fail") is false
 end
+
+
+check "when":
+
+  var a = 1
+  when 1 == 2: block:
+    a := 2
+  end end
+  a is 1
+
+  when 2 == 2: block:
+    a := 3
+  end end
+  a is 3
+
+  
+end

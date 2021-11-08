@@ -16,6 +16,7 @@ data Script =
 
 data Stmt =
       StmtExpr Expr
+    | When Expr Expr
     | LetDecl Binding Expr
     | Check (Maybe String) [Stmt]
     | VarDecl Binding Expr
