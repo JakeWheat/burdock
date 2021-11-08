@@ -210,8 +210,60 @@ end
 
 check "cases type syntax":
   # check the value is consistent with the type of the cases
+  cases empty :: List:
+    | else => false
+  end is false
+  cases empty :: MyList:
+    | else => false
+  end raises "type not compatible"
 
   # check all the patterns are consistent with the type of the cases if given
+
+  cases empty :: List:
+    | link(_,_) => 1
+    | empty => 2
+  end is 2
+
+  cases empty :: List:
+    | link(_,_) => 1
+    | empty => 2
+    | nothing => 3
+  end raises "type not compatible"
+
+  cases empty :: Any:
+    | link(_,_) => 1
+    | empty => 2
+    | nothing => 3
+  end is 2
+
+  cases empty:
+    | link(_,_) => 1
+    | empty => 2
+    | nothing => 3
+  end is 2
+
+  # TODO: check the number of args given to a ctor is correct here too
+
+  cases [List:1,2]:
+    | link(_,_,_) => 1
+  end raises "wrong number of args"
+
+  cases [List:1,2]:
+    | link => 1
+  end raises "wrong number of args"
+
+  cases [List:]:
+    | empty(_) => 1
+  end raises "wrong number of args"
+
+  # todo: make patterns with () into parse errors
+  cases [List:1,2]:
+    | link() => 1
+  end raises "wrong number of args"
+
+  cases [List:]:
+    | empty() => 1
+  end is 1
 
   # check annotations of fields in patterns are checked
   #   how do these interact with the annotations on the variantdecls?

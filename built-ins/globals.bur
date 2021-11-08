@@ -26,6 +26,7 @@ provide:
   empty,
   link,
   # todo: make this automagical
+  _casepattern-nothing,
   _casepattern-empty,
   _casepattern-link,
   _typeinfo-List,

@@ -1,5 +1,6 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Interpreter
     (TestResult(..)
     ,CheckBlockResult(..)
@@ -406,6 +407,12 @@ typeIsCompatibleWith (FunV as _ _) (ArrowTypeInfo ts _) =
 
 
 typeIsCompatibleWith _ _ = False
+
+assertPatternTagMatchesCasesTag :: TypeInfo -> TypeInfo -> Interpreter ()
+assertPatternTagMatchesCasesTag a b
+    | a == bootstrapType "Any" = pure ()
+    | otherwise =
+          when (a /= b) $ error $ "type not compatible: type of pattern not the same as the type of the case: " ++ show (b,a)
 
 prefixLast :: [a] -> [[a]] -> [[a]]
 prefixLast pre is = f is
@@ -1087,8 +1094,21 @@ run that branch
 if there are members with names, bind these before running the branch
 
 -}
-interp (Cases e _ty cs els) = do
+interp (Cases e ty cs els) = do
     v <- interp e
+    case ty of
+        Just ty' -> do
+            ty'' <- typeOfTypeSyntax ty'
+            void $ assertTypeCompat v ty''
+            -- todo: looks up the patterns twice, optimise this?
+            forM_ cs $ \(CaseBinding ss _, _) -> do
+                let s = prefixLast "_casepattern-" ss
+                caseName <- interp $ makeDotPathExpr s
+                case caseName of
+                    FFIValue fgt | Just (ptg::TypeInfo, _::String) <- fromDynamic fgt ->
+                        assertPatternTagMatchesCasesTag ty'' ptg
+                    _ -> error $ "casepattern lookup returned " ++ show caseName
+        Nothing -> pure ()
     matchb v cs
   where
     matchb v ((p,ce) : cs') = do
@@ -1106,9 +1126,11 @@ interp (Cases e _ty cs els) = do
         case caseName of
             FFIValue fgt | Just (ptg, pnm) <- fromDynamic fgt ->
                 if ptg == tg && pnm == vnm
-                then let letvs = zipWith (\(NameBinding _ n _) (_,v) -> (n,v)) nms fs
-                         letvs' = filter ((/="_") . fst) letvs
-                     in pure $ Just $ localScriptEnv (extendEnv letvs') $ interp ce
+                then if length nms == length fs
+                     then let letvs = zipWith (\(NameBinding _ n _) (_,v) -> (n,v)) nms fs
+                              letvs' = filter ((/="_") . fst) letvs
+                          in pure $ Just $ localScriptEnv (extendEnv letvs') $ interp ce
+                     else error $ "wrong number of args to pattern, expected " ++ show (map fst fs) ++ ", got " ++ show nms
                 else pure Nothing
             _ -> error $ "casepattern lookup returned " ++ show caseName
     doMatch _ _ _ _ = pure Nothing
@@ -1677,6 +1699,7 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
         ,("nothing", VariantV (bootstrapType "Nothing") "nothing" [])
         ,("is-nothing", ForeignFunV "is-nothing")
         ,("is-Nothing", ForeignFunV "is-Nothing")
+        ,("_casepattern-nothing", FFIValue $ toDyn (bootstrapType "Nothing", "nothing"))
         -- todo: complete the boolean (and nothing?) types
         ,("get-ffi-value", ForeignFunV "get-ffi-value")
         ,("make-variant", ForeignFunV "make-variant")
