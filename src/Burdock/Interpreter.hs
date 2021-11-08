@@ -34,6 +34,7 @@ import Control.Monad.Reader (ReaderT
 import Control.Monad (forM_
                      ,void
                      ,when
+                     ,zipWithM
                      )
 
 import Data.List (intercalate
@@ -1127,13 +1128,19 @@ interp (Cases e ty cs els) = do
             FFIValue fgt | Just (ptg, pnm) <- fromDynamic fgt ->
                 if ptg == tg && pnm == vnm
                 then if length nms == length fs
-                     then let letvs = zipWith (\(NameBinding _ n _) (_,v) -> (n,v)) nms fs
-                              letvs' = filter ((/="_") . fst) letvs
-                          in pure $ Just $ localScriptEnv (extendEnv letvs') $ interp ce
+                     then runBranch nms fs ce
                      else error $ "wrong number of args to pattern, expected " ++ show (map fst fs) ++ ", got " ++ show nms
                 else pure Nothing
             _ -> error $ "casepattern lookup returned " ++ show caseName
     doMatch _ _ _ _ = pure Nothing
+    bindPatArg (NameBinding _ n Nothing) (_,v) = pure (n,v)
+    bindPatArg (NameBinding _ n (Just ta)) (_,v) = do
+        void $ assertTypeAnnCompat v ta
+        pure (n,v)
+    runBranch nms fs ce = do
+        letvs <- zipWithM bindPatArg nms fs
+        let letvs' = filter ((/="_") . fst) letvs
+        pure $ Just $ localScriptEnv (extendEnv letvs') $ interp ce
 
 interp (TupleSel es) = do
     vs <- mapM interp es

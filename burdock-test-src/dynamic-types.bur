@@ -268,7 +268,24 @@ check "cases type syntax":
   # check annotations of fields in patterns are checked
   #   how do these interact with the annotations on the variantdecls?
   #   in dynamic type check mode, it can execute both dynamic checks
-  
+
+  cases [List:1,2]:
+    | link(_, _) => 1
+  end is 1  
+
+  cases [List:1,2]:
+    | link(_ :: Number, _) => 1
+  end is 1  
+
+  cases [List:1,2]:
+    | link(_ :: String, _) => 1
+  end raises "type not compatible"
+
+  cases [List:1,2]:
+    | link(_, _ :: String) => 1
+  end raises "type not compatible"
+
+
 end
 
 check "basic let sugar variations":
