@@ -1018,9 +1018,9 @@ end
 
 -}
 
-interp (Lam (FunHeader _ bs rt) e) = do
+interp (Lam (FunHeader dpms bs rt) e) = do
     env <- askEnv
-    pure $ FunV (map bindingName bs) wrapRt env
+    pure $ FunV (map bindingName bs) wrapDpms env
   where
     argAsserts =
         catMaybes $ flip map bs $ \(NameBinding _ nm ta)
@@ -1029,6 +1029,7 @@ interp (Lam (FunHeader _ bs rt) e) = do
         [] -> e
         _ -> Block (argAsserts ++ [StmtExpr e])
     wrapRt = maybe wrapArgAsserts (AssertTypeCompat wrapArgAsserts) rt
+    wrapDpms = typeLetWrapper dpms wrapRt
 
 interp (Let bs e) = do
     let newEnv [] = interp e
@@ -1204,6 +1205,15 @@ assertTypeAnnCompat v t = do
     assertTypeCompat v ti
 
 
+-- takes an expression and wraps it with a typelet
+-- mapping strings to Any
+-- this is a way to implement syntax<NAME LIST> ...
+-- checks for dynamic mode
+-- the syntax is used in a few places
+typeLetWrapper :: [String] -> Expr -> Expr
+typeLetWrapper [] = id
+typeLetWrapper ps = 
+    TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) ps)
 
 {-
 errorWithCallStack :: String -> Interpreter a
@@ -1415,17 +1425,13 @@ interpStatement (DataDecl dnm dpms vs whr) = do
             tcs = catMaybes $ map (\case
                 NameBinding _ nm (Just ta) -> Just (nm,ta)
                 _ -> Nothing) $ map snd fs
-            typeletthing = case dpms of
-                [] -> id
-                _ -> TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) dpms)
             typeCheck = case tcs of
                 [] -> id
                 _ -> Let (map (\(nm,ta) -> (NameBinding NoShadow "_" (Just ta), Iden nm)) tcs)
         in letDecl vnm
-           $ typeletthing
+           $ typeLetWrapper dpms
            $ (if null fs then id else Lam (fh $ map snd fs))
            $ typeCheck $ appMakeV
-        
     letDecl nm v = LetDecl (mnm nm) v
     lam as e = Lam (fh $ map mnm as) e
     fh as = FunHeader [] as Nothing

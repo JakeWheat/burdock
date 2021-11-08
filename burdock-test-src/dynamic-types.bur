@@ -259,6 +259,19 @@ check "fun sugar":
   let f = lam(x :: Number) -> String: x + 1 end: f(2) end raises "type not compatible"
 
   # parametrized lam
+  let f = lam(x :: List) -> List:
+      x.rest
+  end: f([List:1,2]) end is [List: 2]
+  let f = lam(x :: List) -> Number:
+      x.rest
+  end: f([List:1,2]) end raises "type not compatible"
+  let f = lam(x :: Number) -> List:
+      x.rest
+  end: f([List:1,2]) end raises "type not compatible"
+  
+  let f = lam<abc>(x :: List<abc>) -> List<abc>:
+      x.rest
+  end: f([List:1,2]) end is [List: 2]
   
   # fundecl
   
