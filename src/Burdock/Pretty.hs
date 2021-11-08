@@ -82,9 +82,10 @@ expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
     pel (Just e) = [pretty "else:"
                    ,nest 2 (expr e)]
 expr (DotExpr e i) = expr e <> pretty "." <> pretty i
-expr (Cases ty e mats els) =
+expr (Cases e ty mats els) =
     prettyBlocklike vsep
-    [pretty "cases" <> (parens $ typ ty) <+> expr e <> pretty ":"
+    [pretty "cases" <+> expr e
+     <> maybe mempty (\x -> pretty " ::" <+> typ x) ty <> pretty ":"
     ,vsep (map mf mats ++
            [maybe mempty (\x -> pretty "|" <+> pretty "else" <+> pretty "=>" <+> expr x) els])]
   where

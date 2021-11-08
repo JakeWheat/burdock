@@ -80,29 +80,29 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
      ,Let [(NameBinding Shadow "a" Nothing, Num 4)] (Iden "a"))
     ,("a.b", DotExpr (Iden "a") "b")
     ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [] [Num 1, Num 2]) "c")
-     ,("cases(List) a:\n\
+     ,("cases a :: List:\n\
       \  | empty => \"empty\"\n\
       \  | link(f, r) => \"link\"\n\
       \end"
-     ,Cases (TName ["List"]) (Iden "a")
+     ,Cases (Iden "a") (Just (TName ["List"]))
         [(CaseBinding ["empty"] [], Text "empty")
         ,(CaseBinding ["link"] [nm "f", nm "r"], Text "link")]
         Nothing)
 
-    ,("cases(List) a:\n\
+    ,("cases a:\n\
       \  | empty => \"empty\"\n\
       \  | else => \"else\"\n\
       \end"
-     ,Cases (TName ["List"]) (Iden "a")
+     ,Cases (Iden "a") Nothing
         [(CaseBinding ["empty"] [], Text "empty")]
         (Just $ Text "else"))
    
-    ,("cases(z.List) a:\n\
+    ,("cases a :: z.List:\n\
       \  | z.empty => \"empty\"\n\
       \  | z.link(f, r) => x\n\
       \  | else => \"else\"\n\
       \end"
-     ,Cases (TName ["z", "List"]) (Iden "a")
+     ,Cases (Iden "a") (Just $ TName ["z", "List"])
         [(CaseBinding ["z","empty"] [], Text "empty")
         ,(CaseBinding ["z","link"] [nm "f", nm "r"], Iden "x")]
         (Just $ Text "else"))
@@ -192,7 +192,7 @@ end|]
 
     ,([R.r|
 lam<a>(x :: List<a>) -> Boolean:
-  cases (List<a>) x:
+  cases x :: List<a>:
     | empty => true
     | link(_,_) => false
   end
@@ -201,7 +201,7 @@ end|]
             ["a"]
             [NameBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"]))
-      $ Cases (TParam ["List"] [TName ["a"]]) (Iden "x")
+      $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(CaseBinding ["empty"] [], Iden "true")
         ,(CaseBinding ["link"] [nm "_", nm "_"], Iden "false")]
         Nothing)
@@ -326,7 +326,7 @@ end|]
 
     ,([R.r|
 fun f<a>(x :: List<a>) -> Boolean:
-  cases (List<a>) x:
+  cases x :: List<a>:
     | empty => true
     | link(_,_) => false
   end
@@ -335,7 +335,7 @@ end|]
             ["a"]
             [NameBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"]))
-      (Cases (TParam ["List"] [TName ["a"]]) (Iden "x")
+      (Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(CaseBinding ["empty"] [], Iden "true")
         ,(CaseBinding ["link"] [nm "_", nm "_"], Iden "false")]
         Nothing) Nothing)

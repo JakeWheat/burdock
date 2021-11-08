@@ -69,7 +69,7 @@ data Expr =
     | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]
     | DotExpr Expr String
-    | Cases TypeAnnotation Expr [(CaseBinding, Expr)] (Maybe Expr)
+    | Cases Expr (Maybe TypeAnnotation) [(CaseBinding, Expr)] (Maybe Expr)
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TupleGet Expr Int

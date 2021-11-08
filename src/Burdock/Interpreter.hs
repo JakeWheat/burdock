@@ -1087,7 +1087,7 @@ run that branch
 if there are members with names, bind these before running the branch
 
 -}
-interp (Cases _ty e cs els) = do
+interp (Cases e _ty cs els) = do
     v <- interp e
     matchb v cs
   where

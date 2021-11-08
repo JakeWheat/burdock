@@ -367,24 +367,24 @@ block = Block <$>
 
 cases :: Parser Expr
 cases = do
-    ty <- keyword_ "cases" *> parens (typ True)
-    t <- (expr <* symbol_ ":")
-    nextCase ty t []
+    t <- keyword_ "cases" *> expr
+    ty <- optional (symbol_ "::" *> typ True) <* symbol_ ":"
+    nextCase t ty []
   where
-    nextCase ty t cs =
+    nextCase t ty cs =
         choice [do
                 x <- casePart
                 case x of
-                    Right el -> endCase ty t cs (Just el)
-                    Left c -> nextCase ty t (c:cs)
-               ,endCase ty t cs Nothing]
+                    Right el -> endCase t ty cs (Just el)
+                    Left c -> nextCase t ty (c:cs)
+               ,endCase t ty cs Nothing]
     casePart :: Parser (Either (CaseBinding,Expr) Expr)
     casePart = do
         symbol_ "|"
         choice
             [Right <$> (keyword_ "else" *> symbol_ "=>" *> expr)
             ,Left <$> ((,) <$> (caseBinding <?> "case pattern") <*> (symbol_ "=>" *> expr))]
-    endCase ty t cs el = keyword_ "end" *> pure (Cases ty t (reverse cs) el)
+    endCase t ty cs el = keyword_ "end" *> pure (Cases t ty (reverse cs) el)
 
 caseBinding :: Parser CaseBinding
 caseBinding = CaseBinding <$> nm <*> (option [] caseArgs)

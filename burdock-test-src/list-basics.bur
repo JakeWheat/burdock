@@ -73,21 +73,21 @@ end
 
 check:
   x = [List:1]
-  cases(List) x:
+  cases x:
     | empty => true
     | else => false
   end is false
 
   #shadow
   x = [List:]
-  cases(List) x:
+  cases x:
     | empty => true
     | else => false
   end is true
 
   #shadow
   x = [List:1]
-  cases(List) x:
+  cases x:
     | link(a,b) => block:
         a is 1
         b is empty
@@ -100,14 +100,14 @@ end
 
 
 fun my-is-empty(l):
-  cases(List) l:
+  cases l:
     | empty => true
     | else => false
   end
 end
 
 fun length(l):
-  cases(List) l:
+  cases l:
     | empty => 0
     | link(f, r) => 1 + length(r)
   end

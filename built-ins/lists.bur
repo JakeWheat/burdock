@@ -79,8 +79,8 @@
 end
 |#
 
-fun length(l):
-  cases(List) l:
+fun length(l :: List):
+  cases l:
     | empty => 0
     | link(f, r) => 1 + length(r)
   end
@@ -90,11 +90,11 @@ where:
   length([List:2,1]) is 2
 end
 
-fun get(l, i):
+fun get(l :: List, i :: Number):
   #when i < 0:
   #  raise("invalid argument")
   #end
-  cases(List) l:
+  cases l:
     | empty => raise("too large")
     | link(f, r) =>
       if i == 0: f
@@ -108,7 +108,7 @@ fun set(l, i, v):
   #when i < 0:
   #  raise("invalid argument")
   #end
-  cases(List) l:
+  cases l:
     | empty => raise("too large")
     | link(f, r) =>
       if i == 0: link(v,r)

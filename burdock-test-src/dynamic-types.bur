@@ -210,9 +210,13 @@ end
 
 check "cases type syntax":
   # check the value is consistent with the type of the cases
+
   # check all the patterns are consistent with the type of the cases if given
+
   # check annotations of fields in patterns are checked
   #   how do these interact with the annotations on the variantdecls?
+  #   in dynamic type check mode, it can execute both dynamic checks
+  
 end
 
 check "basic let sugar variations":
