@@ -128,15 +128,31 @@ end
 
 check "arrow types":
 
+  # not sure how to write the arrow based type of this function
+  # explicitly - needs some new syntax?
+  # or could write it as 'Nothing -> Number'?
+  # the new syntax could be '() -> Number', or just '-> Number'
+  assert-type-compat(lam(): 5 end :: Function)() is 5
+
+  assert-type-compat(lam(x): x + 5 end :: Number -> Number)(4) is 9
+
+  assert-type-compat(lam(x): x + 5 end :: Number , Number -> Number)(4) raises "type not compatible"
+
+  # only checks the types exist and the arity matches:
+  assert-type-compat(lam(x): x + 5 end :: String -> String)(4) is 9
+
+  
 end
 
 check "Any":
   let x :: Any = {}: x end is {}
   assert-type-compat(empty :: List<Any>) is empty
+  assert-type-compat(1 :: List<Any>) raises "type not compatible"
   
 end
 
 check "wildcards":
+  # no distinction from Any until the (static) type checker
   # let x :: _ = {}: x end is {}
   # assert-type-compat(empty :: List<_>) is empty
 end
@@ -196,10 +212,20 @@ check "cases type syntax":
   # check the value is consistent with the type of the cases
   # check all the patterns are consistent with the type of the cases if given
   # check annotations of fields in patterns are checked
+  #   how do these interact with the annotations on the variantdecls?
 end
 
-check "basic sugar":
+check "basic let sugar variations":
   # letdecl
+  block:
+    a :: Number = 3
+    a
+  end is 3
+  block:
+    a :: String = 3
+    a
+  end raises "type not compatible"
+
   # vardecl
   # letrec
 end
@@ -207,7 +233,7 @@ end
 check "fun sugar":
   # fundecl
   # lam
-  # letrec
+  # recdecl
 end
 
 check "contracts":

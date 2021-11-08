@@ -304,6 +304,7 @@ data TypeInfo
     | TupleTypeInfo [TypeInfo]
     | RecordTypeInfo [(String,TypeInfo)]
     | ParamTypeInfo TypeInfo [TypeInfo]
+    | ArrowTypeInfo [TypeInfo] TypeInfo
     deriving (Eq, Show)
 
 bootstrapType :: String -> TypeInfo
@@ -337,6 +338,11 @@ typeOfTypeSyntax (TParam nm ps) = do
     nmt <- typeOfTypeSyntax (TName nm)
     -- check the number of ps matches what nm allows
     pure $ ParamTypeInfo nmt pst
+
+typeOfTypeSyntax (TArrow as r) = do
+    as' <- mapM typeOfTypeSyntax as
+    r' <- typeOfTypeSyntax r
+    pure $ ArrowTypeInfo as' r'
 
 typeOfTypeSyntax x = error $ "typeOfTypeSyntax: " ++ show x
 
@@ -392,6 +398,10 @@ typeIsCompatibleWith v b
     isFunVal _ = False
 
 typeIsCompatibleWith (VariantV tg _ _) b | tg == b = True
+
+typeIsCompatibleWith (FunV as _ _) (ArrowTypeInfo ts _) =
+    length as == length ts
+
 
 typeIsCompatibleWith _ _ = False
 
@@ -1101,13 +1111,7 @@ interp (Construct {}) = error "todo: construct for non lists"
 interp (AssertTypeCompat e t) = do
     v <- interp e
     ty' <- shallowizeType <$> typeOfTypeSyntax t
-    if v `typeIsCompatibleWith` ty'
-        then pure v
-        else do
-            cs <- readCallStack
-            r <- liftIO $ torepr' v
-            throwM $ ValueException cs
-                $ TextV $ "type not compatible " ++ r ++ " :: " ++ show v ++ " // " ++ show ty'
+    assertTypeCompat v ty'
 
 interp (TypeLet tds e) = do
     let newEnv [] = interp e
@@ -1163,6 +1167,23 @@ catchAsEither [e] = do
     -- not sure about this, but definitely wanted for testing
     ca f = catchAny f (pure . Left . TextV . show)
 catchAsEither _ = error $ "wrong args to catch as either"
+
+assertTypeCompat :: Value -> TypeInfo -> Interpreter Value
+assertTypeCompat v ti = 
+    if v `typeIsCompatibleWith` ti
+        then pure v
+        else do
+            cs <- readCallStack
+            r <- liftIO $ torepr' v
+            throwM $ ValueException cs
+                $ TextV $ "type not compatible " ++ r ++ " :: " ++ show v ++ " // " ++ show ti
+
+assertTypeAnnCompat :: Value -> TypeAnnotation -> Interpreter Value
+assertTypeAnnCompat v t = do
+    ti <- shallowizeType <$> typeOfTypeSyntax t
+    assertTypeCompat v ti
+
+
 
 {-
 errorWithCallStack :: String -> Interpreter a
@@ -1298,7 +1319,10 @@ interpStatement (Check mnm ss) = do
     
 interpStatement (LetDecl b e) = do
     v <- interp e
-    letValue (bindingName b) v
+    v' <- case b of
+              NameBinding _ _ (Just ta) -> assertTypeAnnCompat v ta
+              _ -> pure v
+    letValue (bindingName b) v'
     pure nothing
 
 interpStatement (VarDecl b e) = do
