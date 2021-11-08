@@ -47,7 +47,7 @@ import Data.IORef (IORef
                   ,modifyIORef
                   ,writeIORef)
 
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isJust)
 
 import Burdock.Scientific
 import Burdock.Syntax
@@ -245,7 +245,7 @@ data Value = NumV Scientific
            | FunV [String] Expr Env
            | ForeignFunV String
            | VariantV TypeInfo String [(String,Value)]
-           | BoxV (IORef Value)
+           | BoxV TypeInfo (IORef Value)
            | FFIValue Dynamic
 
 -- todo: revert back to automatically derived show
@@ -259,7 +259,7 @@ instance Show Value where
   show (VariantV _t nm fs) = "VariantV " ++ nm ++ "[" ++ intercalate "," (map show fs) ++ "]"
   show (FunV as bdy _env) = "FunV " ++ show as ++ "\n" ++ prettyExpr bdy
   show (ForeignFunV n) = "ForeignFunV " ++ show n
-  show (BoxV _n) = "BoxV XX" -- ++ show n
+  show (BoxV _ _n) = "BoxV XX" -- ++ show n
   show (FFIValue _v) = "FFIValue"
 
 
@@ -775,7 +775,8 @@ toreprx (BoolV n) = pure $ P.pretty $ if n then "true" else "false"
 toreprx (FunV {}) = pure $ P.pretty "<Function>" -- todo: print the function value
 toreprx (ForeignFunV f) = pure $ P.pretty $ "<ForeignFunction:" ++ f ++ ">"
 toreprx (TextV s) = pure $ P.pretty $ "\"" ++ s ++ "\""
-toreprx (BoxV b) = do
+-- todo: add the type
+toreprx (BoxV _ b) = do
     bv <- readIORef b
     v <- toreprx bv
     pure $ P.pretty "<Box:" <> v <> P.pretty ">"
@@ -955,7 +956,7 @@ interp (Iden "_") = error $ "todo: partial app not supported"
 interp (Iden a) = do
     mv <- lookupEnv a
     case mv of
-        Just (BoxV vr) -> liftIO $ readIORef vr
+        Just (BoxV _ vr) -> liftIO $ readIORef vr
         Just v -> pure v
         Nothing -> error $ "identifier not found: " ++ a
 
@@ -1072,7 +1073,7 @@ interp (DotExpr e f) = do
                             -- it's needed for referencing vars in a module
                             -- (including fun which is desugared to a var)
                             case fv of
-                                BoxV vr -> liftIO $ readIORef vr
+                                BoxV _ vr -> liftIO $ readIORef vr
                                 _ -> pure fv
                         | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
                                              ++ "\nfields are: " ++ show fs
@@ -1228,10 +1229,87 @@ errorWithCallStack msg = do
 
 interpStatements :: [Stmt] -> Interpreter Value
 
+interpStatements = interpStatements' . desugarContracts
+
+
+{-
+
+The full Pyret rules about where a contract can go in relation to the
+binding it relates to:
+
+a contract can be for one of the following bindings (all statements):
+letdecl
+vardecl
+recdecl
+fundecl
+
+A contract must appear before the binding it refers to
+
+There can be other statements in between the contract and it's binding:
+
+if it's binding is a let or var:
+you can have other contracts, check/example blocks and other let/var decls
+in between the contract and its let/var decl. any other statement is an error
+
+same replacing let/var with rec/fun
+
+not implementing these full rules yet
+
+currently a contract must immediately precede its let/var/rec/fun decl
+
+-}
+
+desugarContracts :: [Stmt] -> [Stmt]
+desugarContracts
+    (Contract cnm ta : x : sts)
+    | Just (ctor, NameBinding sh bnm lta, e) <- letorrec x
+    , cnm == bnm
+    = case lta of
+          Just _ -> error $ "contract for binding that already has type annotation: " ++ cnm
+          Nothing -> ctor (NameBinding sh bnm (Just ta)) e : desugarContracts sts
+  where
+    letorrec (LetDecl b e) = Just (LetDecl,b,e)
+    letorrec (RecDecl b e) = Just (RecDecl,b,e)
+    letorrec (VarDecl b e) = Just (VarDecl,b,e)
+    letorrec _ = Nothing
+
+
+desugarContracts
+    (Contract cnm ta : s@(FunDecl (NameBinding _ fnm _) _ _ _) : sts)
+        | cnm == fnm
+        , ta `elem` [TName ["Function"] -- todo: need to look these up in the env
+                    ,TName ["Any"]]
+        = s : desugarContracts sts
+
+desugarContracts
+    (cd@(Contract cnm (TArrow tas trt)) : fd@(FunDecl nb@(NameBinding _ fnm _) (FunHeader ps as rt) e chk) : sts)
+    | cnm == fnm
+    =
+    -- check for annotations in the funheader
+    if (not $ null $ catMaybes $ map getTa as) || isJust rt
+    then error $ "contract for fun that already has type annotations: " ++ cnm
+    else FunDecl nb (FunHeader ps bindArgs (Just trt)) e chk : desugarContracts sts
+  where
+    bindArgs | length as /= length tas = error $ "type not compatible: different number of args in contract and fundecl" ++ show (cd,fd)
+             | otherwise = zipWith (\ta (NameBinding sh nm _) -> NameBinding sh nm (Just ta)) tas as
+    getTa (NameBinding _ _ bta) = bta
+
+desugarContracts
+    (c@(Contract {}) : s@(FunDecl {}) : _sts) =
+    error $ "type not compatible: non function contract for function: " ++ show (c,s)
+
+
+
+desugarContracts (s : ss) = s : desugarContracts ss
+desugarContracts [] = []
+
+
+interpStatements' :: [Stmt] -> Interpreter Value
+
 -- gather adjacent fun and rec can be mutually recursive
 -- to desugar all together
-interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
-    interpStatements (doLetRec recbs ++ chks ++ ss')
+interpStatements' ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
+    interpStatements' (doLetRec recbs ++ chks ++ ss')
   where
     getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
     getRecs accdecls accchks (FunDecl nm fh bdy whr : ss') =
@@ -1239,13 +1317,15 @@ interpStatements ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
         in getRecs ((nm, Lam fh bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
+-- collect a contract with a following letdecl
+
 -- the interpreter for all other statements don't need access to the
 -- statement list so they delegate to interpStatement
 
 -- return value if it's the last statement
-interpStatements [s] = interpStatement s
-interpStatements (s:ss) = interpStatement s >> interpStatements ss
-interpStatements [] = pure $ VariantV (bootstrapType "Nothing") "nothing" []
+interpStatements' [s] = interpStatement s
+interpStatements' (s:ss) = interpStatement s >> interpStatements' ss
+interpStatements' [] = pure $ VariantV (bootstrapType "Nothing") "nothing" []
 
 
 interpStatement :: Stmt -> Interpreter Value
@@ -1330,7 +1410,6 @@ interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) = do
 
 interpStatement (StmtExpr e) = interp e
 interpStatement (Check mnm ss) = do
-
     runTestsEnabled <- interp $ internalsRef "auto-run-tests"
     case runTestsEnabled of
         BoolV True -> do
@@ -1357,20 +1436,27 @@ interpStatement (LetDecl b e) = do
 
 interpStatement (VarDecl b e) = do
     v <- interp e
-    v' <- case b of
-              NameBinding _ _ (Just ta) -> assertTypeAnnCompat v ta
-              _ -> pure v
+    -- todo: it should only preserve the type of the var itself
+    -- if the user used a contract, and not if they used a type
+    -- annotation on the value the var is initialized with?
+    (v',ty) <- case b of
+              NameBinding _ _ (Just ta) -> do
+                  (,) <$> assertTypeAnnCompat v ta
+                  <*> typeOfTypeSyntax ta
+              _ -> pure (v, bootstrapType "Any")
     vr <- liftIO $ newIORef v'
-    letValue (bindingName b) (BoxV vr)
+            
+    letValue (bindingName b) (BoxV ty vr)
     pure nothing
 
 interpStatement (SetVar nm e) = do
     mv <- lookupEnv nm
-    let vr = case mv of
-                 Just (BoxV b) -> b
+    let (ty,vr) = case mv of
+                 Just (BoxV vty b) -> (vty,b)
                  Just x -> error $ "attempt to assign to something which isn't a var: " ++ show x
                  Nothing -> error $ "identifier not found: " ++ nm
     v <- interp e
+    void $ assertTypeCompat v ty
     liftIO $ writeIORef vr v
     pure nothing
 
@@ -1439,7 +1525,7 @@ interpStatement (DataDecl dnm dpms vs whr) = do
     mnm x = NameBinding NoShadow x Nothing
 
 interpStatement (TypeStmt {}) = error $ "TODO: interp typestmt"
-interpStatement (Contract {}) = error $ "TODO: interp contract"
+interpStatement c@(Contract {}) = error $ "contract without corresponding statement: " ++ show c
 
 
 ---------------------------------------

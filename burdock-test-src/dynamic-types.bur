@@ -236,6 +236,16 @@ check "basic let sugar variations":
     a
   end raises "type not compatible"
 
+  # check default and any
+  block:
+    var a :: Any = 3
+    a := 'four'
+    var b = 5
+    b := 'six'
+    {a;b}
+  end is {'four';'six'}
+  
+
   # letrec
   letrec fact :: (Number -> Number) = lam(n):
       if n == 1: 1 else: n * fact(n - 1) end
@@ -390,6 +400,129 @@ check "fun sugar":
 end
 
 check "contracts":
+
+  # letdecl non-lambda
+  block:
+    a :: Number
+    a = 3
+    a
+  end is 3
+
+  block:
+    a :: String
+    a = 3
+    a
+  end raises "type not compatible"
+
+  # letdecl lambda
+  # this is a special case because it doesn't desugar to
+  # x :: ty = lam ...
+  # but puts the ty into the lam, because this does more checks
+
+  block:
+    f :: Number, Number -> Number
+    f = lam(x,y): x + y end
+    f(1,3)
+  end is 4
+
+  block:
+    f :: Number -> Number
+    f = lam(x,y): x + y end
+    f(1,3)
+  end raises "type not compatible"
+
+  # only checks the arity
+  block:
+    f :: String, Number -> Number
+    f = lam(x,y): x + y end
+    f(1,3)
+  end is 4
+
+  block:
+    f :: Number, Number -> String
+    f = lam(x,y): x + y end
+    f(1,3)
+  end is 4
+
+  # rec
+
+  # recdecl
+  block:
+    factx :: Number -> Number
+    rec factx = lam(x):
+      if x == 0: 1
+      else: x * factx(x - 1)
+    end end
+    factx(5)
+  end is 120
+
+  block:
+    factx :: Number , Number -> Number
+    rec factx = lam(x):
+      if x == 0: 1
+      else: x * factx(x - 1)
+    end end
+    factx(5)
+  end raises "type not compatible"
+
+  # var
+  block:
+    a :: Number
+    var a = 3
+    a
+  end is 3
+
+  block:
+    a :: String
+    var a = 3
+    a
+  end raises "type not compatible"
+
+  block:
+    a :: String
+    var a = 'test'
+    a := 1
+  end raises "type not compatible"
+
+  # fun
+
+  block:
+    f :: Number, Number -> Number
+    fun f(x,y): x + y end
+    f(1,3)
+  end is 4
+
+  block:
+    f :: Function
+    fun f(x,y): x + y end
+    f(1,3)
+  end is 4
+
+  block:
+    f :: String
+    fun f(x,y): x + y end
+    f(1,3)
+  end raises "type not compatible"
+  
+  block:
+    f :: Number -> Number
+    fun f(x,y): x + y end
+    f(1,3)
+  end raises "type not compatible"
+
+  # checks the args and return type, unlike lam contracts
+  block:
+    f :: String, Number -> Number
+    fun f(x,y): x + y end
+    f(1,3)
+  end raises "type not compatible"
+
+  block:
+    f :: Number, Number -> String
+    fun f(x,y): x + y end
+    f(1,3)
+  end raises "type not compatible"
+
   
 end
 
