@@ -237,14 +237,12 @@ check "basic let sugar variations":
   end raises "type not compatible"
 
   # letrec
-  #|
   letrec fact :: (Number -> Number) = lam(n):
       if n == 1: 1 else: n * fact(n - 1) end
   end: fact(5) end is 120
   letrec fact :: Number = lam(n):
       if n == 1: 1 else: n * fact(n - 1) end
   end: fact(5) end raises "type not compatible"
-  |#
 
   
 end

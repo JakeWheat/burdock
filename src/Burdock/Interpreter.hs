@@ -1715,6 +1715,22 @@ there's also a ffi function memoize-eval, which if passed a variable
 with a memothunk in it, it will eval it and save it
 if passed any other kind of value, it will do nothing without error
 
+types:
+
+for a lam
+a :: ty = ...
+->
+a = raise ...
+...
+a := assert-type-compat( ... :: ty)
+
+for a val, put the type inside the memoize lam:
+a :: ty = ...
+->
+a := memoize(lam(): assert-type-compat(... :: ty))
+then the type will be checked the first time the value is evaluated
+
+
 -}
 
 doLetRec :: [(Binding, Expr)] -> [Stmt]
@@ -1723,10 +1739,14 @@ doLetRec bs =
         assigned = map makeAssign bs
     in vars ++ assigned
   where
-    makeVar (v,_) = VarDecl v $ Lam (FunHeader [] [] Nothing)
+    makeVar (NameBinding s nm _,_) =
+        VarDecl (NameBinding s nm Nothing) $ Lam (FunHeader [] [] Nothing)
         $ App appSourcePos (Iden "raise") []
             [Text "internal error: uninitialized letrec implementation var"]
-    makeAssign (b,v) = SetVar (bindingName b) v
+    makeAssign (NameBinding _ nm ty,v) =
+        SetVar nm $ (case ty of
+                         Nothing -> id
+                         Just ta -> flip AssertTypeCompat ta) v
 
 -- placeholder to mark the places where need to fix the source
 -- position
