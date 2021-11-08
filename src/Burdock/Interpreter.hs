@@ -344,6 +344,8 @@ typeOfTypeSyntax (TArrow as r) = do
     r' <- typeOfTypeSyntax r
     pure $ ArrowTypeInfo as' r'
 
+typeOfTypeSyntax (TParens t) = typeOfTypeSyntax t
+
 typeOfTypeSyntax x = error $ "typeOfTypeSyntax: " ++ show x
 
 secondM :: Functor m => (b -> m b') -> (a, b) -> m (a, b')
@@ -1327,7 +1329,10 @@ interpStatement (LetDecl b e) = do
 
 interpStatement (VarDecl b e) = do
     v <- interp e
-    vr <- liftIO $ newIORef v
+    v' <- case b of
+              NameBinding _ _ (Just ta) -> assertTypeAnnCompat v ta
+              _ -> pure v
+    vr <- liftIO $ newIORef v'
     letValue (bindingName b) (BoxV vr)
     pure nothing
 

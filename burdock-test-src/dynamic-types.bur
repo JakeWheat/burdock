@@ -42,7 +42,7 @@ check "special built in types":
   assert-type-compat({3;4} :: Number) raises "type not compatible"
   assert-type-compat(2 :: Tuple) raises "type not compatible"
   assert-type-compat({a:5, b:2} :: Tuple) raises "type not compatible"
-  #assert-type-compat(empty :: Tuple) raises "type not compatible"
+  assert-type-compat(empty :: Tuple) raises "type not compatible"
   let x :: Tuple = {true;false}: x end is {true;false}
 
   assert-type-compat({a:3,b:4} :: Record) is {a:3,b:4}
@@ -50,14 +50,14 @@ check "special built in types":
   assert-type-compat(2 :: Record) raises "type not compatible"
   assert-type-compat({5;6} :: Record) raises "type not compatible"
   assert-type-compat({} :: Record) is {}
-  #assert-type-compat(empty :: Record) raises "type not compatible"
+  assert-type-compat(empty :: Record) raises "type not compatible"
   let x :: Record = {a:true,b:false}: x end is {a:true,b:false}
 
   assert-type-compat(lam(): 5 end :: Function)() is 5
   assert-type-compat({a:3,b:4} :: Function) raises "type not compatible"
   assert-type-compat(2 :: Function) raises "type not compatible"
   assert-type-compat({5;6} :: Function) raises "type not compatible"
-  #assert-type-compat(empty :: Function) raises "type not compatible"
+  assert-type-compat(empty :: Function) raises "type not compatible"
   let x :: Function = lam(): 'a' end: x() end is 'a'
   
 end
@@ -216,7 +216,7 @@ check "cases type syntax":
 end
 
 check "basic let sugar variations":
-  # letdecl
+  #letdecl
   block:
     a :: Number = 3
     a
@@ -227,12 +227,31 @@ check "basic let sugar variations":
   end raises "type not compatible"
 
   # vardecl
+  block:
+    var a :: Number = 3
+    a
+  end is 3
+  block:
+    var a :: String = 3
+    a
+  end raises "type not compatible"
+
   # letrec
+  #|
+  letrec fact :: (Number -> Number) = lam(n):
+      if n == 1: 1 else: n * fact(n - 1) end
+  end: fact(5) end is 120
+  letrec fact :: Number = lam(n):
+      if n == 1: 1 else: n * fact(n - 1) end
+  end: fact(5) end raises "type not compatible"
+  |#
+
+  
 end
 
 check "fun sugar":
-  # fundecl
   # lam
+  # fundecl
   # recdecl
 end
 
@@ -243,4 +262,3 @@ end
 check "type stmt":
   
 end
-

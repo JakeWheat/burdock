@@ -545,7 +545,7 @@ dataDecl = DataDecl
     fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> binding False
 
 tyNameList :: Parser [String]
-tyNameList = symbol_ "<" *> commaSep1 identifier <* symbol_ ">"
+tyNameList = symbol_ "<" *> (commaSep1 identifier <?> "type parameter") <* symbol_ ">"
 
 checkBlock :: Parser Stmt
 checkBlock = do
@@ -636,9 +636,9 @@ typ allowImplicitTuple =
                   <*> (symbol_ "->" *> noarrow)
                else Nothing
               ,Just $ pure $ TName i1]
-    noarrow = parensOrNamedArrow <|> do
+    noarrow = (parensOrNamedArrow <|> do
         i <- identifier
-        noarrowctu i
+        noarrowctu i) <?> "type annotation"
     tname i = (i:) <$> many (symbol_ "." *> identifier)
     noarrowctu i = do
         i1 <- tname i
