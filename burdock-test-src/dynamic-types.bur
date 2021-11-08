@@ -272,11 +272,121 @@ check "fun sugar":
   let f = lam<abc>(x :: List<abc>) -> List<abc>:
       x.rest
   end: f([List:1,2]) end is [List: 2]
+
+  let f = lam<abc>(x :: List<abc>) -> MyList<abc>:
+      x.rest
+  end: f([List:1,2]) end raises "type not compatible"
   
   # fundecl
-  
+  block:
+    fun f(x): x + 1 end
+    f(2)
+  end is 3
+  block:
+    fun f(x :: Number): x + 1 end
+    f(2)
+  end is 3
+  block:
+    fun f(x :: String): x + 1 end
+    f(2)
+  end raises "type not compatible"
+  block:
+    fun f(x) -> Number: x + 1 end
+    f(2)
+  end is 3
+  block:
+    fun f(x) -> String: x + 1 end
+    f(2)
+  end raises "type not compatible"
+
+  block:
+    fun f(x :: Number) -> Number: x + 1 end
+    f(2)
+  end is 3
+
+  block:
+    fun f(x :: String) -> Number: x + 1 end
+    f(2)
+  end raises "type not compatible"
+
+  block:
+    fun f(x :: Number) -> String: x + 1 end
+    f(2)
+  end raises "type not compatible"
+
+  block:
+    fun f(x :: List) -> List: x.rest end
+    f([List:1,2])
+  end is [List: 2]
+
+  block:
+    fun f(x :: List) -> Number: x.rest end
+    f([List:1,2])
+  end raises "type not compatible"
+  block:
+    fun f(x :: Number) -> List: x.rest end
+    f([List:1,2])
+  end raises "type not compatible"
+
+  block:
+    fun f<d>(x :: List<d>) -> List<d>: x.rest end
+    f([List:1,2])
+  end is [List: 2]
+
+  block:
+    fun f<d>(x :: List<d>) -> MyList<d>: x.rest end
+    f([List:1,2])
+  end raises "type not compatible"
+
   # recdecl
-  
+  block:
+    rec factx = lam(x):
+      if x == 0: 1
+      else: x * factx(x - 1)
+    end end
+    factx(5)
+  end is 120
+
+  block:
+    rec factx = lam(x :: Number):
+      if x == 0: 1
+      else: x * factx(x - 1)
+    end end
+    factx(5)
+  end is 120
+
+  block:
+    rec factx = lam(x) -> Number:
+      if x == 0: 1
+      else: x * factx(x - 1)
+    end end
+    factx(5)
+  end is 120
+
+  block:
+    rec factx = lam(x :: Number) -> Number:
+      if x == 0: 1
+      else: x * factx(x - 1)
+    end end
+    factx(5)
+  end is 120
+
+  block:
+    rec factx = lam(x :: String) -> Number:
+      if x == 0: 1
+      else: x * factx(x - 1)
+    end end
+    factx(5)
+  end raises "type not compatible"
+
+  block:
+    rec factx = lam(x :: Number) -> String:
+      if x == 0: 1
+      else: x * factx(x - 1)
+    end end
+    factx(5)
+  end raises "type not compatible"
+ 
 end
 
 check "contracts":
