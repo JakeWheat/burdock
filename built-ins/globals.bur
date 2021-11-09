@@ -30,6 +30,8 @@ provide:
   is-link,
   empty,
   link,
+  list,
+  
   # todo: make this automagical
   _casepattern-nothing,
   _casepattern-empty,

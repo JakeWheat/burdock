@@ -1259,11 +1259,22 @@ interp (TupleGet e f) = do
                  $ lookup (show f) fs
         _ -> error $ "tuple get called on non tuple value: " ++ show v
 
-interp (Construct (Iden "List") es) = do
-    vs <- mapM interp es
-    pure $ makeBList vs
-
-interp (Construct x _) = error $ "todo: construct for non lists: " ++ show x
+interp (Construct c es) = do
+    maker <- interp (makeDotPathExpr c)
+    case maker of
+        VariantV tg "record" fs
+            | tg == bootstrapType "Record" ->
+              -- see if there's a makeN
+              case lookup ("make" ++ show (length es)) fs of
+                  Just f ->
+                      app f =<< mapM interp es
+                  _ -> case lookup "make" fs of
+                           Just f -> do
+                               vs <- makeBList <$> mapM interp es
+                               app f [vs]
+                           Nothing -> error $ "no matching construct make: " ++ show c ++ ": " ++ show maker ++ " for " ++ show (length es) ++ " args"
+              -- otherwise try to call the make
+        _ -> error $ "non construct record used in construct " ++ show c ++ ": " ++ show maker
 
 interp (AssertTypeCompat e t) = do
     v <- interp e

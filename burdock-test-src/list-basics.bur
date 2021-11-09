@@ -9,14 +9,14 @@ end
 |#
 
 check:
-  empty is [List:]
-  link(1, empty) is [List: 1]
-  link(1, link(2, empty)) is [List: 1,2]
+  empty is [list:]
+  link(1, empty) is [list: 1]
+  link(1, link(2, empty)) is [list: 1,2]
 
 end
 
 check:
-  l1 = [List: 1]
+  l1 = [list: 1]
   mt = empty
   is-empty(mt) is true
   is-empty(l1) is false
@@ -28,41 +28,41 @@ check:
 end
 
 check:
-  l1 = [List: 1,2,3]
+  l1 = [list: 1,2,3]
   l1.first is 1
-  l1.rest is [List: 2,3]
+  l1.rest is [list: 2,3]
 end
 
 check:
-  list1 = [List: 2,3]
+  list1 = [list: 2,3]
   list2 = link(1, list1)
-  list2 is [List: 1,2,3]
+  list2 is [list: 1,2,3]
 
-  [List: 1,2,3].first is 1
-  [List: 1,2,3].rest  is [List: 2,3]
+  [list: 1,2,3].first is 1
+  [list: 1,2,3].rest  is [list: 2,3]
 end
 
 check:
-  empty is [List:]
-  link(1, empty) is [List: 1]
-  link(1, link(2, empty)) is [List: 1,2]
-  link(empty, link(empty, [List: ])) is [List: [List:],[List:]]
+  empty is [list:]
+  link(1, empty) is [list: 1]
+  link(1, link(2, empty)) is [list: 1,2]
+  link(empty, link(empty, [list: ])) is [list: [list:],[list:]]
 end
 
 check:
-  x = [List:1]
+  x = [list:1]
   cases x:
     | empty => true
     | else => false
   end is false
 
-  shadow x = [List:]
+  shadow x = [list:]
   cases x:
     | empty => true
     | else => false
   end is true
 
-  shadow x = [List:1]
+  shadow x = [list:1]
   cases x:
     | link(a,b) => block:
         a is 1
@@ -91,7 +91,7 @@ end
 
 check:
   l1 = empty
-  l2 = [List: 1,2,3]
+  l2 = [list: 1,2,3]
   my-is-empty(l1) is true
   my-is-empty(l2) is false
 

@@ -98,7 +98,7 @@ check "data decl types basics":
   assert-type-compat(link(1,empty) :: List) is link(1,empty)
   assert-type-compat(3 :: List) raises "type not compatible"
 
-  let x :: List = [List:1,2]: x end is [List: 1,2]
+  let x :: List = [list:1,2]: x end is [list: 1,2]
   
 end
 
@@ -242,24 +242,24 @@ check "cases type syntax":
 
   # TODO: check the number of args given to a ctor is correct here too
 
-  cases [List:1,2]:
+  cases [list:1,2]:
     | link(_,_,_) => 1
   end raises "wrong number of args"
 
-  cases [List:1,2]:
+  cases [list:1,2]:
     | link => 1
   end raises "wrong number of args"
 
-  cases [List:]:
+  cases [list:]:
     | empty(_) => 1
   end raises "wrong number of args"
 
   # todo: make patterns with () into parse errors
-  cases [List:1,2]:
+  cases [list:1,2]:
     | link() => 1
   end raises "wrong number of args"
 
-  cases [List:]:
+  cases [list:]:
     | empty() => 1
   end is 1
 
@@ -267,19 +267,19 @@ check "cases type syntax":
   #   how do these interact with the annotations on the variantdecls?
   #   in dynamic type check mode, it can execute both dynamic checks
 
-  cases [List:1,2]:
+  cases [list:1,2]:
     | link(_, _) => 1
   end is 1  
 
-  cases [List:1,2]:
+  cases [list:1,2]:
     | link(_ :: Number, _) => 1
   end is 1  
 
-  cases [List:1,2]:
+  cases [list:1,2]:
     | link(_ :: String, _) => 1
   end raises "type not compatible"
 
-  cases [List:1,2]:
+  cases [list:1,2]:
     | link(_, _ :: String) => 1
   end raises "type not compatible"
 
@@ -342,21 +342,21 @@ check "fun sugar":
   # parametrized lam
   let f = lam(x :: List) -> List:
       x.rest
-  end: f([List:1,2]) end is [List: 2]
+  end: f([list:1,2]) end is [list: 2]
   let f = lam(x :: List) -> Number:
       x.rest
-  end: f([List:1,2]) end raises "type not compatible"
+  end: f([list:1,2]) end raises "type not compatible"
   let f = lam(x :: Number) -> List:
       x.rest
-  end: f([List:1,2]) end raises "type not compatible"
+  end: f([list:1,2]) end raises "type not compatible"
   
   let f = lam<abc>(x :: List<abc>) -> List<abc>:
       x.rest
-  end: f([List:1,2]) end is [List: 2]
+  end: f([list:1,2]) end is [list: 2]
 
   let f = lam<abc>(x :: List<abc>) -> MyList<abc>:
       x.rest
-  end: f([List:1,2]) end raises "type not compatible"
+  end: f([list:1,2]) end raises "type not compatible"
   
   # fundecl
   block:
@@ -397,26 +397,26 @@ check "fun sugar":
 
   block:
     fun f(x :: List) -> List: x.rest end
-    f([List:1,2])
-  end is [List: 2]
+    f([list:1,2])
+  end is [list: 2]
 
   block:
     fun f(x :: List) -> Number: x.rest end
-    f([List:1,2])
+    f([list:1,2])
   end raises "type not compatible"
   block:
     fun f(x :: Number) -> List: x.rest end
-    f([List:1,2])
+    f([list:1,2])
   end raises "type not compatible"
 
   block:
     fun f<d>(x :: List<d>) -> List<d>: x.rest end
-    f([List:1,2])
-  end is [List: 2]
+    f([list:1,2])
+  end is [list: 2]
 
   block:
     fun f<d>(x :: List<d>) -> MyList<d>: x.rest end
-    f([List:1,2])
+    f([list:1,2])
   end raises "type not compatible"
 
   # recdecl

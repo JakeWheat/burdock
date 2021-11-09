@@ -516,9 +516,8 @@ tupleOrRecord2 mkRecSel mkTupSel pTupEl extractIden = do
     fld = (,) <$> (identifier <* symbol_ ":") <*> expr
 
 construct :: Parser Expr
-construct = Construct <$> (symbol_ "[" *> (Iden <$> identifier) <* symbol_ ":")
+construct = Construct <$> (symbol_ "[" *> xSep1 '.' identifier <* symbol_ ":")
             <*> (commaSep expr <* symbol_ "]")
-
 
 ---------------------------------------
 

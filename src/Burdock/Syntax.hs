@@ -76,7 +76,7 @@ data Expr =
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TupleGet Expr Int
-    | Construct Expr [Expr]
+    | Construct [String] [Expr]
     | AssertTypeCompat Expr TypeAnnotation
     | TypeLet [TypeDecl] Expr
     deriving (Eq,Show,Data)

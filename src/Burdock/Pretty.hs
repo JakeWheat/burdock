@@ -107,7 +107,7 @@ expr (RecordSel flds) = pretty "{" <> nest 2 (commaSep (map fld flds) <> pretty 
 expr (TupleGet e n) = expr e <> pretty ".{" <> pretty (show n) <> pretty "}"
 
 expr (Construct e as) =
-    pretty "[" <> expr e <> pretty ":"
+    pretty "[" <> xSep "." (map pretty e) <> pretty ":"
     <+> nest 2 (commaSep $ map expr as) <> pretty "]"
 
 expr (AssertTypeCompat e ty) =

@@ -138,8 +138,9 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
                                                ,("c", Iden "x")])
     ,("{}", RecordSel [])
 
-    ,("[List:]", Construct (Iden "List") [])
-    ,("[List: 1,2,3]", Construct (Iden "List") [Num 1, Num 2, Num 3])
+    ,("[list:]", Construct ["list"] [])
+    ,("[list: 1,2,3]", Construct ["list"] [Num 1, Num 2, Num 3])
+    ,("[my.list:]", Construct ["my", "list"] [])
 
     ,("type-let a = b: c end"
      ,TypeLet [TypeDecl "a" [] (TName ["b"])] (Iden "c"))
@@ -514,6 +515,7 @@ interpreterTests =
      ,"burdock-test-src/either.bur"
      ,"burdock-test-src/option.bur"
      ,"burdock-test-src/curried.bur"
+     ,"burdock-test-src/construct.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"

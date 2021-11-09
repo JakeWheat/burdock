@@ -63,6 +63,9 @@ data List<a>:
   | empty
 end
 
+# list construct
+list = {make : lam(x): x end}
+
 data Option<o>:
   | none
   | some(a :: o)
