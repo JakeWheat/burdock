@@ -1145,6 +1145,7 @@ interp (If bs e) = do
                    Just x -> interp x
                    Nothing -> error "NoBranchesSatisfied"
     f bs
+interp (Ask bs e) = interp (If bs e)
 
 interp (LetRec bs e) =
     let sts = doLetRec bs

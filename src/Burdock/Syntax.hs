@@ -63,6 +63,7 @@ data Expr =
     | PIden String [TypeAnnotation]
     | Parens Expr
     | If [(Expr,Expr)] (Maybe Expr)
+    | Ask [(Expr,Expr)] (Maybe Expr)
     | App SourcePosition Expr [TypeAnnotation] [Expr]
     | BinOp Expr String Expr
     | UnaryMinus Expr

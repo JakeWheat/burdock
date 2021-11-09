@@ -241,6 +241,7 @@ term = (do
         ,expressionLetRec
         ,expressionLet
         ,ifE
+        ,ask
         ,block
         ,cases
         ,typeLet
@@ -374,6 +375,30 @@ ifE = do
             ,Left <$> (keyword_ "if" *> cond)
             ]
     endif bs el = keyword_ "end" *> pure (If (reverse bs) el)
+
+ask :: Parser Expr
+ask = do
+    keyword_ "ask"
+    symbol_ ":"
+    nextBranch []
+  where
+    nextBranch bs =
+        choice [do
+                x <- branchPart
+                case x of
+                    Right ot -> endask bs (Just ot)
+                    Left b -> nextBranch (b:bs)
+               ,endask bs Nothing]
+    branchPart :: Parser (Either (Expr,Expr) Expr)
+    branchPart = do
+        symbol_ "|"
+        choice
+            [Right <$> (keyword_ "otherwise" *> symbol_ ":" *> expr)
+            ,Left <$> ((,) <$> (expr <* keyword "then" <* symbol_ ":")
+                          <*> expr)
+            ]
+    endask bs ot = keyword_ "end" *> pure (Ask (reverse bs) ot)     
+
 
 block :: Parser Expr
 block = Block <$>

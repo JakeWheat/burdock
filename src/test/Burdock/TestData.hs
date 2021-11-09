@@ -76,6 +76,25 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \end"
      ,If [(BinOp (Iden "n") "==" (Num 1), Num 0)
          ,(BinOp (Iden "n") "==" (Num 2), Num 1)] (Just (Num 2)))
+
+    ,("ask: | otherwise: a end", Ask [] (Just (Iden "a")))
+    ,("ask:\n\
+      \   | a == b then: c\n\
+      \   | c == d then: e\n\
+      \   | otherwise: f\n\
+      \end"
+      ,Ask [(BinOp (Iden "a") "==" (Iden "b"), Iden "c")
+           ,(BinOp (Iden "c") "==" (Iden "d"), Iden "e")
+           ] (Just (Iden "f")))
+    ,("ask:\n\
+      \   | a == b then: c\n\
+      \   | c == d then: e\n\
+      \end"
+      ,Ask [(BinOp (Iden "a") "==" (Iden "b"), Iden "c")
+           ,(BinOp (Iden "c") "==" (Iden "d"), Iden "e")
+           ] Nothing)
+
+
     ,("let shadow a = 4 : a end"
      ,Let [(NameBinding Shadow "a" Nothing, Num 4)] (Iden "a"))
     ,("a.b", DotExpr (Iden "a") "b")
@@ -490,6 +509,7 @@ interpreterTests =
      ,"burdock-test-src/built-in-functions.bur"
      ,"burdock-test-src/comparisons.bur"
      ,"burdock-test-src/lists.bur"
+     ,"burdock-test-src/if_ask.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"

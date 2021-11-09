@@ -82,6 +82,14 @@ expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
     pel Nothing = []
     pel (Just e) = [pretty "else:"
                    ,nest 2 (expr e)]
+expr (Ask cs el) = prettyBlocklike vsep
+    (pretty "ask:" : map prettyC cs ++ pel el)
+  where
+    prettyC (c,t) = pretty "|" <+> expr c <+> pretty "then:"
+                    <+> nest 2 (expr t)
+    pel Nothing = []
+    pel (Just e) = [pretty "|" <+> pretty "otherwise:" <+> nest 2 (expr e)]
+
 expr (DotExpr e i) = expr e <> pretty "." <> pretty i
 expr (Cases e ty mats els) =
     prettyBlocklike vsep
