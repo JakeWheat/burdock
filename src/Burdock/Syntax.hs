@@ -21,6 +21,7 @@ data Stmt =
     | Check (Maybe String) [Stmt]
     | VarDecl Binding Expr
     | SetVar String Expr
+    | SetRef Expr [(String,Expr)]
     | DataDecl String [String] [VariantDecl] (Maybe [Stmt])
     | RecDecl Binding Expr
     | FunDecl
@@ -79,6 +80,7 @@ data Expr =
     | Construct [String] [Expr]
     | AssertTypeCompat Expr TypeAnnotation
     | TypeLet [TypeDecl] Expr
+    | UnboxRef Expr String
     deriving (Eq,Show,Data)
 
 data TypeDecl = TypeDecl String [String] TypeAnnotation

@@ -886,14 +886,28 @@ getFFIValue [TextV nm] = do
     -- todo: check the value exists in the ffi catalog
     pure $ ForeignFunV nm
 getFFIValue _ = error "wrong args to get-ffi-value"
-    
 
+
+fromBList :: Value -> Maybe [Value]
+fromBList (VariantV tg "empty" [])
+    | tg == internalsType "List" = Just []
+fromBList (VariantV tg "link" [("first",f),("rest",r)])
+    | tg == internalsType "List" =
+      (f:) <$> fromBList r
+fromBList _ = Nothing
+    
 makeVariant :: [Value] -> Interpreter Value
-makeVariant (FFIValue ftg : TextV nm : as) | Just tg <- fromDynamic ftg =
-    pure $ VariantV tg nm (f as)
+makeVariant [FFIValue ftg, TextV nm, as']
+    | Just tg <- fromDynamic ftg
+    , Just as <- fromBList as' =
+    VariantV tg nm <$> f as
   where
-    f [] = []
-    f (TextV fnm : v : as') = (fnm,v): f as'
+    f [] = pure []
+    f (BoolV False : TextV fnm : v : asx) =
+        ((fnm,v) :) <$> f asx
+    f (BoolV True : TextV fnm : v : asx) = do
+        vb <- BoxV (internalsType "Any") <$> liftIO (newIORef v)
+        ((fnm,vb):) <$> f asx
     f x = error $ "wrong args to make-variant: " ++ show x
 makeVariant x = error $ "wrong args to make-variant: " ++ show x
 
@@ -1068,6 +1082,14 @@ interp (Iden a) = do
         Just (BoxV _ vr) -> liftIO $ readIORef vr
         Just v -> pure v
         Nothing -> error $ "identifier not found: " ++ a
+
+interp (UnboxRef e f) = do
+    v <- interp e
+    case v of
+        VariantV _ _ fs
+            | Just (BoxV _ vr) <- lookup f fs -> liftIO $ readIORef vr
+            | Just _  <- lookup f fs -> error $ "set ref on non ref: " ++ f ++ " in " ++ show v
+        _ -> error $ "setref on non variant: " ++ show v
 
 interp (PIden a ps) = do
     -- todo: add type check - check the ty param list has valid types
@@ -1570,7 +1592,6 @@ interpStatement (VarDecl b e) = do
                   <*> typeOfTypeSyntax ta
               _ -> pure (v, bootstrapType "Any")
     vr <- liftIO $ newIORef v'
-            
     letValue (bindingName b) (BoxV ty vr)
     pure nothing
 
@@ -1584,6 +1605,22 @@ interpStatement (SetVar nm e) = do
     void $ assertTypeCompat v ty
     liftIO $ writeIORef vr v
     pure nothing
+
+interpStatement (SetRef e fs) = do
+    vs <- mapM (secondM interp) fs
+    v <- interp e
+    case v of
+        VariantV _ _ vfs -> mapM_ (setfield vfs) vs
+        _ -> undefined
+    pure nothing
+  where
+    setfield :: [(String,Value)] -> (String,Value) -> Interpreter ()
+    setfield vfs (nm, v) = case lookup nm vfs of
+        Just b -> setBox b v
+        Nothing -> undefined
+    setBox bx v = case bx of
+        BoxV _ b -> liftIO $ writeIORef b v
+        _ -> error $ "attempt to assign to something which isn't a ref: " ++ show bx
 
 {-
 
@@ -1628,11 +1665,11 @@ interpStatement (DataDecl dnm dpms vs whr) = do
     interpStatements desugared
   where
     typeInfoName = "_typeinfo-" ++ dnm
-    --makeV :: VariantDecl -> [Stmt]
     makeV (VariantDecl vnm fs) =
         let appMakeV = App appSourcePos (bootstrapRef "make-variant") []
-                       (Iden typeInfoName : Text vnm
-                        : concat (map ((\x -> [Text x, Iden x]) . bindingName . snd) fs))
+                       [Iden typeInfoName
+                       ,Text vnm
+                       ,Construct ["list"] $ concatMap mvf fs]
             tcs = catMaybes $ map (\case
                 NameBinding _ nm (Just ta) -> Just (nm,ta)
                 _ -> Nothing) $ map snd fs
@@ -1643,6 +1680,12 @@ interpStatement (DataDecl dnm dpms vs whr) = do
            $ typeLetWrapper dpms
            $ (if null fs then id else Lam (fh $ map snd fs))
            $ typeCheck $ appMakeV
+    mvf (r, b) = let nm = bindingName b
+                 in ([case r of
+                          Ref -> Iden "true"
+                          Con -> Iden "false"
+                     ,Text nm
+                     ,Iden nm])
     letDecl nm v = LetDecl (mnm nm) v
     lam as e = Lam (fh $ map mnm as) e
     fh as = FunHeader [] as Nothing
@@ -1658,7 +1701,7 @@ interpStatement c@(Contract {}) = error $ "contract without corresponding statem
 -- prelude statements
 
 {-
-import file("file.tea") as X
+import file("file.bur") as X
 import string-dict as X
 
 ->
@@ -1712,7 +1755,7 @@ interpStatement (IncludeFrom nm pis) = do
     pure nothing
 
 {-
-include file("file.tea")
+include file("file.bur")
 include string-dict
 include m == include from m: * end
 -}

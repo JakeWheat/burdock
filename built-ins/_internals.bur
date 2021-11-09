@@ -20,6 +20,9 @@ module which reexports these
 
 include _bootstrap
 
+# list construct
+list = {make : lam(x): x end}
+
 raise = get-ffi-value("raise")
 haskell-error = get-ffi-value("haskell-error")
 
@@ -63,8 +66,6 @@ data List<a>:
   | empty
 end
 
-# list construct
-list = {make : lam(x): x end}
 
 data Option<o>:
   | none

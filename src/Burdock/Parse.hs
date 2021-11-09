@@ -276,7 +276,8 @@ term = (do
 termSuffixes :: Expr -> Parser Expr
 termSuffixes x = boption x $ do
     y <- choice [pure x <**> appSuffix
-                ,pure x <**> dotSuffix 
+                ,pure x <**> dotSuffix
+                ,pure x <**> unboxSuffix
                 ]
     termSuffixes y
 
@@ -309,6 +310,10 @@ dotSuffix :: Parser (Expr -> Expr)
 dotSuffix = symbol_ "." *>
     bchoice [flip TupleGet <$> (symbol_ "{" *> nonNegativeInteger <* symbol_ "}")
             ,flip DotExpr <$> identifier]
+
+
+unboxSuffix :: Parser (Expr -> Expr)
+unboxSuffix = flip UnboxRef <$> (try (symbol_ "!" *> identifier))
 
 
 leftBinOpSym :: Parser String
@@ -692,8 +697,15 @@ startsWithExprOrBinding = do
                     ,pure $ Contract i ty]
             ,LetDecl (NameBinding NoShadow i Nothing)
              <$> ((symbol_ "=" <?> "") *> expr)
-            ,pure $ StmtExpr ex]
-        _ -> pure $ StmtExpr ex
+            ,handleExpr ex]
+        _ -> handleExpr ex
+  where
+    handleExpr ex =
+        bchoice
+        [let rf = (,) <$> identifier <*> (symbol_ ":" *> expr)
+         in SetRef ex <$> ((symbol_ "!{" <?> "") *> commaSep1 rf <* symbol "}")
+        ,pure $ StmtExpr ex]
+
 
 typ :: Bool -> Parser TypeAnnotation
 typ allowImplicitTuple =

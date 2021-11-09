@@ -229,6 +229,13 @@ end|]
 
      ,("-1 is 0 - 1"
       ,BinOp (UnaryMinus (Num 1)) "is" (BinOp (Num 0) "-" (Num 1)))
+    ,("ex1!x"
+     ,UnboxRef (Iden "ex1") "x")
+    ,("ex2!x!y"
+     ,UnboxRef (UnboxRef (Iden "ex2") "x") "y")
+    ,("ex2.y!x"
+     ,UnboxRef (DotExpr (Iden "ex2") "y") "x")
+
     ]
   where
     nm x = NameBinding NoShadow x Nothing
@@ -248,6 +255,17 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
      ,VarDecl (nm "a") (Num 5))
     ,("a := 6"
      ,SetVar "a" (Num 6))
+
+    ,("ex1!{x: 42}"
+     ,SetRef (Iden "ex1") [("x", Num 42)])
+    ,("ex1!{x: 42, y:43}"
+     ,SetRef (Iden "ex1") [("x", Num 42), ("y", Num 43)])
+    ,("ex1!a!{x: 42}"
+     ,SetRef (UnboxRef (Iden "ex1") "a") [("x", Num 42)])
+
+    ,("ex1.a!{x: 42}"
+     ,SetRef (DotExpr (Iden "ex1") "a") [("x", Num 42)])
+
     ,("data BTree:\n\
       \  | node(value, left, right)\n\
       \  | leaf(value)\n\
@@ -517,6 +535,7 @@ interpreterTests =
      ,"burdock-test-src/curried.bur"
      ,"burdock-test-src/construct.bur"
      ,"burdock-test-src/functions.bur"
+     ,"burdock-test-src/ref.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"

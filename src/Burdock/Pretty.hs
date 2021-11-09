@@ -117,7 +117,10 @@ expr (TypeLet tds e) =
     prettyBlocklike sep
     [pretty "type-let" <+> commaSep (map typeDecl tds) <> pretty ":"
     ,expr e]
-    
+
+expr (UnboxRef e f) = expr e <> pretty "!" <> pretty f
+
+
 bindExpr :: Binding -> Expr -> Doc a
 bindExpr n e =
     binding n <+> pretty "=" <+> nest 2 (expr e)
@@ -191,6 +194,9 @@ stmt (Check nm s) = prettyBlocklike vsep
         ,stmts s]
 stmt (VarDecl pn e) = pretty "var" <+> binding pn <+> pretty "=" <+> expr e
 stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
+stmt (SetRef e fs) = expr e <> pretty "!{" <> commaSep (map f fs) <> pretty "}"
+  where
+    f (n,v) = pretty n <> pretty ":" <+> expr v
 
 stmt (DataDecl nm ts vs w) =
     prettyBlocklike vsep
