@@ -69,3 +69,9 @@ check "when":
 
   
 end
+
+check "unary minus":
+  a = 4
+  4 - 8 is - a
+end
+

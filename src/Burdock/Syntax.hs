@@ -65,6 +65,7 @@ data Expr =
     | If [(Expr,Expr)] (Maybe Expr)
     | App SourcePosition Expr [TypeAnnotation] [Expr]
     | BinOp Expr String Expr
+    | UnaryMinus Expr
     | Lam FunHeader Expr
     | Let [(Binding,Expr)] Expr
     | LetRec [(Binding,Expr)] Expr

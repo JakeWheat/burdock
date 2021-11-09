@@ -232,7 +232,8 @@ expr = chainl1 term f
 term :: Parser Expr
 term = (do
     x <- choice
-        [lamE
+        [unaryMinus
+        ,lamE
         ,expressionLetRec
         ,expressionLet
         ,ifE
@@ -304,6 +305,8 @@ binOpSym = choice ([symbol "+"
                   ,"raises"
                   ])
 
+unaryMinus :: Parser Expr
+unaryMinus = UnaryMinus <$> (symbol "-" *> term)
 
 lamE :: Parser Expr
 lamE = Lam <$> (keyword_ "lam" *> funHeader <* symbol_ ":")

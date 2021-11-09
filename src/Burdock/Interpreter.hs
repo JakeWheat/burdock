@@ -819,7 +819,10 @@ builtInFF =
     [("get-ffi-value", getFFIValue)
     ,("==", \[a,b] -> pure $ BoolV $ a == b)
     ,("+", \[NumV a,NumV b] -> pure $ NumV $ a + b)
-    ,("-", \[NumV a,NumV b] -> pure $ NumV $ a - b)
+    ,("-", \case
+             [NumV a] -> pure $ NumV (- a)
+             [NumV a,NumV b] -> pure $ NumV $ a - b
+             as -> error $ "unsupported args to - :" ++ show as)
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
 
     ,("make-variant", makeVariant)
@@ -1011,6 +1014,12 @@ interp (BinOp e0 op e1) = do
     v0 <- interp e0
     v1 <- interp e1
     app opv [v0,v1]
+
+interp (UnaryMinus e) = do
+    opv <- interp $ Iden "-"
+    v <- interp e
+    app opv [v]
+
 
 {-
 Type checking for lam:

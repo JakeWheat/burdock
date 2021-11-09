@@ -55,6 +55,7 @@ expr (App _ e ts es) = expr e <> tpl ts <> parens (commaSep $ map expr es)
     tpl [] = mempty
     tpl xs = pretty "<" <> commaSep (map typ xs) <> pretty ">"
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
+expr (UnaryMinus e) = pretty "-" <> expr e
 expr (Lam fh e) = prettyBlocklike sep
     [pretty "lam" <> funHeader fh <> pretty ":"
     ,expr e]
