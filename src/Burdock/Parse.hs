@@ -88,6 +88,11 @@ chainl1 p op = scan
     scan = p <**> rst
     rst = (\f y g x -> g (f x y)) <$> op <*> p <*> rst <|> pure id
 
+chainr1 :: Alternative m => m a -> m (a -> a -> a) -> m a
+chainr1 p op = scan where
+  scan = p <**> rst
+  rst = (flip <$> op <*> scan) <|> pure id
+
 boption :: a -> Parser a -> Parser a
 boption v p = (option v p) <?> ""
 
@@ -222,15 +227,28 @@ nonNegativeInteger = lexeme (read <$> takeWhile1P Nothing isDigit)
 
 -- expressions
 
+{-
+numpty precedence at the moment:
+testpreds left associativity
+rightops, just |> atm, right associativity
+all other ops, left associativity
+
+todo: pass over the syntax after parsing to prohibit op combinations
+that pyret does -> you can only chain the same operator
+not sure that non associative (algebra not fixity) operators should
+ even allow this 1 + 2 + 3 seems ok, but 1 - 2 - 3 seems weird if
+all other fixity is disallowed
+
+-}
+
+
 expr :: Parser Expr
-expr = chainl1 expr1 tf
+expr = chainl1 exprlev1 (f testPred)
   where
-    expr1 = chainl1 term f
-    f = do
-        op <- binOpSym
-        pure $ \a b -> BinOp a op b
-    tf = do
-        op <- testPred
+    exprlev1 = chainr1 exprlev2 (f rightBinOpSym)
+    exprlev2 = chainl1 term (f leftBinOpSym)
+    f o = do
+        op <- o
         pure $ \a b -> BinOp a op b
 
 term :: Parser Expr
@@ -293,8 +311,8 @@ dotSuffix = symbol_ "." *>
             ,flip DotExpr <$> identifier]
 
 
-binOpSym :: Parser String
-binOpSym = choice ([symbol "+"
+leftBinOpSym :: Parser String
+leftBinOpSym = choice ([symbol "+"
                   ,symbol "*"
                   ,try $ symbol "<="
                   ,try $ symbol "=="
@@ -305,11 +323,13 @@ binOpSym = choice ([symbol "+"
                   ,symbol "-"
                   ,symbol "/"
                   ,symbol "^"
-                  ,symbol "|>"
                   ] ++ map keyword
                   ["and"
                   ,"or"
                   ])
+rightBinOpSym:: Parser String
+rightBinOpSym = choice ([symbol "|>"])
+
 
 testPred :: Parser String
 testPred = choice (map keyword ["is"

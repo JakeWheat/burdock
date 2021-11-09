@@ -671,6 +671,8 @@ baseEnv =
     ,(">", ForeignFunV ">")
     ,("<=", ForeignFunV "<=")
     ,(">=", ForeignFunV ">=")
+    ,("^", ForeignFunV "^")
+    ,("|>", ForeignFunV "|>")
 
     ]
 
@@ -844,6 +846,9 @@ builtInFF =
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
     ,("/", \[NumV a,NumV b] -> pure $ NumV $ divideScientific a b)
 
+    ,("^", reverseApp)
+    ,("|>", chainApp)
+    
     ,("not", \[BoolV b] -> pure $ BoolV $ not b)
 
     ,("make-variant", makeVariant)
@@ -936,8 +941,13 @@ isFunction [_] = pure $ BoolV False
 isFunction _ = error $ "wrong args to is-function"
 
 
+reverseApp :: [Value] -> Interpreter Value
+reverseApp [a, f] = app f [a]
+reverseApp as = error $ "wrong args to ^ " ++ show as
 
-
+chainApp :: [Value] -> Interpreter Value
+chainApp [f, a] = app f [a]
+chainApp as = error $ "wrong args to |> " ++ show as
 
 bLT :: [Value] -> Interpreter Value
 bLT [NumV a, NumV b] = pure $ BoolV $ a < b

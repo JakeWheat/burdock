@@ -516,6 +516,7 @@ interpreterTests =
      ,"burdock-test-src/option.bur"
      ,"burdock-test-src/curried.bur"
      ,"burdock-test-src/construct.bur"
+     ,"burdock-test-src/functions.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"
