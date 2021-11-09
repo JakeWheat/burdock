@@ -499,6 +499,7 @@ stmt = choice
     ,include
     ,importStmt
     ,whenStmt
+    ,shadowDecl
     ,startsWithExprOrBinding]
 
 stmts :: Parser [Stmt]
@@ -606,6 +607,17 @@ whenStmt :: Parser Stmt
 whenStmt = When
            <$> (keyword_ "when" *> expr)
            <*> (symbol_ ":" *> expr <* keyword_ "end")
+
+-- todo: what other statements can use shadow
+-- fun? rec? var?
+shadowDecl :: Parser Stmt
+shadowDecl = 
+    f <$> (keyword_ "shadow" *> identifier)
+    <*> optional ((symbol_ "::" <?> "") *> typ True)
+    <*> ((symbol_ "=" <?> "") *> expr)
+  where
+    f i ty v = LetDecl (NameBinding Shadow i ty) v
+
 
 startsWithExprOrBinding :: Parser Stmt
 startsWithExprOrBinding = do

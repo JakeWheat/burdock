@@ -49,28 +49,6 @@ check:
   link(empty, link(empty, [List: ])) is [List: [List:],[List:]]
 end
 
-#|
-check:
-  x = [List: 1,2,3]
-  # -> link(1, link(2, link (3,empty)))
-  # test variant binding
-  
-  link(a,b) = x
-  a is 1
-  link(_,link(c,d)) = x
-  c is 2
-  d is [List: 3]
-  w = let link(y,z) = x: {y;z} end
-  w is {1;[List:2,3]}
-  a0 = [List:]
-  # this seems pretty dodgy: pattern match on a no arg variant
-  # instead of binding to an identifier called empty
-  empty = a0
-  # todo: do a raises test with this
-  nothing
-end
-   |#
-
 check:
   x = [List:1]
   cases x:
@@ -78,15 +56,13 @@ check:
     | else => false
   end is false
 
-  #shadow
-  x = [List:]
+  shadow x = [List:]
   cases x:
     | empty => true
     | else => false
   end is true
 
-  #shadow
-  x = [List:1]
+  shadow x = [List:1]
   cases x:
     | link(a,b) => block:
         a is 1

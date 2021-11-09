@@ -215,7 +215,12 @@ end|]
 
 statementParseTests :: TestTree
 statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTest)
-    [("when x == 3: 4 end"
+    [("a = 5"
+     ,LetDecl (nm "a") (Num 5))
+    ,("shadow a = 5"
+     ,LetDecl (NameBinding Shadow "a" Nothing) (Num 5))
+
+    ,("when x == 3: 4 end"
      ,When (BinOp (Iden "x") "==" (Num 3)) (Num 4))
     ,("var a = 5"
      ,VarDecl (nm "a") (Num 5))
