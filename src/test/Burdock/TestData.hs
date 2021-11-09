@@ -489,10 +489,12 @@ interpreterTests =
      ,"burdock-test-src/boolean.bur"
      ,"burdock-test-src/built-in-functions.bur"
      ,"burdock-test-src/comparisons.bur"
+     ,"burdock-test-src/lists.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"
      ,"built-ins/globals.bur"
      ,"built-ins/either.bur"
+     ,"built-ins/option.bur"
      ]
     ]
