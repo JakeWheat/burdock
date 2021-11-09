@@ -1051,7 +1051,7 @@ interp :: Expr -> Interpreter Value
 interp (Num n) = pure $ NumV n
 interp (Text s) = pure $ TextV s
 interp (Parens e) = interp e
-interp (Iden "_") = error $ "todo: partial app not supported"
+interp (Iden "_") = error $ "wildcard/partial application not supported in this context"
 interp (Iden a) = do
     mv <- lookupEnv a
     case mv of
@@ -1065,7 +1065,10 @@ interp (PIden a ps) = do
     mapM_ typeOfTypeSyntax ps
     interp (Iden a)
 
-
+-- special case for partial app
+interp (App sp f t es) | f == Iden "_" || any (== Iden "_") es =
+    interp $ makeCurriedApp sp f t es
+    
 interp (App sp f _ es) = do
     fv <- interp f
     -- special case apps
@@ -1098,11 +1101,7 @@ interp (BinOp e0 "or" e1) = do
         BoolV False -> interp e1
         _ -> error $ "bad value type to 'or' operator: " ++ show x
 
-interp (BinOp e0 op e1) = do
-    opv <- interp $ Iden op
-    v0 <- interp e0
-    v1 <- interp e1
-    app opv [v0,v1]
+interp (BinOp e0 op e1) = interp (App Nothing (Iden op) [] [e0,e1])
 
 interp (UnaryMinus e) = do
     opv <- interp $ Iden "-"
@@ -1286,6 +1285,23 @@ makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest",
 
 bindingName :: Binding -> String
 bindingName (NameBinding _ nm _) = nm
+
+makeCurriedApp :: SourcePosition -> Expr -> [TypeAnnotation] -> [Expr] -> Expr
+makeCurriedApp sp f t es =
+    -- create some names for the _ args
+    let (nms',newEs) = unzip $ makeNewEs (1::Int) es
+        nms = catMaybes nms'
+        (newf,nms2) = case f of
+                        Iden "_" -> (Iden "_p0", ("_p0":nms))
+                        _ -> (f, nms)
+        bs = flip map nms2 $ \n -> NameBinding NoShadow n Nothing
+    in Lam (FunHeader [] bs Nothing) (App sp newf t newEs)
+  where
+    makeNewEs _ [] = []
+    makeNewEs n (Iden "_":es') =
+        let nm = "_p" ++ show n
+        in (Just nm, Iden nm) : makeNewEs (n + 1) es'
+    makeNewEs n (x:es') = (Nothing, x) : makeNewEs n es'
 
 app :: Value -> [Value] -> Interpreter Value
 app fv vs =
