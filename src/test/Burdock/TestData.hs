@@ -168,7 +168,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
 
     ,("assert-type-compat(x :: String, (String -> String) -> String)"
      ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"], TParens (TArrow [TName ["String"]] $ TName ["String"])] $ TName ["String"]))
-
+    ,("assert-type-compat(x :: -> String)"
+     ,AssertTypeCompat (Iden "x") (TArrow [] $ TName ["String"]))
     ,("assert-type-compat(x :: String, String -> String)"
      ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"], TName ["String"]] $ TName ["String"]))
     ,("assert-type-compat(x :: String -> String)"

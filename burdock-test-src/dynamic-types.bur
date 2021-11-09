@@ -128,11 +128,9 @@ end
 
 check "arrow types":
 
-  # not sure how to write the arrow based type of this function
-  # explicitly - needs some new syntax?
-  # or could write it as 'Nothing -> Number'?
-  # the new syntax could be '() -> Number', or just '-> Number'
   assert-type-compat(lam(): 5 end :: Function)() is 5
+
+  assert-type-compat(lam(): 5 end :: -> Number)() is 5
 
   assert-type-compat(lam(x): x + 5 end :: Number -> Number)(4) is 9
 

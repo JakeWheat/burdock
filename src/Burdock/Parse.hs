@@ -678,7 +678,8 @@ startsWithExprOrBinding = do
 
 typ :: Bool -> Parser TypeAnnotation
 typ allowImplicitTuple =
-    (startsWithIden allowImplicitTuple
+    (zeroArgArrow allowImplicitTuple
+     <|> startsWithIden allowImplicitTuple
      <|> parensOrNamedArrow
      <|> ttupleOrRecord)
     <?> "type annotation"
@@ -699,6 +700,10 @@ typ allowImplicitTuple =
     noarrow = (parensOrNamedArrow <|> do
         i <- identifier
         noarrowctu i) <?> "type annotation"
+    zeroArgArrow ait = (do
+        symbol_ "->"
+        t <- typ ait
+        pure $ TArrow [] t) <?> "type annotation"
     tname i = (i:) <$> many (symbol_ "." *> identifier)
     noarrowctu i = do
         i1 <- tname i
