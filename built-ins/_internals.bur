@@ -46,6 +46,9 @@ print = get-ffi-value("print")
 torepr = get-ffi-value("torepr")
 tostring = get-ffi-value("tostring")
 
+string-to-number = get-ffi-value("string-to-number")
+string-index-of = get-ffi-value("string-index-of")
+
 catch-as-either = get-ffi-value("catch-as-either")
 
 not = get-ffi-value("not")
@@ -59,6 +62,12 @@ data List<a>:
   | link(first :: a, rest :: List<a>)
   | empty
 end
+
+data Option<o>:
+  | none
+  | some(a :: o)
+end
+
 
 # if tests are run, automatically print the results
 # this is used to disable the printing when you are getting the test

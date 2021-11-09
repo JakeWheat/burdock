@@ -47,6 +47,11 @@ provide:
   is-function,
   is-number,
 
+  num-to-string,
+  string-to-number,
+  string-index-of,
+  string-append,
+
   # todo: fix this when implement type provide-spec
   _typeinfo-Any,
   _typeinfo-Number,
@@ -65,3 +70,10 @@ include _internals
 to-string = tostring
 to-repr = torepr
 
+fun num-to-string(n :: Number) -> String:
+  tostring(n)
+end
+
+fun string-append(s :: String, t :: String) -> String:
+  s + t
+end

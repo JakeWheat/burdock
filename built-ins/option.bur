@@ -6,23 +6,23 @@ provide:
   is-some,
   is-none,
   and-then,
-  or-else
+  or-else,
+
+  _casepattern-some,
+  _casepattern-none,
+  _typeinfo-Option
 end
 
-data Option:
-  | none
-  | some(a)
-end
+include _internals
 
-
-fun and-then(a :: Option<o>, f):
+fun and-then<o>(a :: Option<o>, f):
   cases a:
     | some(a1) => some(f(a1))
     | none => none
   end
 end
 
-fun or-else(a :: Option<o>, v):
+fun or-else<o>(a :: Option<o>, v):
   cases a:
     | some(a1) => a1
     | none => v

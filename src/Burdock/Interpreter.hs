@@ -41,6 +41,9 @@ import Data.List (intercalate
                  ,sortOn
                  ,partition
                  ,isInfixOf
+                 ,isPrefixOf
+                 ,findIndex
+                 ,tails
                  )
 
 import Data.IORef (IORef
@@ -50,6 +53,7 @@ import Data.IORef (IORef
                   ,writeIORef)
 
 import Data.Maybe (catMaybes, isJust)
+import Text.Read (readMaybe)
 
 import Burdock.Scientific
 import Burdock.Syntax
@@ -858,6 +862,8 @@ builtInFF =
     ,("is-string", isString)
     ,("is-number", isNumber)
     ,("is-function", isFunction)
+    ,("string-to-number", stringToNumber)
+    ,("string-index-of", stringIndexOf)
 
     ,("print", bPrint)
     ,("torepr", torepr)
@@ -983,6 +989,21 @@ toString :: [Value] -> Interpreter Value
 toString [s@(TextV {})] = pure s
 toString [x] = torepr [x]
 toString _ = error "wrong number of args to tostring"
+
+stringToNumber :: [Value] -> Interpreter Value
+stringToNumber [TextV t] = case readMaybe t of
+    Just n ->
+        pure $ VariantV (internalsType "Option") "some" [("a", NumV n)]
+    Nothing ->
+        pure $ VariantV (internalsType "Option") "none" []
+stringToNumber _ = error "wrong args to string-to-number"
+
+stringIndexOf :: [Value] -> Interpreter Value
+stringIndexOf [TextV t, TextV s] =
+    case (s `isPrefixOf`) `findIndex` (tails t) of
+        Just i -> pure $ NumV $ fromIntegral i
+        Nothing -> pure $ NumV (-1)
+stringIndexOf _ = error "wrong args to string-index-of"
 
 raise :: [Value] -> Interpreter Value
 raise [v] = do
@@ -1154,15 +1175,18 @@ interp (LetRec bs e) =
 interp (DotExpr e f) = do
     v <- interp e
     case v of
-        VariantV _ _ fs | Just fv <- lookup f fs ->
-                            -- not quite sure about this?
-                            -- it's needed for referencing vars in a module
-                            -- (including fun which is desugared to a var)
-                            case fv of
-                                BoxV _ vr -> liftIO $ readIORef vr
-                                _ -> pure fv
-                        | otherwise -> error $ "field not found in dotexpr " ++ show v ++ " . " ++ f
-                                             ++ "\nfields are: " ++ show fs
+        VariantV _ _ fs
+            | Just fv <- lookup f fs ->
+              -- not quite sure about this?
+              -- it's needed for referencing vars in a module
+              -- (including fun which is desugared to a var)
+              case fv of
+                  BoxV _ vr -> liftIO $ readIORef vr
+                  _ -> pure fv
+            | otherwise ->
+              error $ "field not found in dotexpr\nlooking in value:\n" ++ show v
+              ++ "\n for field " ++ f
+              ++ "\nit's fields are: " ++ show fs
         _ -> error $ "dot called on non variant: " ++ show v
 
 

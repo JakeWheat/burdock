@@ -510,6 +510,8 @@ interpreterTests =
      ,"burdock-test-src/comparisons.bur"
      ,"burdock-test-src/lists.bur"
      ,"burdock-test-src/if_ask.bur"
+     ,"burdock-test-src/either.bur"
+     ,"burdock-test-src/option.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"

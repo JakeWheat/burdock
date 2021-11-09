@@ -4,7 +4,11 @@ provide:
   is-left,
   is-right,
   left,
-  right
+  right,
+
+  _casepattern-left,
+  _casepattern-right,
+  _typeinfo-Either
 end
 
 include _internals
