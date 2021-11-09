@@ -12,5 +12,7 @@ check:
   #raise(5) raises 6
   #5 raises "test"
 
+  fun g(x): x == "test2" end
+  raise("test2") raises-satisfies g
   
 end

@@ -1061,6 +1061,7 @@ interp (App sp f _ es) = do
 -- special case binops
 interp (BinOp _ "is" _) = error $ "'is' test predicate only allowed in check block"
 interp (BinOp _ "raises" _) = error $ "'raises' test predicate only allowed in check block"
+interp (BinOp _ "raises-satisfies" _) = error $ "'raises-satisfies' test predicate only allowed in check block"
 
 interp (BinOp e0 "and" e1) = do
     x <- interp e0
@@ -1238,7 +1239,7 @@ interp (Construct (Iden "List") es) = do
     vs <- mapM interp es
     pure $ makeBList vs
 
-interp (Construct {}) = error "todo: construct for non lists"
+interp (Construct x _) = error $ "todo: construct for non lists: " ++ show x
 
 interp (AssertTypeCompat e t) = do
     v <- interp e
@@ -1454,64 +1455,14 @@ and run-is-test will catch any exceptions from evaluating a or b and
 
 -}
 
-interpStatement s@(StmtExpr (BinOp e0 "is" e1)) = do
-    v0 <- bToHEither <$> catchAsEither [e0]
-    v1 <- bToHEither <$> catchAsEither [e1]
-    st <- ask
-    ti <- liftIO $ readIORef (isTestInfo st)
-    let cbn = maybe (error "is predicate not in check block")
-              id $ tiCurrentCheckblock ti
-    let atr = addTestResult (tiCurrentSource ti) cbn
+interpStatement s@(StmtExpr (BinOp e0 "is" e1)) =
+    testIs (prettyStmt s) e0 e1
 
-    case (v0,v1) of
-        (Right v0', Right v1') ->
-            if v0' == v1'
-            then atr $ TestPass msg
-            else do
-                p0 <- liftIO $ torepr' v0'
-                p1 <- liftIO $ torepr' v1'
-                atr $ TestFail msg (p0 ++ "\n!=\n" ++ p1)
-        (Left er0, Right {}) -> do
-            er0' <- liftIO $ torepr' er0
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
-        (Right {}, Left er1) -> do
-            er1' <- liftIO $ torepr' er1
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
-        (Left er0, Left er1) -> do
-            er0' <- liftIO $ torepr' er0
-            er1' <- liftIO $ torepr' er1
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
-                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
-    pure nothing
-  where
-    msg = prettyStmt s
+interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) =
+    testRaises (prettyStmt s) e0 e1
 
--- todo: factor with the "is" test above
-interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) = do
-    v0 <- bToHEither <$> catchAsEither [e0]
-    v1 <- bToHEither <$> catchAsEither [e1]
-    st <- ask
-    ti <- liftIO $ readIORef (isTestInfo st)
-    let cbn = maybe (error "is predicate not in check block")
-              id $ tiCurrentCheckblock ti
-    let atr = addTestResult (tiCurrentSource ti) cbn
-    case (v0,v1) of
-        (Right _, Right _) ->
-            atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
-        (_, Left er1) -> do
-            er1' <- liftIO $ torepr' er1
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
-        (Left er0, Right (TextV v)) -> do
-            val <- liftIO $ torepr' er0
-            if v `isInfixOf` val
-                then atr $ TestPass msg
-                else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ "\"" ++ v ++ "\"")
-        (Left _, Right v) -> do
-            atr $ TestFail msg (prettyExpr e1 ++ " failed, expected String, got: " ++ show v)
-    pure nothing
-  where
-    msg = prettyStmt s
-
+interpStatement s@(StmtExpr (BinOp e0 "raises-satisfies" f)) =
+    testRaisesSatisfies (prettyStmt s) e0 f
 
 interpStatement (StmtExpr e) = interp e
 interpStatement (When t b) = do
@@ -1742,6 +1693,84 @@ makeDotPathExpr (n':nms') = f (Iden n') nms'
   where
     f e (n:nms) = f (DotExpr e n) nms
     f e [] = e
+
+------------------------------------------------------------------------------
+
+-- test predicates
+testIs :: String -> Expr -> Expr -> Interpreter Value
+testIs msg e0 e1 = do
+    (v0,v1,atr) <- testPredSupport e0 e1
+    case (v0,v1) of
+        (Right v0', Right v1') ->
+            if v0' == v1'
+            then atr $ TestPass msg
+            else do
+                p0 <- liftIO $ torepr' v0'
+                p1 <- liftIO $ torepr' v1'
+                atr $ TestFail msg (p0 ++ "\n!=\n" ++ p1)
+        (Left er0, Right {}) -> do
+            er0' <- liftIO $ torepr' er0
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
+        (Right {}, Left er1) -> do
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
+        (Left er0, Left er1) -> do
+            er0' <- liftIO $ torepr' er0
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
+                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
+    pure nothing
+
+testRaises :: String -> Expr -> Expr -> Interpreter Value
+testRaises msg e0 e1 = do
+    (v0,v1,atr) <- testPredSupport e0 e1
+    case (v0,v1) of
+        (Right _, Right _) ->
+            atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
+        (_, Left er1) -> do
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
+        (Left er0, Right (TextV v)) -> do
+            val <- liftIO $ torepr' er0
+            if v `isInfixOf` val
+                then atr $ TestPass msg
+                else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ "\"" ++ v ++ "\"")
+        (Left _, Right v) -> do
+            atr $ TestFail msg (prettyExpr e1 ++ " failed, expected String, got: " ++ show v)
+    pure nothing
+
+testRaisesSatisfies :: String -> Expr -> Expr -> Interpreter Value
+testRaisesSatisfies msg e0 f = do
+    (v0,fv,atr) <- testPredSupport e0 f
+    case (v0,fv) of
+        (Right _, Right _) ->
+            atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
+        (_, Left er1) -> do
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1')
+        (Left er0, Right fvv) -> do
+            r <- app fvv [er0]
+            case r of
+                BoolV True -> atr $ TestPass msg
+                BoolV False -> atr $ TestFail msg ("failed: " ++ show er0 ++ ", didn't satisfy predicate " ++ show f)
+                _ -> atr $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
+    pure nothing
+
+testPredSupport :: Expr
+                -> Expr
+                -> Interpreter (Either Value Value
+                               ,Either Value Value
+                               ,TestResult -> Interpreter ())
+testPredSupport e0 e1 = do
+    st <- ask
+    ti <- liftIO $ readIORef (isTestInfo st)
+    let cbn = maybe (error "predicate not in check block")
+              id $ tiCurrentCheckblock ti
+    let atr = addTestResult (tiCurrentSource ti) cbn
+    v0 <- bToHEither <$> catchAsEither [e0]
+    v1 <- bToHEither <$> catchAsEither [e1]
+    pure (v0, v1, atr)
+
 
 ------------------------------------------------------------------------------
 

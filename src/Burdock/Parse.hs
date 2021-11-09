@@ -223,18 +223,14 @@ nonNegativeInteger = lexeme (read <$> takeWhile1P Nothing isDigit)
 -- expressions
 
 expr :: Parser Expr
-expr = do
-    e <- expr1
-    choice [do
-            op <- testPred
-            e1 <- expr1
-            pure $ BinOp e op e1
-           ,pure e]
-    
+expr = chainl1 expr1 tf
   where
     expr1 = chainl1 term f
     f = do
         op <- binOpSym
+        pure $ \a b -> BinOp a op b
+    tf = do
+        op <- testPred
         pure $ \a b -> BinOp a op b
 
 term :: Parser Expr
@@ -271,11 +267,14 @@ appSuffix = do
     choice [do
             tys <- tyParamList
             choice [f sp tys <$> parens (commaSep expr)
-                   ,pure $ fi tys]
+                   ,pure $ \case
+                           Iden x -> PIden x tys
+                           _ -> error $ "Parsing issue with <> after non iden- how to handle this?"
+                   ]
            ,f sp [] <$> parens (commaSep expr)]
   where
     f sp ts as x = App sp x ts as
-    fi ts (Iden x) = PIden x ts
+    --fi ts = pure $ \(Iden x) -> PIden x ts
     -- not sure how to do this properly right now
 
 -- todo: remove the try when implement the whitespace rules
@@ -313,7 +312,9 @@ binOpSym = choice ([symbol "+"
 
 testPred :: Parser String
 testPred = choice (map keyword ["is"
-                               ,"raises"])
+                               ,"raises"
+                               ,"raises-satisfies"
+                               ])
 
 
 unaryMinus :: Parser Expr
