@@ -223,11 +223,19 @@ nonNegativeInteger = lexeme (read <$> takeWhile1P Nothing isDigit)
 -- expressions
 
 expr :: Parser Expr
-expr = chainl1 term f
+expr = do
+    e <- expr1
+    choice [do
+            op <- testPred
+            e1 <- expr1
+            pure $ BinOp e op e1
+           ,pure e]
+    
   where
-      f = do
-          op <- binOpSym
-          pure $ \a b -> BinOp a op b
+    expr1 = chainl1 term f
+    f = do
+        op <- binOpSym
+        pure $ \a b -> BinOp a op b
 
 term :: Parser Expr
 term = (do
@@ -301,9 +309,12 @@ binOpSym = choice ([symbol "+"
                   ] ++ map keyword
                   ["and"
                   ,"or"
-                  ,"is"
-                  ,"raises"
                   ])
+
+testPred :: Parser String
+testPred = choice (map keyword ["is"
+                               ,"raises"])
+
 
 unaryMinus :: Parser Expr
 unaryMinus = UnaryMinus <$> (symbol "-" *> term)

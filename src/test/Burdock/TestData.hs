@@ -206,7 +206,8 @@ end|]
         ,(CaseBinding ["link"] [nm "_", nm "_"], Iden "false")]
         Nothing)
 
-     
+     ,("-1 is 0 - 1"
+      ,BinOp (UnaryMinus (Num 1)) "is" (BinOp (Num 0) "-" (Num 1)))
     ]
   where
     nm x = NameBinding NoShadow x Nothing
@@ -482,7 +483,13 @@ interpreterTests =
      ,"burdock-test-src/include-from-simple-3.bur"
      ,"burdock-test-src/include-simple.bur"
      ,"burdock-test-src/raise.bur"
-     ,"burdock-test-src/dynamic-types.bur"]
+     ,"burdock-test-src/dynamic-types.bur"
+     ,"burdock-test-src/when.bur"
+     ,"burdock-test-src/arithmetic.bur"
+     ,"burdock-test-src/boolean.bur"
+     ,"burdock-test-src/built-in-functions.bur"
+     ,"burdock-test-src/comparisons.bur"
+     ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"
      ,"built-ins/globals.bur"

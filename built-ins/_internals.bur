@@ -35,12 +35,20 @@ show-handle-state = get-ffi-value("show-handle-state")
 
 is-tuple = get-ffi-value("is-tuple")
 is-record = get-ffi-value("is-record")
+is-boolean = get-ffi-value("is-boolean")
+is-string = get-ffi-value("is-string")
+is-number = get-ffi-value("is-number")
+is-function = get-ffi-value("is-function")
+
 
 print = get-ffi-value("print")
 
 torepr = get-ffi-value("torepr")
+tostring = get-ffi-value("tostring")
 
 catch-as-either = get-ffi-value("catch-as-either")
+
+not = get-ffi-value("not")
 
 data Either<a,b>:
   | left(v :: a)

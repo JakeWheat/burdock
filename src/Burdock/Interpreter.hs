@@ -662,6 +662,11 @@ baseEnv =
     ,("+", ForeignFunV "+")
     ,("-", ForeignFunV "-")
     ,("*", ForeignFunV "*")
+    ,("/", ForeignFunV "/")
+    ,("<", ForeignFunV "<")
+    ,(">", ForeignFunV ">")
+    ,("<=", ForeignFunV "<=")
+    ,(">=", ForeignFunV ">=")
 
     ]
 
@@ -817,13 +822,25 @@ xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 builtInFF :: [(String, [Value] -> Interpreter Value)]
 builtInFF =
     [("get-ffi-value", getFFIValue)
+
     ,("==", \[a,b] -> pure $ BoolV $ a == b)
-    ,("+", \[NumV a,NumV b] -> pure $ NumV $ a + b)
+    ,("<", bLT)
+    ,(">", bGT)
+    ,("<=", bLTE)
+    ,(">=", bGTE)
+
+    ,("+", \case
+             [NumV a,NumV b] -> pure $ NumV $ a + b
+             [TextV a, TextV b] -> pure $ TextV $ a ++ b
+             as -> error $ "unsupported args to + :" ++ show as)
     ,("-", \case
              [NumV a] -> pure $ NumV (- a)
              [NumV a,NumV b] -> pure $ NumV $ a - b
              as -> error $ "unsupported args to - :" ++ show as)
     ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
+    ,("/", \[NumV a,NumV b] -> pure $ NumV $ divideScientific a b)
+
+    ,("not", \[BoolV b] -> pure $ BoolV $ not b)
 
     ,("make-variant", makeVariant)
     ,("is-variant", isVariant)
@@ -837,9 +854,14 @@ builtInFF =
 
     ,("is-tuple", isTuple)
     ,("is-record", isRecord)
+    ,("is-boolean", isBoolean)
+    ,("is-string", isString)
+    ,("is-number", isNumber)
+    ,("is-function", isFunction)
 
     ,("print", bPrint)
     ,("torepr", torepr)
+    ,("tostring", toString)
     ,("raise", raise)
 
     ,("parse-file", bParseFile)
@@ -886,6 +908,47 @@ isRecord [VariantV tg "record" _] | tg == bootstrapType "Record" = pure $ BoolV 
 isRecord [_] = pure $ BoolV False
 isRecord _ = error $ "wrong args to is-record"
 
+isBoolean :: [Value] -> Interpreter Value
+isBoolean [BoolV _] = pure $ BoolV True
+isBoolean [_] = pure $ BoolV False
+isBoolean _ = error $ "wrong args to is-boolean"
+
+isString :: [Value] -> Interpreter Value
+isString [TextV _] = pure $ BoolV True
+isString [_] = pure $ BoolV False
+isString _ = error $ "wrong args to is-string"
+
+isNumber :: [Value] -> Interpreter Value
+isNumber [NumV _] = pure $ BoolV True
+isNumber [_] = pure $ BoolV False
+isNumber _ = error $ "wrong args to is-number"
+
+isFunction :: [Value] -> Interpreter Value
+isFunction [FunV {}] = pure $ BoolV True
+isFunction [ForeignFunV {}] = pure $ BoolV True
+isFunction [_] = pure $ BoolV False
+isFunction _ = error $ "wrong args to is-function"
+
+
+
+
+
+bLT :: [Value] -> Interpreter Value
+bLT [NumV a, NumV b] = pure $ BoolV $ a < b
+bLT as = error $ "unsupported args to < (todo?) " ++ show as
+
+bGT :: [Value] -> Interpreter Value
+bGT [NumV a, NumV b] = pure $ BoolV $ a > b
+bGT as = error $ "unsupported args to > (todo?) " ++ show as
+
+bLTE :: [Value] -> Interpreter Value
+bLTE [NumV a, NumV b] = pure $ BoolV $ a <= b
+bLTE as = error $ "unsupported args to <= (todo?) " ++ show as
+
+bGTE :: [Value] -> Interpreter Value
+bGTE [NumV a, NumV b] = pure $ BoolV $ a >= b
+bGTE as = error $ "unsupported args to >= (todo?) " ++ show as
+
 
 bPrint :: [Value] -> Interpreter Value
 bPrint [v] = do
@@ -916,6 +979,10 @@ torepr :: [Value] -> Interpreter Value
 torepr [x] = TextV <$> liftIO (torepr' x)
 torepr _ = error "wrong number of args to torepr"
 
+toString :: [Value] -> Interpreter Value
+toString [s@(TextV {})] = pure s
+toString [x] = torepr [x]
+toString _ = error "wrong number of args to tostring"
 
 raise :: [Value] -> Interpreter Value
 raise [v] = do

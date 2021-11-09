@@ -19,6 +19,11 @@ provide:
 
   print,
   torepr,
+  tostring,
+  to-repr,
+  to-string,
+
+  not,
   
   is-List,
   is-empty,
@@ -37,6 +42,10 @@ provide:
 
   is-tuple,
   is-record,
+  is-boolean,
+  is-string,
+  is-function,
+  is-number,
 
   # todo: fix this when implement type provide-spec
   _typeinfo-Any,
@@ -52,3 +61,7 @@ provide:
 end
 
 include _internals
+
+to-string = tostring
+to-repr = torepr
+
