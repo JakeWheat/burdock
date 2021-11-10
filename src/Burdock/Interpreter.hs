@@ -1027,7 +1027,7 @@ toString _ = error "wrong number of args to tostring"
 stringToNumber :: [Value] -> Interpreter Value
 stringToNumber [TextV t] = case readMaybe t of
     Just n ->
-        pure $ VariantV (internalsType "Option") "some" [("a", NumV n)]
+        pure $ VariantV (internalsType "Option") "some" [("value", NumV n)]
     Nothing ->
         pure $ VariantV (internalsType "Option") "none" []
 stringToNumber _ = error "wrong args to string-to-number"

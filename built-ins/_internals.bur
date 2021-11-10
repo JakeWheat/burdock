@@ -67,9 +67,9 @@ data List<a>:
 end
 
 
-data Option<o>:
+data Option<a>:
   | none
-  | some(a :: o)
+  | some(value :: a)
 end
 
 
