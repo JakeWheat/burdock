@@ -323,7 +323,7 @@ internalsType x = SimpleTypeInfo ["_system","modules","_internals",x]
 -- types
 -- check the type referred to by the given type annotation is a valid
 -- type (e.g. it exists, and it doesn't have the wrong type params, ...
-typeOfTypeSyntax :: TypeAnnotation -> Interpreter TypeInfo
+typeOfTypeSyntax :: Ann -> Interpreter TypeInfo
 typeOfTypeSyntax (TName x) = do
     v <- interp (makeDotPathExpr $ prefixLast "_typeinfo-" x)
     pure $ case v of
@@ -1091,17 +1091,17 @@ interp (UnboxRef e f) = do
             | Just _  <- lookup f fs -> error $ "set ref on non ref: " ++ f ++ " in " ++ show v
         _ -> error $ "setref on non variant: " ++ show v
 
-interp (PIden a ps) = do
+interp (InstExpr e ts) = do
     -- todo: add type check - check the ty param list has valid types
-    -- and the type of a accepts this many type params
-    mapM_ typeOfTypeSyntax ps
-    interp (Iden a)
+    -- and the type of e accepts this many type params
+    mapM_ typeOfTypeSyntax ts
+    interp e
 
 -- special case for partial app
-interp (App sp f t es) | f == Iden "_" || any (== Iden "_") es =
-    interp $ makeCurriedApp sp f t es
+interp (App sp f es) | f == Iden "_" || any (== Iden "_") es =
+    interp $ makeCurriedApp sp f es
     
-interp (App sp f _ es) = do
+interp (App sp f es) = do
     fv <- interp f
     -- special case apps
     if fv == ForeignFunV "catch-as-either"
@@ -1133,7 +1133,7 @@ interp (BinOp e0 "or" e1) = do
         BoolV False -> interp e1
         _ -> error $ "bad value type to 'or' operator: " ++ show x
 
-interp (BinOp e0 op e1) = interp (App Nothing (Iden op) [] [e0,e1])
+interp (BinOp e0 op e1) = interp (App Nothing (Iden op) [e0,e1])
 
 interp (UnaryMinus e) = do
     opv <- interp $ Iden "-"
@@ -1329,8 +1329,8 @@ makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest",
 bindingName :: Binding -> String
 bindingName (NameBinding _ nm _) = nm
 
-makeCurriedApp :: SourcePosition -> Expr -> [TypeAnnotation] -> [Expr] -> Expr
-makeCurriedApp sp f t es =
+makeCurriedApp :: SourcePosition -> Expr -> [Expr] -> Expr
+makeCurriedApp sp f es =
     -- create some names for the _ args
     let (nms',newEs) = unzip $ makeNewEs (1::Int) es
         nms = catMaybes nms'
@@ -1338,7 +1338,7 @@ makeCurriedApp sp f t es =
                         Iden "_" -> (Iden "_p0", ("_p0":nms))
                         _ -> (f, nms)
         bs = flip map nms2 $ \n -> NameBinding NoShadow n Nothing
-    in Lam (FunHeader [] bs Nothing) (App sp newf t newEs)
+    in Lam (FunHeader [] bs Nothing) (App sp newf newEs)
   where
     makeNewEs _ [] = []
     makeNewEs n (Iden "_":es') =
@@ -1390,7 +1390,7 @@ assertTypeCompat v ti =
             throwM $ ValueException cs
                 $ TextV $ "type not compatible " ++ r ++ " :: " ++ show v ++ " // " ++ show ti
 
-assertTypeAnnCompat :: Value -> TypeAnnotation -> Interpreter Value
+assertTypeAnnCompat :: Value -> Ann -> Interpreter Value
 assertTypeAnnCompat v t = do
     ti <- shallowizeType <$> typeOfTypeSyntax t
     assertTypeCompat v ti
@@ -1641,8 +1641,8 @@ interpStatement (DataDecl dnm dpms vs whr) = do
     let makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            $ App appSourcePos (bootstrapRef "is-variant") [] [Iden typeInfoName, Text vnm, Iden "x"]
-        callIs (VariantDecl vnm _) = App appSourcePos (Iden $ "is-" ++ vnm) [] [Iden "x"]
+            $ App appSourcePos (bootstrapRef "is-variant") [Iden typeInfoName, Text vnm, Iden "x"]
+        callIs (VariantDecl vnm _) = App appSourcePos (Iden $ "is-" ++ vnm) [Iden "x"]
         -- use the type tag instead
         makeIsDat =
             letDecl ("is-" ++ dnm)
@@ -1666,7 +1666,7 @@ interpStatement (DataDecl dnm dpms vs whr) = do
   where
     typeInfoName = "_typeinfo-" ++ dnm
     makeV (VariantDecl vnm fs) =
-        let appMakeV = App appSourcePos (bootstrapRef "make-variant") []
+        let appMakeV = App appSourcePos (bootstrapRef "make-variant")
                        [Iden typeInfoName
                        ,Text vnm
                        ,Construct ["list"] $ concatMap mvf fs]
@@ -2098,7 +2098,7 @@ doLetRec bs =
   where
     makeVar (NameBinding s nm _,_) =
         VarDecl (NameBinding s nm Nothing) $ Lam (FunHeader [] [] Nothing)
-        $ App appSourcePos (Iden "raise") []
+        $ App appSourcePos (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
     makeAssign (NameBinding _ nm ty,v) =
         SetVar nm $ (case ty of

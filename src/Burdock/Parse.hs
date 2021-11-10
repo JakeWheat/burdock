@@ -276,6 +276,7 @@ term = (do
 termSuffixes :: Expr -> Parser Expr
 termSuffixes x = boption x $ do
     y <- choice [pure x <**> appSuffix
+                ,pure x <**> instSuffix
                 ,pure x <**> dotSuffix
                 ,pure x <**> unboxSuffix
                 ]
@@ -284,21 +285,18 @@ termSuffixes x = boption x $ do
 appSuffix :: Parser (Expr -> Expr)
 appSuffix = do
     sp <- sourcePos
-    choice [do
-            tys <- tyParamList
-            choice [f sp tys <$> parens (commaSep expr)
-                   ,pure $ \case
-                           Iden x -> PIden x tys
-                           _ -> error $ "Parsing issue with <> after non iden- how to handle this?"
-                   ]
-           ,f sp [] <$> parens (commaSep expr)]
+    f sp <$> parens (commaSep expr)
   where
-    f sp ts as x = App sp x ts as
-    --fi ts = pure $ \(Iden x) -> PIden x ts
-    -- not sure how to do this properly right now
+    f sp as x = App sp x as
+
+instSuffix :: Parser (Expr -> Expr)
+instSuffix = f <$> tyParamList
+  where
+    f t e = InstExpr e t
+
 
 -- todo: remove the try when implement the whitespace rules
-tyParamList :: Parser [TypeAnnotation]
+tyParamList :: Parser [Ann]
 tyParamList = try (symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">")
 
 sourcePos :: Parser SourcePosition
@@ -707,7 +705,7 @@ startsWithExprOrBinding = do
         ,pure $ StmtExpr ex]
 
 
-typ :: Bool -> Parser TypeAnnotation
+typ :: Bool -> Parser Ann
 typ allowImplicitTuple =
     (zeroArgArrow allowImplicitTuple
      <|> startsWithIden allowImplicitTuple

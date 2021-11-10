@@ -36,7 +36,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("\"test\"", Text "test") 
     ,("test", Iden "test")
     ,("(2)", Parens (Num 2))
-    ,("a(7)", App Nothing (Iden "a") [] [Num 7])
+    ,("a(7)", App Nothing (Iden "a") [Num 7])
     ,("a + b", BinOp (Iden "a") "+" (Iden "b"))
     ,("a + b + c", BinOp (BinOp (Iden "a") "+" (Iden "b")) "+" (Iden "c"))
 
@@ -98,7 +98,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("let shadow a = 4 : a end"
      ,Let [(NameBinding Shadow "a" Nothing, Num 4)] (Iden "a"))
     ,("a.b", DotExpr (Iden "a") "b")
-    ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [] [Num 1, Num 2]) "c")
+    ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [Num 1, Num 2]) "c")
      ,("cases a :: List:\n\
       \  | empty => \"empty\"\n\
       \  | link(f, r) => \"link\"\n\
@@ -131,7 +131,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("{1}", TupleSel [Num 1])
     -- tuple field get
     ,("myobj4.{0}", TupleGet (Iden "myobj4") 0)
-    ,("f().{1}", TupleGet (App Nothing (Iden "f") [] []) 1)
+    ,("f().{1}", TupleGet (App Nothing (Iden "f") []) 1)
     -- record selector
     ,("{a: \"one\", b : 2, c : x }", RecordSel [("a", Text "one")
                                                ,("b", Num 2)
@@ -183,12 +183,12 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
      ,Let [(NameBinding NoShadow "a" (Just $ TName ["MyType"]), Num 4)] (Iden "a"))
 
     ,("callf<A,B>(x)"
-     ,App Nothing (Iden "callf") [TName ["A"], TName ["B"]] [Iden "x"])
+     ,App Nothing (InstExpr (Iden "callf") [TName ["A"], TName ["B"]]) [Iden "x"])
     ,("callg<Predicate<A>>(x)"
-     ,App Nothing (Iden "callg") [TParam ["Predicate"] [TName ["A"]]] [Iden "x"])
+     ,App Nothing (InstExpr (Iden "callg") [TParam ["Predicate"] [TName ["A"]]]) [Iden "x"])
 
     ,("ctor<a>"
-     ,PIden "ctor" [TName ["a"]])
+     ,InstExpr (Iden "ctor") [TName ["a"]])
 
     ,([R.r|
 lam(x :: Number):
@@ -347,8 +347,8 @@ end
       \  double(15) is 30\n\
       \end"
      ,FunDecl (nm "double") (fh ["n"]) (BinOp (Iden "n") "+" (Iden "n"))
-      (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 10]) "is" (Num 20)
-           ,StmtExpr $ BinOp (App Nothing (Iden "double") [] [Num 15]) "is" (Num 30)]))
+      (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [Num 10]) "is" (Num 20)
+           ,StmtExpr $ BinOp (App Nothing (Iden "double") [Num 15]) "is" (Num 30)]))
 
     ,([R.r|
 fun f(x :: Number):
@@ -397,7 +397,7 @@ end|]
      ,RecDecl (nm "fact")
             $ Lam (fh ["x"]) $
                     If [(BinOp (Iden "x") "==" (Num 0), Num 1)]
-                    (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [] [BinOp (Iden "x") "-" (Num 1)])))
+                    (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [BinOp (Iden "x") "-" (Num 1)])))
             )
 
     ,("type NumPredicate = (Number -> Boolean)"
@@ -472,7 +472,7 @@ check:
   f(x) raises "something"
 end
      |], Script [Check Nothing
-                 [StmtExpr $ BinOp (App Nothing (Iden "f") [] [Iden "x"])
+                 [StmtExpr $ BinOp (App Nothing (Iden "f") [Iden "x"])
                              "raises" (Text "something")]])
     ,([R.r|
 
@@ -490,7 +490,7 @@ end
 
      |], Script
          [LetDecl (nm "a") (Num 5)
-         ,StmtExpr $ App Nothing (Iden "print") [] [Iden "a"]
+         ,StmtExpr $ App Nothing (Iden "print") [Iden "a"]
          ,Check (Just "test-1") [LetDecl (nm "b") (Num 6)
                                 ,StmtExpr $ BinOp (Num 1) "is" (Num 1)]
          ,Check Nothing [StmtExpr $ BinOp (Num 2) "is" (Num 3)]

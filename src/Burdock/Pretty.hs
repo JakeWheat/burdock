@@ -48,12 +48,9 @@ expr (Text s) = dquotes (pretty $ escape s)
     escape (x:xs) = x : escape xs
     escape [] = []
 expr (Iden n) = pretty n
-expr (PIden n ps) = pretty n <> pretty "<" <> commaSep (map typ ps) <> pretty ">"
 expr (Parens e) = parens (expr e)
-expr (App _ e ts es) = expr e <> tpl ts <> parens (commaSep $ map expr es)
-  where
-    tpl [] = mempty
-    tpl xs = pretty "<" <> commaSep (map typ xs) <> pretty ">"
+expr (InstExpr e ps) = expr e <> pretty "<" <> commaSep (map typ ps) <> pretty ">"
+expr (App _ e es) = expr e <> parens (commaSep $ map expr es)
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (UnaryMinus e) = pretty "-" <> expr e
 expr (Lam fh e) = prettyBlocklike sep
@@ -145,7 +142,7 @@ whereBlock ts = vsep
     ,nest 2 (stmts ts)]
 
 
-typ :: TypeAnnotation -> Doc a
+typ :: Ann -> Doc a
 typ (TName nms) = xSep "." $ map pretty nms
 typ (TTuple ts) = pretty "{" <> nest 2 (xSep ";" $ map typ ts) <> pretty "}"
 typ (TRecord fs) = pretty "{" <> nest 2 (xSep "," $ map f fs) <> pretty "}"
