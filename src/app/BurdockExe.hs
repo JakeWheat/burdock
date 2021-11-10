@@ -181,6 +181,7 @@ myOptsPlus = info (myOpts <**> helper)
 
 main :: IO ()
 main = do
+    B.setNumCapabilities =<< B.getNumProcessors
     os <- execParser myOptsPlus
     isTTY <- hIsTerminalDevice stdin
     case os of

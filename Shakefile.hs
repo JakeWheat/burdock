@@ -15,6 +15,10 @@ import Data.List (isPrefixOf
                  ,isSuffixOf
                  ,intercalate)
 
+import Control.Concurrent (setNumCapabilities)
+import GHC.Conc (getNumProcessors)
+
+
 data GhcOptions
     = GhcOptions
     { ghcPackages :: Maybe FilePath
@@ -29,6 +33,7 @@ testPattern = Nothing -- Just "fact"
 
 main :: IO ()
 main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
+    liftIO (setNumCapabilities =<< getNumProcessors)
 
     let installPackageDB :: FilePath -> [String] -> Action ()
         installPackageDB dir pkgs = do

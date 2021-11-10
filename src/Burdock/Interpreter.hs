@@ -22,7 +22,13 @@ module Burdock.Interpreter
     ,Value(..)
     ,addFFI
 
+    ,setNumCapabilities
+    ,getNumProcessors
+
     ) where
+
+import Control.Concurrent (setNumCapabilities)
+import GHC.Conc (getNumProcessors)
 
 import Control.Monad.Reader (ReaderT
                             ,runReaderT

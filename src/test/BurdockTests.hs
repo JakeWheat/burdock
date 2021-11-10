@@ -19,6 +19,7 @@ import qualified Test.Tasty.HUnit as T
 
 main :: IO ()
 main = do
+    setNumCapabilities =<< getNumProcessors
     at <- makeTests testdata
     T.defaultMain at
 
