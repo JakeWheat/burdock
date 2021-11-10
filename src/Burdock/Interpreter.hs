@@ -65,6 +65,7 @@ import Burdock.Scientific
 import Burdock.Syntax
 import Burdock.Pretty
 import Burdock.Parse (parseScript, parseExpr)
+import qualified Burdock.Relational as R
 
 import Control.Exception.Safe (catch
                               --,SomeException
@@ -260,6 +261,14 @@ data Value = NumV Scientific
            | BoxV TypeInfo (IORef Value)
            | FFIValue Dynamic
 
+instance Ord Value where
+    NumV a <= NumV b = a <= b
+    BoolV a <= BoolV b = a <= b
+    TextV a <= TextV b = a <= b
+    ForeignFunV a <= ForeignFunV b = a <= b
+    VariantV tg nm fs <= VariantV tgb nmb fsb = (tg,nm,fs) <= (tgb,nmb,fsb)
+    a <= b = error $ "cannot ord values: " ++ show (a,b)
+
 -- todo: revert back to automatically derived show
 -- and use torepr' everywhere you want a readable value that
 -- isn't the haskell ast syntax
@@ -272,6 +281,7 @@ instance Show Value where
   show (FunV as bdy _env) = "FunV " ++ show as ++ "\n" ++ prettyExpr bdy
   show (ForeignFunV n) = "ForeignFunV " ++ show n
   show (BoxV _ _n) = "BoxV XX" -- ++ show n
+  show (FFIValue r) | Just (r' :: R.Relation Value) <- fromDynamic r = R.showRelation r'
   show (FFIValue _v) = "FFIValue"
 
 
@@ -288,6 +298,9 @@ instance Eq Value where
         = sortOn fst as == sortOn fst bs
     VariantV tg nm fs == VariantV tg' lm gs = tg == tg' && (nm,fs) == (lm,gs)
     ForeignFunV x == ForeignFunV y = x == y
+    FFIValue a == FFIValue b
+        | Just (a' :: R.Relation Value) <- fromDynamic a
+        , Just b' <- fromDynamic b = either (error . show) id $ R.relationsEqual a' b'
     -- todo: funv, boxv ..., ffivalue
     -- ioref has an eq instance for pointer equality
     --    this is very useful
@@ -317,7 +330,7 @@ data TypeInfo
     | RecordTypeInfo [(String,TypeInfo)]
     | ParamTypeInfo TypeInfo [TypeInfo]
     | ArrowTypeInfo [TypeInfo] TypeInfo
-    deriving (Eq, Show)
+    deriving (Eq, Show, Ord)
 
 bootstrapType :: String -> TypeInfo
 bootstrapType x = SimpleTypeInfo ["_system","modules","_bootstrap",x]
@@ -832,6 +845,9 @@ toreprx (VariantV _ nm fs) = do
     vs <- mapM (toreprx . snd) fs
     pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
 
+toreprx (FFIValue r)
+    | Just (r' :: R.Relation Value) <- fromDynamic r
+    = pure $ P.pretty $ R.showRelation r'
 toreprx (FFIValue {}) = pure $ P.pretty "<ffi-value>"
 
 xSep :: String -> [P.Doc a] -> P.Doc a
@@ -845,7 +861,13 @@ builtInFF :: [(String, [Value] -> Interpreter Value)]
 builtInFF =
     [("get-ffi-value", getFFIValue)
 
-    ,("==", \[a,b] -> pure $ BoolV $ a == b)
+    ,("==", \case
+             [FFIValue a, FFIValue b]
+                 | Just (a' :: R.Relation Value) <- fromDynamic a
+                 , Just b' <- fromDynamic b
+                 -> either (error . show) (pure . BoolV) $ R.relationsEqual a' b'
+             [a,b] -> pure $ BoolV $ a == b
+             as -> error $ "bad args to ==: " ++ show as)
     ,("<", bLT)
     ,(">", bGT)
     ,("<=", bLTE)
@@ -895,6 +917,12 @@ builtInFF =
     ,("show-haskell-ast", bShowHaskellAst)
     ,("get-call-stack", getCallStack)
     ,("format-call-stack", bFormatCallStack)
+
+    ,("relation-to-list", relationToList)
+    ,("relation-from-list", relationFromList)
+    ,("table-dee", \[] -> pure $ FFIValue $ toDyn (R.tableDee :: R.Relation Value))
+    ,("table-dum", \[] -> pure $ FFIValue $ toDyn (R.tableDum :: R.Relation Value))
+    ,("relational-union", relationalUnion)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -1080,7 +1108,36 @@ bFormatCallStack [FFIValue cs] = do
     TextV <$> formatCallStack hcs
 bFormatCallStack _ = error $ "wrong args to format-call-stack"
 
+-------------------
 
+relationToList :: [Value] -> Interpreter Value
+relationToList [FFIValue v]
+    | Just v' <- fromDynamic v
+    = either (error . show) (pure . mkl) $ R.toList v'
+  where
+    mkl = makeBList . map mkr
+    mkr = VariantV (bootstrapType "Record") "record"
+relationToList _ = error "bad args to relationToList"
+
+relationFromList :: [Value] -> Interpreter Value
+relationFromList [l]
+    | Just l' <- fromBList l
+    , Just l'' <- mapM unr l'
+    = either (error . show) (pure . FFIValue . toDyn) $ R.fromList l''
+  where
+    unr (VariantV tg "record" fs)
+        | tg == bootstrapType "Record" = Just fs
+    unr _ = Nothing
+    
+relationFromList x = error
+    $ "bad args to relationFromList: " ++ show x
+
+relationalUnion :: [Value] -> Interpreter Value
+relationalUnion [FFIValue a, FFIValue b]
+    | Just (a' :: R.Relation Value) <- fromDynamic a
+    , Just b' <- fromDynamic b
+    = either (error . show) (pure . FFIValue . toDyn) $ R.union a' b'
+relationalUnion _ = error "bad args to relationalUnion"
 
 ------------------------------------------------------------------------------
 

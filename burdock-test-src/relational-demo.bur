@@ -1,0 +1,45 @@
+
+
+import relational as relational
+
+include from relational:
+  to-list as rel-to-list,
+  from-list as rel-from-list,
+  table-dee,
+  table-dum,
+  union
+end
+
+check:
+
+  rel1 = rel-from-list(
+    [list:
+      {a : 1, b : 'a'},
+      {a : 2, b : 'b'},
+      {a : 3, b : 'c'}])
+
+  rel1 is rel-from-list(
+    [list:
+      {b : 'a', a : 1 },
+      {a : 3, b : 'c'},
+      {a : 2, b : 'b'}])
+
+  rel1 is-not rel-from-list(
+    [list:
+      {b : 'a', a : 2 },
+      {a : 3, b : 'c'},
+      {a : 2, b : 'b'}])
+
+  table-dee is rel-from-list([list: {}])
+  table-dum is rel-from-list([list: ])
+  table-dee is-not table-dum
+
+  # functional insert, update, delete
+
+  # insert is just union
+  union(rel-from-list([list:{a:1,b:2},{a:2,b:3}]),
+    rel-from-list([list:{a:3,b:4},{a:4,b:5}]))
+    is rel-from-list([list:{a:1,b:2},{a:2,b:3},{a:3,b:4},{a:4,b:5}])
+
+  
+end

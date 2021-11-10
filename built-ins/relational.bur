@@ -1,0 +1,15 @@
+provide:
+  to-list,
+  from-list,
+  table-dee,
+  table-dum,
+  union
+end
+
+include _internals
+
+to-list = get-ffi-value("relation-to-list")
+from-list = get-ffi-value("relation-from-list")
+table-dee = get-ffi-value("table-dee")()
+table-dum = get-ffi-value("table-dum")()
+union = get-ffi-value("relational-union")

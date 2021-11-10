@@ -553,9 +553,7 @@ interpreterTests =
      ,"burdock-test-src/when.bur"
      ,"burdock-test-src/arithmetic.bur"
      ,"burdock-test-src/boolean.bur"
-     ,"burdock-test-src/built-in-functions.bur"
      ,"burdock-test-src/comparisons.bur"
-     ,"burdock-test-src/lists.bur"
      ,"burdock-test-src/if_ask.bur"
      ,"burdock-test-src/either.bur"
      ,"burdock-test-src/option.bur"
@@ -566,9 +564,16 @@ interpreterTests =
      ,"burdock-test-src/template.bur"
      ,"burdock-test-src/curly-lam.bur"]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
-     ["built-ins/lists.bur"
+     ["burdock-test-src/built-in-functions.bur"
+     ,"built-ins/lists.bur"
      ,"built-ins/globals.bur"
      ,"built-ins/either.bur"
      ,"built-ins/option.bur"
+     ,"built-ins/relational.bur"
      ]
+    ,TestGroup "additional tests" $ map InterpreterTestsFile
+     ["burdock-test-src/lists.bur"
+     ,"burdock-test-src/relational-demo.bur"
+     ]
+    
     ]
