@@ -41,6 +41,9 @@ prettyStmt s = show $ stmt s
 
 expr :: Expr -> Doc a
 expr (Num n) = pretty $ show n
+
+-- todo handle parsing and printing escape chars properly
+expr (Text s) | '\n' `elem` s = pretty "```" <> pretty s <> pretty "```"
 expr (Text s) = dquotes (pretty $ escape s)
   where
     escape ('\n':xs) = '\\':'n':escape xs

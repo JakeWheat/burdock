@@ -33,7 +33,12 @@ testdata = TestGroup "allTests"
 exprParseTests :: TestTree
 exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     [("1", Num 1)
-    ,("\"test\"", Text "test") 
+    ,("\"test\"", Text "test")
+    ,([R.r|```multiline string
+         "stuff"
+      ```|], Text "multiline string\n\
+\         \"stuff\"\n\
+\      ")
     ,("test", Iden "test")
     ,("(2)", Parens (Num 2))
     ,("a(7)", App Nothing (Iden "a") [Num 7])

@@ -496,11 +496,15 @@ stringE = Text <$> stringRaw
             <?> "string literal"
 
 stringRaw :: Parser String
-stringRaw = unescape <$>
-            choice [char_ '\'' *> takeWhileP Nothing (/='\'') <* lexeme_ (char_ '\'')
-                   ,char_ '"' *> takeWhileP Nothing (/='"') <* lexeme_ (char_ '"')]
-            <?> "string literal"
+stringRaw = (quoted <|> multiline) <?> "string literal"
   where
+    quoted = unescape <$>
+             choice [char_ '\'' *> takeWhileP Nothing (/='\'') <* lexeme_ (char_ '\'')
+                    ,char_ '"' *> takeWhileP Nothing (/='"') <* lexeme_ (char_ '"')]
+    multiline = startMultiline *> ctu
+    startMultiline = symbol_ "```" <?> ""
+    endMultiline = symbol_ "```"
+    ctu = ([] <$ endMultiline) <|> ((:) <$> anySingle <*> ctu)
     unescape ('\\':'n':xs) = '\n':unescape xs
     unescape ('\\':'\\':xs) = '\\':unescape xs
     unescape (x:xs) = x:unescape xs

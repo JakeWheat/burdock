@@ -50,8 +50,8 @@ check:
 end
 
 check "short circuiting":
-  true or raise("fail") is true
-  false and raise("fail") is false
+  true or raise("broke") is true
+  false and raise("broke") is false
 end
 
 

@@ -3,14 +3,16 @@
 import relational as relational
 
 include from relational:
-  to-list as rel-to-list,
-  from-list as rel-from-list,
+  rel-to-list,
+  rel-from-list,
   table-dee,
   table-dum,
-  union
+  rel-union,
+  hack-parse-table
+
 end
 
-check:
+check "from list and equals":
 
   rel1 = rel-from-list(
     [list:
@@ -30,16 +32,67 @@ check:
       {a : 3, b : 'c'},
       {a : 2, b : 'b'}])
 
+end
+
+check "table dee and table dum":
   table-dee is rel-from-list([list: {}])
   table-dum is rel-from-list([list: ])
   table-dee is-not table-dum
+end
 
-  # functional insert, update, delete
+check "hack parse relation literal":
+
+  x = ```
+      a,b,c
+      1,2,3
+      3,4,5
+      ```
+
+  y = ```
+    a,b,c
+    true,1,1a
+    false,3,truea```
+
+  hack-parse-table(x) is rel-from-list([list:
+      {a: 1, b: 2, c: 3},
+      {a: 3, b: 4, c: 5}
+    ])
+  hack-parse-table(y) is rel-from-list([list:
+      {a: true, b: 1, c: '1a'},
+      {a: false, b: 3, c: 'truea'}
+    ])
+end
+
+
+check "functional insert, update, delete":
 
   # insert is just union
-  union(rel-from-list([list:{a:1,b:2},{a:2,b:3}]),
+  block:
+    a = hack-parse-table(
+```
+a,b
+1,2
+2,3
+```)
+    b = hack-parse-table(
+```
+a,b
+3,4
+4,5
+```)
+    r = hack-parse-table(
+```
+a,b
+1,2
+2,3
+3,4
+4,5
+```)
+    rel-union(a,b) is r
+  end
+    
+    #|rel-union(rel-from-list([list:{a:1,b:2},{a:2,b:3}]),
     rel-from-list([list:{a:3,b:4},{a:4,b:5}]))
-    is rel-from-list([list:{a:1,b:2},{a:2,b:3},{a:3,b:4},{a:4,b:5}])
+        is rel-from-list([list:{a:1,b:2},{a:2,b:3},{a:3,b:4},{a:4,b:5}])|#
 
-  
 end

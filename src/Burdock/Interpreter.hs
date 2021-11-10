@@ -918,11 +918,12 @@ builtInFF =
     ,("get-call-stack", getCallStack)
     ,("format-call-stack", bFormatCallStack)
 
-    ,("relation-to-list", relationToList)
-    ,("relation-from-list", relationFromList)
+    ,("rel-to-list", relationToList)
+    ,("rel-from-list", relationFromList)
     ,("table-dee", \[] -> pure $ FFIValue $ toDyn (R.tableDee :: R.Relation Value))
     ,("table-dum", \[] -> pure $ FFIValue $ toDyn (R.tableDum :: R.Relation Value))
-    ,("relational-union", relationalUnion)
+    ,("rel-union", relationUnion)
+    ,("hack-parse-table", hackParseTable)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -1132,13 +1133,19 @@ relationFromList [l]
 relationFromList x = error
     $ "bad args to relationFromList: " ++ show x
 
-relationalUnion :: [Value] -> Interpreter Value
-relationalUnion [FFIValue a, FFIValue b]
+relationUnion :: [Value] -> Interpreter Value
+relationUnion [FFIValue a, FFIValue b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
     = either (error . show) (pure . FFIValue . toDyn) $ R.union a' b'
-relationalUnion _ = error "bad args to relationalUnion"
+relationUnion _ = error "bad args to relationalUnion"
 
+hackParseTable :: [Value] -> Interpreter Value
+hackParseTable [TextV str] =
+    either (error . show) (pure . FFIValue . toDyn)
+    $ R.parseTable (BoolV, TextV, NumV) str
+    
+hackParseTable _ = error "bad args to hackParseTable"
 ------------------------------------------------------------------------------
 
 -- the interpreter itself
