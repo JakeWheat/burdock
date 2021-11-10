@@ -340,6 +340,7 @@ rightBinOpSym = choice ([symbol "|>"])
 
 testPred :: Parser String
 testPred = choice (map keyword ["is"
+                               ,"is-not"
                                ,"raises"
                                ,"raises-satisfies"
                                ])

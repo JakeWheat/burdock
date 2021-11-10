@@ -1566,6 +1566,9 @@ and run-is-test will catch any exceptions from evaluating a or b and
 interpStatement s@(StmtExpr (BinOp e0 "is" e1)) =
     testIs (prettyStmt s) e0 e1
 
+interpStatement s@(StmtExpr (BinOp e0 "is-not" e1)) =
+    testIsNot (prettyStmt s) e0 e1
+
 interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) =
     testRaises (prettyStmt s) e0 e1
 
@@ -1849,6 +1852,31 @@ testIs msg e0 e1 = do
             atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
                                 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
     pure nothing
+
+testIsNot :: String -> Expr -> Expr -> Interpreter Value
+testIsNot msg e0 e1 = do
+    (v0,v1,atr) <- testPredSupport e0 e1
+    case (v0,v1) of
+        (Right v0', Right v1') ->
+            if v0' /= v1'
+            then atr $ TestPass msg
+            else do
+                p0 <- liftIO $ torepr' v0'
+                p1 <- liftIO $ torepr' v1'
+                atr $ TestFail msg (p0 ++ "\n==\n" ++ p1)
+        (Left er0, Right {}) -> do
+            er0' <- liftIO $ torepr' er0
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
+        (Right {}, Left er1) -> do
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
+        (Left er0, Left er1) -> do
+            er0' <- liftIO $ torepr' er0
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
+                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
+    pure nothing
+
 
 testRaises :: String -> Expr -> Expr -> Interpreter Value
 testRaises msg e0 e1 = do
