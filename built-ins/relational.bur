@@ -1,9 +1,13 @@
 provide:
   rel-to-list,
   rel-from-list,
+
   table-dee,
   table-dum,
+
   rel-union,
+  rel-delete,
+  rel-update,
 
   hack-parse-table
 end
@@ -12,8 +16,12 @@ include _internals
 
 rel-to-list = get-ffi-value("rel-to-list")
 rel-from-list = get-ffi-value("rel-from-list")
+
 table-dee = get-ffi-value("table-dee")()
 table-dum = get-ffi-value("table-dum")()
+
 rel-union = get-ffi-value("rel-union")
+rel-delete = get-ffi-value("rel-delete")
+rel-update = get-ffi-value("rel-update")
 
 hack-parse-table = get-ffi-value("hack-parse-table")

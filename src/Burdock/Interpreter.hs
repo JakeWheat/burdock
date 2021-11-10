@@ -923,6 +923,8 @@ builtInFF =
     ,("table-dee", \[] -> pure $ FFIValue $ toDyn (R.tableDee :: R.Relation Value))
     ,("table-dum", \[] -> pure $ FFIValue $ toDyn (R.tableDum :: R.Relation Value))
     ,("rel-union", relationUnion)
+    ,("rel-delete", relationDelete)
+    ,("rel-update", relationUpdate)
     ,("hack-parse-table", hackParseTable)
     ]
 
@@ -1137,8 +1139,40 @@ relationUnion :: [Value] -> Interpreter Value
 relationUnion [FFIValue a, FFIValue b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
-    = either (error . show) (pure . FFIValue . toDyn) $ R.union a' b'
+    = either (error . show) (pure . FFIValue . toDyn) $ R.relationUnion a' b'
 relationUnion _ = error "bad args to relationalUnion"
+
+relationDelete :: [Value] -> Interpreter Value
+relationDelete [FFIValue a, f]
+    | Just (a' :: R.Relation Value) <- fromDynamic a
+    = either (error . show) (FFIValue . toDyn) <$>
+      R.relationDelete a' (wrapBPredicate f)
+
+relationDelete _ = error "bad args to relationDelete"
+
+relationUpdate :: [Value] -> Interpreter Value
+relationUpdate [FFIValue a, uf, pf]
+    | Just (a' :: R.Relation Value) <- fromDynamic a
+    =  either (error . show) (FFIValue . toDyn) <$>
+       R.relationUpdate a' (wrapBRecFn uf) (wrapBPredicate pf)
+relationUpdate _ = error "bad args to relationUpdate"
+
+wrapBRecFn :: Value -> [(String,Value)] -> Interpreter [(String,Value)]
+wrapBRecFn f r = do
+    let rc = VariantV (bootstrapType "Record") "record" r
+    x <- app f [rc]
+    case x of
+        VariantV tg "record" r' | tg == bootstrapType "Record" -> pure r'
+        _ -> error $ "expected record result from predicate, got " ++ show x
+
+wrapBPredicate :: Value -> [(String,Value)] -> Interpreter Bool
+wrapBPredicate f r = do
+    let rc = VariantV (bootstrapType "Record") "record" r
+    x <- app f [rc]
+    case x of
+        BoolV v -> pure v
+        _ -> error $ "expected bool result from predicate, got " ++ show x
+
 
 hackParseTable :: [Value] -> Interpreter Value
 hackParseTable [TextV str] =

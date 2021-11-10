@@ -8,6 +8,8 @@ include from relational:
   table-dee,
   table-dum,
   rel-union,
+  rel-delete,
+  rel-update,
   hack-parse-table
 
 end
@@ -90,9 +92,73 @@ a,b
 ```)
     rel-union(a,b) is r
   end
-    
-    #|rel-union(rel-from-list([list:{a:1,b:2},{a:2,b:3}]),
-    rel-from-list([list:{a:3,b:4},{a:4,b:5}]))
-        is rel-from-list([list:{a:1,b:2},{a:2,b:3},{a:3,b:4},{a:4,b:5}])|#
 
+  # functional delete with no condition is too trivial to test
+  # might be useful once headers are added
+
+  block:
+    a = hack-parse-table(
+```
+a,b
+1,2
+2,3
+3,3
+3,4
+```)
+    c = hack-parse-table(
+```
+a,b
+1,2
+3,4
+```)
+  
+    rel-delete(a, {(r): r.b == 3}) is c
+
+  end
+
+  # unconditional update
+  block:
+    a = hack-parse-table(
+```
+a,b,c
+1,2,10
+2,3,11
+3,3,12
+3,4,13
+```)
+    c = hack-parse-table(
+```
+a,b,c
+2,2,10
+3,3,11
+4,3,12
+4,4,13
+```)
+    # definitely needs some record update syntax
+    rel-update(a, {(r): {a: r.a + 1, b:r.b, c:r.c}}, {(_): true})
+      is c
+  end
+  block:
+  # conditional update
+
+    a = hack-parse-table(
+```
+a,b,c
+1,2,10
+2,3,11
+3,3,12
+3,4,13
+```)
+    c = hack-parse-table(
+```
+a,b,c
+1,2,10
+4,3,11
+6,3,12
+3,4,13
+```)
+    rel-update(a, {(r): {a: r.a * 2, b:r.b, c:r.c}}, {(r): r.b == 3})
+      is c
+  end
+    
 end

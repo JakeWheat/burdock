@@ -9,11 +9,16 @@ module Burdock.Relational
     ,fromList
     ,tableDee
     ,tableDum
+
     ,relationsEqual
-    ,union
+    ,relationUnion
+    ,relationDelete
+    ,relationUpdate
+    
     ,RelationalError(..)
     ,showRelation
     ,Relation
+    ,Record
 
     ,parseTable
     ) where
@@ -43,7 +48,7 @@ import Text.Megaparsec.Char (char
                             ,letterChar
                             )
 import Data.Void (Void)
-import Control.Monad (void, when)
+import Control.Monad (void, when, filterM)
 
 import Data.Char (isAlphaNum,isDigit,isSpace)
 import Text.Read (readMaybe)
@@ -103,11 +108,33 @@ relationsEqual (Relation a) (Relation b) =
 -- todo: consistency check
 -- todo: remove duplicates
 -- todo: maintain sorted order
-union :: Relation a -> Relation a -> Either RelationalError (Relation a)
-union (Relation a) (Relation b) = pure $ Relation $ a ++ b
+relationUnion :: Relation a -> Relation a -> Either RelationalError (Relation a)
+relationUnion (Relation a) (Relation b) = pure $ Relation $ a ++ b
 
 
+relationDelete :: Applicative m =>
+                  Relation a
+               -> (Record a -> m Bool)
+               -> m (Either RelationalError (Relation a))
+relationDelete (Relation rs) pr =
+    (pure . Relation) <$> filterM (fmap not . pr) rs
 
+
+relationUpdate :: Monad m =>
+                  Relation a
+               -> (Record a -> m (Record a))
+               -> (Record a -> m Bool)
+               -> m (Either RelationalError (Relation a))
+relationUpdate (Relation rs) upd pr =
+    (pure . Relation) <$> mapM f rs
+  where
+    --f :: Record a -> m (Record a)
+    f r = do
+        t <- pr r
+        if t
+           then upd r
+           else pure r
+    
 ---------------------------------------
 
 {-
