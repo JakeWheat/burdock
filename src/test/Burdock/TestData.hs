@@ -333,13 +333,13 @@ end
 
     
     ,("fun f(a): a + 1 end"
-     ,FunDecl (nm "f") (fh ["a"]) (BinOp (Iden "a") "+" (Num 1)) Nothing)
+     ,FunDecl (nm "f") (fh ["a"]) Nothing (BinOp (Iden "a") "+" (Num 1)) Nothing)
 
     ,("fun f(a):\n\
       \  a = 1\n\
       \  a + 1\n\
       \end", FunDecl (nm "f")
-                        (fh ["a"])
+                        (fh ["a"]) Nothing
                         (Block [LetDecl (nm "a") (Num 1)
                                ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing)
     ,("fun double(n):\n\
@@ -348,29 +348,39 @@ end
       \  double(10) is 20\n\
       \  double(15) is 30\n\
       \end"
-     ,FunDecl (nm "double") (fh ["n"]) (BinOp (Iden "n") "+" (Iden "n"))
+     ,FunDecl (nm "double") (fh ["n"]) Nothing (BinOp (Iden "n") "+" (Iden "n"))
       (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [Num 10]) "is" (Num 20)
            ,StmtExpr $ BinOp (App Nothing (Iden "double") [Num 15]) "is" (Num 30)]))
 
     ,([R.r|
+fun f(x):
+  doc: "adds one to the argument"
+  x + 1
+end|]
+     ,FunDecl (nm "f") (FunHeader [] [nm "x"] Nothing)
+      (Just "adds one to the argument")
+      (BinOp (Iden "x") "+" (Num 1)) Nothing)
+
+    
+    ,([R.r|
 fun f(x :: Number):
   x + 1
 end|]
-     ,FunDecl (nm "f") (FunHeader [] [nmt "x" "Number"] Nothing)
+     ,FunDecl (nm "f") (FunHeader [] [nmt "x" "Number"] Nothing) Nothing
       (BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
 fun f(x) -> Number:
   x + 1
 end|]
-     ,FunDecl (nm "f") (FunHeader [] [nm "x"] (Just $ TName ["Number"]))
+     ,FunDecl (nm "f") (FunHeader [] [nm "x"] (Just $ TName ["Number"])) Nothing
       (BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
 fun f(x :: Number) -> Number:
   x + 1
 end|]
-     ,FunDecl (nm "f") (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"]))
+     ,FunDecl (nm "f") (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"])) Nothing
       (BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
@@ -383,7 +393,7 @@ end|]
      ,FunDecl (nm "f") (FunHeader
             ["a"]
             [NameBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
-            (Just $ TName ["Boolean"]))
+            (Just $ TName ["Boolean"])) Nothing
       (Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(CaseBinding ["empty"] [], Iden "true")
         ,(CaseBinding ["link"] [nm "_", nm "_"], Iden "false")]

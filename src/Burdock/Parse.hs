@@ -580,13 +580,14 @@ funDecl :: Parser Stmt
 funDecl = FunDecl
     <$> (keyword "fun" *> binding True)
     <*> funHeader
-    <*> (symbol_ ":" *> (unwrapSingle <$>
-         (Block <$> some stmt)))
+    <*> (symbol_ ":" *> optional ds)
+    <*> (unwrapSingle <$> (Block <$> some stmt))
     <*> (boptional whereBlock <* keyword_ "end")
     
   where
-      unwrapSingle (Block [StmtExpr (a)]) = a
-      unwrapSingle x = x
+    unwrapSingle (Block [StmtExpr (a)]) = a
+    unwrapSingle x = x
+    ds = keyword_ "doc" *> symbol_ ":" *> stringRaw
 
 funHeader :: Parser FunHeader
 funHeader =

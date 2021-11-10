@@ -26,7 +26,8 @@ data Stmt =
     | RecDecl Binding Expr
     | FunDecl
         Binding -- name
-        FunHeader
+        FunHeader -- args and return type
+        (Maybe String) -- doc string
         Expr -- body
         (Maybe [Stmt]) -- test block
     | TypeStmt TypeDecl

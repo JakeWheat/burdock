@@ -217,9 +217,10 @@ stmt (DataDecl nm ts vs w) =
 
 
 stmt (RecDecl n e) = pretty "rec" <+> bindExpr n e
-stmt (FunDecl pn hdr e w) =
+stmt (FunDecl pn hdr ds e w) =
     prettyBlocklike sep
      [pretty "fun" <+> binding pn <> funHeader hdr <> pretty ":"
+     ,maybe mempty (\x -> pretty "doc: " <+> expr (Text x)) ds
      ,expr e
      ,maybe mempty whereBlock w]
 

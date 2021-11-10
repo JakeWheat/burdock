@@ -1485,20 +1485,22 @@ desugarContracts
 
 
 desugarContracts
-    (Contract cnm ta : s@(FunDecl (NameBinding _ fnm _) _ _ _) : sts)
+    (Contract cnm ta : s@(FunDecl (NameBinding _ fnm _) _ _ _ _) : sts)
         | cnm == fnm
         , ta `elem` [TName ["Function"] -- todo: need to look these up in the env
                     ,TName ["Any"]]
         = s : desugarContracts sts
 
 desugarContracts
-    (cd@(Contract cnm (TArrow tas trt)) : fd@(FunDecl nb@(NameBinding _ fnm _) (FunHeader ps as rt) e chk) : sts)
+    (cd@(Contract cnm (TArrow tas trt)) :
+     fd@(FunDecl nb@(NameBinding _ fnm _) (FunHeader ps as rt) ds e chk) :
+     sts)
     | cnm == fnm
     =
     -- check for annotations in the funheader
     if (not $ null $ catMaybes $ map getTa as) || isJust rt
     then error $ "contract for fun that already has type annotations: " ++ cnm
-    else FunDecl nb (FunHeader ps bindArgs (Just trt)) e chk : desugarContracts sts
+    else FunDecl nb (FunHeader ps bindArgs (Just trt)) ds e chk : desugarContracts sts
   where
     bindArgs | length as /= length tas = error $ "type not compatible: different number of args in contract and fundecl" ++ show (cd,fd)
              | otherwise = zipWith (\ta (NameBinding sh nm _) -> NameBinding sh nm (Just ta)) tas as
@@ -1522,7 +1524,7 @@ interpStatements' ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
     interpStatements' (doLetRec recbs ++ chks ++ ss')
   where
     getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
-    getRecs accdecls accchks (FunDecl nm fh bdy whr : ss') =
+    getRecs accdecls accchks (FunDecl nm fh _ds bdy whr : ss') =
         let accchks' = maybe accchks (\w -> Check (Just $ bindingName nm) w : accchks) whr
         in getRecs ((nm, Lam fh bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
