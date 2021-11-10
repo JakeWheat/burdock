@@ -83,6 +83,7 @@ a,b
   # functional delete with no condition is too trivial to test
   # might be useful once headers are added
 
+  # functional delete with condition is like where with inverted condition
   block:
     a = hack-parse-table(
 ```
@@ -253,5 +254,85 @@ a,b,c,d
     rel-select(a, {(r): {a: r.a, b: r.b + 2, c: r.a * r.b, d: r.a + r.b}}) is c
   end
 
+  block:
+    a = hack-parse-table(
+```
+a,b
+1,2
+2,3
+3,3
+3,4
+```)
+    c = hack-parse-table(
+```
+a,b
+2,3
+3,3
+```)
+  
+    rel-where(a, {(r): r.b == 3}) is c
+
+  end
+
+
+  block:
+  # join
+    a = hack-parse-table(
+```
+a,b
+1,2
+2,3
+3,3
+3,4
+```)
+    b = hack-parse-table(
+```
+a,c
+2,3
+3,3
+```)
+    c = hack-parse-table(
+```
+a,b,c
+2,3,3
+3,3,3
+3,4,3
+```)
+    
+    rel-join(a, b) is c
+  end
+  # antijoin
+  block:
+  # join
+    a = hack-parse-table(
+```
+a,b
+1,2
+2,3
+3,3
+3,4
+4,5
+```)
+    b = hack-parse-table(
+```
+a
+2
+3
+```)
+    c = hack-parse-table(
+```
+a,b
+1,2
+4,5
+```)
+    
+    rel-minus(a, b) is c
+  end
+
+  # group
+
+  # ungroup
+
+  # agg demo
   
 end

@@ -923,10 +923,12 @@ builtInFF =
     ,("table-dee", \[] -> pure $ FFIValue $ toDyn (R.tableDee :: R.Relation Value))
     ,("table-dum", \[] -> pure $ FFIValue $ toDyn (R.tableDum :: R.Relation Value))
     ,("rel-union", relUnion)
-    ,("rel-delete", relDelete)
+    ,("rel-where", relWhere)
     ,("rel-update", relUpdate)
     ,("rel-project", relProject)
     ,("rel-rename", relRename)
+    ,("rel-join", relJoin)
+    ,("rel-minus", relMinus)
     ,("hack-parse-table", hackParseTable)
     ,("union-recs", unionRecs)
     ]
@@ -1145,13 +1147,13 @@ relUnion [FFIValue a, FFIValue b]
     = either (error . show) (pure . FFIValue . toDyn) $ R.relUnion a' b'
 relUnion _ = error "bad args to relUnion"
 
-relDelete :: [Value] -> Interpreter Value
-relDelete [FFIValue a, f]
+relWhere :: [Value] -> Interpreter Value
+relWhere [FFIValue a, f]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     = either (error . show) (FFIValue . toDyn) <$>
-      R.relDelete a' (wrapBPredicate f)
+      R.relWhere a' (wrapBPredicate f)
 
-relDelete _ = error "bad args to relDelete"
+relWhere _ = error "bad args to relWhere"
 
 relUpdate :: [Value] -> Interpreter Value
 relUpdate [FFIValue a, uf, pf]
@@ -1183,6 +1185,21 @@ relRename [l, FFIValue a]
     unTextPair _ = Nothing
 relRename _ = error "bad args to relRename"
 
+relJoin :: [Value] -> Interpreter Value
+relJoin [FFIValue a, FFIValue b]
+    | Just (a' :: R.Relation Value) <- fromDynamic a
+    , Just b' <- fromDynamic b
+    = either (error . show) (pure . FFIValue . toDyn)
+      $ R.relJoin a' b'
+relJoin _ = error "bad args to relJoin"
+
+relMinus :: [Value] -> Interpreter Value
+relMinus [FFIValue a, FFIValue b]
+    | Just (a' :: R.Relation Value) <- fromDynamic a
+    , Just b' <- fromDynamic b
+    = either (error . show) (pure . FFIValue . toDyn)
+      $ R.relMinus a' b'
+relMinus _ = error "bad args to relMinus"
 
 
 unionRecs :: [Value] -> Interpreter Value

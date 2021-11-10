@@ -12,10 +12,12 @@ module Burdock.Relational
 
     ,relEqual
     ,relUnion
-    ,relDelete
+    ,relWhere
     ,relUpdate
     ,relProject
     ,relRename
+    ,relJoin
+    ,relMinus
     
     ,RelationalError(..)
     ,showRel
@@ -28,10 +30,12 @@ module Burdock.Relational
 import Data.List (sortOn
                  ,sort
                  ,intercalate
+                 ,(\\)
+                 ,intersect
                  )
 import Data.Typeable (Typeable)
 
-import Data.Maybe (catMaybes)
+import Data.Maybe (catMaybes, isNothing)
 
 import Text.Megaparsec (Parsec
                        ,(<|>)
@@ -114,12 +118,12 @@ relUnion :: Relation a -> Relation a -> Either RelationalError (Relation a)
 relUnion (Relation a) (Relation b) = pure $ Relation $ a ++ b
 
 
-relDelete :: Applicative m =>
+relWhere :: Applicative m =>
                   Relation a
                -> (Record a -> m Bool)
                -> m (Either RelationalError (Relation a))
-relDelete (Relation rs) pr =
-    (pure . Relation) <$> filterM (fmap not . pr) rs
+relWhere (Relation rs) pr =
+    (pure . Relation) <$> filterM pr rs
 
 
 relUpdate :: Monad m =>
@@ -153,7 +157,29 @@ relRename cs (Relation rs)  =
                  then t
                  else n, v)
         in renameRecord cs' r'
-    
+
+relJoin :: Eq a => Relation a -> Relation a -> Either RelationalError (Relation a)
+relJoin (Relation rs) (Relation ts) = do
+    pure $ Relation $ catMaybes $
+        [ joinRecs r t
+        | r <- rs
+        , t <- ts]
+
+joinRecs :: Eq a => Record a -> Record a -> Maybe (Record a)
+joinRecs as bs =
+        let ks = intersect (map fst as) (map fst bs)
+            avs = (map fst as) \\ ks
+            bvs = (map fst bs) \\ ks
+            proj js r = filter ((`elem` js) . fst) r
+        in if proj ks as == proj ks bs
+           then Just (proj ks as ++ proj avs as ++ proj bvs bs)
+           else Nothing
+
+relMinus :: Eq a => Relation a -> Relation a -> Either RelationalError (Relation a)
+relMinus (Relation rs) (Relation ts) = do
+    pure $ Relation $ flip filter rs $ \r ->
+        and $ map isNothing $ map (joinRecs r) ts
+
 ---------------------------------------
 
 {-

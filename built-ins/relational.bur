@@ -12,6 +12,9 @@ provide:
   rel-rename,
   rel-extend,
   rel-select,
+  rel-where,
+  rel-join,
+  rel-minus,
 
   hack-parse-table
 end
@@ -29,10 +32,12 @@ table-dee = get-ffi-value("table-dee")()
 table-dum = get-ffi-value("table-dum")()
 
 rel-union = get-ffi-value("rel-union")
-rel-delete = get-ffi-value("rel-delete")
 rel-update = get-ffi-value("rel-update")
 rel-project = get-ffi-value("rel-project")
 rel-rename = get-ffi-value("rel-rename")
+rel-where = get-ffi-value("rel-where")
+rel-join = get-ffi-value("rel-join")
+rel-minus = get-ffi-value("rel-minus")
 
 # temp hack
 fun rel-extend(rel, f):
@@ -41,6 +46,10 @@ end
 
 fun rel-select(rel, f):
   rel-update(rel, f, {(_): true})
+end
+
+fun rel-delete(rel,f):
+  rel-where(rel,{(r): not(f(r))})
 end
 
 hack-parse-table = get-ffi-value("hack-parse-table")
