@@ -1,0 +1,5 @@
+check:
+  x = 10
+  f = {(y :: Number) -> Number: x + y}
+  f(5) is 15
+end
