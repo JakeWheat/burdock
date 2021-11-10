@@ -369,6 +369,9 @@ shallowizeType x = x
 
 typeIsCompatibleWith :: Value -> TypeInfo -> Bool
 
+--typeIsCompatibleWith a@(VariantV tg "empty" _) b
+--    | trace (show ("typeIsCompatibleWith", a, b)) False = undefined
+
 typeIsCompatibleWith _ b | b == bootstrapType "Any" = True
 
 typeIsCompatibleWith (NumV {}) b | b == bootstrapType "Number" = True
@@ -393,6 +396,7 @@ typeIsCompatibleWith (VariantV tg "record" fs) (RecordTypeInfo bs)
     let f = sortOn fst
         tc a b = fst a == fst b && typeIsCompatibleWith (snd a) (snd b)
     in length fs == length bs && and (zipWith tc (f fs) (f bs))
+
 typeIsCompatibleWith (VariantV tg "record" _) b
     | b == bootstrapType "Record"
     , tg == bootstrapType "Record" = True
@@ -405,12 +409,14 @@ typeIsCompatibleWith v b
     isFunVal (ForeignFunV {}) = True
     isFunVal _ = False
 
-typeIsCompatibleWith (VariantV tg _ _) b | tg == b = True
+typeIsCompatibleWith (VariantV tg _ _) b
+    | tg == b = True
 
 typeIsCompatibleWith (FunV as _ _) (ArrowTypeInfo ts _) =
     length as == length ts
 
-
+typeIsCompatibleWith _ (ParamTypeInfo {}) =
+    error $ "todo: typeIsCompatibleWith param type info not supported"
 typeIsCompatibleWith _ _ = False
 
 assertPatternTagMatchesCasesTag :: TypeInfo -> TypeInfo -> Interpreter ()
@@ -624,6 +630,10 @@ data TestInfo
     ,tiNextAnonCheckblockNum :: Int
     ,tiModuleName :: String
     }
+
+localPushCallStack :: SourcePosition -> Interpreter a -> Interpreter a
+localPushCallStack sp = do
+    local (\m -> m { isCallStack = sp : isCallStack m})
 
 readCallStack :: Interpreter CallStack
 readCallStack = do
@@ -1112,7 +1122,7 @@ interp (App sp f es) = do
             -- TODO: refactor to check the value of fv before
             -- evaluating the es?
             vs <- mapM interp es
-            local (\m -> m { isCallStack = sp : isCallStack m}) $ app fv vs
+            localPushCallStack sp $ app fv vs
 
 -- special case binops
 interp (BinOp _ "is" _) = error $ "'is' test predicate only allowed in check block"
@@ -1232,7 +1242,7 @@ interp (Cases e ty cs els) = do
     v <- interp e
     case ty of
         Just ty' -> do
-            ty'' <- typeOfTypeSyntax ty'
+            ty'' <- shallowizeType <$> typeOfTypeSyntax ty'
             void $ assertTypeCompat v ty''
             -- todo: looks up the patterns twice, optimise this?
             forM_ cs $ \(CaseBinding ss _, _) -> do
@@ -1321,6 +1331,12 @@ interp (TypeLet tds e) = do
             localScriptEnv (extendEnv [("_typeinfo-" ++ n,FFIValue $ toDyn ty)])
                  $ newEnv tds'
     newEnv tds
+
+-- todo: the source position should be part of the error
+-- not pushed to the call stack
+interp (Template sp) =
+    localPushCallStack sp $ 
+    throwValueWithStacktrace $ TextV "template-not-finished"
     
 makeBList :: [Value] -> Value
 makeBList [] = VariantV (internalsType "List") "empty" []
@@ -1385,10 +1401,14 @@ assertTypeCompat v ti =
     if v `typeIsCompatibleWith` ti
         then pure v
         else do
-            cs <- readCallStack
             r <- liftIO $ torepr' v
-            throwM $ ValueException cs
-                $ TextV $ "type not compatible " ++ r ++ " :: " ++ show v ++ " // " ++ show ti
+            throwValueWithStacktrace
+                $ TextV $ "type not compatible (marker) " ++ r ++ " :: " ++ show v ++ " // " ++ show ti
+
+throwValueWithStacktrace :: Value -> Interpreter a
+throwValueWithStacktrace v = do
+    cs <- readCallStack
+    throwM $ ValueException cs v
 
 assertTypeAnnCompat :: Value -> Ann -> Interpreter Value
 assertTypeAnnCompat v t = do

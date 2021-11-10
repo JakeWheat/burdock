@@ -263,6 +263,7 @@ term = (do
         ,block
         ,cases
         ,typeLet
+        ,template
         ,assertTypeCompat
         ,Iden <$> identifier
         ,numE
@@ -463,6 +464,11 @@ typeLet :: Parser Expr
 typeLet = TypeLet
     <$> (keyword_ "type-let" *> commaSep1 (typeDecl False))
     <*> (symbol_ ":" *> expr <* keyword_ "end")
+
+template :: Parser Expr
+template = do
+    sp <- sourcePos
+    Template sp <$ try (symbol_ "...")
 
 assertTypeCompat :: Parser Expr
 assertTypeCompat = do

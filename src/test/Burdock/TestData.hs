@@ -236,6 +236,8 @@ end|]
     ,("ex2.y!x"
      ,UnboxRef (DotExpr (Iden "ex2") "y") "x")
 
+    ,("...", Template Nothing)
+  
     ]
   where
     nm x = NameBinding NoShadow x Nothing
@@ -536,6 +538,7 @@ interpreterTests =
      ,"burdock-test-src/construct.bur"
      ,"burdock-test-src/functions.bur"
      ,"burdock-test-src/ref.bur"
+     ,"burdock-test-src/template.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"

@@ -80,6 +80,7 @@ data Expr =
     | Construct [String] [Expr]
     | AssertTypeCompat Expr Ann
     | TypeLet [TypeDecl] Expr
+    | Template SourcePosition
     | UnboxRef Expr String
     deriving (Eq,Show,Data)
 

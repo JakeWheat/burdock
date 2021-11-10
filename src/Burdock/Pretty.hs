@@ -50,7 +50,7 @@ expr (Text s) = dquotes (pretty $ escape s)
 expr (Iden n) = pretty n
 expr (Parens e) = parens (expr e)
 expr (InstExpr e ps) = expr e <> pretty "<" <> commaSep (map typ ps) <> pretty ">"
-expr (App _ e es) = expr e <> parens (commaSep $ map expr es)
+expr (App _sp e es) = expr e <> parens (commaSep $ map expr es)
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (UnaryMinus e) = pretty "-" <> expr e
 expr (Lam fh e) = prettyBlocklike sep
@@ -114,6 +114,8 @@ expr (TypeLet tds e) =
     prettyBlocklike sep
     [pretty "type-let" <+> commaSep (map typeDecl tds) <> pretty ":"
     ,expr e]
+
+expr (Template _sp) = pretty "..."
 
 expr (UnboxRef e f) = expr e <> pretty "!" <> pretty f
 
