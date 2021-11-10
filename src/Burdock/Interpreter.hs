@@ -1179,6 +1179,8 @@ interp (Lam (FunHeader dpms bs rt) e) = do
     wrapRt = maybe wrapArgAsserts (AssertTypeCompat wrapArgAsserts) rt
     wrapDpms = typeLetWrapper dpms wrapRt
 
+interp (CurlyLam fh e) = interp (Lam fh e)
+
 interp (Let bs e) = do
     let newEnv [] = interp e
         newEnv ((b,ex):bs') = do

@@ -107,7 +107,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
         [(CaseBinding ["empty"] [], Text "empty")
         ,(CaseBinding ["link"] [nm "f", nm "r"], Text "link")]
         Nothing)
-
+     
     ,("cases a:\n\
       \  | empty => \"empty\"\n\
       \  | else => \"else\"\n\
@@ -226,6 +226,21 @@ end|]
         [(CaseBinding ["empty"] [], Iden "true")
         ,(CaseBinding ["link"] [nm "_", nm "_"], Iden "false")]
         Nothing)
+
+     ,("{(y) : x + y}"
+      ,CurlyLam (FunHeader [] [nm "y"] Nothing)
+       $ BinOp (Iden "x") "+" (Iden "y"))
+
+     ,("{(x,y) : x + y}"
+      ,CurlyLam (FunHeader [] [nm "x",nm "y"] Nothing)
+       $ BinOp (Iden "x") "+" (Iden "y"))
+
+
+     ,("{(y :: Number) -> Number: x + y}"
+      ,CurlyLam (FunHeader []
+                [NameBinding NoShadow "y" $ Just $ TName ["Number"]]
+                (Just $ TName ["Number"]))
+       $ BinOp (Iden "x") "+" (Iden "y"))
 
      ,("-1 is 0 - 1"
       ,BinOp (UnaryMinus (Num 1)) "is" (BinOp (Num 0) "-" (Num 1)))
@@ -549,7 +564,7 @@ interpreterTests =
      ,"burdock-test-src/functions.bur"
      ,"burdock-test-src/ref.bur"
      ,"burdock-test-src/template.bur"
-     ]
+     ,"burdock-test-src/curly-lam.bur"]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["built-ins/lists.bur"
      ,"built-ins/globals.bur"

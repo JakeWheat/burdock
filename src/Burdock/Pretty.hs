@@ -56,6 +56,9 @@ expr (UnaryMinus e) = pretty "-" <> expr e
 expr (Lam fh e) = prettyBlocklike sep
     [pretty "lam" <> funHeader fh <> pretty ":"
     ,expr e]
+expr (CurlyLam fh e) =
+    pretty "{" <> funHeader fh <> pretty ":" <+> expr e <> pretty "}"
+
 expr (Let bs e) = prettyBlocklike sep
     [pretty "let" <+> bs' <> pretty ":"
     ,expr e]

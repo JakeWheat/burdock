@@ -70,6 +70,7 @@ data Expr =
     | BinOp Expr String Expr
     | UnaryMinus Expr
     | Lam FunHeader Expr
+    | CurlyLam FunHeader Expr
     | Let [(Binding,Expr)] Expr
     | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]

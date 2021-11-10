@@ -256,6 +256,9 @@ term = (do
     x <- choice
         [unaryMinus
         ,lamE
+        -- todo: factor to get rid of the try
+        -- it's unambiguously a lam if it starts with a { then a (
+        ,try curlyLam
         ,expressionLetRec
         ,expressionLet
         ,ifE
@@ -348,6 +351,11 @@ unaryMinus = UnaryMinus <$> (symbol "-" *> term)
 lamE :: Parser Expr
 lamE = Lam <$> (keyword_ "lam" *> funHeader <* symbol_ ":")
            <*> (expr <* keyword_ "end")
+
+curlyLam :: Parser Expr
+curlyLam = CurlyLam
+    <$> (symbol_ "{" *> funHeader <* symbol_ ":")
+    <*> (expr <* symbol_ "}")
 
 {-
 special case for bindings in commasep list -
