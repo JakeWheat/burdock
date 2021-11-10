@@ -74,7 +74,9 @@
 provide:
   length,
   get,
-  set
+  set,
+  reverse,
+  append
 end
 
 
@@ -115,5 +117,32 @@ fun set<a>(l :: List<a>, i :: Number, v :: a) -> List<a>:
         link(f, set(r, i - 1, v))
       end
   end
+end
+
+fun reverse<e>(l :: List<e>) -> List<e>:
+  fun rev(xsa, a):
+    cases xsa:
+      | empty => a
+      | link(x,xs) => rev(xs, link(x,a))
+    end
+  end
+  rev(l,empty)
+where:
+  reverse([list:]) is [list:]
+  reverse([list: 1]) is [list: 1]
+  reverse([list: 1,2]) is [list: 2,1]
+  reverse([list: 1,2,3]) is [list: 3,2,1]
+end
+
+fun append<a>(xs :: List<a>, ys :: List<a>) -> List<a>:
+  cases xs:
+    | empty => ys
+    | link(x, xsa) => link(x, append(xsa,ys))
+  end
+where:
+  append([list:], [list:]) is [list:]
+  append([list:1], [list:]) is [list:1]
+  append([list:], [list:1]) is [list:1]
+  append([list:1,2,3], [list: 4,5,6]) is [list:1,2,3,4,5,6]
 end
 
