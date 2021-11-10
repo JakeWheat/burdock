@@ -281,7 +281,7 @@ instance Show Value where
   show (FunV as bdy _env) = "FunV " ++ show as ++ "\n" ++ prettyExpr bdy
   show (ForeignFunV n) = "ForeignFunV " ++ show n
   show (BoxV _ _n) = "BoxV XX" -- ++ show n
-  show (FFIValue r) | Just (r' :: R.Relation Value) <- fromDynamic r = R.showRelation r'
+  show (FFIValue r) | Just (r' :: R.Relation Value) <- fromDynamic r = R.showRel r'
   show (FFIValue _v) = "FFIValue"
 
 
@@ -300,7 +300,7 @@ instance Eq Value where
     ForeignFunV x == ForeignFunV y = x == y
     FFIValue a == FFIValue b
         | Just (a' :: R.Relation Value) <- fromDynamic a
-        , Just b' <- fromDynamic b = either (error . show) id $ R.relationsEqual a' b'
+        , Just b' <- fromDynamic b = either (error . show) id $ R.relEqual a' b'
     -- todo: funv, boxv ..., ffivalue
     -- ioref has an eq instance for pointer equality
     --    this is very useful
@@ -847,7 +847,7 @@ toreprx (VariantV _ nm fs) = do
 
 toreprx (FFIValue r)
     | Just (r' :: R.Relation Value) <- fromDynamic r
-    = pure $ P.pretty $ R.showRelation r'
+    = pure $ P.pretty $ R.showRel r'
 toreprx (FFIValue {}) = pure $ P.pretty "<ffi-value>"
 
 xSep :: String -> [P.Doc a] -> P.Doc a
@@ -865,7 +865,7 @@ builtInFF =
              [FFIValue a, FFIValue b]
                  | Just (a' :: R.Relation Value) <- fromDynamic a
                  , Just b' <- fromDynamic b
-                 -> either (error . show) (pure . BoolV) $ R.relationsEqual a' b'
+                 -> either (error . show) (pure . BoolV) $ R.relEqual a' b'
              [a,b] -> pure $ BoolV $ a == b
              as -> error $ "bad args to ==: " ++ show as)
     ,("<", bLT)
@@ -918,14 +918,17 @@ builtInFF =
     ,("get-call-stack", getCallStack)
     ,("format-call-stack", bFormatCallStack)
 
-    ,("rel-to-list", relationToList)
-    ,("rel-from-list", relationFromList)
+    ,("rel-to-list", relToList)
+    ,("rel-from-list", relFromList)
     ,("table-dee", \[] -> pure $ FFIValue $ toDyn (R.tableDee :: R.Relation Value))
     ,("table-dum", \[] -> pure $ FFIValue $ toDyn (R.tableDum :: R.Relation Value))
-    ,("rel-union", relationUnion)
-    ,("rel-delete", relationDelete)
-    ,("rel-update", relationUpdate)
+    ,("rel-union", relUnion)
+    ,("rel-delete", relDelete)
+    ,("rel-update", relUpdate)
+    ,("rel-project", relProject)
+    ,("rel-rename", relRename)
     ,("hack-parse-table", hackParseTable)
+    ,("union-recs", unionRecs)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -1113,17 +1116,17 @@ bFormatCallStack _ = error $ "wrong args to format-call-stack"
 
 -------------------
 
-relationToList :: [Value] -> Interpreter Value
-relationToList [FFIValue v]
+relToList :: [Value] -> Interpreter Value
+relToList [FFIValue v]
     | Just v' <- fromDynamic v
     = either (error . show) (pure . mkl) $ R.toList v'
   where
     mkl = makeBList . map mkr
     mkr = VariantV (bootstrapType "Record") "record"
-relationToList _ = error "bad args to relationToList"
+relToList _ = error "bad args to relToList"
 
-relationFromList :: [Value] -> Interpreter Value
-relationFromList [l]
+relFromList :: [Value] -> Interpreter Value
+relFromList [l]
     | Just l' <- fromBList l
     , Just l'' <- mapM unr l'
     = either (error . show) (pure . FFIValue . toDyn) $ R.fromList l''
@@ -1132,30 +1135,62 @@ relationFromList [l]
         | tg == bootstrapType "Record" = Just fs
     unr _ = Nothing
     
-relationFromList x = error
-    $ "bad args to relationFromList: " ++ show x
+relFromList x = error
+    $ "bad args to relFromList: " ++ show x
 
-relationUnion :: [Value] -> Interpreter Value
-relationUnion [FFIValue a, FFIValue b]
+relUnion :: [Value] -> Interpreter Value
+relUnion [FFIValue a, FFIValue b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
-    = either (error . show) (pure . FFIValue . toDyn) $ R.relationUnion a' b'
-relationUnion _ = error "bad args to relationalUnion"
+    = either (error . show) (pure . FFIValue . toDyn) $ R.relUnion a' b'
+relUnion _ = error "bad args to relUnion"
 
-relationDelete :: [Value] -> Interpreter Value
-relationDelete [FFIValue a, f]
+relDelete :: [Value] -> Interpreter Value
+relDelete [FFIValue a, f]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     = either (error . show) (FFIValue . toDyn) <$>
-      R.relationDelete a' (wrapBPredicate f)
+      R.relDelete a' (wrapBPredicate f)
 
-relationDelete _ = error "bad args to relationDelete"
+relDelete _ = error "bad args to relDelete"
 
-relationUpdate :: [Value] -> Interpreter Value
-relationUpdate [FFIValue a, uf, pf]
+relUpdate :: [Value] -> Interpreter Value
+relUpdate [FFIValue a, uf, pf]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     =  either (error . show) (FFIValue . toDyn) <$>
-       R.relationUpdate a' (wrapBRecFn uf) (wrapBPredicate pf)
-relationUpdate _ = error "bad args to relationUpdate"
+       R.relUpdate a' (wrapBRecFn uf) (wrapBPredicate pf)
+relUpdate _ = error "bad args to relUpdate"
+
+relProject :: [Value] -> Interpreter Value
+relProject [l, FFIValue a]
+    | Just cs <- mapM unText =<< fromBList l
+    , Just (a' :: R.Relation Value) <- fromDynamic a
+    =  either (error . show) (pure . FFIValue . toDyn) $
+       R.relProject cs a'
+  where
+    unText (TextV t) = Just t
+    unText _ = Nothing
+relProject _ = error "bad args to relProject"
+
+relRename :: [Value] -> Interpreter Value
+relRename [l, FFIValue a]
+    | Just cs <- mapM unTextPair =<< fromBList l
+    , Just (a' :: R.Relation Value) <- fromDynamic a
+    =  either (error . show) (pure . FFIValue . toDyn) $
+       R.relRename cs a'
+  where
+    unTextPair (VariantV tg "tuple" [(_, TextV x), (_, TextV y)])
+        | tg == bootstrapType "Tuple" = Just (x,y)
+    unTextPair _ = Nothing
+relRename _ = error "bad args to relRename"
+
+
+
+unionRecs :: [Value] -> Interpreter Value
+unionRecs [VariantV tg "record" as, VariantV tg' "record" bs]
+    | tg == bootstrapType "Record" && tg' == tg
+    = pure $ VariantV tg "record" (as ++ bs)
+    
+unionRecs x = error $ "bad args to unionRecs" ++ show x
 
 wrapBRecFn :: Value -> [(String,Value)] -> Interpreter [(String,Value)]
 wrapBRecFn f r = do

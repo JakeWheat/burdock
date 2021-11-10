@@ -10,13 +10,15 @@ module Burdock.Relational
     ,tableDee
     ,tableDum
 
-    ,relationsEqual
-    ,relationUnion
-    ,relationDelete
-    ,relationUpdate
+    ,relEqual
+    ,relUnion
+    ,relDelete
+    ,relUpdate
+    ,relProject
+    ,relRename
     
     ,RelationalError(..)
-    ,showRelation
+    ,showRel
     ,Relation
     ,Record
 
@@ -70,8 +72,8 @@ data RelationalError = RelationalError String
 -- basic stuff
 
 -- todo: do something nicer
-showRelation :: Show a => Relation a -> String
-showRelation (Relation r) = intercalate "\n" $ map show r
+showRel :: Show a => Relation a -> String
+showRel (Relation r) = intercalate "\n" $ map show r
 
 toList :: Relation a -> Either RelationalError [Record a]
 toList (Relation a) = pure a
@@ -81,8 +83,8 @@ fromList = pure . Relation
 
 -- check all tuples consistent with heading/each other
 -- check the invariants: sorted records, sorted rows, no duplicate rows
-_checkRelationWellFormed :: Relation a -> Maybe String
-_checkRelationWellFormed = undefined
+_checkRelWellFormed :: Relation a -> Maybe String
+_checkRelWellFormed = undefined
 
 tableDee :: Relation a
 tableDee = Relation [[]]
@@ -97,8 +99,8 @@ sortedRecord = sortOn fst
 
 -- main functions on relations
 
-relationsEqual :: Ord a => Relation a -> Relation a -> Either RelationalError Bool
-relationsEqual (Relation a) (Relation b) =
+relEqual :: Ord a => Relation a -> Relation a -> Either RelationalError Bool
+relEqual (Relation a) (Relation b) =
     -- todo: sort on fromList/other creation of relations
     -- todo: check headings for consistency
     let a' = map sortedRecord a
@@ -108,24 +110,24 @@ relationsEqual (Relation a) (Relation b) =
 -- todo: consistency check
 -- todo: remove duplicates
 -- todo: maintain sorted order
-relationUnion :: Relation a -> Relation a -> Either RelationalError (Relation a)
-relationUnion (Relation a) (Relation b) = pure $ Relation $ a ++ b
+relUnion :: Relation a -> Relation a -> Either RelationalError (Relation a)
+relUnion (Relation a) (Relation b) = pure $ Relation $ a ++ b
 
 
-relationDelete :: Applicative m =>
+relDelete :: Applicative m =>
                   Relation a
                -> (Record a -> m Bool)
                -> m (Either RelationalError (Relation a))
-relationDelete (Relation rs) pr =
+relDelete (Relation rs) pr =
     (pure . Relation) <$> filterM (fmap not . pr) rs
 
 
-relationUpdate :: Monad m =>
+relUpdate :: Monad m =>
                   Relation a
                -> (Record a -> m (Record a))
                -> (Record a -> m Bool)
                -> m (Either RelationalError (Relation a))
-relationUpdate (Relation rs) upd pr =
+relUpdate (Relation rs) upd pr =
     (pure . Relation) <$> mapM f rs
   where
     --f :: Record a -> m (Record a)
@@ -134,6 +136,23 @@ relationUpdate (Relation rs) upd pr =
         if t
            then upd r
            else pure r
+
+
+relProject :: [String] -> Relation a -> Either RelationalError (Relation a)
+relProject cs (Relation rs)  =
+    pure $ Relation $ map (filter ((`elem` cs) . fst)) rs
+
+relRename :: [(String,String)] -> Relation a -> Either RelationalError (Relation a)
+relRename cs (Relation rs)  =
+    pure $ Relation $ map (renameRecord cs) rs
+  where
+    renameRecord [] r = r
+    renameRecord ((f,t):cs') r =
+        let r' = flip map r $ \(n,v) ->
+                (if n == f
+                 then t
+                 else n, v)
+        in renameRecord cs' r'
     
 ---------------------------------------
 

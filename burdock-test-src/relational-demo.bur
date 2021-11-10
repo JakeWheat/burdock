@@ -1,18 +1,5 @@
 
-
-import relational as relational
-
-include from relational:
-  rel-to-list,
-  rel-from-list,
-  table-dee,
-  table-dum,
-  rel-union,
-  rel-delete,
-  rel-update,
-  hack-parse-table
-
-end
+include relational
 
 check "from list and equals":
 
@@ -135,6 +122,9 @@ a,b,c
 4,4,13
 ```)
     # definitely needs some record update syntax
+    # this will also help constraint from changing the type
+    # update is more or less a combination of project and extend
+    # can also be seen as a variation on select
     rel-update(a, {(r): {a: r.a + 1, b:r.b, c:r.c}}, {(_): true})
       is c
   end
@@ -160,5 +150,108 @@ a,b,c
     rel-update(a, {(r): {a: r.a * 2, b:r.b, c:r.c}}, {(r): r.b == 3})
       is c
   end
-    
+
+  # project, rename, extend, select
+  block:
+    a = hack-parse-table(
+```
+a,b,c
+1,2,10
+2,3,11
+3,3,12
+3,4,13
+```)
+    c = hack-parse-table(
+```
+a,c
+1,10
+2,11
+3,12
+3,13
+```)
+    rel-project([list: 'a','c'], a) is c
+  end
+
+  block:
+    a = hack-parse-table(
+```
+a,b,c
+1,2,10
+2,3,11
+3,3,12
+3,4,13
+```)
+    c = hack-parse-table(
+```
+a,d,c
+1,2,10
+2,3,11
+3,3,12
+3,4,13
+```)
+    rel-rename([list: {'b';'d'}], a) is c
+  end
+
+  block:
+    a = hack-parse-table(
+```
+a,b,c
+1,2,10
+2,3,11
+3,3,12
+3,4,13
+```)
+    c = hack-parse-table(
+```
+f,g,c
+1,2,10
+2,3,11
+3,3,12
+3,4,13
+```)
+    rel-rename([list: {'a';'f'}, {'b';'g'}], a) is c
+  end
+
+
+  block:
+    a = hack-parse-table(
+```
+a,b
+1,2
+2,3
+3,3
+3,4
+```)
+    c = hack-parse-table(
+```
+a,b,c,d
+1,2,2,3
+2,3,6,5
+3,3,9,6
+3,4,12,7
+```)
+    rel-extend(a, {(r): {c: r.a * r.b, d: r.a + r.b}}) is c
+  end
+
+  block:
+    a = hack-parse-table(
+```
+a,b
+1,2
+2,3
+3,3
+3,4
+```)
+    c = hack-parse-table(
+```
+a,b,c,d
+1,4,2,3
+2,5,6,5
+3,5,9,6
+3,6,12,7
+```)
+    rel-select(a, {(r): {a: r.a, b: r.b + 2, c: r.a * r.b, d: r.a + r.b}}) is c
+  end
+
+  
 end

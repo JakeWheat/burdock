@@ -8,11 +8,19 @@ provide:
   rel-union,
   rel-delete,
   rel-update,
+  rel-project,
+  rel-rename,
+  rel-extend,
+  rel-select,
 
   hack-parse-table
 end
 
 include _internals
+import lists as lists
+include from lists:
+  map
+end
 
 rel-to-list = get-ffi-value("rel-to-list")
 rel-from-list = get-ffi-value("rel-from-list")
@@ -23,5 +31,16 @@ table-dum = get-ffi-value("table-dum")()
 rel-union = get-ffi-value("rel-union")
 rel-delete = get-ffi-value("rel-delete")
 rel-update = get-ffi-value("rel-update")
+rel-project = get-ffi-value("rel-project")
+rel-rename = get-ffi-value("rel-rename")
+
+# temp hack
+fun rel-extend(rel, f):
+  rel-update(rel, {(r): union-recs(r, f(r))}, {(_): true})
+end
+
+fun rel-select(rel, f):
+  rel-update(rel, f, {(_): true})
+end
 
 hack-parse-table = get-ffi-value("hack-parse-table")

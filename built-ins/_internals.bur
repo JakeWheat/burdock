@@ -43,6 +43,7 @@ is-string = get-ffi-value("is-string")
 is-number = get-ffi-value("is-number")
 is-function = get-ffi-value("is-function")
 
+union-recs = get-ffi-value("union-recs")
 
 print = get-ffi-value("print")
 

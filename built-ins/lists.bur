@@ -76,7 +76,8 @@ provide:
   get,
   set,
   reverse,
-  append
+  append,
+  map
 end
 
 
@@ -146,3 +147,14 @@ where:
   append([list:1,2,3], [list: 4,5,6]) is [list:1,2,3,4,5,6]
 end
 
+
+#map :: (a -> b, List<a>) -> List<b>
+fun map<a,b>(f :: (a -> b), lst :: List<a>) -> List<b>:
+  cases lst:
+    | empty => empty
+    | link(a,az) => link(f(a), map(f,az))
+  end
+where:
+  #map(num-tostring, [list: 1, 2]) is [list: "1", "2"]
+  map(lam(x): x + 1 end, [list: 1, 2]) is [list: 2, 3]
+end
