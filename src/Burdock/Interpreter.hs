@@ -940,6 +940,7 @@ builtInFF =
     ,("rel-rename", relRename)
     ,("rel-join", relJoin)
     ,("rel-not-matching", relNotMatching)
+    ,("rel-group", relGroup)
     ,("hack-parse-table", hackParseTable)
     ,("union-recs", unionRecs)
     ]
@@ -1215,6 +1216,20 @@ relNotMatching [FFIValue a, FFIValue b]
     = either (error . show) (pure . FFIValue . toDyn)
       $ R.relNotMatching a' b'
 relNotMatching _ = error "bad args to relNotMatching"
+
+relGroup :: [Value] -> Interpreter Value
+relGroup [a, TextV b, FFIValue c]
+    | Just (c' :: R.Relation Value) <- fromDynamic c
+    , Just ks <- mapM unText =<< fromBList a
+    = either (error . show) (pure . FFIValue . toDyn)
+      $ R.relGroup makeRelVal ks b c'
+  where
+    makeRelVal :: R.Relation Value -> Value
+    makeRelVal rs = FFIValue . toDyn $ rs
+    unText (TextV v) = Just v
+    unText _ = Nothing
+relGroup _ = error "bad args to relGroup"
+
 
 
 unionRecs :: [Value] -> Interpreter Value

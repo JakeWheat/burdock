@@ -16,6 +16,7 @@ provide:
   rel-where,
   rel-join,
   rel-not-matching,
+  rel-group,
 
   hack-parse-table
 end
@@ -40,6 +41,7 @@ rel-rename = get-ffi-value("rel-rename")
 rel-where = get-ffi-value("rel-where")
 rel-join = get-ffi-value("rel-join")
 rel-not-matching = get-ffi-value("rel-not-matching")
+rel-group = get-ffi-value("rel-group")
 
 # temp hack
 fun rel-extend(rel, f):

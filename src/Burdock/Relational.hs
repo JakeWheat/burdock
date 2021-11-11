@@ -18,6 +18,7 @@ module Burdock.Relational
     ,relRename
     ,relJoin
     ,relNotMatching
+    ,relGroup
     
     ,RelationalError(..)
     ,showRel
@@ -32,6 +33,7 @@ import Data.List (sortOn
                  ,intercalate
                  ,(\\)
                  ,intersect
+                 ,partition
                  )
 import Data.Typeable (Typeable)
 
@@ -179,6 +181,29 @@ relNotMatching :: Eq a => Relation a -> Relation a -> Either RelationalError (Re
 relNotMatching (Relation rs) (Relation ts) = do
     pure $ Relation $ flip filter rs $ \r ->
         and $ map isNothing $ map (joinRecs r) ts
+
+relGroup :: (Show a, Eq a) =>
+            (Relation a -> a)
+         -> [String]
+         -> String
+         -> Relation a
+         -> Either RelationalError (Relation a)
+relGroup makeRelVal knms gnm (Relation as) =
+    pure $ Relation $ newKey as
+  where
+    splitKeysOut = partition ((`elem` knms) . fst)
+    newKey [] = []
+    newKey (r:rs) =
+        let (kr,vr) = splitKeysOut r
+        in ctuKey kr [vr] rs
+    makeRec k vals =
+        k ++ [(gnm, makeRelVal $ either (error . show) id $ fromList $ reverse vals)]
+    ctuKey curKey curVals [] = [makeRec curKey curVals]
+    ctuKey curKey curVals (r:rs) =
+         let (kr,vr) = splitKeysOut r
+         in if kr == curKey
+            then ctuKey curKey (vr:curVals) rs
+            else makeRec curKey curVals : ctuKey kr [vr] rs
 
 ---------------------------------------
 
