@@ -78,6 +78,7 @@ data Expr =
     | Cases Expr (Maybe Ann) [(CaseBinding, Expr)] (Maybe Expr)
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
+    | TableSel [String] [RowSel]
     | TupleGet Expr Int
     | Construct [String] [Expr]
     | AssertTypeCompat Expr Ann
@@ -98,6 +99,9 @@ data Binding =
 
 data Shadow = NoShadow | Shadow
           deriving (Eq,Show,Data) 
+
+data RowSel = RowSel [Expr]
+            deriving (Eq,Show,Data) 
 
 data Ann = TName [String]
                     | TTuple [Ann]

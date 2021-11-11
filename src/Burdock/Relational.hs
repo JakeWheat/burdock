@@ -17,7 +17,7 @@ module Burdock.Relational
     ,relProject
     ,relRename
     ,relJoin
-    ,relMinus
+    ,relNotMatching
     
     ,RelationalError(..)
     ,showRel
@@ -175,8 +175,8 @@ joinRecs as bs =
            then Just (proj ks as ++ proj avs as ++ proj bvs bs)
            else Nothing
 
-relMinus :: Eq a => Relation a -> Relation a -> Either RelationalError (Relation a)
-relMinus (Relation rs) (Relation ts) = do
+relNotMatching :: Eq a => Relation a -> Relation a -> Either RelationalError (Relation a)
+relNotMatching (Relation rs) (Relation ts) = do
     pure $ Relation $ flip filter rs $ \r ->
         and $ map isNothing $ map (joinRecs r) ts
 

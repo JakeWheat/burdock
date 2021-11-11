@@ -881,13 +881,19 @@ builtInFF =
              [NumV a] -> pure $ NumV (- a)
              [NumV a,NumV b] -> pure $ NumV $ a - b
              as -> error $ "unsupported args to - :" ++ show as)
-    ,("*", \[NumV a,NumV b] -> pure $ NumV $ a * b)
-    ,("/", \[NumV a,NumV b] -> pure $ NumV $ divideScientific a b)
+    ,("*", \case
+             [NumV a,NumV b] -> pure $ NumV $ a * b
+             xs -> error $ "bad args to * " ++ show xs)
+    ,("/", \case
+             [NumV a,NumV b] -> pure $ NumV $ divideScientific a b
+             xs -> error $ "bad args to / " ++ show xs)
 
     ,("^", reverseApp)
     ,("|>", chainApp)
     
-    ,("not", \[BoolV b] -> pure $ BoolV $ not b)
+    ,("not", \case
+             [BoolV b] -> pure $ BoolV $ not b
+             xs -> error $ "bad args to not " ++ show xs)
 
     ,("make-variant", makeVariant)
     ,("is-variant", isVariant)
@@ -920,15 +926,20 @@ builtInFF =
 
     ,("rel-to-list", relToList)
     ,("rel-from-list", relFromList)
-    ,("table-dee", \[] -> pure $ FFIValue $ toDyn (R.tableDee :: R.Relation Value))
-    ,("table-dum", \[] -> pure $ FFIValue $ toDyn (R.tableDum :: R.Relation Value))
+    ,("rel-from-table", relFromTable)
+    ,("table-dee", \case
+             [] -> pure $ FFIValue $ toDyn (R.tableDee :: R.Relation Value)
+             _ -> error $ "bad args to table-dee maker")
+    ,("table-dum", \case
+             [] -> pure $ FFIValue $ toDyn (R.tableDum :: R.Relation Value)
+             _ -> error $ "bad args to table-dee maker")
     ,("rel-union", relUnion)
     ,("rel-where", relWhere)
     ,("rel-update", relUpdate)
     ,("rel-project", relProject)
     ,("rel-rename", relRename)
     ,("rel-join", relJoin)
-    ,("rel-minus", relMinus)
+    ,("rel-not-matching", relNotMatching)
     ,("hack-parse-table", hackParseTable)
     ,("union-recs", unionRecs)
     ]
@@ -1102,7 +1113,7 @@ bParseFile _ = error $ "wrong args to parse-file"
 bShowHaskellAst :: [Value] -> Interpreter Value
 bShowHaskellAst [FFIValue v] = do
     let ast :: Script
-        Just ast = fromDynamic v
+        ast = maybe (error "bad arg type to haskell-show-ast") id $ fromDynamic v
     pure $ TextV $ ppShow ast
 bShowHaskellAst _ = error $ "wrong args to show-haskell-ast"
     
@@ -1112,7 +1123,7 @@ getCallStack _ = error $ "wrong args to get-call-stack"
 
 bFormatCallStack :: [Value] -> Interpreter Value
 bFormatCallStack [FFIValue cs] = do
-    let Just hcs = fromDynamic cs
+    let hcs = maybe (error "bad arg type to format-call-stack") id $ fromDynamic cs
     TextV <$> formatCallStack hcs
 bFormatCallStack _ = error $ "wrong args to format-call-stack"
 
@@ -1139,6 +1150,10 @@ relFromList [l]
     
 relFromList x = error
     $ "bad args to relFromList: " ++ show x
+
+
+relFromTable :: [Value] -> Interpreter Value
+relFromTable = relFromList
 
 relUnion :: [Value] -> Interpreter Value
 relUnion [FFIValue a, FFIValue b]
@@ -1193,13 +1208,13 @@ relJoin [FFIValue a, FFIValue b]
       $ R.relJoin a' b'
 relJoin _ = error "bad args to relJoin"
 
-relMinus :: [Value] -> Interpreter Value
-relMinus [FFIValue a, FFIValue b]
+relNotMatching :: [Value] -> Interpreter Value
+relNotMatching [FFIValue a, FFIValue b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
     = either (error . show) (pure . FFIValue . toDyn)
-      $ R.relMinus a' b'
-relMinus _ = error "bad args to relMinus"
+      $ R.relNotMatching a' b'
+relNotMatching _ = error "bad args to relNotMatching"
 
 
 unionRecs :: [Value] -> Interpreter Value
@@ -1450,6 +1465,15 @@ interp (TupleSel es) = do
 interp (RecordSel fs) = do
     vs <- mapM (\(n,e) -> (n,) <$> interp e) fs
     pure $ VariantV (bootstrapType "Record") "record" vs
+
+interp (TableSel cs rs) = do
+    -- todo: check each row has the right number of fields
+    rs' <- mapM (\(RowSel es) -> mapM interp es) rs
+    -- table is a list of records for now
+    -- todo: fix this because a row is not the same as a record
+    -- a row is more dynamic, and the field order is significant
+    let mkr es = VariantV (bootstrapType "Record") "record" $ zip cs es
+    pure $ makeBList $ map mkr rs'
 
 interp (TupleGet e f) = do
     v <- interp e

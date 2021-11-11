@@ -162,7 +162,7 @@ reservedKeywords =
     ,"where", "fun", "rec", "data"
     ,"import", "provide", "provide-types"
     ,"from", "and", "or", "shadow", "as"
-    ,"ref"
+    ,"ref", "table", "row"
     ]
 
 identifierX :: Parser String
@@ -266,6 +266,7 @@ term = (do
         ,block
         ,cases
         ,typeLet
+        ,tableSel
         ,template
         ,assertTypeCompat
         ,Iden <$> identifier
@@ -473,6 +474,13 @@ typeLet :: Parser Expr
 typeLet = TypeLet
     <$> (keyword_ "type-let" *> commaSep1 (typeDecl False))
     <*> (symbol_ ":" *> expr <* keyword_ "end")
+
+tableSel :: Parser Expr
+tableSel = TableSel
+    <$> (keyword_ "table" *> commaSep identifier <* symbol_ ":")
+    <*> (many relLineSel <* keyword_ "end")
+  where
+    relLineSel = RowSel <$> (keyword "row" *> symbol_ ":" *> commaSep expr)
 
 template :: Parser Expr
 template = do

@@ -257,7 +257,13 @@ end|]
      ,UnboxRef (DotExpr (Iden "ex2") "y") "x")
 
     ,("...", Template Nothing)
-  
+
+    ,([R.r|
+table a,b:
+  row: 1, true
+  row: 2, false
+end|], TableSel ["a", "b"] [RowSel [Num 1, Iden "true"]
+                           ,RowSel [Num 2, Iden "false"]])
     ]
   where
     nm x = NameBinding NoShadow x Nothing

@@ -25,6 +25,9 @@ data GhcOptions
     , ghcSrcs :: [FilePath]
     }
 
+ghcOptimize :: String
+ghcOptimize = ""
+
 ghcOpts :: GhcOptions
 ghcOpts = GhcOptions Nothing []
 
@@ -73,6 +76,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
                       [] -> []
                       x -> ["-i" ++ intercalate ":" x])
                  srcpath
+                 ghcOptimize
                  -- "-fprof-auto -fprof-cafs"
 
     -- clean everything including package databases

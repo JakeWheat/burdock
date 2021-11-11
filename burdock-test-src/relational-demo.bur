@@ -326,8 +326,34 @@ a,b
 4,5
 ```)
     
-    rel-minus(a, b) is c
+    rel-not-matching(a, b) is c
   end
+
+  block:
+    # pyret style table syntax
+    # useful for more complex values in fields
+    a = hack-parse-table(
+```
+a,b
+1,2
+2,3
+3,3
+```)
+    #
+    b = rel-from-table(table a,b:
+      row: 1,2
+      row: 2,3
+      row: 3,3
+    end)
+    a is b
+
+    d = rel-from-table(table: end)
+    d is table-dum
+    e = rel-from-table(table: row: end)
+    e is table-dee
+    
+  end
+
 
   # group
 

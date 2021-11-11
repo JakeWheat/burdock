@@ -1,6 +1,7 @@
 provide:
   rel-to-list,
   rel-from-list,
+  rel-from-table,
 
   table-dee,
   table-dum,
@@ -14,7 +15,7 @@ provide:
   rel-select,
   rel-where,
   rel-join,
-  rel-minus,
+  rel-not-matching,
 
   hack-parse-table
 end
@@ -27,6 +28,7 @@ end
 
 rel-to-list = get-ffi-value("rel-to-list")
 rel-from-list = get-ffi-value("rel-from-list")
+rel-from-table = get-ffi-value("rel-from-table")
 
 table-dee = get-ffi-value("table-dee")()
 table-dum = get-ffi-value("table-dum")()
@@ -37,7 +39,7 @@ rel-project = get-ffi-value("rel-project")
 rel-rename = get-ffi-value("rel-rename")
 rel-where = get-ffi-value("rel-where")
 rel-join = get-ffi-value("rel-join")
-rel-minus = get-ffi-value("rel-minus")
+rel-not-matching = get-ffi-value("rel-not-matching")
 
 # temp hack
 fun rel-extend(rel, f):
