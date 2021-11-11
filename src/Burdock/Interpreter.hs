@@ -941,6 +941,7 @@ builtInFF =
     ,("rel-join", relJoin)
     ,("rel-not-matching", relNotMatching)
     ,("rel-group", relGroup)
+    ,("rel-ungroup", relUngroup)
     ,("hack-parse-table", hackParseTable)
     ,("union-recs", unionRecs)
     ]
@@ -1230,7 +1231,17 @@ relGroup [a, TextV b, FFIValue c]
     unText _ = Nothing
 relGroup _ = error "bad args to relGroup"
 
-
+relUngroup :: [Value] -> Interpreter Value
+relUngroup [TextV a, FFIValue b]
+    | Just (b' :: R.Relation Value) <- fromDynamic b
+    = either (error . show) (pure . FFIValue . toDyn)
+      $ R.relUngroup unmakeRel a b'
+  where
+    unmakeRel :: Value -> [[(String,Value)]]
+    unmakeRel (FFIValue x) | Just (y :: R.Relation Value) <- fromDynamic x
+       = either (error . show) id $ R.toList y
+    unmakeRel x = error $ "ungroup unmake rel, not a relation:" ++ show x
+relUngroup _ = error "bad args to relUngroup"
 
 unionRecs :: [Value] -> Interpreter Value
 unionRecs [VariantV tg "record" as, VariantV tg' "record" bs]

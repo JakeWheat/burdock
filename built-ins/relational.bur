@@ -17,6 +17,7 @@ provide:
   rel-join,
   rel-not-matching,
   rel-group,
+  rel-ungroup,
 
   hack-parse-table
 end
@@ -42,6 +43,7 @@ rel-where = get-ffi-value("rel-where")
 rel-join = get-ffi-value("rel-join")
 rel-not-matching = get-ffi-value("rel-not-matching")
 rel-group = get-ffi-value("rel-group")
+rel-ungroup = get-ffi-value("rel-ungroup")
 
 # temp hack
 fun rel-extend(rel, f):

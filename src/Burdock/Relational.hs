@@ -19,6 +19,7 @@ module Burdock.Relational
     ,relJoin
     ,relNotMatching
     ,relGroup
+    ,relUngroup
     
     ,RelationalError(..)
     ,showRel
@@ -204,6 +205,20 @@ relGroup makeRelVal knms gnm (Relation as) =
          in if kr == curKey
             then ctuKey curKey (vr:curVals) rs
             else makeRec curKey curVals : ctuKey kr [vr] rs
+
+relUngroup :: (a -> [Record a])
+           -> String
+           -> Relation a
+           -> Either RelationalError (Relation a)
+relUngroup unmakeRel k (Relation as) =
+    pure $ Relation $ concatMap ungroup as
+  where
+    ungroup r =
+        let v = maybe (error $ "ungroup key not found: " ++ k) id
+                $ lookup k r
+            v' = unmakeRel v
+            kpart = filter ((/=k) . fst) r
+        in map (kpart ++) v'
 
 ---------------------------------------
 
