@@ -248,7 +248,7 @@ expr = chainl1 exprlev1 (f testPred)
     exprlev1 = chainr1 exprlev2 (f rightBinOpSym)
     exprlev2 = chainl1 term (f leftBinOpSym)
     f o = do
-        op <- o
+        op <- o <?> ""
         pure $ \a b -> BinOp a op b
 
 term :: Parser Expr

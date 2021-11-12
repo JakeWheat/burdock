@@ -20,6 +20,7 @@ module Burdock.Relational
     ,relNotMatching
     ,relGroup
     ,relUngroup
+    ,relSummarize
     
     ,RelationalError(..)
     ,showRel
@@ -57,7 +58,10 @@ import Text.Megaparsec.Char (char
                             ,letterChar
                             )
 import Data.Void (Void)
-import Control.Monad (void, when, filterM)
+import Control.Monad (void
+                     ,when
+                     ,filterM
+                     ,foldM)
 
 import Data.Char (isAlphaNum,isDigit,isSpace)
 import Text.Read (readMaybe)
@@ -183,15 +187,16 @@ relNotMatching (Relation rs) (Relation ts) = do
     pure $ Relation $ flip filter rs $ \r ->
         and $ map isNothing $ map (joinRecs r) ts
 
-relGroup :: (Show a, Eq a) =>
+relGroup :: (Ord a, Show a, Eq a) =>
             (Relation a -> a)
          -> [String]
          -> String
          -> Relation a
          -> Either RelationalError (Relation a)
 relGroup makeRelVal knms gnm (Relation as) =
-    pure $ Relation $ newKey as
+    pure $ Relation $ newKey $ sortByKeys as
   where
+    sortByKeys = sortOn splitKeysOut
     splitKeysOut = partition ((`elem` knms) . fst)
     newKey [] = []
     newKey (r:rs) =
@@ -219,6 +224,17 @@ relUngroup unmakeRel k (Relation as) =
             v' = unmakeRel v
             kpart = filter ((/=k) . fst) r
         in map (kpart ++) v'
+
+relSummarize :: Monad m =>
+                (a, a -> a -> m a)
+             -> String
+             -> Relation a
+             -> m (Either RelationalError a)
+relSummarize (z, fop) c (Relation as) =
+    let cs = maybe (error $ "col not found: " ++ c) id
+             $ mapM (lookup c) as
+    in Right <$> foldM fop z cs
+
 
 ---------------------------------------
 

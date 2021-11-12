@@ -383,5 +383,19 @@ a,b
   end  
 
   # agg demo
-  
+
+  block:
+    a = rel-from-table(table a,b:
+          row: 'a', 1
+          row: 'a', 2
+          row: 'a', 4
+          row: 'b', 1
+          row: 'c', 0
+          row: 'b', 4
+        end)
+    # needs some work, especially to allow multiple summaries
+    rel-summarize({0;_ + _}, "b", a) is 12
+
+  end
+
 end

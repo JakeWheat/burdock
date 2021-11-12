@@ -942,6 +942,7 @@ builtInFF =
     ,("rel-not-matching", relNotMatching)
     ,("rel-group", relGroup)
     ,("rel-ungroup", relUngroup)
+    ,("rel-summarize", relSummarize)
     ,("hack-parse-table", hackParseTable)
     ,("union-recs", unionRecs)
     ]
@@ -1242,6 +1243,20 @@ relUngroup [TextV a, FFIValue b]
        = either (error . show) id $ R.toList y
     unmakeRel x = error $ "ungroup unmake rel, not a relation:" ++ show x
 relUngroup _ = error "bad args to relUngroup"
+
+
+relSummarize :: [Value] -> Interpreter Value
+relSummarize [p, TextV c, FFIValue r]
+    | Just (r' :: R.Relation Value) <- fromDynamic r
+    , Just p' <- extractPair p
+    = either (error . show) id <$> R.relSummarize p' c r'
+  where
+    extractPair (VariantV tg "tuple" [(_,z),(_,bo)])
+        | tg == bootstrapType "Tuple" =
+          Just (z,(\a b -> app bo [a,b]))
+    extractPair _ = Nothing
+relSummarize _ = error "bad args to relSummarize"
+
 
 unionRecs :: [Value] -> Interpreter Value
 unionRecs [VariantV tg "record" as, VariantV tg' "record" bs]
