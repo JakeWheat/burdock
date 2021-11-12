@@ -62,6 +62,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ,"optparse-applicative"
             ,"filepath"
             ,"uniplate"
+            ,"stm"
             ]
 
     let ghc :: GhcOptions -> FilePath -> FilePath -> Action ()

@@ -5,6 +5,7 @@ import Burdock.TestData
 import Burdock.Parse
 import Burdock.Pretty
 import Burdock.Interpreter
+import qualified Burdock.HsOccasionalTests as HsOccasionalTests
 import Burdock.Syntax (SourcePosition)
 import Data.Generics.Uniplate.Data (transformBi)
 import Data.Data (Data)
@@ -21,7 +22,8 @@ main :: IO ()
 main = do
     setNumCapabilities =<< getNumProcessors
     at <- makeTests testdata
-    T.defaultMain at
+    T.defaultMain $ T.testGroup "group" [at
+                                        ,HsOccasionalTests.tests]
 
 
 makeTests :: TestTree -> IO T.TestTree
