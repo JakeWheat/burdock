@@ -12,7 +12,11 @@ import Burdock.Occasional
 import Control.Concurrent
     (threadDelay
     ,forkIO)
-import Control.Monad (void)
+import Control.Monad (void
+                     ,forM_)
+import Data.Maybe (mapMaybe)
+
+import Text.Show.Pretty (ppShow)
 
 import Test.Tasty as T
 import Test.Tasty.HUnit as T
@@ -24,6 +28,7 @@ tests = T.testGroup "hs occasional tests"
     ,inboxSimpleReceiveWaitSend
     ,inboxSimpleReceiveWaitSendTimeoutGet
     ,inboxSimpleReceiveWaitSendTimeoutThenGet
+    ,mainReceiveTests
     ]
 
 ------------------------------------------------------------------------------
@@ -126,6 +131,7 @@ inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSen
     x <- receive b shortWait (const True)
     assertEqual "" Nothing x
     y <- receive b (shortWait * 2) (const True)
+    -- todo: saw a rare race with this, how??
     assertEqual "" (Just "test") y
 
 
@@ -135,88 +141,189 @@ inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSen
 
 tests for selective receive including checking the timeouts
 
-maybe the selective receive buffering with timeout is a good candidate
-to try to do some TLA? It's simple, but there's room to mess it up
+whitebox state transitions
+
++ some extra to do with timeouts
+-> make sure it timesout when messages come in too late
++ doesn't timeout when they come in on time
++ timeout is accurate when there are incoming messages that
+  don't match the predicate
+
+the state is:
+content of the buffer
+content of the tchan
+each has matching and non matching item options
+0,1,2 of each
+state transitions:
+always prime with a receive
+  this can be selective, and can have a timeout
+then optionally a message will come in before the timeout
+  or after the timeout
+  -> race issues
+
+buffer is
+0,1,2 matching messages
+0,1,2 non matching messages
+chan contents are:
+0,1,2 matching messages
+0,1,2 non matching messages
+receive is:
+  matching, non matching
+  -1,0,X timeout
+action is:
+  post matching message before timeout, or after timeout
+guard is:
+  if there are no matching messages in the buffer or chan,
+    and there won't be a matching messages posted before the timeout
+  -> reject this test, don't run it because it should hang forever
+
+what to check:
+1. does receive timeout or return a value
+2. how long it took to get a value or timeout
+3. what's left in the buffer and tchan
+
+
+TODO: extend: number the matching messages in each test uniquely
+check if do get a message, it's the right one,
+and that the remaining messages in the buffer and chan are in the
+right order too
 
 -}
+
+
+mainReceiveTests :: T.TestTree
+mainReceiveTests = T.testGroup "mainReceiveTests" $ map runTest generateTests
+
+data ReceiveTest
+    = ReceiveTest
+    { -- setup
+     numChanMatching :: Int
+     -- results
+    ,finishes :: Bool
+    }
+    deriving Show
+
+{-
+some steps:
+add some non matching
+plus the receive matching option
+-> needs to check if a test is valid now, some generated will timeout
+
+preseed the buffer too
+-> test that this works
+  use a testing method that gets the buffer
+
+add timeouts
+
+add posting a message after calling receive
+
+measure the time to run is expected
+
+check what's left in the buffer and chan
+
+check the right message is received and the right messages are in the
+buffer and chan in the right order
+
+
+-}
+
+generateTests :: [ReceiveTest]
+generateTests = mapMaybe mk cands
+  where
+    cands = [n | n <- [0,1,2]]
+    mk n = Just $ ReceiveTest
+           {numChanMatching = n
+           ,finishes = n > 0}
+
+runTest :: ReceiveTest -> T.TestTree
+runTest rt = T.testCase (ppShow rt) $ do
+    ib <- makeInbox
+    forM_ [0..numChanMatching rt - 1] $ \n -> send ib n
+    r <- receive ib 0 (const True)
+    case (r, finishes rt) of
+        (Nothing,False) -> assertBool "" True
+        (Just _ ,True) -> assertBool "" True
+        -- todo: print this readably
+        _ -> assertFailure $ ppShow (r, finishes rt)
+    
+
+
 {-
 
-put message
-selective receive to get it
-check it
+
+then test the timeout is stable even when lots of non matching
+messages are coming in, two tests:
+have non matching items in the buffer?
+use a timeout
+post lots of non matching messages at different times/delays
+then either post a matching message sometime before the timeout
+  or just after (enough to avoid races, is this feasible?)
+check it either timesout or succeeds
+  check the time in both cases: that it succeeds within the timeout
+    (a sanity check), or that it timedout close to the exact
+  timeout time
+
+-}
+
+------------------------------------------------------------------------------
+
+-- spawn monitor
+
+{-
+
+spawn a process, exchange messages with it by sending the return
+address
+
 -}
 
 {-
-put message
-selective receive doesn't match
-check it
-selective receive does match
+
+spawn a process
+get the exit value it returns
+check it's exited?
+
 -}
 
 {-
-put n messages in order
-get them in order
-put n messages in order
-selective receive one by one in reverse order
+
+spawn a process
+throw an exception
+get this exception value
+check it's exited?
+
 -}
 
 {-
-check buffered messages match
-drain the queue and check it
+
+spawn a process
+send it the kill message
+get the exception value
+check it's exited?
+
+-}
+
+
+{-
+
+check exiting the main process: check the exit value, exception, kill
+
 -}
 
 {-
-check buffered messages don't match
-drain the queue and check it
+
+spawn some processes
+exit the main process
+check it's prompt, and the spawned processes are all gone
+
 -}
 
-{-
-skip then match a message being posted after get is called
--}
 
 {-
-skip then match messages that are already sitting in the bufffer
--}
 
-{-
-arrange so will skip a message, get one
-then get another
-  post a non matching message after wait
-  then post a matching message after another wait
-check the get
-then drain the queue and check
--}
-
-{-
-do a timeout
-  have 3 non matching messages posted during the timeout
-  then one after the timeout
-  check it times out
-    check how long it took to time out
-    (add these checks everywhere where there's a timeout)
-  check after wait that the same get with 0 timeout succeeds
-  drain the rest of the queue and check
--}
-
-{-
-do a timeout
-  have 3 non matching messages posted during the timeout
-  then a matching before it times out
-  check this message
-  drain the rest of the queue and cehck
--}
-
-{-
-do get with timeout
-  post 1 non matching message in the middle
-  check it timed out
-loop:
-  do another get with timeout
-    post a message that doesn't match, but did match the previous
-    get which already timed out in the middle
-  check it timed out
-then do a get with timeout
-  in the middle, post a matching message
-then drain the queue and check
+spawn some processes
+make one of them non daemon
+exit the main process
+check it waits for that one process to exit
+then check it prompty exits everything and returns
 
 -}

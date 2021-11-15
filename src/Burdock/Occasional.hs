@@ -8,32 +8,22 @@ It only exists to help implement concurrency in Burdock
 
 Plan:
 
-inbox demo
-  see what the options are, is it worth chasing something
-  that will scale to distributed message passing, or ignoring
-  that future for now
-
+inbox
 send and receive messages
-typed and untyped
-don't actually need untyped for burdock, so skip it for now
-anomaly?
-
+typed only for now, since burdock only needs to be able to send a
+single type
 
 timeouts
 selective receive
-self
+
+there's no implicit self in the haskell layer - too much distraction
+to implement something not needed
 
 spawn monitor
-send and receive with it, including self
 
-check exit values with spawn monitor, use a helper
--> regular function exit
-  in system exception exit
-  arbitrary exception exit
-  haskell thread kill
-
-link, spawn_link?
-
+runs a function in a new ghc thread which takes an inbox which is
+created for the thread
+send and receive with the new spawn, sending self address
 
 -}
 
@@ -65,8 +55,8 @@ smartTimeout :: Int -> STM a -> IO (Maybe a)
 smartTimeout n action = do
    v <- atomically $ newEmptyTMVar
    _ <- timeout n $ atomically $ do
-          result <- action
-          putTMVar v result
+       result <- action
+       putTMVar v result
    atomically $ tryTakeTMVar v
 
 
@@ -87,7 +77,7 @@ receive :: (Addr a)
           -> (a -> Bool) -- accept function for selective receive
           -> IO (Maybe a)
 receive (Addr ib) to _f = do
-    if | to < 0 -- todo: wrap it in a data type?
+    if | to < 0 -- todo: < 0 means infinity, wrap it in a data type?
          -> Just <$> atomically (readTChan ib)
        | to == 0 -> atomically (tryReadTChan ib)
        | otherwise -> smartTimeout to $ readTChan ib
