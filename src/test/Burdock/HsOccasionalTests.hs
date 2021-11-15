@@ -7,19 +7,36 @@ import Burdock.Occasional
     (makeInbox
     ,send
     ,receive
+    ,addr
+
+    ,Inbox
+    --,Addr
+    
+    ,testAddToBuffer
+    ,testReceiveWholeBuffer
     )
 
 import Control.Concurrent
     (threadDelay
     ,forkIO)
 import Control.Monad (void
-                     ,forM_)
-import Data.Maybe (mapMaybe)
+                     ,forM_
+                     )
+--import Data.Maybe (mapMaybe)
 
 import Text.Show.Pretty (ppShow)
 
 import Test.Tasty as T
 import Test.Tasty.HUnit as T
+
+import Control.Monad.State
+    (State
+    ,get
+    ,put
+    ,evalState
+    )
+
+--import Debug.Trace (trace)
 
 tests :: T.TestTree
 tests = T.testGroup "hs occasional tests"
@@ -52,7 +69,7 @@ read the message out and check it
 inboxSimpleSendAndReceive :: TestTree
 inboxSimpleSendAndReceive = T.testCase "inboxSimpleSendAndReceive" $ do
     b <- makeInbox
-    send b "test"
+    send (addr b) "test"
     x <- receive b (-1) (const True)
     assertEqual "" (Just "test") x
 
@@ -65,7 +82,7 @@ check the message
 inboxSimpleSendAndReceive0Timeout :: TestTree
 inboxSimpleSendAndReceive0Timeout = T.testCase "inboxSimpleSendAndReceive0Timeout" $ do
     b <- makeInbox
-    send b "test"
+    send (addr b) "test"
     -- not sure if there's a possible race here
     -- may need a tweak if start getting intermittent failures
     -- if running lots of tests concurrently
@@ -92,7 +109,7 @@ inboxSimpleReceiveWaitSend = T.testCase "inboxSimpleReceiveWaitSend" $ do
     b <- makeInbox
     void $ forkIO $ do
         threadDelay shortWait
-        send b "test"
+        send (addr b) "test"
     x <- receive b (-1) (const True)
     assertEqual "" (Just "test") x
 
@@ -109,7 +126,7 @@ inboxSimpleReceiveWaitSendTimeoutGet = T.testCase "inboxSimpleReceiveWaitSendTim
     b <- makeInbox
     void $ forkIO $ do
         threadDelay shortWait
-        send b "test"
+        send (addr b) "test"
     x <- receive b (shortWait * 2) (const True)
     assertEqual "" (Just "test") x
 
@@ -127,7 +144,7 @@ inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSen
     b <- makeInbox
     void $ forkIO $ do
         threadDelay (shortWait * 2)
-        send b "test"
+        send (addr b) "test"
     x <- receive b shortWait (const True)
     assertEqual "" Nothing x
     y <- receive b (shortWait * 2) (const True)
@@ -194,59 +211,158 @@ right order too
 mainReceiveTests :: T.TestTree
 mainReceiveTests = T.testGroup "mainReceiveTests" $ map runTest generateTests
 
-data ReceiveTest
-    = ReceiveTest
+
+data TestMessage = Matching Int
+                 | NotMatching Int
+    deriving (Eq,Show)
+
+receivePred :: TestMessage -> Bool
+receivePred (Matching {}) = True
+receivePred (NotMatching {}) = False
+
+data NoTimeoutReceiveTest
+    = NoTimeoutReceiveTest
     { -- setup
-     numChanMatching :: Int
+     startingChanContents :: [TestMessage]
+    ,startingBufferContents :: [TestMessage]
+    ,useSelectiveReceive
      -- results
-    ,finishes :: Bool
+    ,succeedsInGettingAMessage :: Bool
+    ,finalChanContents :: [TestMessage]
+    ,finalBufferContents :: [TestMessage]
     }
     deriving Show
 
 {-
 some steps:
-add some non matching
-plus the receive matching option
--> needs to check if a test is valid now, some generated will timeout
 
-preseed the buffer too
--> test that this works
-  use a testing method that gets the buffer
+phase 1:
+timeout is always 0
+add selective receive
+ability to preseed the buffer
+then have tests which return no matches
+get match from the buffer
+get match from the tchan
+buffer some messages before getting from the tchan
+buffer some message before returning no matches
+-> test you get the right message
+check the content of the buffer and chan is right and in the expected order too
 
-add timeouts
+change num chan matching to list of message in the chan
+and a list in the buffer at the start
+check the message you get, check it's the right one, or not matching
+then check the buffer and chan contents are what they should be
 
-add posting a message after calling receive
+todo: add some sanity checks which read multiple messages mixed with
+buffering, I think they're not strictly needed iff the state tests are
+correctly implemented, but it's a double check that might catch some
+situations if there's a mistake in those tests:
+drain all tests:
+generate 0,1,2 messages of each type in the buf and chan
+then read matching until get nothing, and check this list is what's expected
+then read const true until get nothing, and check this list is what's expected
 
-measure the time to run is expected
 
-check what's left in the buffer and chan
+then do tests with timeouts
+this includes all the tests above
+  they should behave the same, apart from taking the timeout time before failing
+  -> test all the above + how long the receive call took to return matches
+     expectations
+  every test that should have a receive value/not a timeout,
+    also do with infinite timeout
 
-check the right message is received and the right messages are in the
-buffer and chan in the right order
+then do tests with timeouts that have a message posted to the chan
+  after half the timeout time which may match or not match
+    (some will timeout, some won't)
 
+then do the tests where multiple messages are posted in the timeout
+duration, sometimes one matches, sometimes none
 
 -}
 
-generateTests :: [ReceiveTest]
-generateTests = mapMaybe mk cands
-  where
-    cands = [n | n <- [0,1,2]]
-    mk n = Just $ ReceiveTest
-           {numChanMatching = n
-           ,finishes = n > 0}
+mkMsg :: Bool -> State Int TestMessage
+mkMsg b = do
+    i <- get
+    put (i + 1)
+    pure $ if b
+           then Matching i
+           else NotMatching i
 
-runTest :: ReceiveTest -> T.TestTree
+mkMsgs :: Num s => State s a -> a
+mkMsgs f = evalState f 0
+
+generateTests :: [NoTimeoutReceiveTest]
+generateTests = map mk cands
+  where
+    messageListOptions =
+        [] ++ [[True]] ++ [[False]]
+        ++ [[a,b]| a <- [True,False], b <- [True,False]]
+        ++ [[a,b,c]| a <- [True,False]
+                   , b <- [True,False]
+                   , c <- [True,False]
+                   ]
+        
+    cands = [(sc,sb,usr)  | sc <- messageListOptions
+                          , sb <- messageListOptions
+                          , usr <- [True,False]]
+    takeMatch usr b = let (p,x,s) = takeMatchSplit usr [] b
+                      in  (x,p ++ s)
+    -- takeMatchSplit _ a b | trace ("takeMatchSplit:" ++ show (a,b)) False = undefined
+    takeMatchSplit _ p [] = (reverse p,Nothing,[])
+    takeMatchSplit usr p (x:xs)
+        | not usr || receivePred x
+        = --let yy =
+              (reverse p, Just x, xs)
+          --in trace ("tmsret: " ++ show yy) yy
+        | otherwise
+        = takeMatchSplit usr (x:p) xs
+    finalBufChan sb sc usr =
+        let (x, finalBufStart) = takeMatch usr sb
+        in case x of
+                Just _ -> (finalBufStart, sc)
+                Nothing ->
+                    let (p,_,s) = takeMatchSplit usr [] sc
+                    in (finalBufStart ++ p, s)
+    mk (sc,sb,usr) =
+        let (sbc,scc) =
+                mkMsgs ((,) <$> mapM mkMsg sb <*> mapM mkMsg sc)
+            succeeds = not usr || or (sc ++ sb)
+            (fb,fc) = finalBufChan sbc scc usr
+        in NoTimeoutReceiveTest
+           {startingChanContents = scc 
+           ,startingBufferContents = sbc
+           ,useSelectiveReceive = usr
+           -- results
+           ,succeedsInGettingAMessage = succeeds
+           ,finalChanContents = fc
+           ,finalBufferContents = fb
+           }
+
+runTest :: NoTimeoutReceiveTest -> T.TestTree
+-- todo: create a more readable test name?
 runTest rt = T.testCase (ppShow rt) $ do
     ib <- makeInbox
-    forM_ [0..numChanMatching rt - 1] $ \n -> send ib n
-    r <- receive ib 0 (const True)
-    case (r, finishes rt) of
+    forM_ (startingBufferContents rt) $ testAddToBuffer ib 
+    forM_ (startingChanContents rt) $ \m -> send (addr ib) m
+    m <- receive ib 0 $ if useSelectiveReceive rt
+                        then receivePred
+                        else const True
+    case (m, succeedsInGettingAMessage rt) of
         (Nothing,False) -> assertBool "" True
         (Just _ ,True) -> assertBool "" True
         -- todo: print this readably
-        _ -> assertFailure $ ppShow (r, finishes rt)
-    
+        _ -> assertFailure $ ppShow (m, rt)
+    finalBuf <- testReceiveWholeBuffer ib
+    assertEqual "" (finalBufferContents rt) finalBuf
+    finalChan <- flushInbox ib
+    assertEqual "" (finalChanContents rt) finalChan
 
+flushInbox :: Inbox a -> IO [a]
+flushInbox ib = do
+    x <- receive ib 0 $ const True
+    case x of
+        Nothing -> pure []
+        Just y -> (y:) <$> flushInbox ib
 
 {-
 
