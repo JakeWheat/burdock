@@ -83,6 +83,12 @@ import Control.Concurrent
 
 import Control.Monad (void, when)
 
+import Control.Concurrent.Async
+    (async
+    ,wait
+    ,withAsync
+    )
+
 --import Debug.Trace (traceM, trace)
 
 ------------------------------------------------------------------------------
@@ -112,9 +118,30 @@ data Inbox a = Inbox {addr :: Addr a
 
 -- api functions
 
+{-
+create an inbox
+spawn the central services process
+for now, this will just run the user code
+wait for the return value of the spawned thread
+return it
 
+then in stage 2:
+
+the central services will spawn the main user process
+it will wait for that specific process to exit
+and then return it's exit value to the original thread
+
+then in stage 3:
+spawn will be implemented by a message to central services,
+instead of forkio locally
+
+-}
 runOccasional :: (Inbox a -> IO b) -> IO b
-runOccasional f = do
+runOccasional f =
+    withAsync (centralServices f) wait
+
+centralServices :: (Inbox a -> IO b) -> IO b
+centralServices f = do
     ib <- makeInbox
     f ib
 

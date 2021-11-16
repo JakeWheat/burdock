@@ -63,6 +63,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ,"filepath"
             ,"uniplate"
             ,"stm"
+            ,"async"
             ]
 
     let ghc :: GhcOptions -> FilePath -> FilePath -> Action ()

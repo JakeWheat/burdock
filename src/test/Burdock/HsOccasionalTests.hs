@@ -44,6 +44,13 @@ import Data.Time.Clock (getCurrentTime
                        ,diffUTCTime
                        )
 
+import Control.Exception.Safe
+    (catch
+    ,SomeException
+    ,displayException
+    )
+
+import Data.List (isInfixOf)
 
 --import Debug.Trace (trace)
 
@@ -60,7 +67,11 @@ tests = T.testGroup "hs occasional tests"
         ,mainReceiveTests]
     ,T.testGroup "occasional-api"
         [testSimpleSpawn
-        ,_testSimpleSpawn1]
+        ,_testSimpleSpawn1
+        ,testMainProcessReturnValue
+        ,catchExceptionExample
+        ,testMainProcessException
+        ]
     ]
 
 ------------------------------------------------------------------------------
@@ -521,6 +532,35 @@ check it's exited?
 check exiting the main process: check the exit value, exception, kill
 
 -}
+
+testMainProcessReturnValue :: T.TestTree
+testMainProcessReturnValue = T.testCase "testMainProcessReturnValue" $ do
+    x <- runOccasional $ \_ib -> pure "retval"
+    assertEqual "" "retval" x
+
+
+catchExceptionExample :: T.TestTree
+catchExceptionExample = T.testCase "catchExceptionExample" $
+    checkException "test an error" $
+        void $ error "test an error"
+
+checkException :: String -> IO a -> IO ()
+checkException msg f =
+    catch (f >> assertFailure ("didn't throw")) chk
+  where
+    chk :: SomeException -> IO ()
+    chk e = assertBool msg (msg `isInfixOf` displayException e)
+
+testMainProcessException :: T.TestTree
+testMainProcessException = T.testCase "testMainProcessException" $
+    checkException "an issue in the main process" runit
+  where
+    runit = void $ runOccasional $ \_ib ->
+            void $ error "an issue in the main process"
+
+
+
+
 
 {-
 
