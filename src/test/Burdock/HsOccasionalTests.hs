@@ -14,6 +14,8 @@ import Burdock.Occasional
     
     ,testAddToBuffer
     ,testReceiveWholeBuffer
+
+    ,spawn
     )
 
 import Control.Concurrent
@@ -51,7 +53,8 @@ tests = T.testGroup "hs occasional tests"
     ,inboxSimpleReceiveWaitSend
     ,inboxSimpleReceiveWaitSendTimeoutGet
     ,inboxSimpleReceiveWaitSendTimeoutThenGet
-    ,mainReceiveTests
+    --,mainReceiveTests
+    ,testSimpleSpawn
     ]
 
 ------------------------------------------------------------------------------
@@ -394,6 +397,21 @@ spawn a process, exchange messages with it by sending the return
 address
 
 -}
+
+testSimpleSpawn :: T.TestTree
+testSimpleSpawn = T.testCase "testSimpleSpawn" $ do
+    ib <- makeInbox
+    spaddr <- spawn $ \sib -> do
+        x <- receive sib (-1) $ const True
+        case x of
+            Just (ret, msg) -> send ret ("hello " ++ msg)
+                 -- putStrLn temp until monitoring stuff works
+            _ -> putStrLn ("bad message: " ++ show x)
+                 -- >> error ("bad message: " ++ show x)
+                 --error "bad message"
+    send spaddr (addr ib, "testSimpleSpawn")
+    x <- receive ib (-1) $ const True
+    assertEqual "" (Just "hello testSimpleSpawn") x
 
 {-
 

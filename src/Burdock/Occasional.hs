@@ -40,6 +40,8 @@ module Burdock.Occasional
     ,testAddToBuffer
     ,testReceiveWholeBuffer
 
+    ,spawn
+    
     ) where
 
 import System.Timeout (timeout)
@@ -51,6 +53,7 @@ import Control.Monad.STM
 import Control.Concurrent.STM.TChan
     (TChan
     ,newTChan
+    ,newTChanIO
     ,readTChan
     ,writeTChan
     ,tryReadTChan
@@ -71,6 +74,10 @@ import Data.Time.Clock (getCurrentTime
                        ,UTCTime
                        )
 
+import Control.Concurrent (forkIO)
+
+import Control.Monad (void)
+
 --import Debug.Trace (traceM, trace)
 
 smartTimeout :: Int -> STM a -> IO (Maybe a)
@@ -84,6 +91,15 @@ smartTimeout n action = do
 
 data Addr a = Addr (TChan a)
 
+-- not sure how to make this better
+-- for burdock want erlang style pids which are unique
+-- I don't see an easy way to do this in haskell
+-- avoiding the show instance makes all sorts of debugging really
+-- tedious. maybe some helper functions can be used if messages
+-- follow a pattern
+instance Show (Addr a) where
+    show (Addr {}) = "Addr"
+
 data Inbox a = Inbox {addr :: Addr a
                      ,_buffer :: TVar [a]}
 
@@ -92,6 +108,12 @@ makeInbox = atomically $ do
     x <- newTChan
     b <- newTVar []
     pure (Inbox (Addr x) b)
+
+makeInboxFromChan :: TChan a -> IO (Inbox a)
+makeInboxFromChan x = atomically $ do
+    b <- newTVar []
+    pure (Inbox (Addr x) b)
+
 
 
 send :: Addr a -> a -> IO ()
@@ -158,8 +180,6 @@ then loop:
 
 -}
 
-
--- temp
 receive1 :: Inbox a
         -> Int -- timeout in microseconds
         -> (a -> Bool) -- accept function for selective receive
@@ -199,3 +219,13 @@ testReceiveWholeBuffer (Inbox _ buf) = atomically $ do
     writeTVar buf []
     pure x
 
+
+
+spawn :: (Inbox a -> IO b) -> IO (Addr a)
+spawn f = do
+    ch <- newTChanIO
+    void $ forkIO $ do
+        ib <- makeInboxFromChan ch
+        void $ f ib
+        pure ()
+    pure (Addr ch)
