@@ -16,6 +16,7 @@ import Burdock.Occasional
     ,testAddToBuffer
     ,testReceiveWholeBuffer
     ,testMakeInbox
+    ,testSend
     )
 
 import Control.Concurrent
@@ -83,7 +84,7 @@ read the message out and check it
 inboxSimpleSendAndReceive :: TestTree
 inboxSimpleSendAndReceive = T.testCase "inboxSimpleSendAndReceive" $ do
     b <- testMakeInbox
-    send (addr b) "test"
+    testSend (addr b) "test"
     x <- receive b (-1) (const True)
     assertEqual "" (Just "test") x
 
@@ -96,7 +97,7 @@ check the message
 inboxSimpleSendAndReceive0Timeout :: TestTree
 inboxSimpleSendAndReceive0Timeout = T.testCase "inboxSimpleSendAndReceive0Timeout" $ do
     b <- testMakeInbox
-    send (addr b) "test"
+    testSend (addr b) "test"
     -- not sure if there's a possible race here
     -- may need a tweak if start getting intermittent failures
     -- if running lots of tests concurrently
@@ -125,7 +126,7 @@ inboxSimpleReceiveWaitSend = T.testCase "inboxSimpleReceiveWaitSend" $ do
     b <- testMakeInbox
     void $ forkIO $ do
         threadDelay shortWait
-        send (addr b) "test"
+        testSend (addr b) "test"
     x <- receive b (-1) (const True)
     assertEqual "" (Just "test") x
 
@@ -142,7 +143,7 @@ inboxSimpleReceiveWaitSendTimeoutGet = T.testCase "inboxSimpleReceiveWaitSendTim
     b <- testMakeInbox
     void $ forkIO $ do
         threadDelay shortWait
-        send (addr b) "test"
+        testSend (addr b) "test"
     x <- receive b (shortWait * 2) (const True)
     assertEqual "" (Just "test") x
 
@@ -160,7 +161,7 @@ inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSen
     b <- testMakeInbox
     void $ forkIO $ do
         threadDelay (shortWait * 2)
-        send (addr b) "test"
+        testSend (addr b) "test"
     x <- receive b shortWait (const True)
     assertEqual "" Nothing x
     y <- receive b (shortWait * 2) (const True)
@@ -327,7 +328,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
     runTimeout0Test = do
         ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> send (addr ib) m
+        forM_ (startingChanContents rt) $ \m -> testSend (addr ib) m
         m <- receive ib 0 $ if useSelectiveReceive rt
                             then receivePred
                             else const True
@@ -343,7 +344,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
     runInfiniteTimeoutTest = when (receivesJust rt) $ do
         ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> send (addr ib) m
+        forM_ (startingChanContents rt) $ \m -> testSend (addr ib) m
         m <- receive ib (-1) $ if useSelectiveReceive rt
                             then receivePred
                             else const True
@@ -359,7 +360,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
     runFiniteTimeoutTest = do
         ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> send (addr ib) m
+        forM_ (startingChanContents rt) $ \m -> testSend (addr ib) m
         startTime <- getCurrentTime
         m <- receive ib shortWait $ if useSelectiveReceive rt
                             then receivePred
@@ -411,15 +412,15 @@ address
 testSimpleSpawn :: T.TestTree
 testSimpleSpawn = T.testCase "testSimpleSpawn" $
     runOccasional $ \ib -> do
-        spaddr <- spawn $ \sib -> do
+        spaddr <- spawn ib $ \sib -> do
             x <- receive sib (-1) $ const True
             case x of
-                Just (ret, msg) -> send ret ("hello " ++ msg)
+                Just (ret, msg) -> send sib ret ("hello " ++ msg)
                      -- putStrLn temp until monitoring stuff works
                 _ -> putStrLn ("bad message: " ++ show x)
                      -- >> error ("bad message: " ++ show x)
                      --error "bad message"
-        send spaddr (addr ib, "testSimpleSpawn")
+        send ib spaddr (addr ib, "testSimpleSpawn")
         x <- receive ib (-1) $ const True
         assertEqual "" (Just "hello testSimpleSpawn") x
 
@@ -427,7 +428,7 @@ testSimpleSpawn = T.testCase "testSimpleSpawn" $
 _testSimpleSpawn1 :: T.TestTree
 _testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" $
     runOccasional $ \ib -> do
-        spaddr <- spawn $ \sib -> do
+        spaddr <- spawn ib $ \sib -> do
             x <- receive sib (-1) $ const True
             -- assert here outputs a message to say it's a failure
             -- but it doesn't affect the tasty test results ...
@@ -441,7 +442,7 @@ _testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" $
             -- it makes it impossible to miss there was an issue
             --assertEqual "" (Just "hello testSimpleSpawn") (snd <$> x)
             case x of
-                Just (ret, msg) -> send ret ("hello " ++ msg)
+                Just (ret, msg) -> send sib ret ("hello " ++ msg)
                      -- putStrLn temp until monitoring stuff works
                 _ -> putStrLn ("bad message: " ++ show x)
                      -- >> error ("bad message: " ++ show x)
@@ -452,7 +453,7 @@ _testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" $
             -- assertEqual "" (Just "hello testSimpleSpawn1") (snd <$> x)
             -- TODO: come back to this after implementing the monitor/
             -- exit value stuff - it will behave differently then
-        send spaddr (addr ib, "testSimpleSpawn")
+        send ib spaddr (addr ib, "testSimpleSpawn")
         x <- receive ib (-1) $ const True
         assertEqual "" (Just "hello testSimpleSpawn") x
 

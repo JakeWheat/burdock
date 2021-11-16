@@ -41,6 +41,7 @@ module Burdock.Occasional
     ,testAddToBuffer
     ,testReceiveWholeBuffer
     ,testMakeInbox
+    ,testSend
     
     ) where
 
@@ -74,9 +75,13 @@ import Data.Time.Clock (getCurrentTime
                        ,UTCTime
                        )
 
-import Control.Concurrent (forkIO)
+import Control.Concurrent
+    (forkIO
+    ,myThreadId
+    ,ThreadId
+    )
 
-import Control.Monad (void)
+import Control.Monad (void, when)
 
 --import Debug.Trace (traceM, trace)
 
@@ -96,7 +101,11 @@ instance Show (Addr a) where
     show (Addr {}) = "Addr"
 
 data Inbox a = Inbox {addr :: Addr a
-                     ,_buffer :: TVar [a]}
+                     ,_buffer :: TVar [a]
+                     -- used to check that inboxes are only
+                     -- used in the thread they are created in
+                     ,_threadId :: ThreadId
+                     }
 
 
 ------------------------------------------------------------------------------
@@ -109,8 +118,9 @@ runOccasional f = do
     ib <- makeInbox
     f ib
 
-spawn :: (Inbox a -> IO b) -> IO (Addr a)
-spawn f = do
+spawn :: (Inbox c) -> (Inbox a -> IO b) -> IO (Addr a)
+spawn (Inbox _ _ ibtid) f = do
+    assertMyThreadIdIs ibtid
     ch <- newTChanIO
     void $ forkIO $ do
         ib <- makeInboxFromChan ch
@@ -118,8 +128,10 @@ spawn f = do
         pure ()
     pure (Addr ch)
 
-send :: Addr a -> a -> IO ()
-send (Addr tgt) v = atomically $ writeTChan tgt v
+send :: (Inbox b) -> Addr a -> a -> IO ()
+send (Inbox _ _ ibtid) (Addr tgt) v = do
+    assertMyThreadIdIs ibtid
+    atomically $ writeTChan tgt v
 
 
 receive :: --Show a =>
@@ -127,7 +139,8 @@ receive :: --Show a =>
         -> Int -- timeout in microseconds
         -> (a -> Bool) -- accept function for selective receive
         -> IO (Maybe a)
-receive ib@(Inbox (Addr ch) buf) tme f = do
+receive ib@(Inbox (Addr ch) buf ibtid) tme f = do
+    assertMyThreadIdIs ibtid
     startTime <- getCurrentTime
     mres <- atomically $ do
         b <- readTVar buf
@@ -146,17 +159,21 @@ receive ib@(Inbox (Addr ch) buf) tme f = do
 -- testing only functions, for whitebox and component testing
 
 testAddToBuffer :: Inbox a -> a -> IO ()
-testAddToBuffer (Inbox _ buf) a = atomically $ do
+testAddToBuffer (Inbox _ buf _) a = atomically $ do
     modifyTVar buf $ (++ [a])
 
 testReceiveWholeBuffer :: Inbox a -> IO [a]
-testReceiveWholeBuffer (Inbox _ buf) = atomically $ do
+testReceiveWholeBuffer (Inbox _ buf _) = atomically $ do
     x <- readTVar buf
     writeTVar buf []
     pure x
 
 testMakeInbox :: IO (Inbox a)
 testMakeInbox = makeInbox
+
+-- send without the local inbox for inbox testing
+testSend :: Addr a -> a -> IO ()
+testSend (Addr tgt) v = atomically $ writeTChan tgt v
 
 ------------------------------------------------------------------------------
 
@@ -194,7 +211,7 @@ receiveNoBuffered :: Inbox a
         -> (a -> Bool) -- accept function for selective receive
         -> UTCTime
         -> IO (Maybe a)
-receiveNoBuffered ib@(Inbox (Addr ch) buf) tme f startTime = do
+receiveNoBuffered ib@(Inbox (Addr ch) buf _) tme f startTime = do
     -- get a message
     -- if it matches, return it
     -- otherwise, buffer
@@ -215,15 +232,25 @@ receiveNoBuffered ib@(Inbox (Addr ch) buf) tme f startTime = do
                     else receiveNoBuffered ib tme f startTime
 
 makeInbox :: IO (Inbox a)
-makeInbox = atomically $ do
-    x <- newTChan
-    b <- newTVar []
-    pure (Inbox (Addr x) b)
+makeInbox = do
+    tid <- myThreadId
+    atomically $ do
+      x <- newTChan
+      b <- newTVar []
+      pure (Inbox (Addr x) b tid)
 
 makeInboxFromChan :: TChan a -> IO (Inbox a)
-makeInboxFromChan x = atomically $ do
-    b <- newTVar []
-    pure (Inbox (Addr x) b)
+makeInboxFromChan x = do
+    tid <- myThreadId
+    atomically $ do
+      b <- newTVar []
+      pure (Inbox (Addr x) b tid)
+
+assertMyThreadIdIs :: ThreadId -> IO ()
+assertMyThreadIdIs ibtid = do
+    tid <- myThreadId
+    when (tid /= ibtid) $
+      error $ "inbox used in wrong thread, created in " ++ show ibtid ++ ", used in " ++ show tid
 
 ------------------------------------------------------------------------------
 
