@@ -4,18 +4,18 @@ module Burdock.HsOccasionalTests
     (tests) where
 
 import Burdock.Occasional
-    (makeInbox
+    (runOccasional
+    ,spawn
     ,send
     ,receive
     ,addr
 
     ,Inbox
     --,Addr
-    
+
     ,testAddToBuffer
     ,testReceiveWholeBuffer
-
-    ,spawn
+    ,testMakeInbox
     )
 
 import Control.Concurrent
@@ -48,13 +48,18 @@ import Data.Time.Clock (getCurrentTime
 
 tests :: T.TestTree
 tests = T.testGroup "hs occasional tests"
-    [inboxSimpleSendAndReceive
-    ,inboxSimpleSendAndReceive0Timeout
-    ,inboxSimpleReceiveWaitSend
-    ,inboxSimpleReceiveWaitSendTimeoutGet
-    ,inboxSimpleReceiveWaitSendTimeoutThenGet
-    --,mainReceiveTests
-    ,testSimpleSpawn
+    [T.testGroup "inbox"
+        [T.testGroup "basic"
+            [inboxSimpleSendAndReceive
+            ,inboxSimpleSendAndReceive0Timeout
+            ,inboxSimpleReceiveWaitSend
+            ,inboxSimpleReceiveWaitSendTimeoutGet
+            ,inboxSimpleReceiveWaitSendTimeoutThenGet]
+            
+        ,mainReceiveTests]
+    ,T.testGroup "occasional-api"
+        [testSimpleSpawn
+        ,_testSimpleSpawn1]
     ]
 
 ------------------------------------------------------------------------------
@@ -77,7 +82,7 @@ read the message out and check it
 
 inboxSimpleSendAndReceive :: TestTree
 inboxSimpleSendAndReceive = T.testCase "inboxSimpleSendAndReceive" $ do
-    b <- makeInbox
+    b <- testMakeInbox
     send (addr b) "test"
     x <- receive b (-1) (const True)
     assertEqual "" (Just "test") x
@@ -90,7 +95,7 @@ check the message
 
 inboxSimpleSendAndReceive0Timeout :: TestTree
 inboxSimpleSendAndReceive0Timeout = T.testCase "inboxSimpleSendAndReceive0Timeout" $ do
-    b <- makeInbox
+    b <- testMakeInbox
     send (addr b) "test"
     -- not sure if there's a possible race here
     -- may need a tweak if start getting intermittent failures
@@ -117,7 +122,7 @@ shortWait = 1000
 
 inboxSimpleReceiveWaitSend :: TestTree
 inboxSimpleReceiveWaitSend = T.testCase "inboxSimpleReceiveWaitSend" $ do
-    b <- makeInbox
+    b <- testMakeInbox
     void $ forkIO $ do
         threadDelay shortWait
         send (addr b) "test"
@@ -134,7 +139,7 @@ check the message
 
 inboxSimpleReceiveWaitSendTimeoutGet :: TestTree
 inboxSimpleReceiveWaitSendTimeoutGet = T.testCase "inboxSimpleReceiveWaitSendTimeoutGet" $ do
-    b <- makeInbox
+    b <- testMakeInbox
     void $ forkIO $ do
         threadDelay shortWait
         send (addr b) "test"
@@ -152,7 +157,7 @@ then check get message after 1.5
 
 inboxSimpleReceiveWaitSendTimeoutThenGet :: TestTree
 inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSendTimeoutThenGet" $ do
-    b <- makeInbox
+    b <- testMakeInbox
     void $ forkIO $ do
         threadDelay (shortWait * 2)
         send (addr b) "test"
@@ -320,7 +325,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
     runFiniteTimeoutTest
   where
     runTimeout0Test = do
-        ib <- makeInbox
+        ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
         forM_ (startingChanContents rt) $ \m -> send (addr ib) m
         m <- receive ib 0 $ if useSelectiveReceive rt
@@ -336,7 +341,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
         finalChan <- flushInbox ib
         assertEqual "" (finalChanContents rt) finalChan
     runInfiniteTimeoutTest = when (receivesJust rt) $ do
-        ib <- makeInbox
+        ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
         forM_ (startingChanContents rt) $ \m -> send (addr ib) m
         m <- receive ib (-1) $ if useSelectiveReceive rt
@@ -352,7 +357,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
         finalChan <- flushInbox ib
         assertEqual "" (finalChanContents rt) finalChan
     runFiniteTimeoutTest = do
-        ib <- makeInbox
+        ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
         forM_ (startingChanContents rt) $ \m -> send (addr ib) m
         startTime <- getCurrentTime
@@ -377,6 +382,11 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
             assertBool ("timeout time: " ++ show expected ++ " ~= " ++ show elapsed)
                 -- when shortWait == 0.001s, some of the actual times come in
                 -- at just over 0.002s
+                -- the current fudge factor is 2 * shortwait + 0.001
+                -- I think 3 * shortwait is not correct if shortwait is changed
+                -- maybe shortwait + 0.002 would be better?
+                -- review the tests which use this value and see if can reduce
+                -- reliance on these times in the testing for test robustness
                 (elapsed - expected < s shortWait + 0.001)
 
 
@@ -389,7 +399,7 @@ flushInbox ib = do
 
 ------------------------------------------------------------------------------
 
--- spawn monitor
+-- occasional api tests
 
 {-
 
@@ -399,25 +409,89 @@ address
 -}
 
 testSimpleSpawn :: T.TestTree
-testSimpleSpawn = T.testCase "testSimpleSpawn" $ do
-    ib <- makeInbox
-    spaddr <- spawn $ \sib -> do
-        x <- receive sib (-1) $ const True
-        case x of
-            Just (ret, msg) -> send ret ("hello " ++ msg)
-                 -- putStrLn temp until monitoring stuff works
-            _ -> putStrLn ("bad message: " ++ show x)
-                 -- >> error ("bad message: " ++ show x)
-                 --error "bad message"
-    send spaddr (addr ib, "testSimpleSpawn")
-    x <- receive ib (-1) $ const True
-    assertEqual "" (Just "hello testSimpleSpawn") x
+testSimpleSpawn = T.testCase "testSimpleSpawn" $
+    runOccasional $ \ib -> do
+        spaddr <- spawn $ \sib -> do
+            x <- receive sib (-1) $ const True
+            case x of
+                Just (ret, msg) -> send ret ("hello " ++ msg)
+                     -- putStrLn temp until monitoring stuff works
+                _ -> putStrLn ("bad message: " ++ show x)
+                     -- >> error ("bad message: " ++ show x)
+                     --error "bad message"
+        send spaddr (addr ib, "testSimpleSpawn")
+        x <- receive ib (-1) $ const True
+        assertEqual "" (Just "hello testSimpleSpawn") x
+
+
+_testSimpleSpawn1 :: T.TestTree
+_testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" $
+    runOccasional $ \ib -> do
+        spaddr <- spawn $ \sib -> do
+            x <- receive sib (-1) $ const True
+            -- assert here outputs a message to say it's a failure
+            -- but it doesn't affect the tasty test results ...
+            -- but in this test, it throws an exception
+            -- and then the main thread on the outside hangs
+            -- because it never gets the return message
+            -- the plan to deal with these sorts of things is to
+            -- integrate timeouts to the tests, which is probably needed
+            -- in the direct haskell tests (it will definitely be in the burdock tests)
+            -- at the moment, a hang is not the end of the world,
+            -- it makes it impossible to miss there was an issue
+            --assertEqual "" (Just "hello testSimpleSpawn") (snd <$> x)
+            case x of
+                Just (ret, msg) -> send ret ("hello " ++ msg)
+                     -- putStrLn temp until monitoring stuff works
+                _ -> putStrLn ("bad message: " ++ show x)
+                     -- >> error ("bad message: " ++ show x)
+                     --error "bad message"
+            -- the assert here doesn't cause this test to hang the test run
+            -- but it still doesn't trigger the test run to notice that
+            -- there was a failure apart from a debug message
+            -- assertEqual "" (Just "hello testSimpleSpawn1") (snd <$> x)
+            -- TODO: come back to this after implementing the monitor/
+            -- exit value stuff - it will behave differently then
+        send spaddr (addr ib, "testSimpleSpawn")
+        x <- receive ib (-1) $ const True
+        assertEqual "" (Just "hello testSimpleSpawn") x
 
 {-
 
 spawn a process
 get the exit value it returns
 check it's exited?
+
+call spawn_monitor
+
+exchange messages with the spawned process?
+
+wait for the monitor exit message
+
+You pass a maybe tag when monitoring
+return message is
+{Tag, MonitorRef, Pid, Error | Return value}
+does it distinguish here between an exception that exits the process
+and some other error, like the process wasn't able to start, or it
+can't be found
+
+
+
+-}
+
+{-
+
+add the close function to a wrapper around chan
+then:
+
+spawn a process
+exchange a message with it
+use monitor to verify the process is down
+send another message to it
+check you get an error immediately
+  instead of it failing silently by going to a chan that no-one will
+  ever read now
+
 
 -}
 
@@ -430,6 +504,8 @@ check it's exited?
 
 -}
 
+
+
 {-
 
 spawn a process
@@ -438,7 +514,6 @@ get the exception value
 check it's exited?
 
 -}
-
 
 {-
 
@@ -462,5 +537,46 @@ make one of them non daemon
 exit the main process
 check it waits for that one process to exit
 then check it prompty exits everything and returns
+
+-}
+
+{-
+
+testing the threads are daemon, and they exit:
+start a sub thread
+it will ping something outside the occasional handle
+  on a loop, every 0.01s or something
+can probably just use an inbox for now? if it doesn't work
+  use a plan tchan
+exit the main thread
+check control is immediately returned to the outside code
+check the pinging stops after the exit succeeds
+
+-}
+
+{-
+testing a non daemon thread and exit
+
+start a subthread which is set to non daemon
+pinging the same as last test
+exit the main thread
+see that the pinging continues
+tell the pinger to exit with a message to it
+see that it stops pinging
+see that the main thread only gets back control
+after this has happened -> how to do this reliably?
+
+-}
+
+{-
+
+other basic features to check:
+link, spawn_link
+local name registry
+catalog:
+  threads
+  monitors
+  links
+  local name registry
 
 -}

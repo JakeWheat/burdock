@@ -29,7 +29,8 @@ send and receive with the new spawn, sending self address
 
 {-# LANGUAGE MultiWayIf #-}
 module Burdock.Occasional
-    (makeInbox
+    (runOccasional
+    ,spawn
     ,send
     ,receive
     ,addr
@@ -39,8 +40,7 @@ module Burdock.Occasional
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
-
-    ,spawn
+    ,testMakeInbox
     
     ) where
 
@@ -80,14 +80,9 @@ import Control.Monad (void)
 
 --import Debug.Trace (traceM, trace)
 
-smartTimeout :: Int -> STM a -> IO (Maybe a)
-smartTimeout n action = do
-   v <- atomically $ newEmptyTMVar
-   _ <- timeout n $ atomically $ do
-       result <- action
-       putTMVar v result
-   atomically $ tryTakeTMVar v
+------------------------------------------------------------------------------
 
+-- types
 
 data Addr a = Addr (TChan a)
 
@@ -103,27 +98,71 @@ instance Show (Addr a) where
 data Inbox a = Inbox {addr :: Addr a
                      ,_buffer :: TVar [a]}
 
-makeInbox :: IO (Inbox a)
-makeInbox = atomically $ do
-    x <- newTChan
-    b <- newTVar []
-    pure (Inbox (Addr x) b)
 
-makeInboxFromChan :: TChan a -> IO (Inbox a)
-makeInboxFromChan x = atomically $ do
-    b <- newTVar []
-    pure (Inbox (Addr x) b)
+------------------------------------------------------------------------------
+
+-- api functions
 
 
+runOccasional :: (Inbox a -> IO b) -> IO b
+runOccasional f = do
+    ib <- makeInbox
+    f ib
+
+spawn :: (Inbox a -> IO b) -> IO (Addr a)
+spawn f = do
+    ch <- newTChanIO
+    void $ forkIO $ do
+        ib <- makeInboxFromChan ch
+        void $ f ib
+        pure ()
+    pure (Addr ch)
 
 send :: Addr a -> a -> IO ()
 send (Addr tgt) v = atomically $ writeTChan tgt v
 
 
--- read through input buffer, then chan
--- buffer non matching message, return nothing
--- if no matches
+receive :: --Show a =>
+           Inbox a
+        -> Int -- timeout in microseconds
+        -> (a -> Bool) -- accept function for selective receive
+        -> IO (Maybe a)
+receive ib@(Inbox (Addr ch) buf) tme f = do
+    startTime <- getCurrentTime
+    mres <- atomically $ do
+        b <- readTVar buf
+        --traceM $ "buf at start of receive: " ++ show b
+        (newBuf, mres) <- flushInboxForMatch b [] ch f
+        writeTVar buf $ newBuf
+        pure mres
+    case mres of
+        Just {} -> pure mres
+        Nothing | tme == 0 -> pure mres
+                | otherwise -> receiveNoBuffered ib tme f startTime
 
+
+---------------------------------------
+
+-- testing only functions, for whitebox and component testing
+
+testAddToBuffer :: Inbox a -> a -> IO ()
+testAddToBuffer (Inbox _ buf) a = atomically $ do
+    modifyTVar buf $ (++ [a])
+
+testReceiveWholeBuffer :: Inbox a -> IO [a]
+testReceiveWholeBuffer (Inbox _ buf) = atomically $ do
+    x <- readTVar buf
+    writeTVar buf []
+    pure x
+
+testMakeInbox :: IO (Inbox a)
+testMakeInbox = makeInbox
+
+------------------------------------------------------------------------------
+
+-- internal components
+
+-- the part of receive that checks the buffer for matching messages
 flushInboxForMatch :: --Show a =>
                       [a]
                    -> [a]
@@ -146,46 +185,16 @@ flushInboxForMatch buf bdm inChan prd = go1 buf bdm
             Just y | prd y -> pure (reverse bufferDidntMatch, x)
                    | otherwise -> go1 [] (y:bufferDidntMatch)
 
-receive :: --Show a =>
-           Inbox a
-        -> Int -- timeout in microseconds
-        -> (a -> Bool) -- accept function for selective receive
-        -> IO (Maybe a)
-receive ib@(Inbox (Addr ch) buf) tme f = do
-    startTime <- getCurrentTime
-    mres <- atomically $ do
-        b <- readTVar buf
-        --traceM $ "buf at start of receive: " ++ show b
-        (newBuf, mres) <- flushInboxForMatch b [] ch f
-        writeTVar buf $ newBuf
-        pure mres
-    case mres of
-        Just {} -> pure mres
-        Nothing | tme == 0 -> pure mres
-                | otherwise -> receive1 ib tme f startTime
-{-
 
-selective receive with no timeout
-
-run through the buffer, if there's a match
-save the new buffer and return the match
-then loop:
-  try to read the chan
-  if it's a match
-    return it
-  if it isn't, push it to the buffer
-    loop
-  if there's nothing
-    return nothing
-
--}
-
-receive1 :: Inbox a
+-- receiving a message with timeout and selective receive
+-- and buffering, after the existing buffer has been checked
+-- and there are no matching messages there
+receiveNoBuffered :: Inbox a
         -> Int -- timeout in microseconds
         -> (a -> Bool) -- accept function for selective receive
         -> UTCTime
         -> IO (Maybe a)
-receive1 ib@(Inbox (Addr ch) buf) tme f startTime = do
+receiveNoBuffered ib@(Inbox (Addr ch) buf) tme f startTime = do
     -- get a message
     -- if it matches, return it
     -- otherwise, buffer
@@ -203,29 +212,28 @@ receive1 ib@(Inbox (Addr ch) buf) tme f startTime = do
                 let elapsed = diffUTCTime nw startTime
                 if elapsed > realToFrac tme / 1000 / 1000
                     then pure Nothing
-                    else receive1 ib tme f startTime
-                    
+                    else receiveNoBuffered ib tme f startTime
+
+makeInbox :: IO (Inbox a)
+makeInbox = atomically $ do
+    x <- newTChan
+    b <- newTVar []
+    pure (Inbox (Addr x) b)
+
+makeInboxFromChan :: TChan a -> IO (Inbox a)
+makeInboxFromChan x = atomically $ do
+    b <- newTVar []
+    pure (Inbox (Addr x) b)
+
+------------------------------------------------------------------------------
+
+-- utilities
 
 
--- for whitebox testing
-
-testAddToBuffer :: Inbox a -> a -> IO ()
-testAddToBuffer (Inbox _ buf) a = atomically $ do
-    modifyTVar buf $ (++ [a])
-
-testReceiveWholeBuffer :: Inbox a -> IO [a]
-testReceiveWholeBuffer (Inbox _ buf) = atomically $ do
-    x <- readTVar buf
-    writeTVar buf []
-    pure x
-
-
-
-spawn :: (Inbox a -> IO b) -> IO (Addr a)
-spawn f = do
-    ch <- newTChanIO
-    void $ forkIO $ do
-        ib <- makeInboxFromChan ch
-        void $ f ib
-        pure ()
-    pure (Addr ch)
+smartTimeout :: Int -> STM a -> IO (Maybe a)
+smartTimeout n action = do
+   v <- atomically $ newEmptyTMVar
+   _ <- timeout n $ atomically $ do
+       result <- action
+       putTMVar v result
+   atomically $ tryTakeTMVar v

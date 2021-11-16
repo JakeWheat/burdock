@@ -21,9 +21,9 @@ import qualified Test.Tasty.HUnit as T
 main :: IO ()
 main = do
     setNumCapabilities =<< getNumProcessors
-    _at <- makeTests testdata
-    T.defaultMain $ T.testGroup "group" [{-at
-                                        ,-}HsOccasionalTests.tests]
+    at <- makeTests testdata
+    T.defaultMain $ T.testGroup "group" [at
+                                        ,HsOccasionalTests.tests]
 
 
 makeTests :: TestTree -> IO T.TestTree

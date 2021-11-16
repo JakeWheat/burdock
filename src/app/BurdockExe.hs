@@ -126,7 +126,7 @@ repl :: B.Handle -> InputT IO ()
 repl h = go
   where
     go = withInterrupt (do
-        minput <- getInputLine "t > "
+        minput <- getInputLine "b > "
         case minput of
             Nothing -> pure ()
             Just input -> do
