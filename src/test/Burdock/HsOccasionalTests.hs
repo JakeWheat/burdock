@@ -21,6 +21,7 @@ import Control.Concurrent
     ,forkIO)
 import Control.Monad (void
                      ,forM_
+                     ,when
                      )
 --import Data.Maybe (mapMaybe)
 
@@ -35,6 +36,11 @@ import Control.Monad.State
     ,put
     ,evalState
     )
+
+import Data.Time.Clock (getCurrentTime
+                       ,diffUTCTime
+                       )
+
 
 --import Debug.Trace (trace)
 
@@ -101,6 +107,8 @@ check the message
 -- short wait: hopefully more than long enough to mask write then read
 -- races, but not so long it makes the tests take forever
 -- currently set to 1ms
+-- todo: change this type in the interface to a fixed width type
+-- so it's in seconds + supports fractions
 shortWait :: Int
 shortWait = 1000
 
@@ -158,58 +166,22 @@ inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSen
 
 tests for selective receive including checking the timeouts
 
-whitebox state transitions
+mostly whitebox state transition based
 
-+ some extra to do with timeouts
--> make sure it timesout when messages come in too late
-+ doesn't timeout when they come in on time
-+ timeout is accurate when there are incoming messages that
-  don't match the predicate
-
-the state is:
-content of the buffer
-content of the tchan
-each has matching and non matching item options
-0,1,2 of each
-state transitions:
-always prime with a receive
-  this can be selective, and can have a timeout
-then optionally a message will come in before the timeout
-  or after the timeout
-  -> race issues
-
-buffer is
-0,1,2 matching messages
-0,1,2 non matching messages
-chan contents are:
-0,1,2 matching messages
-0,1,2 non matching messages
-receive is:
-  matching, non matching
-  -1,0,X timeout
-action is:
-  post matching message before timeout, or after timeout
-guard is:
-  if there are no matching messages in the buffer or chan,
-    and there won't be a matching messages posted before the timeout
-  -> reject this test, don't run it because it should hang forever
-
-what to check:
-1. does receive timeout or return a value
-2. how long it took to get a value or timeout
-3. what's left in the buffer and tchan
-
-
-TODO: extend: number the matching messages in each test uniquely
-check if do get a message, it's the right one,
-and that the remaining messages in the buffer and chan are in the
-right order too
+the main aspects on a test run:
+calling receive once on most of the tests
+is the timeout infinity, n, or 0
+is it a selective receive or not
+then, at the start of the test:
+  what messages are already in the buffer, already in the chan
+then after checking the receive value
+check what's now in the buffer and the chan
 
 -}
 
 
 mainReceiveTests :: T.TestTree
-mainReceiveTests = T.testGroup "mainReceiveTests" $ map runTest generateTests
+mainReceiveTests = T.testGroup "mainReceiveTests" $ zipWith runTest [0..] generateTests
 
 
 data TestMessage = Matching Int
@@ -220,14 +192,15 @@ receivePred :: TestMessage -> Bool
 receivePred (Matching {}) = True
 receivePred (NotMatching {}) = False
 
-data NoTimeoutReceiveTest
-    = NoTimeoutReceiveTest
-    { -- setup
+-- tests which don't send something to the inbox
+-- after receive has been called
+data NoSendReceiveTest
+    = NoSendReceiveTest    { -- setup
      startingChanContents :: [TestMessage]
     ,startingBufferContents :: [TestMessage]
     ,useSelectiveReceive
      -- results
-    ,succeedsInGettingAMessage :: Bool
+    ,receivesJust :: Bool
     ,finalChanContents :: [TestMessage]
     ,finalBufferContents :: [TestMessage]
     }
@@ -236,44 +209,42 @@ data NoTimeoutReceiveTest
 {-
 some steps:
 
-phase 1:
-timeout is always 0
-add selective receive
-ability to preseed the buffer
-then have tests which return no matches
-get match from the buffer
-get match from the tchan
-buffer some messages before getting from the tchan
-buffer some message before returning no matches
--> test you get the right message
-check the content of the buffer and chan is right and in the expected order too
+test without timeout:
+test a combination of different messages in the buffer and chan for the inbox
+with and without selective receive, with the timeout 0
+it checks if receive correctly returns a Just or not,
+and the remaining contents of the buf and chan are correct and in the right order
 
-change num chan matching to list of message in the chan
-and a list in the buffer at the start
-check the message you get, check it's the right one, or not matching
-then check the buffer and chan contents are what they should be
+test with infinite timeout:
+the above tests should repeat and work the same
+-> do each test at the same time
 
-todo: add some sanity checks which read multiple messages mixed with
+test with timeout 1 part 1:
+the above tests with timeout 1
+don't eliminate the tests which won't return
+check that these return nothing, and that the time spent is about the
+timeout time
+do these tests at the same time too
+
+----
+
+then do all the tests above
+but also add a variation, for each test that times out above
+  it will repeat, but posting a message half way through the timeout
+    it will do two versions: a matching and a not matching message
+  check the result, and what's in the buf, chan
+  + the time it took
+
+then for all these, if it expects a result and not a timeout, repeat
+with infinite timeout
+
+add some sanity checks which read multiple messages mixed with
 buffering, I think they're not strictly needed iff the state tests are
 correctly implemented, but it's a double check that might catch some
 situations if there's a mistake in those tests:
-drain all tests:
 generate 0,1,2 messages of each type in the buf and chan
 then read matching until get nothing, and check this list is what's expected
 then read const true until get nothing, and check this list is what's expected
-
-
-then do tests with timeouts
-this includes all the tests above
-  they should behave the same, apart from taking the timeout time before failing
-  -> test all the above + how long the receive call took to return matches
-     expectations
-  every test that should have a receive value/not a timeout,
-    also do with infinite timeout
-
-then do tests with timeouts that have a message posted to the chan
-  after half the timeout time which may match or not match
-    (some will timeout, some won't)
 
 then do the tests where multiple messages are posted in the timeout
 duration, sometimes one matches, sometimes none
@@ -291,7 +262,7 @@ mkMsg b = do
 mkMsgs :: Num s => State s a -> a
 mkMsgs f = evalState f 0
 
-generateTests :: [NoTimeoutReceiveTest]
+generateTests :: [NoSendReceiveTest]
 generateTests = map mk cands
   where
     messageListOptions =
@@ -328,34 +299,83 @@ generateTests = map mk cands
                 mkMsgs ((,) <$> mapM mkMsg sb <*> mapM mkMsg sc)
             succeeds = not usr || or (sc ++ sb)
             (fb,fc) = finalBufChan sbc scc usr
-        in NoTimeoutReceiveTest
+        in NoSendReceiveTest
            {startingChanContents = scc 
            ,startingBufferContents = sbc
            ,useSelectiveReceive = usr
            -- results
-           ,succeedsInGettingAMessage = succeeds
+           ,receivesJust = succeeds
            ,finalChanContents = fc
            ,finalBufferContents = fb
            }
 
-runTest :: NoTimeoutReceiveTest -> T.TestTree
+runTest :: Int -> NoSendReceiveTest -> T.TestTree
 -- todo: create a more readable test name?
-runTest rt = T.testCase (ppShow rt) $ do
-    ib <- makeInbox
-    forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-    forM_ (startingChanContents rt) $ \m -> send (addr ib) m
-    m <- receive ib 0 $ if useSelectiveReceive rt
-                        then receivePred
-                        else const True
-    case (m, succeedsInGettingAMessage rt) of
-        (Nothing,False) -> assertBool "" True
-        (Just _ ,True) -> assertBool "" True
-        -- todo: print this readably
-        _ -> assertFailure $ ppShow (m, rt)
-    finalBuf <- testReceiveWholeBuffer ib
-    assertEqual "" (finalBufferContents rt) finalBuf
-    finalChan <- flushInbox ib
-    assertEqual "" (finalChanContents rt) finalChan
+runTest n rt = T.testCase ("Receive test " ++ show n) $ do
+    runTimeout0Test
+    runInfiniteTimeoutTest
+    runFiniteTimeoutTest
+  where
+    runTimeout0Test = do
+        ib <- makeInbox
+        forM_ (startingBufferContents rt) $ testAddToBuffer ib 
+        forM_ (startingChanContents rt) $ \m -> send (addr ib) m
+        m <- receive ib 0 $ if useSelectiveReceive rt
+                            then receivePred
+                            else const True
+        case (m, receivesJust rt) of
+            (Nothing,False) -> assertBool "" True
+            (Just _ ,True) -> assertBool "" True
+            -- todo: print this readably
+            _ -> assertFailure $ ppShow (m, rt)
+        finalBuf <- testReceiveWholeBuffer ib
+        assertEqual "" (finalBufferContents rt) finalBuf
+        finalChan <- flushInbox ib
+        assertEqual "" (finalChanContents rt) finalChan
+    runInfiniteTimeoutTest = when (receivesJust rt) $ do
+        ib <- makeInbox
+        forM_ (startingBufferContents rt) $ testAddToBuffer ib 
+        forM_ (startingChanContents rt) $ \m -> send (addr ib) m
+        m <- receive ib (-1) $ if useSelectiveReceive rt
+                            then receivePred
+                            else const True
+        case (m, receivesJust rt) of
+            (Nothing,False) -> assertBool "" True
+            (Just _ ,True) -> assertBool "" True
+            -- todo: print this readably
+            _ -> assertFailure $ ppShow (m, rt)
+        finalBuf <- testReceiveWholeBuffer ib
+        assertEqual "" (finalBufferContents rt) finalBuf
+        finalChan <- flushInbox ib
+        assertEqual "" (finalChanContents rt) finalChan
+    runFiniteTimeoutTest = do
+        ib <- makeInbox
+        forM_ (startingBufferContents rt) $ testAddToBuffer ib 
+        forM_ (startingChanContents rt) $ \m -> send (addr ib) m
+        startTime <- getCurrentTime
+        m <- receive ib shortWait $ if useSelectiveReceive rt
+                            then receivePred
+                            else const True
+        endTime <- getCurrentTime                                 
+        case (m, receivesJust rt) of
+            (Nothing,False) -> assertBool "" True
+            (Just _ ,True) -> assertBool "" True
+            -- todo: print this readably
+            _ -> assertFailure $ ppShow (m, rt)
+        finalBuf <- testReceiveWholeBuffer ib
+        assertEqual "" (finalBufferContents rt) finalBuf
+        finalChan <- flushInbox ib
+        assertEqual "" (finalChanContents rt) finalChan
+        -- todo: check the time elapsed if got nothing
+        when (m == Nothing) $ do
+            let elapsed = diffUTCTime endTime startTime
+                s x = realToFrac x / 1000 / 1000
+                expected = s shortWait
+            assertBool ("timeout time: " ++ show expected ++ " ~= " ++ show elapsed)
+                -- when shortWait == 0.001s, some of the actual times come in
+                -- at just over 0.002s
+                (elapsed - expected < s shortWait + 0.001)
+
 
 flushInbox :: Inbox a -> IO [a]
 flushInbox ib = do
@@ -363,23 +383,6 @@ flushInbox ib = do
     case x of
         Nothing -> pure []
         Just y -> (y:) <$> flushInbox ib
-
-{-
-
-
-then test the timeout is stable even when lots of non matching
-messages are coming in, two tests:
-have non matching items in the buffer?
-use a timeout
-post lots of non matching messages at different times/delays
-then either post a matching message sometime before the timeout
-  or just after (enough to avoid races, is this feasible?)
-check it either timesout or succeeds
-  check the time in both cases: that it succeeds within the timeout
-    (a sanity check), or that it timedout close to the exact
-  timeout time
-
--}
 
 ------------------------------------------------------------------------------
 

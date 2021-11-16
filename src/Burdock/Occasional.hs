@@ -66,6 +66,11 @@ import Control.Concurrent.STM.TVar
 
 import Control.Concurrent.STM.TMVar
 
+import Data.Time.Clock (getCurrentTime
+                       ,diffUTCTime
+                       ,UTCTime
+                       )
+
 --import Debug.Trace (traceM, trace)
 
 smartTimeout :: Int -> STM a -> IO (Maybe a)
@@ -124,12 +129,18 @@ receive :: --Show a =>
         -> Int -- timeout in microseconds
         -> (a -> Bool) -- accept function for selective receive
         -> IO (Maybe a)
-receive (Inbox (Addr ib) buf) 0 f = atomically $ do
-    b <- readTVar buf
-    --traceM $ "buf at start of receive: " ++ show b
-    (newBuf, mres) <- flushInboxForMatch b [] ib f
-    writeTVar buf $ newBuf
-    pure mres
+receive ib@(Inbox (Addr ch) buf) tme f = do
+    startTime <- getCurrentTime
+    mres <- atomically $ do
+        b <- readTVar buf
+        --traceM $ "buf at start of receive: " ++ show b
+        (newBuf, mres) <- flushInboxForMatch b [] ch f
+        writeTVar buf $ newBuf
+        pure mres
+    case mres of
+        Just {} -> pure mres
+        Nothing | tme == 0 -> pure mres
+                | otherwise -> receive1 ib tme f startTime
 {-
 
 selective receive with no timeout
@@ -149,11 +160,31 @@ then loop:
 
 
 -- temp
-receive (Inbox (Addr ib) _) to _f = do
-    if | to < 0 -- todo: < 0 means infinity, wrap it in a data type?
-         -> Just <$> atomically (readTChan ib)
-       | to == 0 -> atomically (tryReadTChan ib)
-       | otherwise -> smartTimeout to $ readTChan ib
+receive1 :: Inbox a
+        -> Int -- timeout in microseconds
+        -> (a -> Bool) -- accept function for selective receive
+        -> UTCTime
+        -> IO (Maybe a)
+receive1 ib@(Inbox (Addr ch) buf) tme f startTime = do
+    -- get a message
+    -- if it matches, return it
+    -- otherwise, buffer
+    -- check if more time, if so, loop
+    msg <- if | tme < 0 -- todo: < 0 means infinity, wrap it in a data type?
+                -> Just <$> atomically (readTChan ch)
+              | otherwise -> smartTimeout tme $ readTChan ch
+    case msg of
+        Nothing -> pure Nothing
+        Just msg'
+            | f msg' -> pure msg
+            | otherwise -> do
+                atomically $ modifyTVar buf (++[msg'])
+                nw <- getCurrentTime
+                let elapsed = diffUTCTime nw startTime
+                if elapsed > realToFrac tme / 1000 / 1000
+                    then pure Nothing
+                    else receive1 ib tme f startTime
+                    
 
 
 -- for whitebox testing
