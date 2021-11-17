@@ -42,22 +42,26 @@ module Burdock.Occasional
     ,testReceiveWholeBuffer
     ,testMakeInbox
     ,testSend
+    ,testCloseInbox
     
     ) where
 
 import System.Timeout (timeout)
 
+import Control.Exception (AssertionFailed(..))
+
 import Control.Monad.STM
     (STM
     ,atomically
+    ,throwSTM
     )
-import Control.Concurrent.STM.TChan
-    (TChan
-    ,newTChan
-    ,newTChanIO
-    ,readTChan
-    ,writeTChan
-    ,tryReadTChan
+
+import Control.Concurrent.STM.TQueue
+    (TQueue
+    ,newTQueue
+    ,readTQueue
+    ,tryReadTQueue
+    ,writeTQueue
     )
 
 import Control.Concurrent.STM.TVar
@@ -80,7 +84,11 @@ import Control.Concurrent
     ,ThreadId
     )
 
-import Control.Monad (void, when)
+import Control.Monad
+    (void
+    ,when
+    ,unless
+    )
 
 import Control.Concurrent.Async
     (async
@@ -94,7 +102,8 @@ import Control.Concurrent.Async
 
 -- types
 
-data Addr a = Addr (TChan a)
+data Addr a =
+    Addr {unAddr :: CQueue a}
 
 -- not sure how to make this better
 -- for burdock want erlang style pids which are unique
@@ -121,24 +130,6 @@ data Inbox a
 
 -- api functions
 
-{-
-create an inbox
-spawn the central services process
-for now, this will just run the user code
-wait for the return value of the spawned thread
-return it
-
-then in stage 2:
-
-the central services will spawn the main user process
-it will wait for that specific process to exit
-and then return it's exit value to the original thread
-
-then in stage 3:
-spawn will be implemented by a message to central services,
-instead of forkio locally
-
--}
 runOccasional :: (Inbox a -> IO b) -> IO b
 runOccasional f = do
     ib <- makeInbox
@@ -147,17 +138,18 @@ runOccasional f = do
 spawn :: (Inbox c) -> (Inbox a -> IO b) -> IO (Addr a)
 spawn (Inbox _ _ ibtid) f = do
     assertMyThreadIdIs ibtid
-    ch <- newTChanIO
+    ch <- newCQueueIO
     void $ async $ do
-        ib <- makeInboxFromChan ch
+        ib <- makeInboxFromCQueue ch
         void $ f ib
+        atomically $ closeCQueue $ unAddr $ addr ib
         pure ()
     pure (Addr ch)
 
 send :: (Inbox b) -> Addr a -> a -> IO ()
 send (Inbox _ _ ibtid) (Addr tgt) v = do
     assertMyThreadIdIs ibtid
-    atomically $ writeTChan tgt v
+    atomically $ writeCQueue tgt v
 
 
 receive :: --Show a =>
@@ -199,20 +191,77 @@ testMakeInbox = makeInbox
 
 -- send without the local inbox for inbox testing
 testSend :: Addr a -> a -> IO ()
-testSend (Addr tgt) v = atomically $ writeTChan tgt v
+testSend (Addr tgt) v = atomically $ writeCQueue tgt v
+
+testCloseInbox :: Inbox a -> IO ()
+testCloseInbox ib = atomically $ closeCQueue $ unAddr $ addr ib
 
 ------------------------------------------------------------------------------
 
 -- internal components
 
+{-
+
+a queue that can be closed:
+
+queues in this system are each associated with a single thread that reads from them
+they are passed around to other threads liberally which can write to them
+we want an immediate error if the thread that reads a queues has exited
+so: add a close flag to the queue which is checked when you write to it
+  (and the other ops for robustness)
+this should
+
+-}
+
+data CQueue a
+    = CQueue
+    {queue :: (TQueue a)
+    ,isOpen :: (TVar Bool)}
+
+newCQueue :: STM (CQueue a)
+newCQueue = CQueue <$> newTQueue <*> newTVar True
+
+newCQueueIO :: IO (CQueue a)
+newCQueueIO = atomically (CQueue <$> newTQueue <*> newTVar True)
+
+checkIsOpen :: CQueue a -> STM ()
+checkIsOpen q = do
+    o <- readTVar $ isOpen q
+    -- come back later and figure out the exception types
+    unless o $ throwSTM $ AssertionFailed "tried to use closed queue"
+
+-- todo: could also check that this read call is only used in the
+-- thread that owns the queue
+readCQueue :: CQueue a -> STM a
+readCQueue q = do
+    checkIsOpen q
+    readTQueue $ queue q
+
+tryReadCQueue :: CQueue a -> STM (Maybe a)
+tryReadCQueue q = do
+    checkIsOpen q
+    tryReadTQueue $ queue q
+
+writeCQueue :: CQueue a -> a -> STM ()
+writeCQueue q v = do
+    checkIsOpen q
+    writeTQueue (queue q) v
+
+closeCQueue :: CQueue a -> STM ()
+closeCQueue q = do
+    checkIsOpen q
+    writeTVar (isOpen q) False
+
+-- receive support
+
 -- the part of receive that checks the buffer for matching messages
 flushInboxForMatch :: --Show a =>
                       [a]
                    -> [a]
-                   -> (TChan a)
+                   -> (CQueue a)
                    -> (a -> Bool)
                    -> STM ([a], Maybe a)
-flushInboxForMatch buf bdm inChan prd = go1 buf bdm
+flushInboxForMatch buf bdm inQueue prd = go1 buf bdm
   where
     --go1 a b | trace ("go1: " ++ show (a,b)) $ False = undefined
     go1 (x:xs) bufferDidntMatch
@@ -222,7 +271,7 @@ flushInboxForMatch buf bdm inChan prd = go1 buf bdm
         | otherwise
         = go1 xs (x:bufferDidntMatch)
     go1 [] bufferDidntMatch = do
-        x <- tryReadTChan inChan
+        x <- tryReadCQueue inQueue
         case x of
             Nothing -> pure (reverse bufferDidntMatch, x)
             Just y | prd y -> pure (reverse bufferDidntMatch, x)
@@ -243,8 +292,8 @@ receiveNoBuffered ib@(Inbox (Addr ch) buf _) tme f startTime = do
     -- otherwise, buffer
     -- check if more time, if so, loop
     msg <- if | tme < 0 -- todo: < 0 means infinity, wrap it in a data type?
-                -> Just <$> atomically (readTChan ch)
-              | otherwise -> smartTimeout tme $ readTChan ch
+                -> Just <$> atomically (readCQueue ch)
+              | otherwise -> smartTimeout tme $ readCQueue ch
     case msg of
         Nothing -> pure Nothing
         Just msg'
@@ -261,12 +310,12 @@ makeInbox :: IO (Inbox a)
 makeInbox = do
     tid <- myThreadId
     atomically $ do
-      x <- newTChan
+      x <- newCQueue
       b <- newTVar []
       pure (Inbox (Addr x) b tid)
 
-makeInboxFromChan :: TChan a -> IO (Inbox a)
-makeInboxFromChan x = do
+makeInboxFromCQueue :: CQueue a -> IO (Inbox a)
+makeInboxFromCQueue x = do
     tid <- myThreadId
     atomically $ do
       b <- newTVar []

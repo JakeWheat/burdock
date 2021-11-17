@@ -1,5 +1,9 @@
 
+-- todo: once monitoring is working, see if this can be used
+-- to remove most or all of the races which every so often
+-- cause a test to fail when it shouldn't
 
+{-# LANGUAGE LambdaCase #-}
 module Burdock.HsOccasionalTests
     (tests) where
 
@@ -17,6 +21,7 @@ import Burdock.Occasional
     ,testReceiveWholeBuffer
     ,testMakeInbox
     ,testSend
+    ,testCloseInbox
     )
 
 import Control.Concurrent
@@ -44,7 +49,7 @@ import Data.Time.Clock (getCurrentTime
                        )
 
 import Control.Exception.Safe
-    (catch
+    (tryAny
     ,SomeException
     ,displayException
     )
@@ -64,7 +69,9 @@ tests = T.testGroup "hs occasional tests"
             ,inboxSimpleSendAndReceive0Timeout
             ,inboxSimpleReceiveWaitSend
             ,inboxSimpleReceiveWaitSendTimeoutGet
-            ,inboxSimpleReceiveWaitSendTimeoutThenGet]
+            ,inboxSimpleReceiveWaitSendTimeoutThenGet
+            ,inboxSendAfterClose
+            ]
             
         ,mainReceiveTests]
     ,T.testGroup "occasional-api"
@@ -74,6 +81,7 @@ tests = T.testGroup "hs occasional tests"
         ,catchExceptionExample
         ,testMainProcessException
         ,checkWaitTwice
+        ,testSendAfterClose
         ]
     ]
 
@@ -412,6 +420,16 @@ flushInbox ib = do
         Nothing -> pure []
         Just y -> (y:) <$> flushInbox ib
 
+
+inboxSendAfterClose :: TestTree
+inboxSendAfterClose = T.testCase "inboxSendAfterClose" $ do
+    b <- testMakeInbox
+    testSend (addr b) "test"
+    x <- receive b 0 (const True)
+    assertEqual "" (Just "test") x
+    testCloseInbox b
+    checkException "tried to use closed queue" $ testSend (addr b) "test"
+
 ------------------------------------------------------------------------------
 
 -- occasional api tests
@@ -496,9 +514,6 @@ can't be found
 
 {-
 
-add the close function to a wrapper around chan
-then:
-
 spawn a process
 exchange a message with it
 use monitor to verify the process is down
@@ -506,10 +521,29 @@ send another message to it
 check you get an error immediately
   instead of it failing silently by going to a chan that no-one will
   ever read now
-
-
 -}
 
+
+testSendAfterClose :: T.TestTree
+testSendAfterClose = T.testCase "testSendAfterClose" $
+    runOccasional $ \ib -> do
+        spaddr <- spawn ib $ \sib -> do
+            x <- receive sib (-1) $ const True
+            case x of
+                Just (ret, msg) -> send sib ret ("hello " ++ msg)
+                     -- putStrLn temp until monitoring stuff works
+                _ -> putStrLn ("bad message: " ++ show x)
+                     -- >> error ("bad message: " ++ show x)
+                     --error "bad message"            send sib ret x
+
+        send ib spaddr (addr ib, "testSimpleSpawn")
+        x <- receive ib (-1) $ const True
+        assertEqual "" (Just "hello testSimpleSpawn") x
+        -- todo: update using the monitor system
+        threadDelay shortWait
+        checkException "tried to use closed queue"
+            $ send ib spaddr (addr ib, "testSimpleSpawn")
+        
 {-
 
 spawn a process
@@ -548,10 +582,13 @@ catchExceptionExample = T.testCase "catchExceptionExample" $
 
 checkException :: String -> IO a -> IO ()
 checkException msg f =
-    catch (f >> assertFailure ("didn't throw")) chk
+    tryAny f >>= \case
+        Left e -> chk e
+        Right {} -> assertBool ("didn't throw: " ++ msg) False
   where
     chk :: SomeException -> IO ()
-    chk e = assertBool msg (msg `isInfixOf` displayException e)
+    chk e = assertBool ("exception didn't match: " ++ msg ++ "\n" ++ displayException e)
+               (msg `isInfixOf` displayException e)
 
 testMainProcessException :: T.TestTree
 testMainProcessException = T.testCase "testMainProcessException" $

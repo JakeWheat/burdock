@@ -45,9 +45,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             cmd_ "rm -Rf" dir
             cmd_ "cabal -j install --lib " pkgs "--package-env" dir
 
-    -- todo: separate packages for the tests, the executable and the lib
-    phony "install-deps" $ do
-        installPackageDB "_build/burdock-packages"
+    let directPackages =
             ["tasty"
             ,"tasty-hunit"
             ,"megaparsec"
@@ -65,6 +63,9 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ,"stm"
             ,"async"
             ]
+    
+    -- todo: separate packages for the tests, the executable and the lib?
+    phony "install-deps" $ installPackageDB "_build/burdock-packages" directPackages
 
     let ghc :: GhcOptions -> FilePath -> FilePath -> Action ()
         ghc opts src output = do
@@ -122,7 +123,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
     
     phony "test" $ do
         need ["_build/bin/burdock-tests"]
-        cmd_ "_build/bin/burdock-tests  --color never --ansi-tricks false"
+        cmd_ "_build/bin/burdock-tests  --color never --ansi-tricks false --hide-successes"
             (maybe "" (\x -> "-p " ++ x) testPattern)
 
     "_build/bin/burdock" %> \out -> do
