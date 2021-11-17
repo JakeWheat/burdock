@@ -1,7 +1,7 @@
 
 check:
   
-  print("ok")
+  #print("ok") -> TODO: test this by capturing stdout somehow
   # should probably test for each built in type
   # and a few others
   torepr(1) is "1"

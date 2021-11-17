@@ -78,6 +78,8 @@ import System.IO (Handle
 
 import System.Exit (exitFailure)
 
+import Control.Concurrent.Async (withAsync, wait)
+
 ------------------------------------------------------------------------------
 
 
@@ -182,13 +184,16 @@ myOptsPlus = info (myOpts <**> helper)
 main :: IO ()
 main = do
     B.setNumCapabilities =<< B.getNumProcessors
-    os <- execParser myOptsPlus
-    isTTY <- hIsTerminalDevice stdin
-    case os of
-        MyOpts {file = Just {}, script = Just {}} -> error "please pass either a file or code to run, not both"
-        MyOpts {file = Just f, runTests = rt} -> runFile f rt
-        MyOpts {script = Just c, runTests = rt} -> runSrc Nothing rt c
-        MyOpts {script = Nothing, file = Nothing, runTests = rt}
-            | not isTTY -> runHandle "stdin" stdin rt
-            | otherwise -> doRepl
-
+    -- avoid bound thread, possible that it makes a performance difference
+    withAsync doit wait
+  where
+    doit = do
+        os <- execParser myOptsPlus
+        isTTY <- hIsTerminalDevice stdin
+        case os of
+            MyOpts {file = Just {}, script = Just {}} -> error "please pass either a file or code to run, not both"
+            MyOpts {file = Just f, runTests = rt} -> runFile f rt
+            MyOpts {script = Just c, runTests = rt} -> runSrc Nothing rt c
+            MyOpts {script = Nothing, file = Nothing, runTests = rt}
+                | not isTTY -> runHandle "stdin" stdin rt
+                | otherwise -> doRepl

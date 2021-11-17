@@ -76,8 +76,7 @@ import Data.Time.Clock (getCurrentTime
                        )
 
 import Control.Concurrent
-    (forkIO
-    ,myThreadId
+    (myThreadId
     ,ThreadId
     )
 
@@ -85,8 +84,8 @@ import Control.Monad (void, when)
 
 import Control.Concurrent.Async
     (async
-    ,wait
-    ,withAsync
+    --,wait
+    --,withAsync
     )
 
 --import Debug.Trace (traceM, trace)
@@ -106,12 +105,16 @@ data Addr a = Addr (TChan a)
 instance Show (Addr a) where
     show (Addr {}) = "Addr"
 
-data Inbox a = Inbox {addr :: Addr a
-                     ,_buffer :: TVar [a]
-                     -- used to check that inboxes are only
-                     -- used in the thread they are created in
-                     ,_threadId :: ThreadId
-                     }
+data Inbox a
+    = Inbox
+    {addr :: Addr a
+    ,_buffer :: TVar [a]
+    -- used to check that inboxes are only used in the thread they are created in
+    -- todo: apparently this has some not perfect interaction with the garbage
+    -- collection of exited threads, so use show on the thread id instead
+    -- of saving the ThreadId itself or something
+    ,_threadId :: ThreadId
+    }
 
 
 ------------------------------------------------------------------------------
@@ -137,11 +140,7 @@ instead of forkio locally
 
 -}
 runOccasional :: (Inbox a -> IO b) -> IO b
-runOccasional f =
-    withAsync (centralServices f) wait
-
-centralServices :: (Inbox a -> IO b) -> IO b
-centralServices f = do
+runOccasional f = do
     ib <- makeInbox
     f ib
 
@@ -149,7 +148,7 @@ spawn :: (Inbox c) -> (Inbox a -> IO b) -> IO (Addr a)
 spawn (Inbox _ _ ibtid) f = do
     assertMyThreadIdIs ibtid
     ch <- newTChanIO
-    void $ forkIO $ do
+    void $ async $ do
         ib <- makeInboxFromChan ch
         void $ f ib
         pure ()

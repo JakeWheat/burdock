@@ -20,8 +20,7 @@ import Burdock.Occasional
     )
 
 import Control.Concurrent
-    (threadDelay
-    ,forkIO)
+    (threadDelay)
 import Control.Monad (void
                      ,forM_
                      ,when
@@ -52,6 +51,9 @@ import Control.Exception.Safe
 
 import Data.List (isInfixOf)
 
+import Control.Concurrent.Async (async,wait)
+
+
 --import Debug.Trace (trace)
 
 tests :: T.TestTree
@@ -71,6 +73,7 @@ tests = T.testGroup "hs occasional tests"
         ,testMainProcessReturnValue
         ,catchExceptionExample
         ,testMainProcessException
+        ,checkWaitTwice
         ]
     ]
 
@@ -135,7 +138,7 @@ shortWait = 1000
 inboxSimpleReceiveWaitSend :: TestTree
 inboxSimpleReceiveWaitSend = T.testCase "inboxSimpleReceiveWaitSend" $ do
     b <- testMakeInbox
-    void $ forkIO $ do
+    void $ async $ do
         threadDelay shortWait
         testSend (addr b) "test"
     x <- receive b (-1) (const True)
@@ -152,7 +155,7 @@ check the message
 inboxSimpleReceiveWaitSendTimeoutGet :: TestTree
 inboxSimpleReceiveWaitSendTimeoutGet = T.testCase "inboxSimpleReceiveWaitSendTimeoutGet" $ do
     b <- testMakeInbox
-    void $ forkIO $ do
+    void $ async $ do
         threadDelay shortWait
         testSend (addr b) "test"
     x <- receive b (shortWait * 2) (const True)
@@ -170,7 +173,7 @@ then check get message after 1.5
 inboxSimpleReceiveWaitSendTimeoutThenGet :: TestTree
 inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSendTimeoutThenGet" $ do
     b <- testMakeInbox
-    void $ forkIO $ do
+    void $ async $ do
         threadDelay (shortWait * 2)
         testSend (addr b) "test"
     x <- receive b shortWait (const True)
@@ -538,7 +541,6 @@ testMainProcessReturnValue = T.testCase "testMainProcessReturnValue" $ do
     x <- runOccasional $ \_ib -> pure "retval"
     assertEqual "" "retval" x
 
-
 catchExceptionExample :: T.TestTree
 catchExceptionExample = T.testCase "catchExceptionExample" $
     checkException "test an error" $
@@ -557,6 +559,14 @@ testMainProcessException = T.testCase "testMainProcessException" $
   where
     runit = void $ runOccasional $ \_ib ->
             void $ error "an issue in the main process"
+
+checkWaitTwice :: T.TestTree
+checkWaitTwice = T.testCase "checkWaitTwice" $ do
+    a1 <- async $ pure "retval"
+    v <- wait a1
+    assertEqual "" "retval" v
+    v1 <- wait a1
+    assertEqual "" "retval" v1
 
 
 

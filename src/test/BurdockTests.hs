@@ -14,6 +14,8 @@ import Data.Data (Data)
 import Control.Exception.Safe (catch
                               ,SomeException)
 
+import Control.Concurrent.Async (withAsync, wait)
+
 
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
@@ -21,9 +23,13 @@ import qualified Test.Tasty.HUnit as T
 main :: IO ()
 main = do
     setNumCapabilities =<< getNumProcessors
-    at <- makeTests testdata
-    T.defaultMain $ T.testGroup "group" [at
-                                        ,HsOccasionalTests.tests]
+    -- avoid bound thread, possible that it makes a performance difference
+    withAsync (do
+        at <- makeTests testdata
+        T.defaultMain $ T.testGroup "group" [at
+                                            ,HsOccasionalTests.tests])
+        wait
+                  
 
 
 makeTests :: TestTree -> IO T.TestTree
