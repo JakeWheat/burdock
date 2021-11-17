@@ -35,20 +35,24 @@ module Burdock.Occasional
     ,receive
     ,addr
 
-    ,Inbox
+    ,Handle
     ,Addr
+    ,Inbox
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
     ,testMakeInbox
     ,testSend
     ,testCloseInbox
-    
+    ,testReceive
+    ,ibaddr
+
     ) where
 
 import System.Timeout (timeout)
 
 import Control.Exception (AssertionFailed(..))
+import Control.Exception.Safe (bracket)
 
 import Control.Monad.STM
     (STM
@@ -70,6 +74,7 @@ import Control.Concurrent.STM.TVar
     ,readTVar
     ,writeTVar
     ,modifyTVar
+    ,newTVarIO
     )
 
 import Control.Concurrent.STM.TMVar
@@ -85,8 +90,8 @@ import Control.Concurrent
     )
 
 import Control.Monad
-    (void
-    ,when
+    ({-void
+    ,-}when
     ,unless
     )
 
@@ -94,6 +99,8 @@ import Control.Concurrent.Async
     (async
     --,wait
     --,withAsync
+    ,cancel
+    ,Async
     )
 
 --import Debug.Trace (traceM, trace)
@@ -114,9 +121,18 @@ data Addr a =
 instance Show (Addr a) where
     show (Addr {}) = "Addr"
 
+data Handle a
+    = Handle
+      {inbox :: Inbox a
+      ,_threads :: TVar [Async a]
+      }
+
+addr :: Handle a -> Addr a
+addr = ibaddr . inbox
+
 data Inbox a
     = Inbox
-    {addr :: Addr a
+    {ibaddr :: Addr a
     ,_buffer :: TVar [a]
     -- used to check that inboxes are only used in the thread they are created in
     -- todo: apparently this has some not perfect interaction with the garbage
@@ -130,47 +146,83 @@ data Inbox a
 
 -- api functions
 
-runOccasional :: (Inbox a -> IO b) -> IO b
+runOccasional :: (Handle a -> IO b) -> IO b
 runOccasional f = do
+    runningThreads <- newTVarIO []
     ib <- makeInbox
-    f ib
+    let h = Handle ib runningThreads
+    bracket (pure runningThreads) cancelRunningThreads (\_ -> f h)
+  where
+    cancelRunningThreads rps = do
+        ts <- atomically $ readTVar rps
+        mapM_ cancel ts
 
-spawn :: (Inbox c) -> (Inbox a -> IO b) -> IO (Addr a)
-spawn (Inbox _ _ ibtid) f = do
+{-
+
+running the main thread:
+it sets up the list of running threads
+this will be shared between all threads in the occasional instance
+when the thread exits, it will cancel all the running threads
+issues to follow up on:
+add a timeout to this, and then return to user in special way if
+any threads didn't exit in the deadline
+cancel on an async thread is synchronous, so it may be less quick
+use throwTo without the wait to do it concurrently
+cancel a = throwTo (asyncThreadId a) AsyncCancelled <* waitCatch a
+  then wait on all the thread handles to see they all exited
+
+there's no obvious timeout on cancel or the wait variations:
+  maybe use regular io timeout function with stm wait variations?
+
+-}
+
+spawn :: (Handle a) -> (Handle a -> IO a) -> IO (Addr a)
+spawn (Handle (Inbox _ _ ibtid) rts) f = do
     assertMyThreadIdIs ibtid
     ch <- newCQueueIO
-    void $ async $ do
-        ib <- makeInboxFromCQueue ch
-        void $ f ib
-        atomically $ closeCQueue $ unAddr $ addr ib
-        pure ()
+    -- register the async object in the running thread list
+    -- then clean it up in thread when the thread is about to exit
+    -- if the thread hasn't exited, when the occasional instance
+    -- exits, it needs to call cancel or throwto on the threads
+    -- still running -> so this means it needs the async
+    -- but the thread itself doesn't know it's async
+    -- so who adds the async? and how does the thread remove it's
+    -- own async when exiting
+    -- the calling thread can pass the async into the running thread
+    -- this seems fairly robust and simple
+    asyncOnlyCh <- newCQueueIO
+    ah <- async $
+        let st = atomically $ do
+                -- register the async in the handle runningthreads
+                ah <- readCQueue asyncOnlyCh
+                pure ()
+                modifyTVar rts (ah:)
+                pure ah
+            en ah = atomically $ do
+                -- remove the async from the handle runningthreads
+                modifyTVar rts (\a -> filter (/= ah) a)
+        in bracket st en $ const $ do
+            ib <- makeInboxFromCQueue ch
+            x <- f (Handle ib rts)
+            atomically $ closeCQueue $ unAddr $ ibaddr ib
+            pure x
+    atomically $ writeCQueue asyncOnlyCh ah
     pure (Addr ch)
+  where
 
-send :: (Inbox b) -> Addr a -> a -> IO ()
-send (Inbox _ _ ibtid) (Addr tgt) v = do
+
+send :: (Handle b) -> Addr a -> a -> IO ()
+send (Handle (Inbox _ _ ibtid) _) (Addr tgt) v = do
     assertMyThreadIdIs ibtid
     atomically $ writeCQueue tgt v
 
 
 receive :: --Show a =>
-           Inbox a
+           Handle a
         -> Int -- timeout in microseconds
         -> (a -> Bool) -- accept function for selective receive
         -> IO (Maybe a)
-receive ib@(Inbox (Addr ch) buf ibtid) tme f = do
-    assertMyThreadIdIs ibtid
-    startTime <- getCurrentTime
-    mres <- atomically $ do
-        b <- readTVar buf
-        --traceM $ "buf at start of receive: " ++ show b
-        (newBuf, mres) <- flushInboxForMatch b [] ch f
-        writeTVar buf $ newBuf
-        pure mres
-    case mres of
-        Just {} -> pure mres
-        Nothing | tme == 0 -> pure mres
-                | otherwise -> receiveNoBuffered ib tme f startTime
-
+receive (Handle ib _) tme f = receiveInbox ib tme f
 
 ---------------------------------------
 
@@ -194,7 +246,13 @@ testSend :: Addr a -> a -> IO ()
 testSend (Addr tgt) v = atomically $ writeCQueue tgt v
 
 testCloseInbox :: Inbox a -> IO ()
-testCloseInbox ib = atomically $ closeCQueue $ unAddr $ addr ib
+testCloseInbox ib = atomically $ closeCQueue $ unAddr $ ibaddr ib
+
+testReceive :: Inbox a
+            -> Int -- timeout in microseconds
+            -> (a -> Bool) -- accept function for selective receive
+            -> IO (Maybe a)
+testReceive = receiveInbox
 
 ------------------------------------------------------------------------------
 
@@ -253,6 +311,22 @@ closeCQueue q = do
     writeTVar (isOpen q) False
 
 -- receive support
+
+receiveInbox :: Inbox a -> Int -> (a -> Bool) -> IO (Maybe a)
+receiveInbox ib@(Inbox (Addr ch) buf ibtid) tme f = do
+    assertMyThreadIdIs ibtid
+    startTime <- getCurrentTime
+    mres <- atomically $ do
+        b <- readTVar buf
+        --traceM $ "buf at start of receive: " ++ show b
+        (newBuf, mres) <- flushInboxForMatch b [] ch f
+        writeTVar buf $ newBuf
+        pure mres
+    case mres of
+        Just {} -> pure mres
+        Nothing | tme == 0 -> pure mres
+                | otherwise -> receiveNoBuffered ib tme f startTime
+
 
 -- the part of receive that checks the buffer for matching messages
 flushInboxForMatch :: --Show a =>

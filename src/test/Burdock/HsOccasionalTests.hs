@@ -14,14 +14,17 @@ import Burdock.Occasional
     ,receive
     ,addr
 
-    ,Inbox
+    --,Handle
     ,Addr
+    ,Inbox
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
     ,testMakeInbox
     ,testSend
     ,testCloseInbox
+    ,testReceive
+    ,ibaddr
     )
 
 import Control.Concurrent
@@ -65,6 +68,19 @@ import Data.Dynamic (Dynamic
                     --,Typeable
                     )
 
+import Control.Monad.STM
+    (STM
+    ,atomically)
+
+import Control.Concurrent.STM.TChan
+    (TChan
+    ,newTChanIO
+    --,readTChan
+    ,tryReadTChan
+    ,writeTChan
+    )
+
+
 
 --import Debug.Trace (trace)
 
@@ -82,14 +98,15 @@ tests = T.testGroup "hs occasional tests"
             
         ,mainReceiveTests]
     ,T.testGroup "occasional-api"
-        [testSimpleSpawn
-        ,testSimpleSpawnDyn
-        ,_testSimpleSpawn1
+        [{-testSimpleSpawn
+        ,-}testSimpleSpawnDyn
+        --,_testSimpleSpawn1
         ,testMainProcessReturnValue
         ,catchExceptionExample
         ,testMainProcessException
         ,checkWaitTwice
         ,testSendAfterClose
+        ,testDaemonSimple
         ]
     ]
 
@@ -114,8 +131,8 @@ read the message out and check it
 inboxSimpleSendAndReceive :: TestTree
 inboxSimpleSendAndReceive = T.testCase "inboxSimpleSendAndReceive" $ do
     b <- testMakeInbox
-    testSend (addr b) "test"
-    x <- receive b (-1) (const True)
+    testSend (ibaddr b) "test"
+    x <- testReceive b (-1) (const True)
     assertEqual "" (Just "test") x
 
 {-
@@ -127,12 +144,12 @@ check the message
 inboxSimpleSendAndReceive0Timeout :: TestTree
 inboxSimpleSendAndReceive0Timeout = T.testCase "inboxSimpleSendAndReceive0Timeout" $ do
     b <- testMakeInbox
-    testSend (addr b) "test"
+    testSend (ibaddr b) "test"
     -- not sure if there's a possible race here
     -- may need a tweak if start getting intermittent failures
     -- if running lots of tests concurrently
     -- or on a very busy machine?
-    x <- receive b 0 (const True)
+    x <- testReceive b 0 (const True)
     assertEqual "" (Just "test") x
 
 {-
@@ -156,8 +173,8 @@ inboxSimpleReceiveWaitSend = T.testCase "inboxSimpleReceiveWaitSend" $ do
     b <- testMakeInbox
     void $ async $ do
         threadDelay shortWait
-        testSend (addr b) "test"
-    x <- receive b (-1) (const True)
+        testSend (ibaddr b) "test"
+    x <- testReceive b (-1) (const True)
     assertEqual "" (Just "test") x
 
 
@@ -173,8 +190,8 @@ inboxSimpleReceiveWaitSendTimeoutGet = T.testCase "inboxSimpleReceiveWaitSendTim
     b <- testMakeInbox
     void $ async $ do
         threadDelay shortWait
-        testSend (addr b) "test"
-    x <- receive b (shortWait * 2) (const True)
+        testSend (ibaddr b) "test"
+    x <- testReceive b (shortWait * 2) (const True)
     assertEqual "" (Just "test") x
 
 {-
@@ -191,10 +208,10 @@ inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSen
     b <- testMakeInbox
     void $ async $ do
         threadDelay (shortWait * 2)
-        testSend (addr b) "test"
-    x <- receive b shortWait (const True)
+        testSend (ibaddr b) "test"
+    x <- testReceive b shortWait (const True)
     assertEqual "" Nothing x
-    y <- receive b (shortWait * 2) (const True)
+    y <- testReceive b (shortWait * 2) (const True)
     -- todo: saw a rare race with this, how??
     assertEqual "" (Just "test") y
 
@@ -358,8 +375,8 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
     runTimeout0Test = do
         ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> testSend (addr ib) m
-        m <- receive ib 0 $ if useSelectiveReceive rt
+        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) m
+        m <- testReceive ib 0 $ if useSelectiveReceive rt
                             then receivePred
                             else const True
         case (m, receivesJust rt) of
@@ -374,8 +391,8 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
     runInfiniteTimeoutTest = when (receivesJust rt) $ do
         ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> testSend (addr ib) m
-        m <- receive ib (-1) $ if useSelectiveReceive rt
+        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) m
+        m <- testReceive ib (-1) $ if useSelectiveReceive rt
                             then receivePred
                             else const True
         case (m, receivesJust rt) of
@@ -390,9 +407,9 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
     runFiniteTimeoutTest = do
         ib <- testMakeInbox
         forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> testSend (addr ib) m
+        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) m
         startTime <- getCurrentTime
-        m <- receive ib shortWait $ if useSelectiveReceive rt
+        m <- testReceive ib shortWait $ if useSelectiveReceive rt
                             then receivePred
                             else const True
         endTime <- getCurrentTime                                 
@@ -423,7 +440,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
 
 flushInbox :: Inbox a -> IO [a]
 flushInbox ib = do
-    x <- receive ib 0 $ const True
+    x <- testReceive ib 0 $ const True
     case x of
         Nothing -> pure []
         Just y -> (y:) <$> flushInbox ib
@@ -432,11 +449,11 @@ flushInbox ib = do
 inboxSendAfterClose :: TestTree
 inboxSendAfterClose = T.testCase "inboxSendAfterClose" $ do
     b <- testMakeInbox
-    testSend (addr b) "test"
-    x <- receive b 0 (const True)
+    testSend (ibaddr b) "test"
+    x <- testReceive b 0 (const True)
     assertEqual "" (Just "test") x
     testCloseInbox b
-    checkException "tried to use closed queue" $ testSend (addr b) "test"
+    checkException "tried to use closed queue" $ testSend (ibaddr b) "test"
 
 ------------------------------------------------------------------------------
 
@@ -446,10 +463,9 @@ inboxSendAfterClose = T.testCase "inboxSendAfterClose" $ do
 
 spawn a process, exchange messages with it by sending the return
 address
-
 -}
 
-testSimpleSpawn :: T.TestTree
+{-testSimpleSpawn :: T.TestTree
 testSimpleSpawn = T.testCase "testSimpleSpawn" $
     runOccasional $ \ib -> do
         spaddr <- spawn ib $ \sib -> do
@@ -462,7 +478,7 @@ testSimpleSpawn = T.testCase "testSimpleSpawn" $
                      --error "bad message"
         send ib spaddr (addr ib, "testSimpleSpawn")
         x <- receive ib (-1) $ const True
-        assertEqual "" (Just "hello testSimpleSpawn") x
+        assertEqual "" (Just "hello testSimpleSpawn") x-}
 
 type Msg = (Addr Dynamic, String)
 
@@ -471,7 +487,7 @@ type Msg = (Addr Dynamic, String)
 
 testSimpleSpawnDyn :: T.TestTree
 testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
-    runOccasional mainThread
+    void $ runOccasional mainThread
   where
     mainThread ib = do
         spaddr <- spawn ib subThread
@@ -479,14 +495,16 @@ testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
         x <- receive ib (-1) $ const True
         let y :: Maybe Msg = x >>= fromDynamic
         assertEqual "" (Just "hello testSimpleSpawn") $ fmap snd y
+        pure $ toDyn ()
     subThread sib = do
         x <- receive sib (-1) (const True)
         case (x >>= fromDynamic) :: Maybe Msg of
             Just (ret, msg) -> send sib ret $ toDyn (addr sib, "hello " ++ msg)
             _ -> error $ show x
+        pure $ toDyn ()
 
-_testSimpleSpawn1 :: T.TestTree
-_testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" $
+{-_testSimpleSpawn1 :: T.TestTree
+_testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" undefined {-$
     runOccasional $ \ib -> do
         spaddr <- spawn ib $ \sib -> do
             x <- receive sib (-1) $ const True
@@ -515,8 +533,8 @@ _testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" $
             -- exit value stuff - it will behave differently then
         send ib spaddr (addr ib, "testSimpleSpawn")
         x <- receive ib (-1) $ const True
-        assertEqual "" (Just "hello testSimpleSpawn") x
-
+        assertEqual "" (Just "hello testSimpleSpawn") x -}
+-}
 {-
 
 spawn a process
@@ -554,23 +572,23 @@ check you get an error immediately
 
 testSendAfterClose :: T.TestTree
 testSendAfterClose = T.testCase "testSendAfterClose" $
-    runOccasional $ \ib -> do
+    void $ runOccasional $ \ib -> do
         spaddr <- spawn ib $ \sib -> do
             x <- receive sib (-1) $ const True
-            case x of
-                Just (ret, msg) -> send sib ret ("hello " ++ msg)
-                     -- putStrLn temp until monitoring stuff works
+            case x >>= fromDynamic of
+                Just (ret, msg) -> send sib ret (toDyn ("hello " ++ msg))
                 _ -> putStrLn ("bad message: " ++ show x)
-                     -- >> error ("bad message: " ++ show x)
-                     --error "bad message"            send sib ret x
+            pure $ toDyn ()
 
-        send ib spaddr (addr ib, "testSimpleSpawn")
+        send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
         x <- receive ib (-1) $ const True
-        assertEqual "" (Just "hello testSimpleSpawn") x
+        let y = x >>= fromDynamic
+        assertEqual "" (Just "hello testSimpleSpawn") y
         -- todo: update using the monitor system
         threadDelay shortWait
         checkException "tried to use closed queue"
-            $ send ib spaddr (addr ib, "testSimpleSpawn")
+            $ send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
+        pure $ toDyn ()
         
 {-
 
@@ -633,29 +651,6 @@ checkWaitTwice = T.testCase "checkWaitTwice" $ do
     v1 <- wait a1
     assertEqual "" "retval" v1
 
-
-
-
-
-{-
-
-spawn some processes
-exit the main process
-check it's prompt, and the spawned processes are all gone
-
--}
-
-
-{-
-
-spawn some processes
-make one of them non daemon
-exit the main process
-check it waits for that one process to exit
-then check it prompty exits everything and returns
-
--}
-
 {-
 
 testing the threads are daemon, and they exit:
@@ -670,19 +665,42 @@ check the pinging stops after the exit succeeds
 
 -}
 
-{-
-testing a non daemon thread and exit
+flushChan :: TChan a -> STM [a]
+flushChan ch = do
+    x <- tryReadTChan ch
+    case x of
+        Nothing -> pure []
+        Just i -> (i:) <$> flushChan ch
 
-start a subthread which is set to non daemon
-pinging the same as last test
-exit the main thread
-see that the pinging continues
-tell the pinger to exit with a message to it
-see that it stops pinging
-see that the main thread only gets back control
-after this has happened -> how to do this reliably?
-
--}
+testDaemonSimple :: T.TestTree
+testDaemonSimple = T.testCase "testDaemonSimple" $ do
+    ch <- newTChanIO
+    void $ runOccasional (mainThread ch)
+    threadDelay shortWait
+    _ <- atomically $ flushChan ch
+    -- maybe this is overkill?
+    threadDelay $ shortWait * 10
+    x <- atomically $ flushChan ch
+    assertEqual "no more pings from the subthread" [] x
+  where
+    mainThread ch ib = do
+        spaddr <- spawn ib (subThread ch)
+        send ib spaddr (toDyn (addr ib))
+        _ <- receive ib (-1) $ const True
+        pure $ toDyn ()
+    subThread ch sib = do
+        x <- receive sib (-1) (const True)
+        case x >>= fromDynamic of
+            Just ret -> send sib ret $ toDyn (addr sib)
+            _ -> error $ show x
+        let loop :: IO ()
+            loop = do
+                --ping the chan
+                atomically $ writeTChan ch True
+                threadDelay shortWait
+                loop
+        loop
+        pure $ toDyn ()
 
 {-
 
