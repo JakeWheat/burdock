@@ -15,7 +15,7 @@ import Burdock.Occasional
     ,addr
 
     ,Inbox
-    --,Addr
+    ,Addr
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
@@ -29,6 +29,7 @@ import Control.Concurrent
 import Control.Monad (void
                      ,forM_
                      ,when
+                     --,join
                      )
 --import Data.Maybe (mapMaybe)
 
@@ -58,6 +59,12 @@ import Data.List (isInfixOf)
 
 import Control.Concurrent.Async (async,wait)
 
+import Data.Dynamic (Dynamic
+                    ,toDyn
+                    ,fromDynamic
+                    --,Typeable
+                    )
+
 
 --import Debug.Trace (trace)
 
@@ -76,6 +83,7 @@ tests = T.testGroup "hs occasional tests"
         ,mainReceiveTests]
     ,T.testGroup "occasional-api"
         [testSimpleSpawn
+        ,testSimpleSpawnDyn
         ,_testSimpleSpawn1
         ,testMainProcessReturnValue
         ,catchExceptionExample
@@ -456,6 +464,26 @@ testSimpleSpawn = T.testCase "testSimpleSpawn" $
         x <- receive ib (-1) $ const True
         assertEqual "" (Just "hello testSimpleSpawn") x
 
+type Msg = (Addr Dynamic, String)
+
+-- can't figure out how the types can work in this case
+-- without dynamic
+
+testSimpleSpawnDyn :: T.TestTree
+testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
+    runOccasional mainThread
+  where
+    mainThread ib = do
+        spaddr <- spawn ib subThread
+        send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
+        x <- receive ib (-1) $ const True
+        let y :: Maybe Msg = x >>= fromDynamic
+        assertEqual "" (Just "hello testSimpleSpawn") $ fmap snd y
+    subThread sib = do
+        x <- receive sib (-1) (const True)
+        case (x >>= fromDynamic) :: Maybe Msg of
+            Just (ret, msg) -> send sib ret $ toDyn (addr sib, "hello " ++ msg)
+            _ -> error $ show x
 
 _testSimpleSpawn1 :: T.TestTree
 _testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" $
