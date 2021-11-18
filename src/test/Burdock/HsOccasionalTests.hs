@@ -13,7 +13,8 @@ import Burdock.Occasional
     ,spawnMonitor
     ,send
     --,receive
-    ,receiveNoTO
+    ,receive
+    ,receiveTimeout
     ,addr
 
     --,Handle
@@ -139,7 +140,7 @@ inboxSimpleSendAndReceive :: TestTree
 inboxSimpleSendAndReceive = T.testCase "inboxSimpleSendAndReceive" $ do
     b <- testMakeInbox
     testSend (ibaddr b) $ toDyn "test"
-    x <- testReceive b (-1) (const True)
+    x <- testReceive b Nothing (const True)
     assertEqual "" (Just "test") $ mtFromDyn x
 
 {-
@@ -156,7 +157,7 @@ inboxSimpleSendAndReceive0Timeout = T.testCase "inboxSimpleSendAndReceive0Timeou
     -- may need a tweak if start getting intermittent failures
     -- if running lots of tests concurrently
     -- or on a very busy machine?
-    x <- testReceive b 0 (const True)
+    x <- testReceive b (Just 0) (const True)
     assertEqual "" (Just "test") $ mtFromDyn x
 
 {-
@@ -181,7 +182,7 @@ inboxSimpleReceiveWaitSend = T.testCase "inboxSimpleReceiveWaitSend" $ do
     void $ async $ do
         threadDelay shortWait
         testSend (ibaddr b) $ toDyn "test"
-    x <- testReceive b (-1) (const True)
+    x <- testReceive b Nothing (const True)
     assertEqual "" (Just "test") $ mtFromDyn x
 
 
@@ -198,7 +199,7 @@ inboxSimpleReceiveWaitSendTimeoutGet = T.testCase "inboxSimpleReceiveWaitSendTim
     void $ async $ do
         threadDelay shortWait
         testSend (ibaddr b) $ toDyn "test"
-    x <- testReceive b (shortWait * 2) (const True)
+    x <- testReceive b (Just (shortWait * 2)) (const True)
     assertEqual "" (Just "test") $ mtFromDyn x
 
 {-
@@ -216,9 +217,9 @@ inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSen
     void $ async $ do
         threadDelay (shortWait * 2)
         testSend (ibaddr b) $ toDyn "test"
-    x <- testReceive b shortWait (const True)
+    x <- testReceive b (Just shortWait) (const True)
     assertEqual "" Nothing $ mtFromDyn x
-    y <- testReceive b (shortWait * 2) (const True)
+    y <- testReceive b (Just $ shortWait * 2) (const True)
     -- todo: saw a rare race with this, how??
     assertEqual "" (Just "test") $ mtFromDyn y
 
@@ -388,7 +389,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
         ib <- testMakeInbox
         forM_ (startingBufferContents rt) (testAddToBuffer ib . toDyn)
         forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) $ toDyn m
-        m <- testReceive ib 0 $ if useSelectiveReceive rt
+        m <- testReceive ib (Just 0) $ if useSelectiveReceive rt
                             then receivePredDyn
                             else const True
         case (m, receivesJust rt) of
@@ -404,7 +405,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
         ib <- testMakeInbox
         forM_ (startingBufferContents rt) (testAddToBuffer ib . toDyn)
         forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) $ toDyn m
-        m <- testReceive ib (-1) $ if useSelectiveReceive rt
+        m <- testReceive ib Nothing $ if useSelectiveReceive rt
                             then receivePredDyn
                             else const True
         case (m, receivesJust rt) of
@@ -422,7 +423,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
         forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) $ toDyn m
         startTime <- getCurrentTime
         m <- mtFromDyn
-            <$> testReceive ib shortWait (if useSelectiveReceive rt
+            <$> testReceive ib (Just shortWait) (if useSelectiveReceive rt
                             then receivePredDyn
                             else const True)
         endTime <- getCurrentTime                                 
@@ -453,7 +454,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
 
 flushInbox :: Inbox -> IO [Dynamic]
 flushInbox ib = do
-    x <- testReceive ib 0 $ const True
+    x <- testReceive ib (Just 0) $ const True
     case x of
         Nothing -> pure []
         Just y -> (y:) <$> flushInbox ib
@@ -463,7 +464,7 @@ inboxSendAfterClose :: TestTree
 inboxSendAfterClose = T.testCase "inboxSendAfterClose" $ do
     b <- testMakeInbox
     testSend (ibaddr b) $ toDyn "test"
-    x <- testReceive b 0 (const True)
+    x <- testReceive b (Just 0) (const True)
     assertEqual "" (Just "test") $ mtFromDyn x
     testCloseInbox b
     checkException "tried to use closed queue" $ testSend (ibaddr b) $ toDyn "test"
@@ -508,14 +509,14 @@ testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
     mainThread ib = do
         spaddr <- spawn ib subThread
         send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
-        x <- receiveNoTO ib $ const True
+        x <- receive ib $ const True
         let y :: Maybe Msg = fromDynamic x
         assertEqual "" (Just "hello testSimpleSpawn") $ fmap snd y
         pure $ toDyn ()
     subThread sib = do
         --error "balls"
         --void $ throwIO $ DynValException $ toDyn (MyVal "custom balls")
-        x <- receiveNoTO sib (const True)
+        x <- receive sib (const True)
         case fromDynamic x :: Maybe Msg of
             Just (ret, msg) -> send sib ret $ toDyn (addr sib, "hello " ++ msg)
             _ -> error $ show x
@@ -566,7 +567,7 @@ testSpawnMonitorExitVal = T.testCase "testSpawnMonitorExitVal" $
     void $ runOccasional $ \ib -> do
         _spaddr <- spawnMonitor ib Nothing $ \_sib -> do
             pure $ toDyn "I am an exit value"
-        x <- receiveNoTO ib (const True)
+        x <- receive ib (const True)
         let (a,b) = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
@@ -583,19 +584,18 @@ check this exception value via monitor
 -}
 
 testSpawnMonitorException :: T.TestTree
-testSpawnMonitorException = T.testCase "testSpawnMonitorException" $
+testSpawnMonitorException = T.testCase "testSpawnMonitorException" $ do
     void $ runOccasional $ \ib -> do
         _spaddr <- spawnMonitor ib Nothing $ \_sib ->
             throwIO $ DynValException $ toDyn $ MyVal "custom"
             -- pure $ toDyn () -- "I am an exit value"
-        x <- receiveNoTO ib (const True)
+        x <- receive ib (const True)
         let (a,b) = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
         assertEqual "" Down a'
         assertEqual "" (MyVal "custom") b'
         pure $ toDyn ()
-
 
 {-
 repeat both exit val tests with a custom monitor tag
@@ -620,19 +620,18 @@ check you get an error immediately
   ever read now
 -}
 
-
 testSendAfterClose :: T.TestTree
 testSendAfterClose = T.testCase "testSendAfterClose" $
     void $ runOccasional $ \ib -> do
         spaddr <- spawn ib $ \sib -> do
-            x <- receiveNoTO sib $ const True
+            x <- receive sib $ const True
             case fromDynamic x of
                 Just (ret, msg) -> send sib ret (toDyn ("hello " ++ msg))
                 _ -> putStrLn ("bad message: " ++ show x)
             pure $ toDyn ()
 
         send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
-        x <- receiveNoTO ib $ const True
+        x <- receive ib $ const True
         let y = fromDynamic x
         assertEqual "" (Just "hello testSimpleSpawn") y
         -- todo: update using the monitor system
@@ -723,10 +722,10 @@ testDaemonSimple = T.testCase "testDaemonSimple" $ do
     mainThread ch ib = do
         spaddr <- spawn ib (subThread ch)
         send ib spaddr (toDyn (addr ib))
-        _ <- receiveNoTO ib $ const True
+        _ <- receive ib $ const True
         pure $ toDyn ()
     subThread ch sib = do
-        x <- receiveNoTO sib (const True)
+        x <- receive sib (const True)
         case fromDynamic x of
             Just ret -> send sib ret $ toDyn (addr sib)
             _ -> error $ show x
