@@ -232,14 +232,10 @@ receiveTimeout :: --Show a =>
                -> Int -- timeout in microseconds
                -> (Dynamic -> Bool) -- accept function for selective receive
                -> IO (Maybe Dynamic)
-receiveTimeout h tme f = receiveInbox (myInbox h) (Just tme) f
+receiveTimeout h tme f = receiveInboxTimeout (myInbox h) tme f
 
 receive :: ThreadHandle -> (Dynamic -> Bool) -> IO Dynamic
-receive h f = do
-    x <- receiveInbox (myInbox h) Nothing f
-    -- is there a sensible way to rearrange the code to avoid this check?
-    maybe (error $ "internal error: receive got Nothing")
-           pure x
+receive h f = receiveInbox (myInbox h) f
 
 spawn :: ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
 spawn h f = spawnImpl h Nothing f
@@ -279,7 +275,11 @@ testReceive :: Inbox
             -> (Maybe Int) -- timeout in microseconds
             -> (Dynamic -> Bool) -- accept function for selective receive
             -> IO (Maybe Dynamic)
-testReceive = receiveInbox
+testReceive ib mtme f =
+    case mtme of
+        Nothing -> Just <$> receiveInbox ib f
+        Just tme -> receiveInboxTimeout ib tme f 
+
 
 ------------------------------------------------------------------------------
 
@@ -407,8 +407,21 @@ spawnMainThread f oh = do
 
 -- receive support
 
-receiveInbox :: Inbox -> (Maybe Int) -> (Dynamic -> Bool) -> IO (Maybe Dynamic)
-receiveInbox ib tme f = do
+receiveInbox :: Inbox -> (Dynamic -> Bool) -> IO Dynamic
+receiveInbox ib f = do
+    assertMyThreadIdIs $ ibThreadId ib
+    mres <- atomically $ do
+        b <- readTVar (ibbuffer ib)
+        --traceM $ "buf at start of receive: " ++ show b
+        (newBuf, mres) <- flushInboxForMatch b [] (ibaddr ib) f
+        writeTVar (ibbuffer ib) $ newBuf
+        pure mres
+    case mres of
+        Just res -> pure res
+        Nothing -> receiveNoBuffered ib f
+
+receiveInboxTimeout :: Inbox -> Int -> (Dynamic -> Bool) -> IO (Maybe Dynamic)
+receiveInboxTimeout ib tme f = do
     assertMyThreadIdIs $ ibThreadId ib
     startTime <- getCurrentTime
     mres <- atomically $ do
@@ -419,8 +432,9 @@ receiveInbox ib tme f = do
         pure mres
     case (mres, tme) of
         (Just {},_) -> pure mres
-        (Nothing, Just 0)  -> pure mres
-        _ -> receiveNoBuffered ib tme f startTime
+        (Nothing, 0)  -> pure mres
+        (_, _) -> receiveNoBufferedTimeout ib tme f startTime
+
 
 
 -- the part of receive that checks the buffer for matching messages
@@ -450,33 +464,38 @@ flushInboxForMatch buf bdm inQueue prd = go1 buf bdm
 -- receiving a message with timeout and selective receive
 -- and buffering, after the existing buffer has been checked
 -- and there are no matching messages there
-receiveNoBuffered :: Inbox
-        -> (Maybe Int) -- timeout in microseconds
-        -> (Dynamic -> Bool) -- accept function for selective receive
-        -> UTCTime
-        -> IO (Maybe Dynamic)
-receiveNoBuffered ib tme f startTime = do
-    let rc = receiveNoBuffered ib tme f startTime
-        rd = case tme of
-                 Nothing -> Just <$> atomically (readCQueue $ ibaddr ib)
-                 Just tme' -> smartTimeout tme' $ readCQueue $ ibaddr ib
-        lp = case tme of
-                 Nothing -> rc
-                 Just tme' -> do
-                          nw <- getCurrentTime
-                          let elapsed = diffUTCTime nw startTime
-                          if elapsed > realToFrac tme' / 1000 / 1000
-                              then pure Nothing
-                              else rc
-    msg <- rd
+
+receiveNoBufferedTimeout :: Inbox
+                         -> Int -- timeout in microseconds
+                         -> (Dynamic -> Bool) -- accept function for selective receive
+                         -> UTCTime
+                         -> IO (Maybe Dynamic)
+receiveNoBufferedTimeout ib tme f startTime = do
+    msg <- smartTimeout tme $ readCQueue $ ibaddr ib
     case msg of
         Nothing -> pure Nothing
         Just msg'
             | f msg' -> pure msg
             | otherwise -> do
                   atomically $ modifyTVar (ibbuffer ib) (++[msg'])
-                  lp
-        
+                  nw <- getCurrentTime
+                  let elapsed = diffUTCTime nw startTime
+                  if elapsed > realToFrac tme / 1000 / 1000
+                      then pure Nothing
+                      else receiveNoBufferedTimeout ib tme f startTime
+
+-- no timeout version
+receiveNoBuffered :: Inbox
+                  -> (Dynamic -> Bool)
+                  -> IO Dynamic
+receiveNoBuffered ib f = do
+    msg <- atomically (readCQueue $ ibaddr ib)
+    if f msg
+        then pure msg
+        else do
+            atomically $ modifyTVar (ibbuffer ib) (++[msg])
+            receiveNoBuffered ib f
+
 ------------------------------------------------------------------------------
 
 -- internal components
