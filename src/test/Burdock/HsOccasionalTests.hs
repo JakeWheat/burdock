@@ -116,6 +116,7 @@ tests = T.testGroup "hs occasional tests"
         ,testDaemonSimple
         ,testSpawnMonitorExitVal
         ,testSpawnMonitorException
+        ,testSpawnMonitorTag
         ]
     ]
 
@@ -603,6 +604,26 @@ testSpawnMonitorException = T.testCase "testSpawnMonitorException" $ do
 {-
 repeat both exit val tests with a custom monitor tag
 -}
+
+testSpawnMonitorTag :: T.TestTree
+testSpawnMonitorTag = T.testCase "testSpawnMonitorTag" $
+    void $ runOccasional $ \ib -> do
+        _spaddr <- spawnMonitor ib (Just $ toDyn $ "tag-a") $ \_sib -> do
+            pure $ toDyn "I am an exit value"
+        _spaddr <- spawnMonitor ib (Just $ toDyn $ "tag-b") $ \sib -> do
+            -- don't exit
+            _ <- receive sib (const True)
+            pure $ toDyn "I am an exit value"
+
+        x <- receive ib (const True)
+        let (a,et,b) = fromJust $ fromDynamic x
+            a' = fromJust $ fromDynamic a
+            b' = fromJust $ fromDynamic b
+        assertEqual "" "tag-a" a'
+        assertEqual "" ExitValue et
+        assertEqual "" "I am an exit value" b'
+        pure $ toDyn ()
+
 
 {-
 

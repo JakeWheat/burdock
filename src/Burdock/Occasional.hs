@@ -213,9 +213,7 @@ cancel a = throwTo (asyncThreadId a) AsyncCancelled <* waitCatch a
 there's no obvious timeout on the wait variations:
 maybe use regular io timeout function with stm wait variations?
 
-
 -}
-
 
 data DynValException = DynValException Dynamic
     deriving Show
@@ -328,8 +326,10 @@ spawnImpl h ifMonitorTag f = do
         -- this is the queue that will become the new thread's inbox
         ch <- newCQueueIO
         ah <- asyncWithUnmask $ \unmask ->
-            -- TODO: still a race where a spawnMonitor process can exit
-            -- before the monitoring is setup
+            -- TODO: there's a possible race where a spawnMonitor
+            -- process can exit before the monitoring is setup, so the
+            -- spawning process will never get a monitor message even
+            -- though the spawned process is down
             unmask (fst <$> generalBracket (registerRunningThread asyncOnlyCh ch)
                     cleanupRunningThread
                     (runThread ch))
@@ -370,7 +370,7 @@ spawnImpl h ifMonitorTag f = do
                 case lookup mp x of
                     Nothing -> pure () -- the spawning process already exited?
                     -- send the monitor message
-                    -- it ends up as nested dynamic Dynamic (Dynamic tg, Dynamic ev)
+                    -- it ends up as nested dynamic Dynamic (Dynamic tg, x, Dynamic ev)
                     -- perhaps there is a way to create a Dynamic (tg,ev)?
                     -- this would be a little nicer, but is not a big deal
                     -- for burdock
