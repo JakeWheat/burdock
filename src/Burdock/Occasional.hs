@@ -1,4 +1,3 @@
-
 {-
 
 Haskell "Occasional" library
@@ -36,6 +35,7 @@ module Burdock.Occasional
     ,receive
     ,receiveTimeout
     ,addr
+    ,asyncExit
 
     ,ThreadHandle
     ,Addr
@@ -65,6 +65,9 @@ import Control.Exception.Safe
     ,displayException
     ,Exception
     ,fromException
+    ,toException
+    ,throwTo
+    ,AsyncExceptionWrapper(..)
     )
 
 import Control.Monad.Catch (ExitCase(..))
@@ -120,6 +123,7 @@ import Control.Concurrent.Async
     ,uninterruptibleCancel
     ,Async
     ,asyncWithUnmask
+    ,asyncThreadId
     )
 
 import Data.Dynamic (Dynamic
@@ -129,9 +133,9 @@ import Data.Dynamic (Dynamic
                     )
 
 import Data.Maybe (fromMaybe)
+import Data.Tuple (swap)
 
-{-import Data.Typeable (cast
-                     ,typeOf)-}
+--import Data.Typeable (typeOf)
 
 {-import Debug.Trace (--traceM
                    --,
@@ -250,6 +254,19 @@ data ExitType = ExitValue
               | ExitException
               deriving (Eq,Show)
 
+asyncExit :: ThreadHandle -> Addr -> Dynamic -> IO ()
+asyncExit h target val = do
+    ah <- atomically $ do
+        ts <- readTVar (globalThreads $ occHandle h)
+        case lookup target $ map swap ts of
+            -- todo: what exception/fields should this use?
+            -- maybe it should duplicate the error you get when sending
+            -- to a closed inbox?
+            Nothing -> error "thread not found"
+            Just ah -> pure ah
+    throwTo (asyncThreadId ah) (DynValException val)
+
+
 ---------------------------------------
 
 -- testing only functions, for whitebox and component testing
@@ -355,12 +372,7 @@ spawnImpl h ifMonitorTag f = do
     cleanupRunningThread ah ev = atomically $ do
         isExiting <- readTVar (globalIsExiting $ occHandle h)
         unless isExiting $ do
-            let (exitType,exitVal) = case ev of
-                    ExitCaseSuccess a -> (ExitValue, a)
-                    ExitCaseException e -> case fromException e of
-                            Just (DynValException v) -> (ExitException, v)
-                            Nothing -> (ExitException, toDyn $ displayException e)
-                    ExitCaseAbort -> (ExitException, toDyn $ "internal issue?: ExitCaseAbort")
+            let (exitType,exitVal) = extractExitVal ev
             -- send monitor message to each monitoring process
             --trace ("tracehere: " ++ show exitVal) $ pure ()
             let isMonitoringMe (_,x,_) = x == ah
@@ -373,7 +385,8 @@ spawnImpl h ifMonitorTag f = do
                     -- it ends up as nested dynamic Dynamic (Dynamic tg, x, Dynamic ev)
                     -- perhaps there is a way to create a Dynamic (tg,ev)?
                     -- this would be a little nicer, but is not a big deal
-                    -- for burdock
+                    -- for burdock - it's error prone, but only has to be done
+                    -- once in the interpreter
                     Just mpib -> writeCQueue mpib $ toDyn (tg, exitType, exitVal)
             -- remove monitoring entries
             modifyTVar (globalMonitors $ occHandle h)
@@ -383,6 +396,31 @@ spawnImpl h ifMonitorTag f = do
     runThread ch ah = do
         ib <- makeInboxFromCQueue ch
         f (ThreadHandle ib (occHandle h) ah)
+    -- eventually, this code manages to dig out the Dynamic value from
+    -- a DynValException or from a
+    -- AsyncExceptionWrapper-DynValException and turn the exception
+    -- into a Dynamic String from displayException if it's another
+    -- kind of exception or another kind of exception wrapped in
+    -- asyncexceptionwrapper (not sure that asyncexceptionwrapper
+    -- doesn't return the displayexception of the wrapped exception
+    -- without the extra logic needed)
+    extractExitVal ev = case ev of
+        ExitCaseSuccess a -> (ExitValue, a)
+        ExitCaseException e
+            | Just v <- extractDynException e
+            -> (ExitException, v)
+            | Just v <- extractAewException e
+            -> (ExitException, v)
+            | otherwise -> (ExitException, toDyn $ displayException e)
+        ExitCaseAbort -> (ExitException, toDyn $ "internal issue?: ExitCaseAbort")
+    extractDynException e = case fromException e of
+        Just (DynValException v) -> Just v
+        Nothing -> Nothing
+    extractAewException e = case fromException e of
+        Just (AsyncExceptionWrapper e')
+            | Just (DynValException v) <- fromException $ toException e' -> Just v
+        Just (AsyncExceptionWrapper e') -> Just $ toDyn $ displayException e'
+        Nothing -> Nothing
 
 -- the system is far easier to work with if the user thread isn't made
 -- a special case and we can get it's async handle. the simple way to
@@ -522,6 +560,7 @@ data CQueue a
     = CQueue
     {queue :: (TQueue a)
     ,isOpen :: (TVar Bool)}
+    deriving Eq
 
 newCQueue :: STM (CQueue a)
 newCQueue = CQueue <$> newTQueue <*> newTVar True

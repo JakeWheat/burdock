@@ -12,12 +12,11 @@ import Burdock.Occasional
     ,spawn
     ,spawnMonitor
     ,send
-    --,receive
     ,receive
     --,receiveTimeout
     ,addr
+    ,asyncExit
 
-    --,Handle
     ,Addr
     ,Inbox
     ,Down(..)
@@ -117,6 +116,7 @@ tests = T.testGroup "hs occasional tests"
         ,testSpawnMonitorExitVal
         ,testSpawnMonitorException
         ,testSpawnMonitorTag
+        ,testSpawnAsyncExit
         ]
     ]
 
@@ -632,6 +632,56 @@ send it the kill message
 get the exception value
 
 -}
+
+
+testSpawnAsyncExit :: T.TestTree
+testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
+    void $ runOccasional $ \ib -> do
+
+        -- slightly over the top paranoia
+        canaryOne <- spawn ib $ \sib -> do
+            x <- receive sib (const True)
+            case fromDynamic x :: Maybe Msg of
+                Just (ret, msg) -> send sib ret $ toDyn (addr sib, "canary one reporting " ++ msg)
+                _ -> error $ show x
+            pure $ toDyn ()
+
+        -- the actual test bit
+        spaddr <- spawnMonitor ib Nothing $ \sib -> do
+            -- don't exit - no one will send it a message
+            _ <- receive sib (const True)
+            pure $ toDyn "I am an exit value"
+
+        canaryTwo <- spawn ib $ \sib -> do
+            x <- receive sib (const True)
+            case fromDynamic x :: Maybe Msg of
+                Just (ret, msg) -> send sib ret $ toDyn (addr sib, "canary two reporting " ++ msg)
+                _ -> error $ show x
+            pure $ toDyn ()
+
+        threadDelay shortWait
+        asyncExit ib spaddr $ toDyn "it's time"
+
+        x <- receive ib (const True)
+        let (a,et,b) = fromJust $ fromDynamic x
+            a' = fromJust $ fromDynamic a
+            b' = fromJust $ fromDynamic b
+        assertEqual "" Down a'
+        assertEqual "" ExitException et
+        assertEqual "" "it's time" b'
+        
+        send ib canaryOne (toDyn (addr ib, "c1"))
+        x1 <- receive ib $ const True
+        let y1 :: Maybe Msg = fromDynamic x1
+        assertEqual "" (Just "canary one reporting c1") $ fmap snd y1
+
+        send ib canaryTwo (toDyn (addr ib, "c2"))
+        x2 <- receive ib $ const True
+        let y2 :: Maybe Msg = fromDynamic x2
+        assertEqual "" (Just "canary two reporting c2") $ fmap snd y2
+
+        pure $ toDyn ()
+
 
 {-
 
