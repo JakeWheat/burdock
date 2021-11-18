@@ -108,11 +108,11 @@ import Control.Monad
 
 import Control.Concurrent.Async
     (--async
-    --,wait
-    --,withAsync
+     wait
+    ,withAsync
     --,cancel
     --,
-    uninterruptibleCancel
+    ,uninterruptibleCancel
     ,Async
     ,asyncWithUnmask
     )
@@ -135,17 +135,12 @@ import Data.Dynamic (Dynamic
 
 -- types
 
-data Addr =
-    Addr {unAddr :: CQueue Dynamic}
+-- make addr abstract for importers of the module
+-- not sure if this is enough?
+type Addr = CQueue Dynamic
 
--- not sure how to make this better
--- for burdock want erlang style pids which are unique
--- I don't see an easy way to do this in haskell
--- avoiding the show instance makes all sorts of debugging really
--- tedious. maybe some helper functions can be used if messages
--- follow a pattern
-instance Show Addr where
-    show (Addr {}) = "Addr"
+addr :: ThreadHandle -> Addr
+addr = ibaddr . myInbox
 
 data OccasionalHandle =
     OccasionalHandle
@@ -163,12 +158,10 @@ data ThreadHandle
       ,occHandle :: OccasionalHandle
       }
 
-addr :: ThreadHandle -> Addr
-addr = ibaddr . myInbox
 
 data Inbox
     = Inbox
-    {ibaddr :: Addr
+    {ibaddr :: CQueue Dynamic
     ,ibbuffer :: TVar [Dynamic]
     -- used to check that inboxes are only used in the thread they are created in
     -- todo: apparently this has some not perfect interaction with the garbage
@@ -184,16 +177,19 @@ data Inbox
 
 runOccasional :: (ThreadHandle -> IO Dynamic) -> IO Dynamic
 runOccasional f = do
-    oh <- OccasionalHandle <$> newTVarIO [] <*> newTVarIO False
-    ib <- makeInbox
-    let th = ThreadHandle ib oh
-    bracket (pure oh) cancelRunningThreads (\_ -> f th)
+    bracket (OccasionalHandle <$> newTVarIO [] <*> newTVarIO False)
+        cancelRunningThreads
+        (spawnMainThread f)
   where
     cancelRunningThreads oh = do
         ts <- atomically $ do
             -- tell the exiting threads not to do the regular cleanup
             writeTVar (globalIsExiting oh) True
             readTVar (globalThreads oh)
+        -- it's ok to cancel the main thread in this list since it's
+        -- already exited at this point, if this cleanup is moved
+        -- inside the main user thread exit, it should skip sending
+        -- cancel to the main user thread async handle
         mapM_ uninterruptibleCancel ts
 {-
 
@@ -220,7 +216,7 @@ instance Exception DynValException
 
 
 send :: ThreadHandle -> Addr -> Dynamic -> IO ()
-send h (Addr tgt) v = do
+send h tgt v = do
     assertMyThreadIdIs $ ibThreadId $ myInbox h
     atomically $ writeCQueue tgt v
 
@@ -253,10 +249,10 @@ testMakeInbox = makeInbox
 
 -- send without the local inbox for inbox testing
 testSend :: Addr -> Dynamic -> IO ()
-testSend (Addr tgt) v = atomically $ writeCQueue tgt v
+testSend tgt v = atomically $ writeCQueue tgt v
 
 testCloseInbox :: Inbox -> IO ()
-testCloseInbox ib = atomically $ closeCQueue $ unAddr $ ibaddr ib
+testCloseInbox ib = atomically $ closeCQueue $ ibaddr ib
 
 testReceive :: Inbox
             -> Int -- timeout in microseconds
@@ -289,7 +285,7 @@ exits by non-exception or exception)
 -}
 
 
-spawnImpl :: Bool -> ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawnImpl :: Bool -> ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO (CQueue Dynamic)
 spawnImpl addMonitor h f = do
     assertMyThreadIdIs $ ibThreadId $ myInbox h
     -- this queue is used to pass its own async handle
@@ -314,7 +310,7 @@ spawnImpl addMonitor h f = do
                 unless isExiting $ closeCQueue ch)
         pure (ch,ah)
     atomically $ writeCQueue asyncOnlyCh ah
-    pure (Addr ch)
+    pure ch
   where
     registerRunningThread asyncOnlyCh = atomically $ do
         -- register the async handle in the occasional handle
@@ -339,6 +335,31 @@ spawnImpl addMonitor h f = do
         ib <- makeInboxFromCQueue ch
         f (ThreadHandle ib (occHandle h))
 
+
+-- the system is far easier to work with if the user thread isn't made
+-- a special case and we can get it's async handle. the simple way to
+-- do this is to run it in a separate thread to the code calling
+-- runOccasional
+-- keep this in sync with the spawnimpl above
+spawnMainThread :: (ThreadHandle -> IO Dynamic) -> OccasionalHandle -> IO Dynamic
+spawnMainThread f oh = do
+    asyncOnlyCh <- newCQueueIO
+    withAsync (runUserThread asyncOnlyCh) $ \a1 -> do
+        atomically $ writeCQueue asyncOnlyCh a1
+        wait a1
+  where
+    runUserThread asyncOnlyCh = do
+        atomically $ do
+            ah <- readCQueue asyncOnlyCh
+            -- put the main thread in the thread catalog
+            modifyTVar (globalThreads oh) (ah:)
+        ib <- makeInbox
+        let th = ThreadHandle ib oh
+        f th
+
+
+    
+
 ------------------------------------------------------------------------------
 
 -- receive implementation
@@ -352,7 +373,7 @@ receiveInbox ib tme f = do
     mres <- atomically $ do
         b <- readTVar (ibbuffer ib)
         --traceM $ "buf at start of receive: " ++ show b
-        (newBuf, mres) <- flushInboxForMatch b [] (unAddr $ ibaddr ib) f
+        (newBuf, mres) <- flushInboxForMatch b [] (ibaddr ib) f
         writeTVar (ibbuffer ib) $ newBuf
         pure mres
     case mres of
@@ -399,8 +420,8 @@ receiveNoBuffered ib tme f startTime = do
     -- otherwise, buffer
     -- check if more time, if so, loop
     msg <- if | tme < 0 -- todo: < 0 means infinity, wrap it in a data type?
-                -> Just <$> atomically (readCQueue $ unAddr $ ibaddr ib)
-              | otherwise -> smartTimeout tme $ readCQueue $ unAddr $ ibaddr ib
+                -> Just <$> atomically (readCQueue $ ibaddr ib)
+              | otherwise -> smartTimeout tme $ readCQueue $ ibaddr ib
     case msg of
         Nothing -> pure Nothing
         Just msg'
@@ -475,14 +496,14 @@ makeInbox = do
     atomically $ do
       x <- newCQueue
       b <- newTVar []
-      pure (Inbox (Addr x) b tid)
+      pure (Inbox x b tid)
 
 makeInboxFromCQueue :: CQueue Dynamic -> IO Inbox
 makeInboxFromCQueue x = do
     tid <- myThreadId
     atomically $ do
       b <- newTVar []
-      pure (Inbox (Addr x) b tid)
+      pure (Inbox x b tid)
 
 assertMyThreadIdIs :: ThreadId -> IO ()
 assertMyThreadIdIs ibtid = do
