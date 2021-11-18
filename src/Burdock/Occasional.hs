@@ -153,7 +153,7 @@ data OccasionalHandle =
         -- monitoring process - the one that gets the thread down message,
         -- monitored process,
         -- monitor tag
-        --,globalMonitors :: TVar [(Async Dynamic, Async Dynamic, Dynamic)]
+    --,globalMonitors :: TVar [(Async Dynamic, Async Dynamic, Dynamic)]
     ,globalIsExiting :: TVar Bool
     }
 
@@ -213,9 +213,64 @@ maybe use regular io timeout function with stm wait variations?
 -}
 
 
+data DynValException = DynValException Dynamic
+    deriving Show
+
+instance Exception DynValException
+
+
+send :: ThreadHandle -> Addr -> Dynamic -> IO ()
+send h (Addr tgt) v = do
+    assertMyThreadIdIs $ ibThreadId $ myInbox h
+    atomically $ writeCQueue tgt v
+
+receive :: --Show a =>
+           ThreadHandle
+        -> Int -- timeout in microseconds
+        -> (Dynamic -> Bool) -- accept function for selective receive
+        -> IO (Maybe Dynamic)
+receive h tme f = receiveInbox (myInbox h) tme f
+
+spawn :: ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawn = spawnImpl False
+
+---------------------------------------
+
+-- testing only functions, for whitebox and component testing
+
+testAddToBuffer :: Inbox -> Dynamic -> IO ()
+testAddToBuffer ib a = atomically $ do
+    modifyTVar (ibbuffer ib) $ (++ [a])
+
+testReceiveWholeBuffer :: Inbox -> IO [Dynamic]
+testReceiveWholeBuffer ib = atomically $ do
+    x <- readTVar (ibbuffer ib)
+    writeTVar (ibbuffer ib) []
+    pure x
+
+testMakeInbox :: IO Inbox
+testMakeInbox = makeInbox
+
+-- send without the local inbox for inbox testing
+testSend :: Addr -> Dynamic -> IO ()
+testSend (Addr tgt) v = atomically $ writeCQueue tgt v
+
+testCloseInbox :: Inbox -> IO ()
+testCloseInbox ib = atomically $ closeCQueue $ unAddr $ ibaddr ib
+
+testReceive :: Inbox
+            -> Int -- timeout in microseconds
+            -> (Dynamic -> Bool) -- accept function for selective receive
+            -> IO (Maybe Dynamic)
+testReceive = receiveInbox
+
+------------------------------------------------------------------------------
+
+-- implementation of spawn
+
 {-
 
-spawn, possibly will end up being one of the most fun functions in the
+possibly will end up being one of the most fun functions in the
 codebase
 
 tricky requirements:
@@ -233,13 +288,9 @@ exits by non-exception or exception)
 
 -}
 
-data DynValException = DynValException Dynamic
-    deriving Show
 
-instance Exception DynValException
-
-spawn :: ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
-spawn h f = do
+spawnImpl :: Bool -> ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawnImpl addMonitor h f = do
     assertMyThreadIdIs $ ibThreadId $ myInbox h
     -- this queue is used to pass its own async handle
     -- to the spawned thread, so the spawned thread
@@ -288,104 +339,9 @@ spawn h f = do
         ib <- makeInboxFromCQueue ch
         f (ThreadHandle ib (occHandle h))
 
-send :: ThreadHandle -> Addr -> Dynamic -> IO ()
-send h (Addr tgt) v = do
-    assertMyThreadIdIs $ ibThreadId $ myInbox h
-    atomically $ writeCQueue tgt v
-
-
-receive :: --Show a =>
-           ThreadHandle
-        -> Int -- timeout in microseconds
-        -> (Dynamic -> Bool) -- accept function for selective receive
-        -> IO (Maybe Dynamic)
-receive h tme f = receiveInbox (myInbox h) tme f
-
----------------------------------------
-
--- testing only functions, for whitebox and component testing
-
-testAddToBuffer :: Inbox -> Dynamic -> IO ()
-testAddToBuffer ib a = atomically $ do
-    modifyTVar (ibbuffer ib) $ (++ [a])
-
-testReceiveWholeBuffer :: Inbox -> IO [Dynamic]
-testReceiveWholeBuffer ib = atomically $ do
-    x <- readTVar (ibbuffer ib)
-    writeTVar (ibbuffer ib) []
-    pure x
-
-testMakeInbox :: IO Inbox
-testMakeInbox = makeInbox
-
--- send without the local inbox for inbox testing
-testSend :: Addr -> Dynamic -> IO ()
-testSend (Addr tgt) v = atomically $ writeCQueue tgt v
-
-testCloseInbox :: Inbox -> IO ()
-testCloseInbox ib = atomically $ closeCQueue $ unAddr $ ibaddr ib
-
-testReceive :: Inbox
-            -> Int -- timeout in microseconds
-            -> (Dynamic -> Bool) -- accept function for selective receive
-            -> IO (Maybe Dynamic)
-testReceive = receiveInbox
-
 ------------------------------------------------------------------------------
 
--- internal components
-
-{-
-
-a queue that can be closed:
-
-queues in this system are each associated with a single thread that reads from them
-they are passed around to other threads liberally which can write to them
-we want an immediate error if the thread that reads a queues has exited
-so: add a close flag to the queue which is checked when you write to it
-  (and the other ops for robustness)
-this should
-
--}
-
-data CQueue a
-    = CQueue
-    {queue :: (TQueue a)
-    ,isOpen :: (TVar Bool)}
-
-newCQueue :: STM (CQueue a)
-newCQueue = CQueue <$> newTQueue <*> newTVar True
-
-newCQueueIO :: IO (CQueue a)
-newCQueueIO = atomically (CQueue <$> newTQueue <*> newTVar True)
-
-checkIsOpen :: CQueue a -> STM ()
-checkIsOpen q = do
-    o <- readTVar $ isOpen q
-    -- come back later and figure out the exception types
-    unless o $ throwSTM $ AssertionFailed "tried to use closed queue"
-
--- todo: could also check that this read call is only used in the
--- thread that owns the queue
-readCQueue :: CQueue a -> STM a
-readCQueue q = do
-    checkIsOpen q
-    readTQueue $ queue q
-
-tryReadCQueue :: CQueue a -> STM (Maybe a)
-tryReadCQueue q = do
-    checkIsOpen q
-    tryReadTQueue $ queue q
-
-writeCQueue :: CQueue a -> a -> STM ()
-writeCQueue q v = do
-    checkIsOpen q
-    writeTQueue (queue q) v
-
-closeCQueue :: CQueue a -> STM ()
-closeCQueue q = do
-    checkIsOpen q
-    writeTVar (isOpen q) False
+-- receive implementation
 
 -- receive support
 
@@ -457,6 +413,62 @@ receiveNoBuffered ib tme f startTime = do
                     then pure Nothing
                     else receiveNoBuffered ib tme f startTime
 
+------------------------------------------------------------------------------
+
+-- internal components
+
+{-
+
+a queue that can be closed:
+
+queues in this system are each associated with a single thread that reads from them
+they are passed around to other threads liberally which can write to them
+we want an immediate error if the thread that reads a queues has exited
+so: add a close flag to the queue which is checked when you write to it
+  (and the other ops for robustness)
+this should
+
+-}
+
+data CQueue a
+    = CQueue
+    {queue :: (TQueue a)
+    ,isOpen :: (TVar Bool)}
+
+newCQueue :: STM (CQueue a)
+newCQueue = CQueue <$> newTQueue <*> newTVar True
+
+newCQueueIO :: IO (CQueue a)
+newCQueueIO = atomically (CQueue <$> newTQueue <*> newTVar True)
+
+checkIsOpen :: CQueue a -> STM ()
+checkIsOpen q = do
+    o <- readTVar $ isOpen q
+    -- come back later and figure out the exception types
+    unless o $ throwSTM $ AssertionFailed "tried to use closed queue"
+
+-- todo: could also check that this read call is only used in the
+-- thread that owns the queue
+readCQueue :: CQueue a -> STM a
+readCQueue q = do
+    checkIsOpen q
+    readTQueue $ queue q
+
+tryReadCQueue :: CQueue a -> STM (Maybe a)
+tryReadCQueue q = do
+    checkIsOpen q
+    tryReadTQueue $ queue q
+
+writeCQueue :: CQueue a -> a -> STM ()
+writeCQueue q v = do
+    checkIsOpen q
+    writeTQueue (queue q) v
+
+closeCQueue :: CQueue a -> STM ()
+closeCQueue q = do
+    checkIsOpen q
+    writeTVar (isOpen q) False
+
 makeInbox :: IO Inbox
 makeInbox = do
     tid <- myThreadId
@@ -481,7 +493,6 @@ assertMyThreadIdIs ibtid = do
 ------------------------------------------------------------------------------
 
 -- utilities
-
 
 smartTimeout :: Int -> STM a -> IO (Maybe a)
 smartTimeout n action = do
