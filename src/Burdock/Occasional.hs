@@ -52,7 +52,15 @@ module Burdock.Occasional
 import System.Timeout (timeout)
 
 import Control.Exception (AssertionFailed(..))
-import Control.Exception.Safe (bracket)
+import Control.Exception.Safe
+    (bracket
+    ,generalBracket
+    ,mask_
+    ,finally
+    ,displayException
+    )
+
+import Control.Monad.Catch (ExitCase(..))
 
 import Control.Monad.STM
     (STM
@@ -96,18 +104,24 @@ import Control.Monad
     )
 
 import Control.Concurrent.Async
-    (async
+    (--async
     --,wait
     --,withAsync
-    ,cancel
+    --,cancel
+    --,
+    uninterruptibleCancel
     ,Async
+    ,asyncWithUnmask
     )
 
 import Data.Dynamic (Dynamic
                     --,Typeable
                     )
 
---import Debug.Trace (traceM, trace)
+import Debug.Trace (--traceM
+                   --,
+                   trace
+                   )
 
 ------------------------------------------------------------------------------
 
@@ -129,6 +143,7 @@ data Handle
     = Handle
       {inbox :: Inbox
       ,_threads :: TVar [Async Dynamic]
+      ,_isExiting :: TVar Bool
       }
 
 addr :: Handle -> Addr
@@ -153,20 +168,20 @@ data Inbox
 runOccasional :: (Handle -> IO Dynamic) -> IO Dynamic
 runOccasional f = do
     runningThreads <- newTVarIO []
+    ie <- newTVarIO False
     ib <- makeInbox
-    let h = Handle ib runningThreads
-    bracket (pure runningThreads) cancelRunningThreads (\_ -> f h)
+    let h = Handle ib runningThreads ie
+    bracket (pure (runningThreads,ie)) cancelRunningThreads (\_ -> f h)
   where
-    cancelRunningThreads rps = do
-        ts <- atomically $ readTVar rps
-        mapM_ cancel ts
-
+    cancelRunningThreads (rps,ie) = do
+        ts <- atomically $ do
+            -- tell the exiting threads not to do the regular cleanup
+            writeTVar ie True
+            readTVar rps
+        mapM_ uninterruptibleCancel ts
 {-
 
 running the main thread:
-it sets up the list of running threads
-this will be shared between all threads in the occasional instance
-when the thread exits, it will cancel all the running threads
 issues to follow up on:
 add a timeout to this, and then return to user in special way if
 any threads didn't exit in the deadline
@@ -175,48 +190,86 @@ use throwTo without the wait to do it concurrently
 cancel a = throwTo (asyncThreadId a) AsyncCancelled <* waitCatch a
   then wait on all the thread handles to see they all exited
 
-there's no obvious timeout on cancel or the wait variations:
-  maybe use regular io timeout function with stm wait variations?
+there's no obvious timeout on the wait variations:
+maybe use regular io timeout function with stm wait variations?
+
 
 -}
 
+
+{-
+
+spawn, possibly will end up being one of the most fun functions in the
+codebase
+tricky requirements:
+
+ensure the queue that is the spawned thread's inbox is always closed
+even when the spawned thread gets an async exception
+
+implement the monitor which notifies other threads of the spawned
+thread's exit value - exception or regular value
+
+and don't do any of this in the specific case that the thread is being
+asynchronously exited because the occasional handle it's running under
+is being closed (which happens exactly when the main user function
+exits by non-exception or exception)
+
+-}
 spawn :: Handle -> (Handle -> IO Dynamic) -> IO Addr
-spawn (Handle (Inbox _ _ ibtid) rts) f = do
+spawn (Handle (Inbox _ _ ibtid) rts ie) f = do
     assertMyThreadIdIs ibtid
-    ch <- newCQueueIO
-    -- register the async object in the running thread list
-    -- then clean it up in thread when the thread is about to exit
-    -- if the thread hasn't exited, when the occasional instance
-    -- exits, it needs to call cancel or throwto on the threads
-    -- still running -> so this means it needs the async
-    -- but the thread itself doesn't know it's async
-    -- so who adds the async? and how does the thread remove it's
-    -- own async when exiting
-    -- the calling thread can pass the async into the running thread
-    -- this seems fairly robust and simple
+    -- this queue is used to pass its own async handle
+    -- to the spawned thread, so the spawned thread
+    -- can register this handle, and deregister it when it exits
+    -- it's only used to pass this one value
     asyncOnlyCh <- newCQueueIO
-    ah <- async $
-        let st = atomically $ do
-                -- register the async in the handle runningthreads
-                ah <- readCQueue asyncOnlyCh
-                pure ()
-                modifyTVar rts (ah:)
-                pure ah
-            en ah = atomically $ do
-                -- remove the async from the handle runningthreads
-                modifyTVar rts (\a -> filter (/= ah) a)
-        in bracket st en $ const $ do
-            ib <- makeInboxFromCQueue ch
-            x <- f (Handle ib rts)
-            atomically $ closeCQueue $ unAddr $ ibaddr ib
-            pure x
+    -- try to ensure that ch is closed if the thread gets an async
+    -- message really early in it's lifetime. not 100% sure this
+    -- is the right way to do this 
+    (ch,ah) <- mask_ $ do
+        -- this is the queue that will become the new thread's inbox
+        ch <- newCQueueIO
+        ah <- asyncWithUnmask $ \unmask ->
+            unmask (fst <$> generalBracket (registerRunningThread asyncOnlyCh) 
+                    cleanupRunningThread
+                    (const $ runThread ch))
+            -- this is the bit in the mask that makes sure the cleanup
+            -- is registered
+            `finally` (atomically $ do
+                isExiting <- readTVar ie
+                unless isExiting $ closeCQueue ch)
+        pure (ch,ah)
     atomically $ writeCQueue asyncOnlyCh ah
     pure (Addr ch)
   where
-
+    registerRunningThread asyncOnlyCh = atomically $ do
+        -- register the async handle in the occasional handle
+        ah <- readCQueue asyncOnlyCh
+        modifyTVar rts (ah:)
+        pure ah
+    cleanupRunningThread ah ev = atomically $ do
+        isExiting <- readTVar ie
+        unless isExiting $ do
+            let exitVal = case ev of
+                    ExitCaseSuccess a -> show a
+                    ExitCaseException e ->
+                        -- how to get a payload out for burdock?
+                        -- if it's a DynamicValException, want to get the value out
+                        -- otherwise, use displayException
+                        displayException e
+                    ExitCaseAbort -> "internal issue?: ExitCaseAbort"
+            -- send monitor message to each monitoring process
+            
+            trace exitVal $ pure ()
+            -- remove monitoring entries
+            -- remove entry from processes table
+            modifyTVar rts (\a -> filter (/= ah) a)
+    runThread ch = do
+        ib <- makeInboxFromCQueue ch
+        f (Handle ib rts ie)
 
 send :: Handle -> Addr -> Dynamic -> IO ()
-send (Handle (Inbox _ _ ibtid) _) (Addr tgt) v = do
+send (Handle (Inbox _ _ ibtid) _ _) (Addr tgt) v = do
     assertMyThreadIdIs ibtid
     atomically $ writeCQueue tgt v
 
@@ -226,7 +279,7 @@ receive :: --Show a =>
         -> Int -- timeout in microseconds
         -> (Dynamic -> Bool) -- accept function for selective receive
         -> IO (Maybe Dynamic)
-receive (Handle ib _) tme f = receiveInbox ib tme f
+receive (Handle ib _ _) tme f = receiveInbox ib tme f
 
 ---------------------------------------
 

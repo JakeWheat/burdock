@@ -62,6 +62,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ,"uniplate"
             ,"stm"
             ,"async"
+            ,"exceptions"
             ]
     
     -- todo: separate packages for the tests, the executable and the lib?

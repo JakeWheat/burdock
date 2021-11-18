@@ -53,7 +53,7 @@ import Data.Time.Clock (getCurrentTime
                        )
 
 import Control.Exception.Safe
-    (tryAny
+    (tryAsync
     ,SomeException
     ,displayException
     )
@@ -640,7 +640,7 @@ catchExceptionExample = T.testCase "catchExceptionExample" $
 
 checkException :: String -> IO a -> IO ()
 checkException msg f =
-    tryAny f >>= \case
+    tryAsync f >>= \case
         Left e -> chk e
         Right {} -> assertBool ("didn't throw: " ++ msg) False
   where
