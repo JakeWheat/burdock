@@ -42,6 +42,7 @@ module Burdock.Occasional
     ,Inbox
     ,DynValException(..)
     ,Down(..)
+    ,ExitType(..)
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
@@ -246,7 +247,11 @@ spawnMonitor h mtag f =
 
 data Down = Down
           deriving (Eq,Show)
-                
+
+data ExitType = ExitValue
+              | ExitException
+              deriving (Eq,Show)
+
 ---------------------------------------
 
 -- testing only functions, for whitebox and component testing
@@ -350,12 +355,12 @@ spawnImpl h ifMonitorTag f = do
     cleanupRunningThread ah ev = atomically $ do
         isExiting <- readTVar (globalIsExiting $ occHandle h)
         unless isExiting $ do
-            let exitVal = case ev of
-                    ExitCaseSuccess a -> a
+            let (exitType,exitVal) = case ev of
+                    ExitCaseSuccess a -> (ExitValue, a)
                     ExitCaseException e -> case fromException e of
-                            Just (DynValException v) -> v
-                            Nothing -> toDyn $ displayException e
-                    ExitCaseAbort -> toDyn $ "internal issue?: ExitCaseAbort"
+                            Just (DynValException v) -> (ExitException, v)
+                            Nothing -> (ExitException, toDyn $ displayException e)
+                    ExitCaseAbort -> (ExitException, toDyn $ "internal issue?: ExitCaseAbort")
             -- send monitor message to each monitoring process
             --trace ("tracehere: " ++ show exitVal) $ pure ()
             let isMonitoringMe (_,x,_) = x == ah
@@ -369,7 +374,7 @@ spawnImpl h ifMonitorTag f = do
                     -- perhaps there is a way to create a Dynamic (tg,ev)?
                     -- this would be a little nicer, but is not a big deal
                     -- for burdock
-                    Just mpib -> writeCQueue mpib $ toDyn (tg, exitVal)
+                    Just mpib -> writeCQueue mpib $ toDyn (tg, exitType, exitVal)
             -- remove monitoring entries
             modifyTVar (globalMonitors $ occHandle h)
                 $ filter $ \(a,b,_) -> a /= ah && b /= ah

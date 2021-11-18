@@ -14,13 +14,14 @@ import Burdock.Occasional
     ,send
     --,receive
     ,receive
-    ,receiveTimeout
+    --,receiveTimeout
     ,addr
 
     --,Handle
     ,Addr
     ,Inbox
     ,Down(..)
+    ,ExitType(..)
     ,DynValException(..)
 
     ,testAddToBuffer
@@ -568,10 +569,11 @@ testSpawnMonitorExitVal = T.testCase "testSpawnMonitorExitVal" $
         _spaddr <- spawnMonitor ib Nothing $ \_sib -> do
             pure $ toDyn "I am an exit value"
         x <- receive ib (const True)
-        let (a,b) = fromJust $ fromDynamic x
+        let (a,et,b) = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
         assertEqual "" Down a'
+        assertEqual "" ExitValue et
         assertEqual "" "I am an exit value" b'
         pure $ toDyn ()
     
@@ -590,10 +592,11 @@ testSpawnMonitorException = T.testCase "testSpawnMonitorException" $ do
             throwIO $ DynValException $ toDyn $ MyVal "custom"
             -- pure $ toDyn () -- "I am an exit value"
         x <- receive ib (const True)
-        let (a,b) = fromJust $ fromDynamic x
+        let (a,et,b) = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
         assertEqual "" Down a'
+        assertEqual "" ExitException et
         assertEqual "" (MyVal "custom") b'
         pure $ toDyn ()
 
