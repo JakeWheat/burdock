@@ -103,14 +103,18 @@ import Control.Concurrent.Async
     ,Async
     )
 
+import Data.Dynamic (Dynamic
+                    --,Typeable
+                    )
+
 --import Debug.Trace (traceM, trace)
 
 ------------------------------------------------------------------------------
 
 -- types
 
-data Addr a =
-    Addr {unAddr :: CQueue a}
+data Addr =
+    Addr {unAddr :: CQueue Dynamic}
 
 -- not sure how to make this better
 -- for burdock want erlang style pids which are unique
@@ -118,22 +122,22 @@ data Addr a =
 -- avoiding the show instance makes all sorts of debugging really
 -- tedious. maybe some helper functions can be used if messages
 -- follow a pattern
-instance Show (Addr a) where
+instance Show Addr where
     show (Addr {}) = "Addr"
 
-data Handle a
+data Handle
     = Handle
-      {inbox :: Inbox a
-      ,_threads :: TVar [Async a]
+      {inbox :: Inbox
+      ,_threads :: TVar [Async Dynamic]
       }
 
-addr :: Handle a -> Addr a
+addr :: Handle -> Addr
 addr = ibaddr . inbox
 
-data Inbox a
+data Inbox
     = Inbox
-    {ibaddr :: Addr a
-    ,_buffer :: TVar [a]
+    {ibaddr :: Addr
+    ,_buffer :: TVar [Dynamic]
     -- used to check that inboxes are only used in the thread they are created in
     -- todo: apparently this has some not perfect interaction with the garbage
     -- collection of exited threads, so use show on the thread id instead
@@ -146,7 +150,7 @@ data Inbox a
 
 -- api functions
 
-runOccasional :: (Handle a -> IO b) -> IO b
+runOccasional :: (Handle -> IO Dynamic) -> IO Dynamic
 runOccasional f = do
     runningThreads <- newTVarIO []
     ib <- makeInbox
@@ -176,7 +180,7 @@ there's no obvious timeout on cancel or the wait variations:
 
 -}
 
-spawn :: (Handle a) -> (Handle a -> IO a) -> IO (Addr a)
+spawn :: Handle -> (Handle -> IO Dynamic) -> IO Addr
 spawn (Handle (Inbox _ _ ibtid) rts) f = do
     assertMyThreadIdIs ibtid
     ch <- newCQueueIO
@@ -211,47 +215,47 @@ spawn (Handle (Inbox _ _ ibtid) rts) f = do
   where
 
 
-send :: (Handle b) -> Addr a -> a -> IO ()
+send :: Handle -> Addr -> Dynamic -> IO ()
 send (Handle (Inbox _ _ ibtid) _) (Addr tgt) v = do
     assertMyThreadIdIs ibtid
     atomically $ writeCQueue tgt v
 
 
 receive :: --Show a =>
-           Handle a
+           Handle
         -> Int -- timeout in microseconds
-        -> (a -> Bool) -- accept function for selective receive
-        -> IO (Maybe a)
+        -> (Dynamic -> Bool) -- accept function for selective receive
+        -> IO (Maybe Dynamic)
 receive (Handle ib _) tme f = receiveInbox ib tme f
 
 ---------------------------------------
 
 -- testing only functions, for whitebox and component testing
 
-testAddToBuffer :: Inbox a -> a -> IO ()
+testAddToBuffer :: Inbox -> Dynamic -> IO ()
 testAddToBuffer (Inbox _ buf _) a = atomically $ do
     modifyTVar buf $ (++ [a])
 
-testReceiveWholeBuffer :: Inbox a -> IO [a]
+testReceiveWholeBuffer :: Inbox -> IO [Dynamic]
 testReceiveWholeBuffer (Inbox _ buf _) = atomically $ do
     x <- readTVar buf
     writeTVar buf []
     pure x
 
-testMakeInbox :: IO (Inbox a)
+testMakeInbox :: IO Inbox
 testMakeInbox = makeInbox
 
 -- send without the local inbox for inbox testing
-testSend :: Addr a -> a -> IO ()
+testSend :: Addr -> Dynamic -> IO ()
 testSend (Addr tgt) v = atomically $ writeCQueue tgt v
 
-testCloseInbox :: Inbox a -> IO ()
+testCloseInbox :: Inbox -> IO ()
 testCloseInbox ib = atomically $ closeCQueue $ unAddr $ ibaddr ib
 
-testReceive :: Inbox a
+testReceive :: Inbox
             -> Int -- timeout in microseconds
-            -> (a -> Bool) -- accept function for selective receive
-            -> IO (Maybe a)
+            -> (Dynamic -> Bool) -- accept function for selective receive
+            -> IO (Maybe Dynamic)
 testReceive = receiveInbox
 
 ------------------------------------------------------------------------------
@@ -312,7 +316,7 @@ closeCQueue q = do
 
 -- receive support
 
-receiveInbox :: Inbox a -> Int -> (a -> Bool) -> IO (Maybe a)
+receiveInbox :: Inbox -> Int -> (Dynamic -> Bool) -> IO (Maybe Dynamic)
 receiveInbox ib@(Inbox (Addr ch) buf ibtid) tme f = do
     assertMyThreadIdIs ibtid
     startTime <- getCurrentTime
@@ -355,11 +359,11 @@ flushInboxForMatch buf bdm inQueue prd = go1 buf bdm
 -- receiving a message with timeout and selective receive
 -- and buffering, after the existing buffer has been checked
 -- and there are no matching messages there
-receiveNoBuffered :: Inbox a
+receiveNoBuffered :: Inbox
         -> Int -- timeout in microseconds
-        -> (a -> Bool) -- accept function for selective receive
+        -> (Dynamic -> Bool) -- accept function for selective receive
         -> UTCTime
-        -> IO (Maybe a)
+        -> IO (Maybe Dynamic)
 receiveNoBuffered ib@(Inbox (Addr ch) buf _) tme f startTime = do
     -- get a message
     -- if it matches, return it
@@ -380,7 +384,7 @@ receiveNoBuffered ib@(Inbox (Addr ch) buf _) tme f startTime = do
                     then pure Nothing
                     else receiveNoBuffered ib tme f startTime
 
-makeInbox :: IO (Inbox a)
+makeInbox :: IO Inbox
 makeInbox = do
     tid <- myThreadId
     atomically $ do
@@ -388,7 +392,7 @@ makeInbox = do
       b <- newTVar []
       pure (Inbox (Addr x) b tid)
 
-makeInboxFromCQueue :: CQueue a -> IO (Inbox a)
+makeInboxFromCQueue :: CQueue Dynamic -> IO Inbox
 makeInboxFromCQueue x = do
     tid <- myThreadId
     atomically $ do

@@ -65,7 +65,7 @@ import Control.Concurrent.Async (async,wait)
 import Data.Dynamic (Dynamic
                     ,toDyn
                     ,fromDynamic
-                    --,Typeable
+                    ,Typeable
                     )
 
 import Control.Monad.STM
@@ -131,9 +131,9 @@ read the message out and check it
 inboxSimpleSendAndReceive :: TestTree
 inboxSimpleSendAndReceive = T.testCase "inboxSimpleSendAndReceive" $ do
     b <- testMakeInbox
-    testSend (ibaddr b) "test"
+    testSend (ibaddr b) $ toDyn "test"
     x <- testReceive b (-1) (const True)
-    assertEqual "" (Just "test") x
+    assertEqual "" (Just "test") $ mtFromDyn x
 
 {-
 send a message
@@ -144,13 +144,13 @@ check the message
 inboxSimpleSendAndReceive0Timeout :: TestTree
 inboxSimpleSendAndReceive0Timeout = T.testCase "inboxSimpleSendAndReceive0Timeout" $ do
     b <- testMakeInbox
-    testSend (ibaddr b) "test"
+    testSend (ibaddr b) $ toDyn "test"
     -- not sure if there's a possible race here
     -- may need a tweak if start getting intermittent failures
     -- if running lots of tests concurrently
     -- or on a very busy machine?
     x <- testReceive b 0 (const True)
-    assertEqual "" (Just "test") x
+    assertEqual "" (Just "test") $ mtFromDyn x
 
 {-
 read inbox
@@ -173,9 +173,9 @@ inboxSimpleReceiveWaitSend = T.testCase "inboxSimpleReceiveWaitSend" $ do
     b <- testMakeInbox
     void $ async $ do
         threadDelay shortWait
-        testSend (ibaddr b) "test"
+        testSend (ibaddr b) $ toDyn "test"
     x <- testReceive b (-1) (const True)
-    assertEqual "" (Just "test") x
+    assertEqual "" (Just "test") $ mtFromDyn x
 
 
 {-
@@ -190,9 +190,9 @@ inboxSimpleReceiveWaitSendTimeoutGet = T.testCase "inboxSimpleReceiveWaitSendTim
     b <- testMakeInbox
     void $ async $ do
         threadDelay shortWait
-        testSend (ibaddr b) "test"
+        testSend (ibaddr b) $ toDyn "test"
     x <- testReceive b (shortWait * 2) (const True)
-    assertEqual "" (Just "test") x
+    assertEqual "" (Just "test") $ mtFromDyn x
 
 {-
 
@@ -208,12 +208,12 @@ inboxSimpleReceiveWaitSendTimeoutThenGet = T.testCase "inboxSimpleReceiveWaitSen
     b <- testMakeInbox
     void $ async $ do
         threadDelay (shortWait * 2)
-        testSend (ibaddr b) "test"
+        testSend (ibaddr b) $ toDyn "test"
     x <- testReceive b shortWait (const True)
-    assertEqual "" Nothing x
+    assertEqual "" Nothing $ mtFromDyn x
     y <- testReceive b (shortWait * 2) (const True)
     -- todo: saw a rare race with this, how??
-    assertEqual "" (Just "test") y
+    assertEqual "" (Just "test") $ mtFromDyn y
 
 
 {-
@@ -247,6 +247,11 @@ data TestMessage = Matching Int
 receivePred :: TestMessage -> Bool
 receivePred (Matching {}) = True
 receivePred (NotMatching {}) = False
+
+receivePredDyn :: Dynamic -> Bool
+receivePredDyn x =
+    maybe (error $ "wrong type: " ++ show x) receivePred $ fromDynamic x
+
 
 -- tests which don't send something to the inbox
 -- after receive has been called
@@ -374,53 +379,54 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
   where
     runTimeout0Test = do
         ib <- testMakeInbox
-        forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) m
+        forM_ (startingBufferContents rt) (testAddToBuffer ib . toDyn)
+        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) $ toDyn m
         m <- testReceive ib 0 $ if useSelectiveReceive rt
-                            then receivePred
+                            then receivePredDyn
                             else const True
         case (m, receivesJust rt) of
             (Nothing,False) -> assertBool "" True
             (Just _ ,True) -> assertBool "" True
             -- todo: print this readably
             _ -> assertFailure $ ppShow (m, rt)
-        finalBuf <- testReceiveWholeBuffer ib
+        finalBuf <- map tFromDyn <$> testReceiveWholeBuffer ib
         assertEqual "" (finalBufferContents rt) finalBuf
-        finalChan <- flushInbox ib
+        finalChan <- map tFromDyn <$> flushInbox ib
         assertEqual "" (finalChanContents rt) finalChan
     runInfiniteTimeoutTest = when (receivesJust rt) $ do
         ib <- testMakeInbox
-        forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) m
+        forM_ (startingBufferContents rt) (testAddToBuffer ib . toDyn)
+        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) $ toDyn m
         m <- testReceive ib (-1) $ if useSelectiveReceive rt
-                            then receivePred
+                            then receivePredDyn
                             else const True
         case (m, receivesJust rt) of
             (Nothing,False) -> assertBool "" True
             (Just _ ,True) -> assertBool "" True
             -- todo: print this readably
             _ -> assertFailure $ ppShow (m, rt)
-        finalBuf <- testReceiveWholeBuffer ib
+        finalBuf <- map tFromDyn <$> testReceiveWholeBuffer ib
         assertEqual "" (finalBufferContents rt) finalBuf
-        finalChan <- flushInbox ib
+        finalChan <- map tFromDyn <$> flushInbox ib
         assertEqual "" (finalChanContents rt) finalChan
     runFiniteTimeoutTest = do
         ib <- testMakeInbox
-        forM_ (startingBufferContents rt) $ testAddToBuffer ib 
-        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) m
+        forM_ (startingBufferContents rt) (testAddToBuffer ib . toDyn)
+        forM_ (startingChanContents rt) $ \m -> testSend (ibaddr ib) $ toDyn m
         startTime <- getCurrentTime
-        m <- testReceive ib shortWait $ if useSelectiveReceive rt
-                            then receivePred
-                            else const True
+        m <- mtFromDyn
+            <$> testReceive ib shortWait (if useSelectiveReceive rt
+                            then receivePredDyn
+                            else const True)
         endTime <- getCurrentTime                                 
         case (m, receivesJust rt) of
             (Nothing,False) -> assertBool "" True
             (Just _ ,True) -> assertBool "" True
             -- todo: print this readably
             _ -> assertFailure $ ppShow (m, rt)
-        finalBuf <- testReceiveWholeBuffer ib
+        finalBuf <- map tFromDyn <$> testReceiveWholeBuffer ib
         assertEqual "" (finalBufferContents rt) finalBuf
-        finalChan <- flushInbox ib
+        finalChan <- map tFromDyn <$> flushInbox ib
         assertEqual "" (finalChanContents rt) finalChan
         -- todo: check the time elapsed if got nothing
         when (m == Nothing) $ do
@@ -438,7 +444,7 @@ runTest n rt = T.testCase ("Receive test " ++ show n) $ do
                 (elapsed - expected < s shortWait + 0.001)
 
 
-flushInbox :: Inbox a -> IO [a]
+flushInbox :: Inbox -> IO [Dynamic]
 flushInbox ib = do
     x <- testReceive ib 0 $ const True
     case x of
@@ -449,11 +455,11 @@ flushInbox ib = do
 inboxSendAfterClose :: TestTree
 inboxSendAfterClose = T.testCase "inboxSendAfterClose" $ do
     b <- testMakeInbox
-    testSend (ibaddr b) "test"
+    testSend (ibaddr b) $ toDyn "test"
     x <- testReceive b 0 (const True)
-    assertEqual "" (Just "test") x
+    assertEqual "" (Just "test") $ mtFromDyn x
     testCloseInbox b
-    checkException "tried to use closed queue" $ testSend (ibaddr b) "test"
+    checkException "tried to use closed queue" $ testSend (ibaddr b) $ toDyn "test"
 
 ------------------------------------------------------------------------------
 
@@ -480,7 +486,7 @@ testSimpleSpawn = T.testCase "testSimpleSpawn" $
         x <- receive ib (-1) $ const True
         assertEqual "" (Just "hello testSimpleSpawn") x-}
 
-type Msg = (Addr Dynamic, String)
+type Msg = (Addr, String)
 
 -- can't figure out how the types can work in this case
 -- without dynamic
@@ -616,10 +622,16 @@ check exiting the main process: check the exit value, exception, kill
 
 -}
 
+tFromDyn :: Typeable a => Dynamic -> a
+tFromDyn a= maybe (error $ "wrong type of value" ++ show a) id $ fromDynamic a
+
+mtFromDyn :: Maybe Dynamic -> Maybe String
+mtFromDyn = fmap tFromDyn
+
 testMainProcessReturnValue :: T.TestTree
 testMainProcessReturnValue = T.testCase "testMainProcessReturnValue" $ do
-    x <- runOccasional $ \_ib -> pure "retval"
-    assertEqual "" "retval" x
+    x <- runOccasional $ \_ib -> pure $ toDyn "retval"
+    assertEqual "" "retval" $ tFromDyn x
 
 catchExceptionExample :: T.TestTree
 catchExceptionExample = T.testCase "catchExceptionExample" $
@@ -641,7 +653,7 @@ testMainProcessException = T.testCase "testMainProcessException" $
     checkException "an issue in the main process" runit
   where
     runit = void $ runOccasional $ \_ib ->
-            void $ error "an issue in the main process"
+            error "an issue in the main process"
 
 checkWaitTwice :: T.TestTree
 checkWaitTwice = T.testCase "checkWaitTwice" $ do
