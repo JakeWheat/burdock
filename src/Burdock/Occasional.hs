@@ -35,7 +35,7 @@ module Burdock.Occasional
     ,receive
     ,addr
 
-    ,Handle
+    ,ThreadHandle
     ,Addr
     ,Inbox
     ,DynValException(..)
@@ -147,25 +147,34 @@ data Addr =
 instance Show Addr where
     show (Addr {}) = "Addr"
 
-data Handle
-    = Handle
-      {inbox :: Inbox
-      ,_threads :: TVar [Async Dynamic]
-      ,_isExiting :: TVar Bool
+data OccasionalHandle =
+    OccasionalHandle
+    {globalThreads :: TVar [Async Dynamic]
+        -- monitoring process - the one that gets the thread down message,
+        -- monitored process,
+        -- monitor tag
+        --,globalMonitors :: TVar [(Async Dynamic, Async Dynamic, Dynamic)]
+    ,globalIsExiting :: TVar Bool
+    }
+
+data ThreadHandle
+    = ThreadHandle
+      {myInbox :: Inbox
+      ,occHandle :: OccasionalHandle
       }
 
-addr :: Handle -> Addr
-addr = ibaddr . inbox
+addr :: ThreadHandle -> Addr
+addr = ibaddr . myInbox
 
 data Inbox
     = Inbox
     {ibaddr :: Addr
-    ,_buffer :: TVar [Dynamic]
+    ,ibbuffer :: TVar [Dynamic]
     -- used to check that inboxes are only used in the thread they are created in
     -- todo: apparently this has some not perfect interaction with the garbage
     -- collection of exited threads, so use show on the thread id instead
     -- of saving the ThreadId itself or something
-    ,_threadId :: ThreadId
+    ,ibThreadId :: ThreadId
     }
 
 
@@ -173,19 +182,18 @@ data Inbox
 
 -- api functions
 
-runOccasional :: (Handle -> IO Dynamic) -> IO Dynamic
+runOccasional :: (ThreadHandle -> IO Dynamic) -> IO Dynamic
 runOccasional f = do
-    runningThreads <- newTVarIO []
-    ie <- newTVarIO False
+    oh <- OccasionalHandle <$> newTVarIO [] <*> newTVarIO False
     ib <- makeInbox
-    let h = Handle ib runningThreads ie
-    bracket (pure (runningThreads,ie)) cancelRunningThreads (\_ -> f h)
+    let th = ThreadHandle ib oh
+    bracket (pure oh) cancelRunningThreads (\_ -> f th)
   where
-    cancelRunningThreads (rps,ie) = do
+    cancelRunningThreads oh = do
         ts <- atomically $ do
             -- tell the exiting threads not to do the regular cleanup
-            writeTVar ie True
-            readTVar rps
+            writeTVar (globalIsExiting oh) True
+            readTVar (globalThreads oh)
         mapM_ uninterruptibleCancel ts
 {-
 
@@ -209,6 +217,7 @@ maybe use regular io timeout function with stm wait variations?
 
 spawn, possibly will end up being one of the most fun functions in the
 codebase
+
 tricky requirements:
 
 ensure the queue that is the spawned thread's inbox is always closed
@@ -229,9 +238,9 @@ data DynValException = DynValException Dynamic
 
 instance Exception DynValException
 
-spawn :: Handle -> (Handle -> IO Dynamic) -> IO Addr
-spawn (Handle (Inbox _ _ ibtid) rts ie) f = do
-    assertMyThreadIdIs ibtid
+spawn :: ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawn h f = do
+    assertMyThreadIdIs $ ibThreadId $ myInbox h
     -- this queue is used to pass its own async handle
     -- to the spawned thread, so the spawned thread
     -- can register this handle, and deregister it when it exits
@@ -250,7 +259,7 @@ spawn (Handle (Inbox _ _ ibtid) rts ie) f = do
             -- this is the bit in the mask that makes sure the cleanup
             -- is registered
             `finally` (atomically $ do
-                isExiting <- readTVar ie
+                isExiting <- readTVar $ globalIsExiting $ occHandle h
                 unless isExiting $ closeCQueue ch)
         pure (ch,ah)
     atomically $ writeCQueue asyncOnlyCh ah
@@ -259,10 +268,10 @@ spawn (Handle (Inbox _ _ ibtid) rts ie) f = do
     registerRunningThread asyncOnlyCh = atomically $ do
         -- register the async handle in the occasional handle
         ah <- readCQueue asyncOnlyCh
-        modifyTVar rts (ah:)
+        modifyTVar (globalThreads $ occHandle h) (ah:)
         pure ah
     cleanupRunningThread ah ev = atomically $ do
-        isExiting <- readTVar ie
+        isExiting <- readTVar (globalIsExiting $ occHandle h)
         unless isExiting $ do
             let _exitVal = case ev of
                     ExitCaseSuccess a -> Right a
@@ -274,36 +283,36 @@ spawn (Handle (Inbox _ _ ibtid) rts ie) f = do
             --trace ("tracehere: " ++ show exitVal) $ pure ()
             -- remove monitoring entries
             -- remove entry from processes table
-            modifyTVar rts (\a -> filter (/= ah) a)
+            modifyTVar (globalThreads $ occHandle h) (\a -> filter (/= ah) a)
     runThread ch = do
         ib <- makeInboxFromCQueue ch
-        f (Handle ib rts ie)
+        f (ThreadHandle ib (occHandle h))
 
-send :: Handle -> Addr -> Dynamic -> IO ()
-send (Handle (Inbox _ _ ibtid) _ _) (Addr tgt) v = do
-    assertMyThreadIdIs ibtid
+send :: ThreadHandle -> Addr -> Dynamic -> IO ()
+send h (Addr tgt) v = do
+    assertMyThreadIdIs $ ibThreadId $ myInbox h
     atomically $ writeCQueue tgt v
 
 
 receive :: --Show a =>
-           Handle
+           ThreadHandle
         -> Int -- timeout in microseconds
         -> (Dynamic -> Bool) -- accept function for selective receive
         -> IO (Maybe Dynamic)
-receive (Handle ib _ _) tme f = receiveInbox ib tme f
+receive h tme f = receiveInbox (myInbox h) tme f
 
 ---------------------------------------
 
 -- testing only functions, for whitebox and component testing
 
 testAddToBuffer :: Inbox -> Dynamic -> IO ()
-testAddToBuffer (Inbox _ buf _) a = atomically $ do
-    modifyTVar buf $ (++ [a])
+testAddToBuffer ib a = atomically $ do
+    modifyTVar (ibbuffer ib) $ (++ [a])
 
 testReceiveWholeBuffer :: Inbox -> IO [Dynamic]
-testReceiveWholeBuffer (Inbox _ buf _) = atomically $ do
-    x <- readTVar buf
-    writeTVar buf []
+testReceiveWholeBuffer ib = atomically $ do
+    x <- readTVar (ibbuffer ib)
+    writeTVar (ibbuffer ib) []
     pure x
 
 testMakeInbox :: IO Inbox
@@ -381,14 +390,14 @@ closeCQueue q = do
 -- receive support
 
 receiveInbox :: Inbox -> Int -> (Dynamic -> Bool) -> IO (Maybe Dynamic)
-receiveInbox ib@(Inbox (Addr ch) buf ibtid) tme f = do
-    assertMyThreadIdIs ibtid
+receiveInbox ib tme f = do
+    assertMyThreadIdIs $ ibThreadId ib
     startTime <- getCurrentTime
     mres <- atomically $ do
-        b <- readTVar buf
+        b <- readTVar (ibbuffer ib)
         --traceM $ "buf at start of receive: " ++ show b
-        (newBuf, mres) <- flushInboxForMatch b [] ch f
-        writeTVar buf $ newBuf
+        (newBuf, mres) <- flushInboxForMatch b [] (unAddr $ ibaddr ib) f
+        writeTVar (ibbuffer ib) $ newBuf
         pure mres
     case mres of
         Just {} -> pure mres
@@ -428,20 +437,20 @@ receiveNoBuffered :: Inbox
         -> (Dynamic -> Bool) -- accept function for selective receive
         -> UTCTime
         -> IO (Maybe Dynamic)
-receiveNoBuffered ib@(Inbox (Addr ch) buf _) tme f startTime = do
+receiveNoBuffered ib tme f startTime = do
     -- get a message
     -- if it matches, return it
     -- otherwise, buffer
     -- check if more time, if so, loop
     msg <- if | tme < 0 -- todo: < 0 means infinity, wrap it in a data type?
-                -> Just <$> atomically (readCQueue ch)
-              | otherwise -> smartTimeout tme $ readCQueue ch
+                -> Just <$> atomically (readCQueue $ unAddr $ ibaddr ib)
+              | otherwise -> smartTimeout tme $ readCQueue $ unAddr $ ibaddr ib
     case msg of
         Nothing -> pure Nothing
         Just msg'
             | f msg' -> pure msg
             | otherwise -> do
-                atomically $ modifyTVar buf (++[msg'])
+                atomically $ modifyTVar (ibbuffer ib) (++[msg'])
                 nw <- getCurrentTime
                 let elapsed = diffUTCTime nw startTime
                 if elapsed > realToFrac tme / 1000 / 1000
