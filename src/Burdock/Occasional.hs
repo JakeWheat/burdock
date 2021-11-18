@@ -31,14 +31,17 @@ send and receive with the new spawn, sending self address
 module Burdock.Occasional
     (runOccasional
     ,spawn
+    ,spawnMonitor
     ,send
     ,receive
+    ,receiveNoTO
     ,addr
 
     ,ThreadHandle
     ,Addr
     ,Inbox
     ,DynValException(..)
+    ,Down(..)
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
@@ -104,6 +107,7 @@ import Control.Monad
     ({-void
     ,-}when
     ,unless
+    ,forM_
     )
 
 import Control.Concurrent.Async
@@ -122,6 +126,8 @@ import Data.Dynamic (Dynamic
                     ,toDyn
                     --,fromDynamic
                     )
+
+import Data.Maybe (fromMaybe)
 
 {-import Data.Typeable (cast
                      ,typeOf)-}
@@ -148,7 +154,7 @@ data OccasionalHandle =
         -- monitoring process - the one that gets the thread down message,
         -- monitored process,
         -- monitor tag
-    --,globalMonitors :: TVar [(Async Dynamic, Async Dynamic, Dynamic)]
+    ,globalMonitors :: TVar [(Async Dynamic, Async Dynamic, Dynamic)]
     ,globalIsExiting :: TVar Bool
     }
 
@@ -156,6 +162,7 @@ data ThreadHandle
     = ThreadHandle
       {myInbox :: Inbox
       ,occHandle :: OccasionalHandle
+      ,myAsyncHandle :: Async Dynamic
       }
 
 
@@ -177,7 +184,7 @@ data Inbox
 
 runOccasional :: (ThreadHandle -> IO Dynamic) -> IO Dynamic
 runOccasional f = do
-    bracket (OccasionalHandle <$> newTVarIO [] <*> newTVarIO False)
+    bracket (OccasionalHandle <$> newTVarIO [] <*> newTVarIO [] <*> newTVarIO False)
         cancelRunningThreads
         (spawnMainThread f)
   where
@@ -227,9 +234,22 @@ receive :: --Show a =>
         -> IO (Maybe Dynamic)
 receive h tme f = receiveInbox (myInbox h) tme f
 
-spawn :: ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
-spawn = spawnImpl False
+receiveNoTO :: ThreadHandle -> (Dynamic -> Bool) -> IO Dynamic
+receiveNoTO h f = do
+    x <- receive h (-1) f
+    maybe (error $ "internal error: receiveNoTO got Nothing")
+           pure x
 
+spawn :: ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawn h f = spawnImpl h Nothing f
+
+spawnMonitor :: ThreadHandle -> Maybe Dynamic -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawnMonitor h mtag f =
+    spawnImpl h (Just $ fromMaybe (toDyn Down) mtag) f
+
+data Down = Down
+          deriving (Eq,Show)
+                
 ---------------------------------------
 
 -- testing only functions, for whitebox and component testing
@@ -282,11 +302,13 @@ asynchronously exited because the occasional handle it's running under
 is being closed (which happens exactly when the main user function
 exits by non-exception or exception)
 
+TODO: reason about what happens when the spawning thread is asynchronously
+exited during the call to spawn/spawnMonitor
+
 -}
 
-
-spawnImpl :: Bool -> ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO (CQueue Dynamic)
-spawnImpl addMonitor h f = do
+spawnImpl :: ThreadHandle -> Maybe Dynamic -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawnImpl h ifMonitorTag f = do
     assertMyThreadIdIs $ ibThreadId $ myInbox h
     -- this queue is used to pass its own async handle
     -- to the spawned thread, so the spawned thread
@@ -300,9 +322,11 @@ spawnImpl addMonitor h f = do
         -- this is the queue that will become the new thread's inbox
         ch <- newCQueueIO
         ah <- asyncWithUnmask $ \unmask ->
+            -- TODO: still a race where a spawnMonitor process can exit
+            -- before the monitoring is setup
             unmask (fst <$> generalBracket (registerRunningThread asyncOnlyCh ch)
                     cleanupRunningThread
-                    (const $ runThread ch))
+                    (runThread ch))
             -- this is the bit in the mask that makes sure the cleanup
             -- is registered
             `finally` (atomically $ do
@@ -316,25 +340,43 @@ spawnImpl addMonitor h f = do
         -- register the async handle in the occasional handle
         ah <- readCQueue asyncOnlyCh
         modifyTVar (globalThreads $ occHandle h) ((ah,ch):)
+        case ifMonitorTag of
+            Nothing -> pure ()
+            Just tg -> do
+                modifyTVar (globalMonitors $ occHandle h)
+                   ((myAsyncHandle h, ah, tg):)
         pure ah
     cleanupRunningThread ah ev = atomically $ do
         isExiting <- readTVar (globalIsExiting $ occHandle h)
         unless isExiting $ do
-            let _exitVal = case ev of
-                    ExitCaseSuccess a -> Right a
+            let exitVal = case ev of
+                    ExitCaseSuccess a -> a
                     ExitCaseException e -> case fromException e of
-                            Just (DynValException v) -> Left v
-                            Nothing -> Left $ toDyn $ displayException e
-                    ExitCaseAbort -> Left $ toDyn $ "internal issue?: ExitCaseAbort"
+                            Just (DynValException v) -> v
+                            Nothing -> toDyn $ displayException e
+                    ExitCaseAbort -> toDyn $ "internal issue?: ExitCaseAbort"
             -- send monitor message to each monitoring process
             --trace ("tracehere: " ++ show exitVal) $ pure ()
+            let isMonitoringMe (_,x,_) = x == ah
+            ips <- filter isMonitoringMe <$> readTVar (globalMonitors $ occHandle h)
+            forM_ ips $ \(mp, _, tg) -> do
+                x <- readTVar (globalThreads $ occHandle h)
+                case lookup mp x of
+                    Nothing -> pure () -- the spawning process already exited?
+                    -- send the monitor message
+                    -- it ends up as nested dynamic Dynamic (Dynamic tg, Dynamic ev)
+                    -- perhaps there is a way to create a Dynamic (tg,ev)?
+                    -- this would be a little nicer, but is not a big deal
+                    -- for burdock
+                    Just mpib -> writeCQueue mpib $ toDyn (tg, exitVal)
             -- remove monitoring entries
+            modifyTVar (globalMonitors $ occHandle h)
+                $ filter $ \(a,b,_) -> a /= ah && b /= ah
             -- remove entry from processes table
             modifyTVar (globalThreads $ occHandle h) (\a -> filter ((/= ah) . fst) a)
-    runThread ch = do
+    runThread ch ah = do
         ib <- makeInboxFromCQueue ch
-        f (ThreadHandle ib (occHandle h))
-
+        f (ThreadHandle ib (occHandle h) ah)
 
 -- the system is far easier to work with if the user thread isn't made
 -- a special case and we can get it's async handle. the simple way to
@@ -350,15 +392,13 @@ spawnMainThread f oh = do
   where
     runUserThread asyncOnlyCh = do
         ib <- makeInbox
-        atomically $ do
+        ah <- atomically $ do
             ah <- readCQueue asyncOnlyCh
             -- put the main thread in the thread catalog
             modifyTVar (globalThreads oh) ((ah,ibaddr ib):)
-        let th = ThreadHandle ib oh
+            pure ah
+        let th = ThreadHandle ib oh ah
         f th
-
-
-    
 
 ------------------------------------------------------------------------------
 

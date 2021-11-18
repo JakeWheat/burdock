@@ -10,14 +10,17 @@ module Burdock.HsOccasionalTests
 import Burdock.Occasional
     (runOccasional
     ,spawn
+    ,spawnMonitor
     ,send
-    ,receive
+    --,receive
+    ,receiveNoTO
     ,addr
 
     --,Handle
     ,Addr
     ,Inbox
-    --,DynValException(..)
+    ,Down(..)
+    ,DynValException(..)
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
@@ -35,7 +38,7 @@ import Control.Monad (void
                      ,when
                      --,join
                      )
---import Data.Maybe (mapMaybe)
+import Data.Maybe (fromJust)
 
 import Text.Show.Pretty (ppShow)
 
@@ -57,7 +60,7 @@ import Control.Exception.Safe
     (tryAsync
     ,SomeException
     ,displayException
-    --,throwIO
+    ,throwIO
     )
 
 import Data.List (isInfixOf)
@@ -109,6 +112,8 @@ tests = T.testGroup "hs occasional tests"
         ,checkWaitTwice
         ,testSendAfterClose
         ,testDaemonSimple
+        ,testSpawnMonitorExitVal
+        ,testSpawnMonitorException
         ]
     ]
 
@@ -494,7 +499,7 @@ type Msg = (Addr, String)
 -- without dynamic
 
 data MyVal = MyVal String
-    deriving Show
+    deriving (Eq,Show)
 
 testSimpleSpawnDyn :: T.TestTree
 testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
@@ -503,15 +508,15 @@ testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
     mainThread ib = do
         spaddr <- spawn ib subThread
         send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
-        x <- receive ib (-1) $ const True
-        let y :: Maybe Msg = x >>= fromDynamic
+        x <- receiveNoTO ib $ const True
+        let y :: Maybe Msg = fromDynamic x
         assertEqual "" (Just "hello testSimpleSpawn") $ fmap snd y
         pure $ toDyn ()
     subThread sib = do
         --error "balls"
         --void $ throwIO $ DynValException $ toDyn (MyVal "custom balls")
-        x <- receive sib (-1) (const True)
-        case (x >>= fromDynamic) :: Maybe Msg of
+        x <- receiveNoTO sib (const True)
+        case fromDynamic x :: Maybe Msg of
             Just (ret, msg) -> send sib ret $ toDyn (addr sib, "hello " ++ msg)
             _ -> error $ show x
         pure $ toDyn ()
@@ -548,26 +553,59 @@ _testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" undefined {-$
         x <- receive ib (-1) $ const True
         assertEqual "" (Just "hello testSimpleSpawn") x -}
 -}
+
+{-
+
+spawnMonitor a process
+check its exit value via monitor
+
+-}
+
+testSpawnMonitorExitVal :: T.TestTree
+testSpawnMonitorExitVal = T.testCase "testSpawnMonitorExitVal" $
+    void $ runOccasional $ \ib -> do
+        _spaddr <- spawnMonitor ib Nothing $ \_sib -> do
+            pure $ toDyn "I am an exit value"
+        x <- receiveNoTO ib (const True)
+        let (a,b) = fromJust $ fromDynamic x
+            a' = fromJust $ fromDynamic a
+            b' = fromJust $ fromDynamic b
+        assertEqual "" Down a'
+        assertEqual "" "I am an exit value" b'
+        pure $ toDyn ()
+    
+{-
+
+spawnMonitor a process
+throw an exception
+check this exception value via monitor
+
+-}
+
+testSpawnMonitorException :: T.TestTree
+testSpawnMonitorException = T.testCase "testSpawnMonitorException" $
+    void $ runOccasional $ \ib -> do
+        _spaddr <- spawnMonitor ib Nothing $ \_sib ->
+            throwIO $ DynValException $ toDyn $ MyVal "custom"
+            -- pure $ toDyn () -- "I am an exit value"
+        x <- receiveNoTO ib (const True)
+        let (a,b) = fromJust $ fromDynamic x
+            a' = fromJust $ fromDynamic a
+            b' = fromJust $ fromDynamic b
+        assertEqual "" Down a'
+        assertEqual "" (MyVal "custom") b'
+        pure $ toDyn ()
+
+
+{-
+repeat both exit val tests with a custom monitor tag
+-}
+
 {-
 
 spawn a process
-get the exit value it returns
-check it's exited?
-
-call spawn_monitor
-
-exchange messages with the spawned process?
-
-wait for the monitor exit message
-
-You pass a maybe tag when monitoring
-return message is
-{Tag, MonitorRef, Pid, Error | Return value}
-does it distinguish here between an exception that exits the process
-and some other error, like the process wasn't able to start, or it
-can't be found
-
-
+send it the kill message
+get the exception value
 
 -}
 
@@ -587,15 +625,15 @@ testSendAfterClose :: T.TestTree
 testSendAfterClose = T.testCase "testSendAfterClose" $
     void $ runOccasional $ \ib -> do
         spaddr <- spawn ib $ \sib -> do
-            x <- receive sib (-1) $ const True
-            case x >>= fromDynamic of
+            x <- receiveNoTO sib $ const True
+            case fromDynamic x of
                 Just (ret, msg) -> send sib ret (toDyn ("hello " ++ msg))
                 _ -> putStrLn ("bad message: " ++ show x)
             pure $ toDyn ()
 
         send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
-        x <- receive ib (-1) $ const True
-        let y = x >>= fromDynamic
+        x <- receiveNoTO ib $ const True
+        let y = fromDynamic x
         assertEqual "" (Just "hello testSimpleSpawn") y
         -- todo: update using the monitor system
         threadDelay shortWait
@@ -603,26 +641,6 @@ testSendAfterClose = T.testCase "testSendAfterClose" $
             $ send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
         pure $ toDyn ()
         
-{-
-
-spawn a process
-throw an exception
-get this exception value
-check it's exited?
-
--}
-
-
-
-{-
-
-spawn a process
-send it the kill message
-get the exception value
-check it's exited?
-
--}
-
 {-
 
 check exiting the main process: check the exit value, exception, kill
@@ -705,11 +723,11 @@ testDaemonSimple = T.testCase "testDaemonSimple" $ do
     mainThread ch ib = do
         spaddr <- spawn ib (subThread ch)
         send ib spaddr (toDyn (addr ib))
-        _ <- receive ib (-1) $ const True
+        _ <- receiveNoTO ib $ const True
         pure $ toDyn ()
     subThread ch sib = do
-        x <- receive sib (-1) (const True)
-        case x >>= fromDynamic of
+        x <- receiveNoTO sib (const True)
+        case fromDynamic x of
             Just ret -> send sib ret $ toDyn (addr sib)
             _ -> error $ show x
         let loop :: IO ()
