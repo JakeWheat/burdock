@@ -144,7 +144,7 @@ addr = ibaddr . myInbox
 
 data OccasionalHandle =
     OccasionalHandle
-    {globalThreads :: TVar [Async Dynamic]
+    {globalThreads :: TVar [(Async Dynamic, CQueue Dynamic)]
         -- monitoring process - the one that gets the thread down message,
         -- monitored process,
         -- monitor tag
@@ -190,7 +190,7 @@ runOccasional f = do
         -- already exited at this point, if this cleanup is moved
         -- inside the main user thread exit, it should skip sending
         -- cancel to the main user thread async handle
-        mapM_ uninterruptibleCancel ts
+        mapM_ (uninterruptibleCancel . fst) ts
 {-
 
 running the main thread:
@@ -300,7 +300,7 @@ spawnImpl addMonitor h f = do
         -- this is the queue that will become the new thread's inbox
         ch <- newCQueueIO
         ah <- asyncWithUnmask $ \unmask ->
-            unmask (fst <$> generalBracket (registerRunningThread asyncOnlyCh) 
+            unmask (fst <$> generalBracket (registerRunningThread asyncOnlyCh ch)
                     cleanupRunningThread
                     (const $ runThread ch))
             -- this is the bit in the mask that makes sure the cleanup
@@ -312,10 +312,10 @@ spawnImpl addMonitor h f = do
     atomically $ writeCQueue asyncOnlyCh ah
     pure ch
   where
-    registerRunningThread asyncOnlyCh = atomically $ do
+    registerRunningThread asyncOnlyCh ch = atomically $ do
         -- register the async handle in the occasional handle
         ah <- readCQueue asyncOnlyCh
-        modifyTVar (globalThreads $ occHandle h) (ah:)
+        modifyTVar (globalThreads $ occHandle h) ((ah,ch):)
         pure ah
     cleanupRunningThread ah ev = atomically $ do
         isExiting <- readTVar (globalIsExiting $ occHandle h)
@@ -330,7 +330,7 @@ spawnImpl addMonitor h f = do
             --trace ("tracehere: " ++ show exitVal) $ pure ()
             -- remove monitoring entries
             -- remove entry from processes table
-            modifyTVar (globalThreads $ occHandle h) (\a -> filter (/= ah) a)
+            modifyTVar (globalThreads $ occHandle h) (\a -> filter ((/= ah) . fst) a)
     runThread ch = do
         ib <- makeInboxFromCQueue ch
         f (ThreadHandle ib (occHandle h))
@@ -349,11 +349,11 @@ spawnMainThread f oh = do
         wait a1
   where
     runUserThread asyncOnlyCh = do
+        ib <- makeInbox
         atomically $ do
             ah <- readCQueue asyncOnlyCh
             -- put the main thread in the thread catalog
-            modifyTVar (globalThreads oh) (ah:)
-        ib <- makeInbox
+            modifyTVar (globalThreads oh) ((ah,ibaddr ib):)
         let th = ThreadHandle ib oh
         f th
 
