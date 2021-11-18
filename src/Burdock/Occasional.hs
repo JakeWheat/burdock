@@ -38,6 +38,7 @@ module Burdock.Occasional
     ,Handle
     ,Addr
     ,Inbox
+    ,DynValException(..)
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
@@ -58,6 +59,8 @@ import Control.Exception.Safe
     ,mask_
     ,finally
     ,displayException
+    ,Exception
+    ,fromException
     )
 
 import Control.Monad.Catch (ExitCase(..))
@@ -116,12 +119,17 @@ import Control.Concurrent.Async
 
 import Data.Dynamic (Dynamic
                     --,Typeable
+                    ,toDyn
+                    --,fromDynamic
                     )
 
-import Debug.Trace (--traceM
+{-import Data.Typeable (cast
+                     ,typeOf)-}
+
+{-import Debug.Trace (--traceM
                    --,
                    trace
-                   )
+                   )-}
 
 ------------------------------------------------------------------------------
 
@@ -215,6 +223,12 @@ is being closed (which happens exactly when the main user function
 exits by non-exception or exception)
 
 -}
+
+data DynValException = DynValException Dynamic
+    deriving Show
+
+instance Exception DynValException
+
 spawn :: Handle -> (Handle -> IO Dynamic) -> IO Addr
 spawn (Handle (Inbox _ _ ibtid) rts ie) f = do
     assertMyThreadIdIs ibtid
@@ -250,17 +264,14 @@ spawn (Handle (Inbox _ _ ibtid) rts ie) f = do
     cleanupRunningThread ah ev = atomically $ do
         isExiting <- readTVar ie
         unless isExiting $ do
-            let exitVal = case ev of
-                    ExitCaseSuccess a -> show a
-                    ExitCaseException e ->
-                        -- how to get a payload out for burdock?
-                        -- if it's a DynamicValException, want to get the value out
-                        -- otherwise, use displayException
-                        displayException e
-                    ExitCaseAbort -> "internal issue?: ExitCaseAbort"
+            let _exitVal = case ev of
+                    ExitCaseSuccess a -> Right a
+                    ExitCaseException e -> case fromException e of
+                            Just (DynValException v) -> Left v
+                            Nothing -> Left $ toDyn $ displayException e
+                    ExitCaseAbort -> Left $ toDyn $ "internal issue?: ExitCaseAbort"
             -- send monitor message to each monitoring process
-            
-            trace exitVal $ pure ()
+            --trace ("tracehere: " ++ show exitVal) $ pure ()
             -- remove monitoring entries
             -- remove entry from processes table
             modifyTVar rts (\a -> filter (/= ah) a)

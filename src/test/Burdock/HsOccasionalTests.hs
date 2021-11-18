@@ -17,6 +17,7 @@ import Burdock.Occasional
     --,Handle
     ,Addr
     ,Inbox
+    --,DynValException(..)
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
@@ -56,6 +57,7 @@ import Control.Exception.Safe
     (tryAsync
     ,SomeException
     ,displayException
+    --,throwIO
     )
 
 import Data.List (isInfixOf)
@@ -491,6 +493,9 @@ type Msg = (Addr, String)
 -- can't figure out how the types can work in this case
 -- without dynamic
 
+data MyVal = MyVal String
+    deriving Show
+
 testSimpleSpawnDyn :: T.TestTree
 testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
     void $ runOccasional mainThread
@@ -503,6 +508,8 @@ testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
         assertEqual "" (Just "hello testSimpleSpawn") $ fmap snd y
         pure $ toDyn ()
     subThread sib = do
+        --error "balls"
+        --void $ throwIO $ DynValException $ toDyn (MyVal "custom balls")
         x <- receive sib (-1) (const True)
         case (x >>= fromDynamic) :: Maybe Msg of
             Just (ret, msg) -> send sib ret $ toDyn (addr sib, "hello " ++ msg)
