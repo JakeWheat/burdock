@@ -891,3 +891,46 @@ catalog:
   local name registry
 
 -}
+
+{-
+
+testing the open/close api (for burdock)
+
+make sure all tests use bracket
+
+reproduce some of the above tests:
+testsimplespawn
+testtopprocessselfasync
+testtopparenticide
+
+check the caller of spawnExtwait gets the exit value of the function
+spawned
+
+check throwing an exception in spawnExtWait gets thrown to the caller
+
+create a background thread, have it monitor the api call thread, show
+it getting the exit message
+
+create a background thread, monitor it from the api call, exit the api call
+  show that the monitor has disappeared
+  -> show monitoring getting a message cos it doesn't exit
+  then show monitoring not getting a message cos it's a second api call
+
+create a background thread
+  then contact it in a fresh api call
+
+create a background thread, see it pinging after exiting the api call
+  then close the handle
+  and see that the background thread exited - it stops pinging
+  the equiv of testdaemonsimple
+
+
+concurrency accessing the api:
+do a spawnextwait, it will block
+then closeoccasional in another thread
+see the spawnextwait produce an exception which indicates this is what
+  happened -> maybe create a specific exception or value for this role
+  since it's part of the api now?
+
+
+-}

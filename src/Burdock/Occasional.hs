@@ -38,6 +38,10 @@ module Burdock.Occasional
     ,asyncExit
     ,extractDynValExceptionVal
 
+    ,openOccasional
+    ,closeOccasional
+    ,spawnExtWait
+    
     ,ThreadHandle
     ,Addr
     ,Inbox
@@ -187,24 +191,43 @@ data Inbox
 
 ------------------------------------------------------------------------------
 
--- api functions
+-- public api
+
+-- data types
+
+data Down = Down
+          deriving (Eq,Show)
+
+data ExitType = ExitValue
+              | ExitException
+              deriving (Eq,Show)
+
+data DynValException = DynValException Dynamic
+    deriving Show
+
+instance Exception DynValException
+
+-- functions
 
 runOccasional :: (ThreadHandle -> IO Dynamic) -> IO Dynamic
-runOccasional f = do
-    bracket (OccasionalHandle <$> newTVarIO [] <*> newTVarIO [] <*> newTVarIO False)
-        cancelRunningThreads
-        (spawnMainThread f)
-  where
-    cancelRunningThreads oh = do
-        ts <- atomically $ do
-            -- tell the exiting threads not to do the regular cleanup
-            writeTVar (globalIsExiting oh) True
-            readTVar (globalThreads oh)
-        -- it's ok to cancel the main thread in this list since it's
-        -- already exited at this point, if this cleanup is moved
-        -- inside the main user thread exit, it should skip sending
-        -- cancel to the main user thread async handle
-        mapM_ (uninterruptibleCancel . fst) ts
+runOccasional f = bracket openOccasional closeOccasional (flip spawnExtWait f)
+
+openOccasional :: IO OccasionalHandle
+openOccasional = OccasionalHandle <$> newTVarIO [] <*> newTVarIO [] <*> newTVarIO False
+
+closeOccasional :: OccasionalHandle -> IO ()
+closeOccasional oh =  do
+    ts <- atomically $ do
+        -- tell the exiting threads not to do the regular cleanup
+        writeTVar (globalIsExiting oh) True
+        readTVar (globalThreads oh)
+
+    -- it's ok to cancel the main thread from runOccasional in this
+    -- list since it's already exited at this point, if this cleanup
+    -- is moved inside the main user thread exit, it should skip
+    -- sending cancel to the main user thread async handle
+    mapM_ (uninterruptibleCancel . fst) ts
+
 {-
 
 running the main thread:
@@ -220,12 +243,6 @@ there's no obvious timeout on the wait variations:
 maybe use regular io timeout function with stm wait variations?
 
 -}
-
-data DynValException = DynValException Dynamic
-    deriving Show
-
-instance Exception DynValException
-
 
 send :: ThreadHandle -> Addr -> Dynamic -> IO ()
 send h tgt v = do
@@ -249,13 +266,6 @@ spawnMonitor :: ThreadHandle -> Maybe Dynamic -> (ThreadHandle -> IO Dynamic) ->
 spawnMonitor h mtag f =
     spawnImpl h (Just $ fromMaybe (toDyn Down) mtag) f
 
-data Down = Down
-          deriving (Eq,Show)
-
-data ExitType = ExitValue
-              | ExitException
-              deriving (Eq,Show)
-
 asyncExit :: ThreadHandle -> Addr -> Dynamic -> IO ()
 asyncExit h target val = do
     ah <- atomically $ do
@@ -268,10 +278,31 @@ asyncExit h target val = do
             Just ah -> pure ah
     throwTo (asyncThreadId ah) (DynValException val)
 
+-- spawn a thread from outside in an existing handle
+-- this function blocks until the spawned function exits, and returns
+-- it's exit value (or passes the exception on)
+spawnExtWait :: OccasionalHandle -> (ThreadHandle -> IO Dynamic) -> IO Dynamic
+spawnExtWait oh f = do
+    asyncOnlyCh <- newCQueueIO
+    withAsync (runUserThread asyncOnlyCh) $ \a1 -> do
+        atomically $ writeCQueue asyncOnlyCh a1
+        wait a1
+  where
+    runUserThread asyncOnlyCh = do
+        ib <- makeInbox
+        ah <- atomically $ do
+            ah <- readCQueue asyncOnlyCh
+            -- put the main thread in the thread catalog
+            modifyTVar (globalThreads oh) ((ah,ibaddr ib):)
+            pure ah
+        let th = ThreadHandle ib oh ah
+        f th
 
 ---------------------------------------
 
 -- testing only functions, for whitebox and component testing
+-- maybe the inbox could become a proper usable component on it's own
+-- for communicating with concurrency outside the handle
 
 testAddToBuffer :: Inbox -> Dynamic -> IO ()
 testAddToBuffer ib a = atomically $ do
@@ -301,7 +332,6 @@ testReceive ib mtme f =
     case mtme of
         Nothing -> Just <$> receiveInbox ib f
         Just tme -> receiveInboxTimeout ib tme f 
-
 
 ------------------------------------------------------------------------------
 
@@ -435,28 +465,6 @@ extractDynException e =
         Just (AsyncExceptionWrapper e') -> Just $ toDyn $ displayException e'
         Nothing -> Nothing
 
--- the system is far easier to work with if the user thread isn't made
--- a special case and we can get it's async handle. the simple way to
--- do this is to run it in a separate thread to the code calling
--- runOccasional
--- keep this in sync with the spawnimpl above
-spawnMainThread :: (ThreadHandle -> IO Dynamic) -> OccasionalHandle -> IO Dynamic
-spawnMainThread f oh = do
-    asyncOnlyCh <- newCQueueIO
-    withAsync (runUserThread asyncOnlyCh) $ \a1 -> do
-        atomically $ writeCQueue asyncOnlyCh a1
-        wait a1
-  where
-    runUserThread asyncOnlyCh = do
-        ib <- makeInbox
-        ah <- atomically $ do
-            ah <- readCQueue asyncOnlyCh
-            -- put the main thread in the thread catalog
-            modifyTVar (globalThreads oh) ((ah,ibaddr ib):)
-            pure ah
-        let th = ThreadHandle ib oh ah
-        f th
-
 ------------------------------------------------------------------------------
 
 -- receive implementation
@@ -491,8 +499,6 @@ receiveInboxTimeout ib tme f = do
         (Nothing, 0)  -> pure mres
         (_, _) -> receiveNoBufferedTimeout ib tme f startTime
 
-
-
 -- the part of receive that checks the buffer for matching messages
 flushInboxForMatch :: --Show a =>
                       [a]
@@ -515,7 +521,6 @@ flushInboxForMatch buf bdm inQueue prd = go1 buf bdm
             Nothing -> pure (reverse bufferDidntMatch, x)
             Just y | prd y -> pure (reverse bufferDidntMatch, x)
                    | otherwise -> go1 [] (y:bufferDidntMatch)
-
 
 -- receiving a message with timeout and selective receive
 -- and buffering, after the existing buffer has been checked
@@ -554,7 +559,7 @@ receiveNoBuffered ib f = do
 
 ------------------------------------------------------------------------------
 
--- internal components
+-- utils
 
 {-
 
@@ -629,10 +634,6 @@ assertMyThreadIdIs ibtid = do
     tid <- myThreadId
     when (tid /= ibtid) $
       error $ "inbox used in wrong thread, created in " ++ show ibtid ++ ", used in " ++ show tid
-
-------------------------------------------------------------------------------
-
--- utilities
 
 smartTimeout :: Int -> STM a -> IO (Maybe a)
 smartTimeout n action = do
