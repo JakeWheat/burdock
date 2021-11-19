@@ -5,7 +5,7 @@ import Burdock.TestData
 import Burdock.Parse
 import Burdock.Pretty
 import Burdock.Interpreter
-import qualified Burdock.HsOccasionalTests as HsOccasionalTests
+import qualified Burdock.HsConcurrencyTests as HsConcurrencyTests
 import Burdock.Syntax (SourcePosition)
 import Data.Generics.Uniplate.Data (transformBi)
 import Data.Data (Data)
@@ -27,7 +27,7 @@ main = do
     withAsync (do
         at <- makeTests testdata
         T.defaultMain $ T.testGroup "group" [at
-                                            ,HsOccasionalTests.tests])
+                                            ,HsConcurrencyTests.tests])
         wait
                   
 

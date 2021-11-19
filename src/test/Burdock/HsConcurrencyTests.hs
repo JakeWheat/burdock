@@ -4,11 +4,11 @@
 -- cause a test to fail when it shouldn't
 
 {-# LANGUAGE LambdaCase #-}
-module Burdock.HsOccasionalTests
+module Burdock.HsConcurrencyTests
     (tests) where
 
-import Burdock.Occasional
-    (runOccasional
+import Burdock.HsConcurrency
+    (runBConcurrency
     ,spawn
     ,spawnMonitor
     ,send
@@ -17,8 +17,8 @@ import Burdock.Occasional
     ,addr
     ,asyncExit
 
-    ,openOccasional
-    ,closeOccasional
+    ,openBConcurrency
+    ,closeBConcurrency
     ,spawnExtWait
 
     ,Addr
@@ -97,7 +97,7 @@ import Control.Concurrent.STM.TChan
 --import Debug.Trace (trace)
 
 tests :: T.TestTree
-tests = T.testGroup "hs occasional tests"
+tests = T.testGroup "hs concurrency tests"
     [T.testGroup "inbox"
         [T.testGroup "basic"
             [inboxSimpleSendAndReceive
@@ -109,7 +109,7 @@ tests = T.testGroup "hs occasional tests"
             ]
             
         ,mainReceiveTests]
-    ,T.testGroup "occasional-api"
+    ,T.testGroup "concurrency-api"
         [testSimpleSpawn
         ,testMainProcessReturnValue
         ,catchExceptionExample
@@ -483,7 +483,7 @@ inboxSendAfterClose = T.testCase "inboxSendAfterClose" $ do
 
 ------------------------------------------------------------------------------
 
--- occasional api tests
+-- concurrency api tests
 
 {-
 
@@ -493,7 +493,7 @@ address
 
 testSimpleSpawn :: T.TestTree
 testSimpleSpawn = T.testCase "testSimpleSpawn" $
-    void $ runOccasional mainThread
+    void $ runBConcurrency mainThread
   where
     mainThread ib = do
         spaddr <- spawn ib subThread
@@ -517,7 +517,7 @@ check its exit value via monitor
 
 testSpawnMonitorExitVal :: T.TestTree
 testSpawnMonitorExitVal = T.testCase "testSpawnMonitorExitVal" $
-    void $ runOccasional $ \ib -> do
+    void $ runBConcurrency $ \ib -> do
         _spaddr <- spawnMonitor ib Nothing $ \_sib -> do
             pure $ toDyn "I am an exit value"
         x <- receive ib (const True)
@@ -542,7 +542,7 @@ data MyVal = MyVal String
 
 testSpawnMonitorException :: T.TestTree
 testSpawnMonitorException = T.testCase "testSpawnMonitorException" $ do
-    void $ runOccasional $ \ib -> do
+    void $ runBConcurrency $ \ib -> do
         _spaddr <- spawnMonitor ib Nothing $ \_sib ->
             throwIO $ DynValException $ toDyn $ MyVal "custom"
             -- pure $ toDyn () -- "I am an exit value"
@@ -561,7 +561,7 @@ repeat both exit val tests with a custom monitor tag
 
 testSpawnMonitorTag :: T.TestTree
 testSpawnMonitorTag = T.testCase "testSpawnMonitorTag" $
-    void $ runOccasional $ \ib -> do
+    void $ runBConcurrency $ \ib -> do
         _spaddr <- spawnMonitor ib (Just $ toDyn $ "tag-a") $ \_sib -> do
             pure $ toDyn "I am an exit value"
         _spaddr <- spawnMonitor ib (Just $ toDyn $ "tag-b") $ \sib -> do
@@ -590,7 +590,7 @@ get the exception value
 
 testSpawnAsyncExit :: T.TestTree
 testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
-    void $ runOccasional $ \ib -> do
+    void $ runBConcurrency $ \ib -> do
 
         -- slightly over the top paranoia
         canaryOne <- spawn ib $ \sib -> do
@@ -639,10 +639,10 @@ testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
 testTopProcessSelfAsync :: T.TestTree
 testTopProcessSelfAsync = T.testCase "testTopProcessSelfAsync" $ do
     {-
-should the exception coming out of runoccasional in this case be
+should the exception coming out of runBConcurrency in this case be
 asynchronous or not?
      -}
-    (x :: Either SomeException Dynamic) <- tryAsync $ runOccasional $ \ib -> do
+    (x :: Either SomeException Dynamic) <- tryAsync $ runBConcurrency $ \ib -> do
         asyncExit ib (addr ib) $ toDyn "bye"
         pure $ toDyn ()
     let v = fromJust $ extractDynValExceptionVal $ either id (error . show) x
@@ -652,7 +652,7 @@ asynchronous or not?
 
 testTopParenticide :: T.TestTree
 testTopParenticide = T.testCase "testTopParenticide" $ do
-    (x :: Either SomeException Dynamic) <- tryAsync $ runOccasional $ \ib -> do
+    (x :: Either SomeException Dynamic) <- tryAsync $ runBConcurrency $ \ib -> do
         _ <- spawn ib $ \sib -> do
             asyncExit sib (addr ib) $ toDyn "zz"
             pure $ toDyn ()
@@ -663,7 +663,7 @@ testTopParenticide = T.testCase "testTopParenticide" $ do
 
 testSpawnSelfAsync :: T.TestTree
 testSpawnSelfAsync = T.testCase "testSpawnSelfAsync" $ do
-    void $ runOccasional $ \ib -> do
+    void $ runBConcurrency $ \ib -> do
         _r <- spawnMonitor ib Nothing $ \sib -> do
             asyncExit sib (addr sib) $ toDyn "audi"
             pure $ toDyn "I am an exit value"
@@ -684,7 +684,7 @@ it's not monitored, it's ignored properly
 -}
 testIgnoreUnmonitoredFailure :: T.TestTree
 testIgnoreUnmonitoredFailure = T.testCase "testIgnoreUnmonitoredFailure" $ do
-    void $ runOccasional $ \ib -> do
+    void $ runBConcurrency $ \ib -> do
         _ <- spawn ib $ \sib -> do
             asyncExit sib (addr sib) $ toDyn "audi"
             pure $ toDyn "I am an exit value"
@@ -712,7 +712,7 @@ check you get an error immediately
 
 testSendAfterClose :: T.TestTree
 testSendAfterClose = T.testCase "testSendAfterClose" $
-    void $ runOccasional $ \ib -> do
+    void $ runBConcurrency $ \ib -> do
         spaddr <- spawn ib $ \sib -> do
             x <- receive sib $ const True
             case fromDynamic x of
@@ -744,7 +744,7 @@ mtFromDyn = fmap tFromDyn
 
 testMainProcessReturnValue :: T.TestTree
 testMainProcessReturnValue = T.testCase "testMainProcessReturnValue" $ do
-    x <- runOccasional $ \_ib -> pure $ toDyn "retval"
+    x <- runBConcurrency $ \_ib -> pure $ toDyn "retval"
     assertEqual "" "retval" $ tFromDyn x
 
 catchExceptionExample :: T.TestTree
@@ -766,7 +766,7 @@ testMainProcessException :: T.TestTree
 testMainProcessException = T.testCase "testMainProcessException" $
     checkException "an issue in the main process" runit
   where
-    runit = void $ runOccasional $ \_ib ->
+    runit = void $ runBConcurrency $ \_ib ->
             error "an issue in the main process"
 
 checkWaitTwice :: T.TestTree
@@ -781,7 +781,7 @@ checkWaitTwice = T.testCase "checkWaitTwice" $ do
 
 testing the threads are daemon, and they exit:
 start a sub thread
-it will ping something outside the occasional handle
+it will ping something outside the concurrency handle
   on a loop, every 0.01s or something
 can probably just use an inbox for now? if it doesn't work
   use a plan tchan
@@ -801,7 +801,7 @@ flushChan ch = do
 testDaemonSimple :: T.TestTree
 testDaemonSimple = T.testCase "testDaemonSimple" $ do
     ch <- newTChanIO
-    void $ runOccasional (mainThread ch)
+    void $ runBConcurrency (mainThread ch)
     threadDelay shortWait
     _ <- atomically $ flushChan ch
     -- maybe this is overkill?
@@ -851,7 +851,7 @@ testsimplespawn
 
 testSpawnExt :: T.TestTree
 testSpawnExt = T.testCase "testSpawnExt" $ void $
-    bracket openOccasional closeOccasional $ \oh ->
+    bracket openBConcurrency closeBConcurrency $ \oh ->
     spawnExtWait oh $ \ib -> do
         spaddr <- spawn ib subThread
         send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
@@ -911,7 +911,7 @@ create a background thread, see it pinging after exiting the api call
 
 concurrency accessing the api:
 do a spawnextwait, it will block
-then closeoccasional in another thread
+then closeBConcurrency in another thread
 see the spawnextwait produce an exception which indicates this is what
   happened -> maybe create a specific exception or value for this role
   since it's part of the api now?

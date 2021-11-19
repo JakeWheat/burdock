@@ -1,7 +1,9 @@
 {-
 
-Haskell "Occasional" library
-an approach to concurrency modelled on a subset of erlang
+Haskell concurrency library
+
+an approach to concurrency modelled on a subset of erlang, uses
+haskell async lib threads, which are a thin wrapper around ghc threads
 
 It only exists to help implement concurrency in Burdock
 
@@ -27,8 +29,8 @@ send and receive with the new spawn, sending self address
 -}
 
 {-# LANGUAGE MultiWayIf #-}
-module Burdock.Occasional
-    (runOccasional
+module Burdock.HsConcurrency
+    (runBConcurrency
     ,spawn
     ,spawnMonitor
     ,send
@@ -38,8 +40,8 @@ module Burdock.Occasional
     ,asyncExit
     ,extractDynValExceptionVal
 
-    ,openOccasional
-    ,closeOccasional
+    ,openBConcurrency
+    ,closeBConcurrency
     ,spawnExtWait
     
     ,ThreadHandle
@@ -159,8 +161,8 @@ type Addr = CQueue Dynamic
 addr :: ThreadHandle -> Addr
 addr = ibaddr . myInbox
 
-data OccasionalHandle =
-    OccasionalHandle
+data BConcurrencyHandle =
+    BConcurrencyHandle
     {globalThreads :: TVar [(Async Dynamic, CQueue Dynamic)]
         -- monitoring process - the one that gets the thread down message,
         -- monitored process,
@@ -172,7 +174,7 @@ data OccasionalHandle =
 data ThreadHandle
     = ThreadHandle
       {myInbox :: Inbox
-      ,occHandle :: OccasionalHandle
+      ,occHandle :: BConcurrencyHandle
       ,myAsyncHandle :: Async Dynamic
       }
 
@@ -209,20 +211,20 @@ instance Exception DynValException
 
 -- functions
 
-runOccasional :: (ThreadHandle -> IO Dynamic) -> IO Dynamic
-runOccasional f = bracket openOccasional closeOccasional (flip spawnExtWait f)
+runBConcurrency :: (ThreadHandle -> IO Dynamic) -> IO Dynamic
+runBConcurrency f = bracket openBConcurrency closeBConcurrency (flip spawnExtWait f)
 
-openOccasional :: IO OccasionalHandle
-openOccasional = OccasionalHandle <$> newTVarIO [] <*> newTVarIO [] <*> newTVarIO False
+openBConcurrency :: IO BConcurrencyHandle
+openBConcurrency = BConcurrencyHandle <$> newTVarIO [] <*> newTVarIO [] <*> newTVarIO False
 
-closeOccasional :: OccasionalHandle -> IO ()
-closeOccasional oh =  do
+closeBConcurrency :: BConcurrencyHandle -> IO ()
+closeBConcurrency oh =  do
     ts <- atomically $ do
         -- tell the exiting threads not to do the regular cleanup
         writeTVar (globalIsExiting oh) True
         readTVar (globalThreads oh)
 
-    -- it's ok to cancel the main thread from runOccasional in this
+    -- it's ok to cancel the main thread from runBConcurrency in this
     -- list since it's already exited at this point, if this cleanup
     -- is moved inside the main user thread exit, it should skip
     -- sending cancel to the main user thread async handle
@@ -281,7 +283,7 @@ asyncExit h target val = do
 -- spawn a thread from outside in an existing handle
 -- this function blocks until the spawned function exits, and returns
 -- it's exit value (or passes the exception on)
-spawnExtWait :: OccasionalHandle -> (ThreadHandle -> IO Dynamic) -> IO Dynamic
+spawnExtWait :: BConcurrencyHandle -> (ThreadHandle -> IO Dynamic) -> IO Dynamic
 spawnExtWait oh f = do
     asyncOnlyCh <- newCQueueIO
     withAsync (runUserThread asyncOnlyCh) $ \a1 -> do
@@ -351,7 +353,7 @@ implement the monitor which notifies other threads of the spawned
 thread's exit value - exception or regular value
 
 and don't do any of this in the specific case that the thread is being
-asynchronously exited because the occasional handle it's running under
+asynchronously exited because the concurrency handle it's running under
 is being closed (which happens exactly when the main user function
 exits by non-exception or exception)
 
@@ -392,7 +394,7 @@ spawnImpl h ifMonitorTag f = do
     pure ch
   where
     registerRunningThread asyncOnlyCh ch = atomically $ do
-        -- register the async handle in the occasional handle
+        -- register the async handle in the concurrency handle
         ah <- readCQueue asyncOnlyCh
         modifyTVar (globalThreads $ occHandle h) ((ah,ch):)
         case ifMonitorTag of
