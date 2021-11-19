@@ -17,6 +17,10 @@ import Burdock.Occasional
     ,addr
     ,asyncExit
 
+    ,openOccasional
+    ,closeOccasional
+    ,spawnExtWait
+
     ,Addr
     ,Inbox
     ,Down(..)
@@ -63,6 +67,7 @@ import Control.Exception.Safe
     ,SomeException
     ,displayException
     ,throwIO
+    ,bracket
     )
 
 import Data.List (isInfixOf)
@@ -105,9 +110,7 @@ tests = T.testGroup "hs occasional tests"
             
         ,mainReceiveTests]
     ,T.testGroup "occasional-api"
-        [{-testSimpleSpawn
-        ,-}testSimpleSpawnDyn
-        --,_testSimpleSpawn1
+        [testSimpleSpawn
         ,testMainProcessReturnValue
         ,catchExceptionExample
         ,testMainProcessException
@@ -122,6 +125,8 @@ tests = T.testGroup "hs occasional tests"
         ,testTopParenticide
         ,testSpawnSelfAsync
         ,testIgnoreUnmonitoredFailure
+
+        ,testSpawnExt
         ]
     ]
 
@@ -486,82 +491,23 @@ spawn a process, exchange messages with it by sending the return
 address
 -}
 
-{-testSimpleSpawn :: T.TestTree
+testSimpleSpawn :: T.TestTree
 testSimpleSpawn = T.testCase "testSimpleSpawn" $
-    runOccasional $ \ib -> do
-        spaddr <- spawn ib $ \sib -> do
-            x <- receive sib (-1) $ const True
-            case x of
-                Just (ret, msg) -> send sib ret ("hello " ++ msg)
-                     -- putStrLn temp until monitoring stuff works
-                _ -> putStrLn ("bad message: " ++ show x)
-                     -- >> error ("bad message: " ++ show x)
-                     --error "bad message"
-        send ib spaddr (addr ib, "testSimpleSpawn")
-        x <- receive ib (-1) $ const True
-        assertEqual "" (Just "hello testSimpleSpawn") x-}
-
-type Msg = (Addr, String)
-
--- can't figure out how the types can work in this case
--- without dynamic
-
-data MyVal = MyVal String
-    deriving (Eq,Show)
-
-testSimpleSpawnDyn :: T.TestTree
-testSimpleSpawnDyn = T.testCase "testSimpleSpawnDyn" $
     void $ runOccasional mainThread
   where
     mainThread ib = do
         spaddr <- spawn ib subThread
         send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
         x <- receive ib $ const True
-        let y :: Maybe Msg = fromDynamic x
+        let y :: Maybe (Addr, String) = fromDynamic x
         assertEqual "" (Just "hello testSimpleSpawn") $ fmap snd y
         pure $ toDyn ()
     subThread sib = do
-        --error "balls"
-        --void $ throwIO $ DynValException $ toDyn (MyVal "custom balls")
         x <- receive sib (const True)
-        case fromDynamic x :: Maybe Msg of
+        case fromDynamic x :: Maybe (Addr, String) of
             Just (ret, msg) -> send sib ret $ toDyn (addr sib, "hello " ++ msg)
             _ -> error $ show x
         pure $ toDyn ()
-
-{-_testSimpleSpawn1 :: T.TestTree
-_testSimpleSpawn1 = T.testCase "_testSimpleSpawn1" undefined {-$
-    runOccasional $ \ib -> do
-        spaddr <- spawn ib $ \sib -> do
-            x <- receive sib (-1) $ const True
-            -- assert here outputs a message to say it's a failure
-            -- but it doesn't affect the tasty test results ...
-            -- but in this test, it throws an exception
-            -- and then the main thread on the outside hangs
-            -- because it never gets the return message
-            -- the plan to deal with these sorts of things is to
-            -- integrate timeouts to the tests, which is probably needed
-            -- in the direct haskell tests (it will definitely be in the burdock tests)
-            -- at the moment, a hang is not the end of the world,
-            -- it makes it impossible to miss there was an issue
-            --assertEqual "" (Just "hello testSimpleSpawn") (snd <$> x)
-            case x of
-                Just (ret, msg) -> send sib ret ("hello " ++ msg)
-                     -- putStrLn temp until monitoring stuff works
-                _ -> putStrLn ("bad message: " ++ show x)
-                     -- >> error ("bad message: " ++ show x)
-                     --error "bad message"
-            -- the assert here doesn't cause this test to hang the test run
-            -- but it still doesn't trigger the test run to notice that
-            -- there was a failure apart from a debug message
-            -- assertEqual "" (Just "hello testSimpleSpawn1") (snd <$> x)
-            -- TODO: come back to this after implementing the monitor/
-            -- exit value stuff - it will behave differently then
-        send ib spaddr (addr ib, "testSimpleSpawn")
-        x <- receive ib (-1) $ const True
-        assertEqual "" (Just "hello testSimpleSpawn") x -}
--}
-
 {-
 
 spawnMonitor a process
@@ -590,6 +536,9 @@ throw an exception
 check this exception value via monitor
 
 -}
+
+data MyVal = MyVal String
+    deriving (Eq,Show)
 
 testSpawnMonitorException :: T.TestTree
 testSpawnMonitorException = T.testCase "testSpawnMonitorException" $ do
@@ -646,7 +595,7 @@ testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
         -- slightly over the top paranoia
         canaryOne <- spawn ib $ \sib -> do
             x <- receive sib (const True)
-            case fromDynamic x :: Maybe Msg of
+            case fromDynamic x :: Maybe (Addr, String) of
                 Just (ret, msg) -> send sib ret $ toDyn (addr sib, "canary one reporting " ++ msg)
                 _ -> error $ show x
             pure $ toDyn ()
@@ -659,7 +608,7 @@ testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
 
         canaryTwo <- spawn ib $ \sib -> do
             x <- receive sib (const True)
-            case fromDynamic x :: Maybe Msg of
+            case fromDynamic x :: Maybe (Addr, String) of
                 Just (ret, msg) -> send sib ret $ toDyn (addr sib, "canary two reporting " ++ msg)
                 _ -> error $ show x
             pure $ toDyn ()
@@ -677,12 +626,12 @@ testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
         
         send ib canaryOne (toDyn (addr ib, "c1"))
         x1 <- receive ib $ const True
-        let y1 :: Maybe Msg = fromDynamic x1
+        let y1 :: Maybe (Addr, String) = fromDynamic x1
         assertEqual "" (Just "canary one reporting c1") $ fmap snd y1
 
         send ib canaryTwo (toDyn (addr ib, "c2"))
         x2 <- receive ib $ const True
-        let y2 :: Maybe Msg = fromDynamic x2
+        let y2 :: Maybe (Addr, String) = fromDynamic x2
         assertEqual "" (Just "canary two reporting c2") $ fmap snd y2
 
         pure $ toDyn ()
@@ -894,35 +843,70 @@ catalog:
 
 {-
 
-testing the open/close api (for burdock)
+testing the open/close api
+----------------------------
 
-make sure all tests use bracket
-
-reproduce some of the above tests:
 testsimplespawn
+-}
+
+testSpawnExt :: T.TestTree
+testSpawnExt = T.testCase "testSpawnExt" $ void $
+    bracket openOccasional closeOccasional $ \oh ->
+    spawnExtWait oh $ \ib -> do
+        spaddr <- spawn ib subThread
+        send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
+        x <- receive ib $ const True
+        let y :: Maybe (Addr, String) = fromDynamic x
+        assertEqual "" (Just "hello testSimpleSpawn") $ fmap snd y
+        pure $ toDyn ()
+  where
+    subThread sib = do
+        x <- receive sib (const True)
+        case fromDynamic x :: Maybe (Addr, String) of
+            Just (ret, msg) -> send sib ret $ toDyn (addr sib, "hello " ++ msg)
+            _ -> error $ show x
+        pure $ toDyn ()
+
+{-
 testtopprocessselfasync
+-}
+{-
 testtopparenticide
+-}
+{-
 
 check the caller of spawnExtwait gets the exit value of the function
 spawned
+-}
+{-
 
 check throwing an exception in spawnExtWait gets thrown to the caller
+-}
+{-
 
 create a background thread, have it monitor the api call thread, show
 it getting the exit message
+-}
+{-
 
 create a background thread, monitor it from the api call, exit the api call
   show that the monitor has disappeared
   -> show monitoring getting a message cos it doesn't exit
   then show monitoring not getting a message cos it's a second api call
+-}
+{-
 
 create a background thread
   then contact it in a fresh api call
+-}
+{-
 
 create a background thread, see it pinging after exiting the api call
   then close the handle
   and see that the background thread exited - it stops pinging
   the equiv of testdaemonsimple
+-}
+{-
 
 
 concurrency accessing the api:
