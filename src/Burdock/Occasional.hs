@@ -36,6 +36,7 @@ module Burdock.Occasional
     ,receiveTimeout
     ,addr
     ,asyncExit
+    ,extractDynValExceptionVal
 
     ,ThreadHandle
     ,Addr
@@ -68,6 +69,7 @@ import Control.Exception.Safe
     ,toException
     ,throwTo
     ,AsyncExceptionWrapper(..)
+    ,SomeException
     )
 
 import Control.Monad.Catch (ExitCase(..))
@@ -127,9 +129,9 @@ import Control.Concurrent.Async
     )
 
 import Data.Dynamic (Dynamic
-                    --,Typeable
+                    ,Typeable
                     ,toDyn
-                    --,fromDynamic
+                    ,fromDynamic
                     )
 
 import Data.Maybe (fromMaybe)
@@ -409,14 +411,25 @@ spawnImpl h ifMonitorTag f = do
         ExitCaseException e
             | Just v <- extractDynException e
             -> (ExitException, v)
-            | Just v <- extractAewException e
-            -> (ExitException, v)
             | otherwise -> (ExitException, toDyn $ displayException e)
         ExitCaseAbort -> (ExitException, toDyn $ "internal issue?: ExitCaseAbort")
-    extractDynException e = case fromException e of
+
+extractDynValExceptionVal :: Typeable a => SomeException -> Maybe a
+extractDynValExceptionVal err =
+    case () of
+        _ | Just v <- extractDynException err -> fromDynamic v
+          | otherwise -> Nothing
+
+extractDynException :: SomeException -> Maybe Dynamic
+extractDynException e =
+    if | Just v <- extract1 -> Just v
+       | Just v <- extract2 -> Just v
+       | otherwise -> Nothing
+  where
+    extract1 = case fromException e of
         Just (DynValException v) -> Just v
         Nothing -> Nothing
-    extractAewException e = case fromException e of
+    extract2 = case fromException e of
         Just (AsyncExceptionWrapper e')
             | Just (DynValException v) <- fromException $ toException e' -> Just v
         Just (AsyncExceptionWrapper e') -> Just $ toDyn $ displayException e'

@@ -22,6 +22,7 @@ import Burdock.Occasional
     ,Down(..)
     ,ExitType(..)
     ,DynValException(..)
+    ,extractDynValExceptionVal
 
     ,testAddToBuffer
     ,testReceiveWholeBuffer
@@ -117,6 +118,10 @@ tests = T.testGroup "hs occasional tests"
         ,testSpawnMonitorException
         ,testSpawnMonitorTag
         ,testSpawnAsyncExit
+        ,testTopProcessSelfAsync
+        ,testTopParenticide
+        ,testSpawnSelfAsync
+        ,testIgnoreUnmonitoredFailure
         ]
     ]
 
@@ -680,6 +685,68 @@ testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
         let y2 :: Maybe Msg = fromDynamic x2
         assertEqual "" (Just "canary two reporting c2") $ fmap snd y2
 
+        pure $ toDyn ()
+
+testTopProcessSelfAsync :: T.TestTree
+testTopProcessSelfAsync = T.testCase "testTopProcessSelfAsync" $ do
+    {-
+should the exception coming out of runoccasional in this case be
+asynchronous or not?
+     -}
+    (x :: Either SomeException Dynamic) <- tryAsync $ runOccasional $ \ib -> do
+        asyncExit ib (addr ib) $ toDyn "bye"
+        pure $ toDyn ()
+    let v = fromJust $ extractDynValExceptionVal $ either id (error . show) x
+    assertEqual "" "bye" v
+
+
+
+testTopParenticide :: T.TestTree
+testTopParenticide = T.testCase "testTopParenticide" $ do
+    (x :: Either SomeException Dynamic) <- tryAsync $ runOccasional $ \ib -> do
+        _ <- spawn ib $ \sib -> do
+            asyncExit sib (addr ib) $ toDyn "zz"
+            pure $ toDyn ()
+        _ <- receive ib (const True)
+        pure $ toDyn ()
+    let v = fromJust $ extractDynValExceptionVal $ either id (error . show) x
+    assertEqual "" "zz" v
+
+testSpawnSelfAsync :: T.TestTree
+testSpawnSelfAsync = T.testCase "testSpawnSelfAsync" $ do
+    void $ runOccasional $ \ib -> do
+        _r <- spawnMonitor ib Nothing $ \sib -> do
+            asyncExit sib (addr sib) $ toDyn "audi"
+            pure $ toDyn "I am an exit value"
+
+        x <- receive ib (const True)
+        let (a,et,b) = fromJust $ fromDynamic x
+            a' = fromJust $ fromDynamic a
+            b' = fromJust $ fromDynamic b
+        assertEqual "" Down a'
+        assertEqual "" ExitException et
+        assertEqual "" "audi" b'
+        
+        pure $ toDyn ()
+
+{-
+check if a thread exits with exception or async exception, and
+it's not monitored, it's ignored properly
+-}
+testIgnoreUnmonitoredFailure :: T.TestTree
+testIgnoreUnmonitoredFailure = T.testCase "testIgnoreUnmonitoredFailure" $ do
+    void $ runOccasional $ \ib -> do
+        _ <- spawn ib $ \sib -> do
+            asyncExit sib (addr sib) $ toDyn "audi"
+            pure $ toDyn "I am an exit value"
+
+        _ <- spawn ib $ \_sib -> do
+            void $ throwIO $ DynValException $ toDyn "audi5000"
+            pure $ toDyn "I am an exit value"
+
+        -- not sure this is needed
+        threadDelay shortWait
+        assertBool "" True
         pure $ toDyn ()
 
 
