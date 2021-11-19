@@ -127,6 +127,10 @@ tests = T.testGroup "hs concurrency tests"
         ,testIgnoreUnmonitoredFailure
 
         ,testSpawnExt
+        ,testSelfAsyncExt
+        ,testParenticideExt
+        ,testRetExt
+        ,testThrowExt
         ]
     ]
 
@@ -846,7 +850,6 @@ catalog:
 testing the open/close api
 ----------------------------
 
-testsimplespawn
 -}
 
 testSpawnExt :: T.TestTree
@@ -867,26 +870,51 @@ testSpawnExt = T.testCase "testSpawnExt" $ void $
             _ -> error $ show x
         pure $ toDyn ()
 
-{-
-testtopprocessselfasync
--}
-{-
-testtopparenticide
--}
-{-
+testSelfAsyncExt :: T.TestTree
+testSelfAsyncExt = T.testCase "testSelfAsyncExt" $
+    bracket openBConcurrency closeBConcurrency $ \oh -> do
+        (x :: Either SomeException Dynamic) <-
+            tryAsync $ spawnExtWait oh $ \ib -> do
+            asyncExit ib (addr ib) $ toDyn "bye"
+            pure $ toDyn ()
+        let v = fromJust $ extractDynValExceptionVal $ either id (error . show) x
+        assertEqual "" "bye" v
 
-check the caller of spawnExtwait gets the exit value of the function
-spawned
--}
-{-
+testParenticideExt :: T.TestTree
+testParenticideExt = T.testCase "testParenticideExt" $
+    bracket openBConcurrency closeBConcurrency $ \oh -> do
+        (x :: Either SomeException Dynamic) <-
+            tryAsync $ spawnExtWait oh $ \ib -> do
+            _ <- spawn ib $ \sib -> do
+                asyncExit sib (addr ib) $ toDyn "zz"
+                pure $ toDyn ()
+            _ <- receive ib (const True)
+            pure $ toDyn ()            
+        let v = fromJust $ extractDynValExceptionVal $ either id (error . show) x
+        assertEqual "" "zz" v
 
-check throwing an exception in spawnExtWait gets thrown to the caller
--}
+testRetExt :: T.TestTree
+testRetExt = T.testCase "testRetExt" $
+    bracket openBConcurrency closeBConcurrency $ \oh -> do
+        x <- spawnExtWait oh $ \_ib -> pure $ toDyn "hello"
+        assertEqual "" (Just "hello") $ fromDynamic x
+
+testThrowExt :: T.TestTree
+testThrowExt = T.testCase "testThrowExt" $
+    bracket openBConcurrency closeBConcurrency $ \oh -> do
+        (x :: Either SomeException Dynamic) <-
+            tryAsync $ spawnExtWait oh $ \_ib -> do
+            void $ throwIO $ DynValException $ toDyn $ MyVal "stuff"
+            pure $ toDyn ()            
+        let v = fromJust $ extractDynValExceptionVal $ either id (error . show) x
+        assertEqual "" (MyVal "stuff") v
+
 {-
 
 create a background thread, have it monitor the api call thread, show
 it getting the exit message
 -}
+
 {-
 
 create a background thread, monitor it from the api call, exit the api call
