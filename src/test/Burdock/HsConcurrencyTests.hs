@@ -918,9 +918,8 @@ it getting the exit message
 {-
 
 create a background thread, monitor it from the api call, exit the api call
-  show that the monitor has disappeared
-  -> show monitoring getting a message cos it doesn't exit
-  then show monitoring not getting a message cos it's a second api call
+  show that the monitor entry has disappeared
+  make another api call, tell the background thread to exit
 -}
 {-
 

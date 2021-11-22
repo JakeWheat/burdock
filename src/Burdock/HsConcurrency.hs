@@ -104,6 +104,10 @@ import Control.Concurrent.STM.TVar
     )
 
 import Control.Concurrent.STM.TMVar
+    (newEmptyTMVar
+    ,putTMVar
+    ,tryTakeTMVar
+    )
 
 import Data.Time.Clock (getCurrentTime
                        ,diffUTCTime
