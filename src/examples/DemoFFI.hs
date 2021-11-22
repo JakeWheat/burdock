@@ -48,7 +48,7 @@ main :: IO ()
 main = do
     h <- B.newHandle
 
-    B.addFFI h [("demo-make-haskell-int", demoMakeHaskellInt)
+    B.addFFIImpls h [("demo-make-haskell-int", demoMakeHaskellInt)
              ,("demo-extract-int", demoExtractInt)
              ,("demo-add-to-int", demoAddToInt)]
 

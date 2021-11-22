@@ -471,40 +471,8 @@ prefixLast pre is = f is
 -- environment, interpreter state, intepreter monad helper functions
 
 
-{-
-
-system env: contains the bindings for the loaded modules and system
-support internals
-
-script env: contains the bindings for the runscript of the handle
-
-this split allows modules to load without reference to any of the
-runscript bindings as they should
-and allows persistence of bindings in the runscript context between
-  calls -> especially needed for the repl
-
-there's no straightforward way to query only one of them
-typically, you'll create a localscriptenv which replaces the scriptenv
-  when loading modules to hide the runscript bindings
-
-keeps the foreign functions separate, so that the main env can easily
-be show completely, not sure if this is worth this kind of split.
-it also allows two pointers to the same foreign function to be compared,
-which wouldn't be the case without the indirection
-
-todo: namespace the foreign functions when there's an api for them:
-  want to support the idea that two files from two different people,
-  that coincidentally use the same name for a foreign function id,
-  can still be run together without having to edit one
-
--}
-
 type Env = [(String, Value)]
 type ForeignFunctionEntry = (String, [Value] -> Interpreter Value)
---type ForeignFunctions = [(String, [Value] -> Interpreter Value)]
-
--- the data that is shared between everything runing in an instance of
--- the language/handle
 
 {-
 
@@ -524,8 +492,6 @@ if something can be updated, and is read by multiple threads (or is
 updated by multiple threads), put it in a tvar
 
 -}
-
---type HandleStateVar = TVar HandleState
 
 data BurdockHandleState
     = BurdockHandleState
@@ -562,20 +528,7 @@ data ThreadLocalState
     ,tlNextAnonCheckblockNum :: IORef Int
     ,_tlIsModuleRootThread :: Bool
     }
-{-
-data InterpreterState
-    = InterpreterState
-    {isSystemEnv :: IORef Env
-    ,isScriptEnv :: IORef Env
-    ,isProvides :: IORef [ProvideItem]
-    ,isTestInfo :: IORef TestInfo
-    ,isTestResults :: IORef [(String,String,TestResult)]
-    ,isForeignFunctions :: IORef ForeignFunctions
-    ,isCallStack :: CallStack
-    ,isSourceCache :: IORef [(FilePath,String)]
-    ,isUniqueSourceCtr :: IORef Int
-    }
--}
+
 type InterpreterState = ThreadLocalState 
 
 type Interpreter = ReaderT InterpreterState IO
@@ -619,9 +572,6 @@ newBurdockHandle = do
     ip <- getBuiltInModulePath "_internals"
     runInterp False (Handle h) $ loadAndRunModule False "_internals" ip
     pure h
-    
-
-
 
 newSourceHandle :: TVar BurdockHandleState -> IO ThreadLocalState
 newSourceHandle bs = do
@@ -715,15 +665,6 @@ localBindings m f = do
 extendBindings :: [(String,Value)] -> Env -> Env
 extendBindings bs env = bs ++ env
     
-    {-localScriptEnv :: (Env -> Env) -> Interpreter a -> Interpreter a
-localScriptEnv m f = do
-    st <- ask
-    e' <- liftIO $ m <$> readIORef (isScriptEnv st)
-    e1 <- liftIO $ newIORef e'
-    p <- liftIO $ newIORef []
-    local (const $ st {isScriptEnv = e1
-                      ,isProvides = p}) f-}
-
 {-
 throw an error if already in a check block
 generate a name if it's maybe
@@ -745,25 +686,6 @@ enterCheckBlock mcbnm f = do
     local (\st' -> st' {tlCurrentCheckblock = Just cbnm}) $
         localBindings id f
     
-    
-{-
-throw an error if already in a check block
-generate a name if it's maybe
-run the check block interp
-
-            st <- ask
-            ti <- undefined -- liftIO $ readIORef (isTestInfo st)
-            let (cnm, newcbn) = case cbnm of
-                    Just n -> (n, id)
-                    Nothing -> undefined
-                        let i = tiNextAnonCheckblockNum ti
-                        in ("check-block-" ++ show i
-                           ,\cti -> cti {tiNextAnonCheckblockNum = i + 1})-}
-            {-undefined-} {-localTestInfo undefined -- (\cti -> newcbn $ cti {tiCurrentCheckblock = Just cnm})
-                $ interpStatements ss
-
--}
-
 -- get the check block name, error if there isn't one
 -- update the test results tvar
 addTestResult :: TestResult -> Interpreter ()
@@ -782,13 +704,9 @@ addTestResult tr = do
         -- is implemented
         modifyTVar (hsTestResults v) ((msModuleName ms, cbnm, tr):)
 
-
-
 localPushCallStack :: SourcePosition -> Interpreter a -> Interpreter a
 localPushCallStack sp = do
     local (\tl -> tl { tlCallStack = sp : tlCallStack tl})
-
-
 
 showState :: InterpreterState -> IO String
 showState _s = pure "TODO: show state" {-do
@@ -829,121 +747,13 @@ long
 foreign functions 
 
 -}
-
     
-{-localScriptEnv :: (Env -> Env) -> Interpreter a -> Interpreter a
-localScriptEnv m f = do
-    st <- ask
-    e' <- liftIO $ m <$> readIORef (isScriptEnv st)
-    e1 <- liftIO $ newIORef e'
-    p <- liftIO $ newIORef []
-    local (const $ st {isScriptEnv = e1
-                      ,isProvides = p}) f
-
-localTestInfo :: (TestInfo -> TestInfo) -> Interpreter a -> Interpreter a
-localTestInfo m f = do
-    st <- ask
-    ti <- liftIO $ m <$> readIORef (isTestInfo st)
-    ti' <- liftIO $ newIORef ti
-    local (const $ st {isTestInfo = ti'}) f
-
-    
-askEnv :: Interpreter Env
-askEnv = do
-    st <- ask
-    e1 <- liftIO $ readIORef $ isSystemEnv st
-    e2 <- liftIO $ readIORef $ isScriptEnv st
-    pure $ e1 ++ e2
-
-askScriptEnv :: Interpreter Env
-askScriptEnv =  do
-    st <- ask
-    liftIO $ readIORef $ isScriptEnv st
-
-lookupEnv :: String -> Interpreter (Maybe Value)
-lookupEnv k = do
-    e <- askEnv
-    --liftIO $ putStrLn $ "-------------\n" ++ ppShow e ++ "\n-------------"
-    pure $ lookup k e 
-
-modifyScriptEnv :: (Env -> Env) -> Interpreter ()
-modifyScriptEnv f = do
-    st <- ask
-    liftIO $ modifyIORef (isScriptEnv st) f
-
-modifyScriptProvides :: ([ProvideItem] -> [ProvideItem]) -> Interpreter ()
-modifyScriptProvides f = do
-    st <- ask
-    liftIO $ modifyIORef (isProvides st) f
-
-askScriptProvides :: Interpreter [ProvideItem]
-askScriptProvides = do
-    st <- ask
-    liftIO $ readIORef (isProvides st)
-
-askFF :: Interpreter ForeignFunctions
-askFF = do
-    st <- ask
-    liftIO $ readIORef $ isForeignFunctions st
-
--}
-
 addFFIImpls' :: [(String, [Value] -> Interpreter Value)] -> Interpreter ()
 addFFIImpls' fs = do
     st <- ask
     liftIO $ atomically $
         modifyTVar (tlHandleState st) $ \x ->
         x {hsForeignFunctionImpls = fs ++ hsForeignFunctionImpls x}
-    -- liftIO $ modifyIORef (isForeignFunctions st) (ffis ++)
-
-{-
-
-addFFI :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
-addFFI h ffis = runInterp h $ do
-    st <- ask
-    liftIO $ modifyIORef (isForeignFunctions st) (ffis ++)
-
-
--- saves a test result to the interpreter state
-addTestResult :: String -> String -> TestResult -> Interpreter ()
-addTestResult moduleName checkBlockName tr = do
-    st <- ask
-    liftIO $ modifyIORef (isTestResults st) ((moduleName,checkBlockName,tr):)
-
--- the state that the testing framework needs to track in the interpreter
-data TestInfo
-    = TestInfo
-    {tiCurrentSource :: String
-    ,tiCurrentCheckblock :: Maybe String
-    ,tiNextAnonCheckblockNum :: Int
-    ,tiModuleName :: String
-    }
-
-localPushCallStack :: SourcePosition -> Interpreter a -> Interpreter a
-localPushCallStack sp = do
-    local (\m -> m { isCallStack = sp : isCallStack m})
-
-readCallStack :: Interpreter CallStack
-readCallStack = do
-    st <- ask
-    pure $ isCallStack st
-
-emptyInterpreterState :: IO InterpreterState
-emptyInterpreterState = do
-    sysenv <- newIORef emptyEnv
-    scenv <- newIORef emptyEnv
-    provs <- newIORef []
-    ti <- newIORef $ TestInfo
-        {tiCurrentSource = "runScript-api"
-        ,tiCurrentCheckblock = Nothing
-        ,tiNextAnonCheckblockNum = 1
-        ,tiModuleName = "runScript-api"
-        }
-    trs <- newIORef []
-    ffs <- newIORef []
-    sc <- newIORef []
-    ctr <- newIORef 0
-    pure $ InterpreterState sysenv scenv provs ti trs ffs [] sc ctr-}
 
 ---------------------------------------
 
@@ -974,36 +784,13 @@ baseEnv =
 
     ]
 
-{-
-newHandle :: IO Handle
-newHandle = do
-    -- create a completely empty state
-    s <- undefined --emptyInterpreterState
-    -- add the built in ffi functions
-    undefined -- modifyIORef (isForeignFunctions s) (builtInFF ++)
-    -- bootstrap the getffivalue function and other initial values
-    -- including the _system thing
-    -- temp: this is what will mostly be factored into _internals and globals
-    undefined -- modifyIORef (isSystemEnv s) (baseEnv ++)
-    h <- Handle <$> newIORef s
-    runInterp h $ do
-        initBootstrapModule
-        internalsPth <- liftIO $ getBuiltInModulePath "_internals"
-        loadModule False "_internals" internalsPth
-        -- for now, include globals module, later this will depend
-        -- on if a use context is used
-        -- todo: write some tests to show the system works when you don't load
-        -- the globals module explicitly or via include globals
-        void $ interpStatement (Include (ImportName "globals"))
-    pure h
-  -}  
-
-
 runInterp :: Bool -> Handle -> Interpreter a -> IO a
 runInterp incG (Handle h) f = do
     sh <- newSourceHandle h
     runReaderT (do
         -- will become the use context thing
+        -- only bootstrapping a handle with the bootstrap and _internals
+        -- loading skips including globals atm
         when incG $ void $ interpStatement (Include (ImportName "globals"))
         f)
         sh
@@ -1019,7 +806,6 @@ bToHEither (VariantV tg "left" [(_,e)]) | tg == internalsType "Either" = Left e
 bToHEither (VariantV tg "right" [(_,r)]) | tg == internalsType "Either" = Right r
 bToHEither x = error $ "non either passed to btoheither: " ++ show x
 
-
 formatExceptionI :: Bool -> InterpreterException -> Interpreter String
 formatExceptionI includeCallstack e = do
     (st,m) <- case e of
@@ -1032,7 +818,7 @@ formatExceptionI includeCallstack e = do
     pure $ m ++ stf
 
 {-
-partial idea -> save sources as4 they are parsed, so can refer to them
+partial idea -> save sources as they are parsed, so can refer to them
 in later error messages and stuff
 todo: track original filenames plus generated unique filenames better
 something robust will track repeated loads of the same file
@@ -1041,7 +827,6 @@ and be able to identify which version of that source a particular
 call stack refers to
 can think about generating generated names specific to the api, and
 to the repl (e.g. repl-line-x for repl instead of unknown-arbitrary-ctr)
-
 
 -}
 
@@ -1087,7 +872,6 @@ formatCallStack cs = do
         let lne = lines src !! (l - 1)
             caret = replicate (c - 1) ' ' ++ "^"
         pure $ fn ++ ":" ++ show l ++ ":\n" ++ lne ++ "\n" ++ caret
-
 
 ---------------------------------------
 
@@ -1918,7 +1702,6 @@ assertTypeAnnCompat v t = do
     ti <- shallowizeType <$> typeOfTypeSyntax t
     assertTypeCompat v ti
 
-
 -- takes an expression and wraps it with a typelet
 -- mapping strings to Any
 -- this is a way to implement syntax<NAME LIST> ...
@@ -2012,8 +1795,6 @@ desugarContracts
 desugarContracts
     (c@(Contract {}) : s@(FunDecl {}) : _sts) =
     error $ "type not compatible: non function contract for function: " ++ show (c,s)
-
-
 
 desugarContracts (s : ss) = s : desugarContracts ss
 desugarContracts [] = []
