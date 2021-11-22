@@ -62,8 +62,9 @@ provide:
 
   _typeinfo-Tuple,
   _typeinfo-Record,
-  _typeinfo-Function
+  _typeinfo-Function,
 
+  sleep
 
 end
 

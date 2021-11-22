@@ -90,3 +90,7 @@ fun set-auto-run-tests(b):
   auto-run-tests := b
 end
 
+
+spawn = get-ffi-value("spawn")
+self = get-ffi-value("self")
+sleep = get-ffi-value("sleep")

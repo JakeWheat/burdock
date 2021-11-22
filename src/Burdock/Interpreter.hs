@@ -28,7 +28,10 @@ module Burdock.Interpreter
 
     ) where
 
-import Control.Concurrent (setNumCapabilities)
+import Control.Concurrent
+    (setNumCapabilities
+    ,threadDelay)
+
 import GHC.Conc (getNumProcessors)
 
 import Control.Monad.Reader (ReaderT
@@ -75,6 +78,8 @@ import Burdock.HsConcurrency
     ,ThreadHandle
 
     ,spawnExtWait
+    ,spawn
+    ,addr
     )
 
 
@@ -150,7 +155,7 @@ runScript :: Handle
           -> String
           -> IO Value
 runScript h mfn lenv src =
-    spawnExtWaitHandle h $ \_ -> runInterp True h $ do
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ do
         Script ast <- either error id <$> useSource mfn "runScript" src parseScript
         -- todo: how to make this local to this call only
         forM_ lenv $ \(n,v) -> letValue n v
@@ -171,7 +176,7 @@ evalExpr :: Handle
          -> String
          -> IO Value
 evalExpr h mfn lenv src =
-    spawnExtWaitHandle h $ \_ -> runInterp True h $ do
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ do
     ast <- either error id <$> useSource mfn "evalExpr" src parseExpr
     -- todo: how to make this local to this call only
     forM_ lenv $ \(n,v) -> letValue n v
@@ -182,7 +187,7 @@ evalFun :: Handle
         -> [Value]
         -> IO Value
 evalFun h fun args =
-    spawnExtWaitHandle h $ \_ -> runInterp True h $ do
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ do
     ast <- either error id <$> useSource Nothing "evalFun" fun parseExpr
     f <- interpStatements [StmtExpr ast]
     let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
@@ -192,10 +197,12 @@ evalFun h fun args =
     interp ast'
 
 formatException :: Handle -> Bool -> InterpreterException -> IO String
-formatException h includeCallstack e = runInterp True h $ formatExceptionI includeCallstack e
+formatException h includeCallstack e =
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ formatExceptionI includeCallstack e
 
 addFFIImpls :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
-addFFIImpls h ffis = runInterp True h $ addFFIImpls' ffis
+addFFIImpls h ffis =
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ addFFIImpls' ffis
 
 
 ---------------------------------------
@@ -211,7 +218,7 @@ data CheckBlockResult = CheckBlockResult String [TestResult]
                       deriving Show
 
 getTestResults :: Handle -> IO [(String, [CheckBlockResult])]
-getTestResults h = runInterp True h getTestResultsI
+getTestResults h = spawnExtWaitHandle h $ \th -> runInterp th True h getTestResultsI
 
 getTestResultsI :: Interpreter [(String, [CheckBlockResult])]
 getTestResultsI = do
@@ -315,7 +322,7 @@ instance Show Value where
   show (ForeignFunV n) = "ForeignFunV " ++ show n
   show (BoxV _ _n) = "BoxV XX" -- ++ show n
   show (FFIValue r) | Just (r' :: R.Relation Value) <- fromDynamic r = R.showRel r'
-  show (FFIValue _v) = "FFIValue"
+  show (FFIValue v) = "FFIValue " ++ show v
 
 
 -- needs some work
@@ -535,6 +542,7 @@ data ThreadLocalState
     = ThreadLocalState
     {tlHandleState :: TVar BurdockHandleState
     ,tlModuleState :: IORef ModuleState
+    ,tlThreadHandle :: ThreadHandle
     -- collect the provides, used at end of module loading
     ,tlProvides :: IORef [ProvideItem]
     ,tlCallStack :: CallStack
@@ -589,16 +597,16 @@ newBurdockHandle = do
     ch <- openBConcurrency
     rs <- newTVarIO []
     h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF [] 0 rs
-    spawnWaitCast ch $ \_ -> runInterp False (Handle h) initBootstrapModule
+    spawnWaitCast ch $ \th -> runInterp th False (Handle h) initBootstrapModule
     ip <- getBuiltInModulePath "_internals"
-    runInterp False (Handle h) $ loadAndRunModule False "_internals" ip
+    spawnWaitCast ch $ \th -> runInterp th False (Handle h) $ loadAndRunModule False "_internals" ip
     pure h
 
-newSourceHandle :: TVar BurdockHandleState -> IO ThreadLocalState
-newSourceHandle bs = do
-    
+newSourceHandle :: ThreadHandle -> TVar BurdockHandleState -> IO ThreadLocalState
+newSourceHandle th bs =
     ThreadLocalState bs
         <$> newIORef (ModuleState "unknown" "unknown") -- todo: generate unique names
+        <*> pure th
         <*> newIORef []
         <*> pure []
         <*> newIORef []
@@ -839,13 +847,48 @@ spawnExtWaitI :: Typeable a => (ThreadHandle -> Interpreter a) -> Interpreter a
 spawnExtWaitI f = do
     st <- ask
     h <- hsConcurrencyHandle <$> liftIO (atomically $ readTVar (tlHandleState st))
-    liftIO $ spawnWaitCast h $ \th -> do
-        flip runReaderT st (f th)
-    
+    liftIO $ spawnWaitCast h $ \th -> flip runReaderT st (f th)
+
 spawnWaitCast :: Typeable a => BConcurrencyHandle -> (ThreadHandle -> IO a) -> IO a
 spawnWaitCast h f = do
     r <- spawnExtWait h (\th -> toDyn <$> f th)
     pure (fromJust $ fromDynamic r)
+
+
+{-spawnCast :: Typeable a => BConcurrencyHandle -> (ThreadHandle -> IO a) -> IO a
+spawnCast h f = do
+    r <- spawnExtWait h (\th -> toDyn <$> f th)
+    pure (fromJust $ fromDynamic r)-}
+
+
+bSpawn :: [Value] -> Interpreter Value
+bSpawn [f] = do
+    st <- ask
+    x <- liftIO $ spawn (tlThreadHandle st) $ \th ->
+        runInterp th True (Handle $ tlHandleState st) $ do
+        void $ app f []
+        pure $ toDyn ()
+    --let y :: Addr
+    --    Just y = fromDynamic x
+    pure $ FFIValue $ toDyn x
+    
+    
+bSpawn x = error $ "wrong args to bSpawn: " ++ show x
+
+bSelf :: [Value] -> Interpreter Value
+bSelf [] = do
+    st <- ask
+    pure $ FFIValue $ toDyn $ addr $ tlThreadHandle st
+    
+bSelf x = error $ "wrong args to bSelf: " ++ show x
+
+bSleep :: [Value] -> Interpreter Value
+bSleep [NumV t] = do
+    liftIO $ threadDelay (floor (t * 1000 * 1000))
+    pure nothing
+    
+bSleep x = error $ "wrong args to sleep: " ++ show x
+
 
 ---------------------------------------
 
@@ -876,9 +919,9 @@ baseEnv =
 
     ]
 
-runInterp :: Bool -> Handle -> Interpreter a -> IO a
-runInterp incG (Handle h) f = do
-    sh <- newSourceHandle h
+runInterp :: ThreadHandle -> Bool -> Handle -> Interpreter a -> IO a
+runInterp th incG (Handle h) f = do
+    sh <- newSourceHandle th h
     flip runReaderT sh $ do
         -- will become the use context thing
         -- only bootstrapping a handle with the bootstrap and _internals
@@ -1004,7 +1047,7 @@ toreprx (VariantV _ nm fs) = do
 toreprx (FFIValue r)
     | Just (r' :: R.Relation Value) <- fromDynamic r
     = pure $ P.pretty $ R.showRel r'
-toreprx (FFIValue {}) = pure $ P.pretty "<ffi-value>"
+toreprx x@(FFIValue {}) = pure $ P.pretty $ show x -- "<ffi-value>"
 
 xSep :: String -> [P.Doc a] -> P.Doc a
 xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
@@ -1101,6 +1144,9 @@ builtInFF =
     ,("rel-summarize", relSummarize)
     ,("hack-parse-table", hackParseTable)
     ,("union-recs", unionRecs)
+    ,("spawn", bSpawn)
+    ,("self", bSelf)
+    ,("sleep", bSleep)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
