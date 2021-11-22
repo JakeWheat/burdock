@@ -79,6 +79,7 @@ import System.IO (Handle
 import System.Exit (exitFailure)
 
 import Control.Concurrent.Async (withAsync, wait)
+import Control.Exception.Safe (bracket)
 
 ------------------------------------------------------------------------------
 
@@ -94,8 +95,7 @@ runHandle fp h rTests = do
     runSrc (Just fp) rTests src
 
 runSrc :: Maybe String -> Bool -> String -> IO ()
-runSrc fnm rTests src = do
-    h <- B.newHandle
+runSrc fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
     flip catch (handleEx h) $ do
         when rTests $ void $ B.runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
         v <- B.runScript h fnm [] src
@@ -139,8 +139,7 @@ repl h = go
 
 
 doRepl :: IO ()
-doRepl = do
-    h <- B.newHandle
+doRepl = bracket B.newHandle B.closeHandle $ \h -> do
     --putStrLn "test print"
     --a1 <- B.evalExpr h Nothing [] "1"
     --a2 <- B.evalExpr h Nothing [] "true"

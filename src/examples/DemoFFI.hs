@@ -43,11 +43,10 @@ import Data.Dynamic (--Dynamic
 
 import Control.Monad (void)
 
+import Control.Exception.Safe (bracket)
 
 main :: IO ()
-main = do
-    h <- B.newHandle
-
+main = bracket B.newHandle B.closeHandle $ \h -> do
     B.addFFIImpls h [("demo-make-haskell-int", demoMakeHaskellInt)
              ,("demo-extract-int", demoExtractInt)
              ,("demo-add-to-int", demoAddToInt)]

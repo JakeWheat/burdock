@@ -10,6 +10,7 @@ module Burdock.Interpreter
     ,valueToString
 
     ,newHandle
+    ,closeHandle
     ,Handle
     ,runScript
     ,evalExpr
@@ -66,6 +67,13 @@ import Burdock.Syntax
 import Burdock.Pretty
 import Burdock.Parse (parseScript, parseExpr)
 import qualified Burdock.Relational as R
+
+import Burdock.HsConcurrency
+    (openBConcurrency
+    ,closeBConcurrency
+    ,BConcurrencyHandle
+    )
+
 
 import Control.Exception.Safe (catch
                               --,SomeException
@@ -127,6 +135,10 @@ newHandle :: IO Handle
 newHandle = do
     x <- newBurdockHandle
     pure $ Handle x
+
+closeHandle :: Handle -> IO ()
+closeHandle (Handle h) =
+    closeBConcurrency . hsConcurrencyHandle =<< atomically (readTVar h)
 
 runScript :: Handle
           -> Maybe FilePath
@@ -495,7 +507,8 @@ updated by multiple threads), put it in a tvar
 
 data BurdockHandleState
     = BurdockHandleState
-    {hsLoadedModules :: [(FilePath,(String,Value))] -- modulename, module value (as a record)
+    {hsConcurrencyHandle :: BConcurrencyHandle
+    ,hsLoadedModules :: [(FilePath,(String,Value))] -- modulename, module value (as a record)
     ,hsTempBaseEnv :: [(String,Value)]
     ,hsForeignFunctionImpls :: [ForeignFunctionEntry]
     ,hsSourceCache :: [(FilePath, String)]
@@ -566,8 +579,9 @@ interpreterExceptionToValue (ValueException _ v) = v
 
 newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
+    ch <- openBConcurrency
     rs <- newTVarIO []
-    h <- newTVarIO $ BurdockHandleState [] baseEnv builtInFF [] 0 rs
+    h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF [] 0 rs
     runInterp False (Handle h) initBootstrapModule
     ip <- getBuiltInModulePath "_internals"
     runInterp False (Handle h) $ loadAndRunModule False "_internals" ip
@@ -584,6 +598,53 @@ newSourceHandle bs = do
         <*> pure Nothing
         <*> newIORef 1
         <*> pure True
+
+{-
+
+to make concurrency efficient, want to share data as little as possible
+is it a bit premature to start worrying about this?
+
+currently used:
+get test results for the api
+  unavoidable, and unlikely to be performance sensitive
+read source cache:
+  could cache the cache in local threads
+  but it's not super performance sensitive, since it's only use to
+  render error messages. the only time I can think of that this would
+  be an issue is that if you are in production and logging error
+  messages at a very high rate, and you don't want the additional
+  problem of the system running even slower
+
+adding a loaded module:
+  unavoidable, and unlikely to be performance sensitive
+
+askFF:
+  this is potentially a performance issue
+    figure out a pattern of caching and cache invalidation
+    to minimise coordination when the list of ffimpls is not changing
+
+askbindings:
+  this is the biggest issue
+  do something similar to the notes on askff
+
+addtestresult:
+  unavoidable when having tests running concurrently,
+  but the coordination will be reduced when test results are logged
+    in a tvar per module/source, instead of a single tvar
+    for the whole handle
+  it's probably not going to be an issue even without this
+
+addffiimpls:
+  unavoidable, and unlikely to be performance sensitive
+
+use source:
+  it's a shame to do two transactions when loading a module instead of one
+  but it's no big deal
+
+uniquesourcename:
+  goes with use source/load module
+
+-}
     
 readSourceCache :: Interpreter [(FilePath, String)]
 readSourceCache = do

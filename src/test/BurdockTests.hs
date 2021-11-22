@@ -15,6 +15,7 @@ import Control.Exception.Safe (catch
                               ,SomeException)
 
 import Control.Concurrent.Async (withAsync, wait)
+import Control.Exception.Safe (bracket)
 
 
 import qualified Test.Tasty as T
@@ -60,9 +61,8 @@ makeInterpreterFileTest :: FilePath -> IO T.TestTree
 makeInterpreterFileTest fn = catch makeIt $ \ex -> do
     pure $ T.testCase fn $ T.assertFailure $ show (ex :: SomeException)
   where
-    makeIt = do
+    makeIt = bracket newHandle closeHandle $ \h -> do
         src <- readFile fn
-        h <- newHandle
         _ <- runScript h Nothing []
              "_system.modules._internals.set-auto-print-test-results(false)\n\
              \_system.modules._internals.set-auto-run-tests(true)"

@@ -43,7 +43,8 @@ module Burdock.HsConcurrency
     ,openBConcurrency
     ,closeBConcurrency
     ,spawnExtWait
-    
+
+    ,BConcurrencyHandle
     ,ThreadHandle
     ,Addr
     ,Inbox
