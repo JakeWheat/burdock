@@ -7,7 +7,7 @@ pid = spawn(lam(): block:
     end
   end)
 
-send(pid, {ret:self(), val:"world"})
+send(pid, {ret:self, val:"world"})
 
 x = receive()
 

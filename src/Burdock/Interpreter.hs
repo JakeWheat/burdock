@@ -1515,6 +1515,8 @@ interp (Iden "_") = error $ "wildcard/partial application not supported in this 
 interp (Iden a) = do
     mv <- lookupBinding a
     case mv of
+        -- hack for self for concurrency
+        Just f@(ForeignFunV "self") -> app f []
         Just (BoxV _ vr) -> liftIO $ readIORef vr
         Just v -> pure v
         Nothing -> error $ "identifier not found: " ++ a
