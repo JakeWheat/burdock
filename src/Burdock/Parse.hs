@@ -163,6 +163,7 @@ reservedKeywords =
     ,"import", "provide", "provide-types"
     ,"from", "and", "or", "shadow", "as"
     ,"ref", "table", "row"
+    ,"receive", "after"
     ]
 
 identifierX :: Parser String
@@ -269,6 +270,7 @@ term = (do
         ,tableSel
         ,template
         ,assertTypeCompat
+        ,receive
         ,Iden <$> identifier
         ,numE
         ,stringE
@@ -492,6 +494,35 @@ assertTypeCompat = do
     keyword_ "assert-type-compat"
     choice [uncurry AssertTypeCompat <$> parens ((,) <$> expr <*> (symbol_ "::" *> typ True))
            ,pure $ Iden "assert-type-compat"]
+
+receive :: Parser Expr
+receive = do
+    keyword_ "receive" <* symbol_ ":"
+    nextCase []
+  where
+    nextCase cs =
+        choice [do
+                x <- casePart
+                case x of
+                    Right el -> endCase cs (Just el)
+                    Left c -> nextCase (c:cs)
+               ,endCase cs Nothing]
+    casePart :: Parser (Either (CaseBinding,Expr) (AfterVal,Expr))
+    casePart = do
+        symbol_ "|"
+        choice
+            [Right <$> ((,) <$> after <*> (symbol_ "=>" *> expr))
+            ,Left <$> ((,) <$> (caseBinding <?> "case pattern") <*> (symbol_ "=>" *> expr))]
+    endCase cs aft = keyword_ "end" *> pure (Receive (reverse cs) aft)
+    after = do
+        keyword_ "after"
+        choice [AfterInfinity <$ keyword_ "infinity"
+               ,After <$> numv
+               ]
+    numv = do
+        x <- num
+        maybe (fail $ "parsing number failed: " ++ x)
+                           pure (readMaybe x)
 
 numE :: Parser Expr
 numE = do

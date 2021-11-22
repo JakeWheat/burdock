@@ -18,6 +18,8 @@ import Prettyprinter (pretty
                      )
 import Data.Maybe (catMaybes)
 
+import Burdock.Scientific (showScientific)
+
 import Burdock.Syntax
 
 
@@ -40,7 +42,7 @@ prettyStmt s = show $ stmt s
 
 
 expr :: Expr -> Doc a
-expr (Num n) = pretty $ show n
+expr (Num n) = pretty $ showScientific n
 
 -- todo handle parsing and printing escape chars properly
 expr (Text s) | '\n' `elem` s = pretty "```" <> pretty s <> pretty "```"
@@ -133,6 +135,19 @@ expr (Template _sp) = pretty "..."
 
 expr (UnboxRef e f) = expr e <> pretty "!" <> pretty f
 
+expr (Receive mats after) =
+    prettyBlocklike vsep
+    [pretty "receive:"
+    ,vsep (map mf mats ++
+           [maybe mempty aft after])]
+  where
+    mf (p, e1) = pretty "|" <+> caseBinding p <+> pretty "=>" <+> expr e1
+    aft (a, e) =
+        pretty "|" <+>
+        (case a of
+            AfterInfinity -> pretty "after infinity"
+            After n -> pretty "after" <+> pretty (showScientific n))
+        <+> pretty "=>" <+> expr e
 
 bindExpr :: Binding -> Expr -> Doc a
 bindExpr n e =

@@ -2,14 +2,14 @@
 include concurrency
 
 pid = spawn(lam(): block:
-      x = receive()
+      x = rcv()
       send(x.ret, "hello " + x.val)
     end
   end)
 
 send(pid, {ret:self, val:"world"})
 
-x = receive()
+x = rcv()
 
 check:
   x is "hello world"

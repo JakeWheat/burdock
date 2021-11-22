@@ -85,6 +85,11 @@ data Expr =
     | TypeLet [TypeDecl] Expr
     | Template SourcePosition
     | UnboxRef Expr String
+    | Receive [(CaseBinding, Expr)] (Maybe (AfterVal, Expr))
+    deriving (Eq,Show,Data)
+
+data AfterVal = After Scientific
+              | AfterInfinity
     deriving (Eq,Show,Data)
 
 data TypeDecl = TypeDecl String [String] Ann

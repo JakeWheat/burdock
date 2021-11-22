@@ -3,7 +3,7 @@ provide:
   self,
   spawn,
   send,
-  receive
+  rcv
 end
 
 include _internals

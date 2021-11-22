@@ -259,6 +259,36 @@ end|]
     ,("...", Template Nothing)
 
     ,([R.r|
+receive:
+  | a => b
+end
+     |], Receive [(CaseBinding ["a"] [], Iden "b")] Nothing)
+    ,([R.r|
+receive:
+  | pat1(a) => a
+  | pat2(b) => b
+end
+     |], Receive [(CaseBinding ["pat1"] [nm "a"], Iden "a")
+                 ,(CaseBinding ["pat2"] [nm "b"], Iden "b")] Nothing)
+    ,([R.r|
+receive:
+  | after infinity => c
+end
+     |], Receive [] (Just (AfterInfinity, Iden "c")))
+    ,([R.r|
+receive:
+  | after 1.1 => c
+end
+     |], Receive [] (Just (After 1.1, Iden "c")))
+    ,([R.r|
+receive:
+  | pat1(a) => a
+  | after 10 => c
+end
+     |], Receive [(CaseBinding ["pat1"] [nm "a"], Iden "a")]
+                 (Just (After 10, Iden "c")))
+
+    ,([R.r|
 table a,b:
   row: 1, true
   row: 2, false
