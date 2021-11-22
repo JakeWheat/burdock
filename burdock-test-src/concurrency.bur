@@ -1,0 +1,16 @@
+
+include concurrency
+
+pid = spawn(lam(): block:
+      x = receive()
+      send(x.ret, "hello " + x.val)
+    end
+  end)
+
+send(pid, {ret:self(), val:"world"})
+
+x = receive()
+
+check:
+  x is "hello world"
+end

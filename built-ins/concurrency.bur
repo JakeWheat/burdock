@@ -1,7 +1,9 @@
 
 provide:
   self,
-  spawn
+  spawn,
+  send,
+  receive
 end
 
 include _internals

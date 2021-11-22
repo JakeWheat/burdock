@@ -94,3 +94,5 @@ end
 spawn = get-ffi-value("spawn")
 self = get-ffi-value("self")
 sleep = get-ffi-value("sleep")
+send = get-ffi-value("send")
+receive = get-ffi-value("receive")

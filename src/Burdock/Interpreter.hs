@@ -80,6 +80,8 @@ import Burdock.HsConcurrency
     ,spawnExtWait
     ,spawn
     ,addr
+    ,send
+    ,receive
     )
 
 
@@ -854,12 +856,8 @@ spawnWaitCast h f = do
     r <- spawnExtWait h (\th -> toDyn <$> f th)
     pure (fromJust $ fromDynamic r)
 
-
-{-spawnCast :: Typeable a => BConcurrencyHandle -> (ThreadHandle -> IO a) -> IO a
-spawnCast h f = do
-    r <- spawnExtWait h (\th -> toDyn <$> f th)
-    pure (fromJust $ fromDynamic r)-}
-
+askThreadHandle :: Interpreter ThreadHandle
+askThreadHandle = tlThreadHandle <$> ask
 
 bSpawn :: [Value] -> Interpreter Value
 bSpawn [f] = do
@@ -871,23 +869,35 @@ bSpawn [f] = do
     --let y :: Addr
     --    Just y = fromDynamic x
     pure $ FFIValue $ toDyn x
-    
-    
 bSpawn x = error $ "wrong args to bSpawn: " ++ show x
 
 bSelf :: [Value] -> Interpreter Value
 bSelf [] = do
-    st <- ask
-    pure $ FFIValue $ toDyn $ addr $ tlThreadHandle st
-    
+    x <- askThreadHandle
+    pure $ FFIValue $ toDyn $ addr x
 bSelf x = error $ "wrong args to bSelf: " ++ show x
 
 bSleep :: [Value] -> Interpreter Value
 bSleep [NumV t] = do
     liftIO $ threadDelay (floor (t * 1000 * 1000))
     pure nothing
-    
 bSleep x = error $ "wrong args to sleep: " ++ show x
+
+bSend :: [Value] -> Interpreter Value
+bSend [FFIValue to, val] = do
+    let toaddr = maybe (error $ "send to non addr: " ++ show to) id $ fromDynamic to
+    th <- askThreadHandle
+    liftIO $ send th toaddr $ toDyn val
+    pure nothing
+bSend x = error $ "wrong args to bSend: " ++ show x
+
+bReceive :: [Value] -> Interpreter Value
+bReceive [] = do
+    th <- askThreadHandle
+    v <- liftIO $ receive th (const True)
+    let x = maybe (error $ "got non value from receive: " ++ show v) id $ fromDynamic v
+    pure x
+bReceive x = error $ "wrong args to bReceive: " ++ show x
 
 
 ---------------------------------------
@@ -1147,6 +1157,8 @@ builtInFF =
     ,("spawn", bSpawn)
     ,("self", bSelf)
     ,("sleep", bSleep)
+    ,("send", bSend)
+    ,("receive", bReceive)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value

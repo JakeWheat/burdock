@@ -585,6 +585,7 @@ interpreterTests =
     ,TestGroup "additional tests" $ map InterpreterTestsFile
      ["burdock-test-src/lists.bur"
      ,"burdock-test-src/relational-demo.bur"
+     ,"burdock-test-src/concurrency.bur"
      ]
     
     ]
