@@ -144,20 +144,13 @@ closeHandle :: Handle -> IO ()
 closeHandle (Handle h) =
     closeBConcurrency . hsConcurrencyHandle =<< atomically (readTVar h)
 
-spawnExtWaitHandle :: Typeable a => Handle -> (ThreadHandle -> IO a) -> IO a
-spawnExtWaitHandle (Handle h) f = do
-    st <- atomically $ readTVar h
-    r <- spawnExtWait (hsConcurrencyHandle st) (\th -> toDyn <$> f th)
-    pure (fromJust $ fromDynamic r)
-
 runScript :: Handle
           -> Maybe FilePath
           -> [(String,Value)]
           -> String
           -> IO Value
-runScript h mfn lenv src = do
-    spawnExtWaitHandle h $ \_ ->
-        runInterp True h $ do
+runScript h mfn lenv src =
+    spawnExtWaitHandle h $ \_ -> runInterp True h $ do
         Script ast <- either error id <$> useSource mfn "runScript" src parseScript
         -- todo: how to make this local to this call only
         forM_ lenv $ \(n,v) -> letValue n v
@@ -177,7 +170,8 @@ evalExpr :: Handle
          -> [(String,Value)]
          -> String
          -> IO Value
-evalExpr h mfn lenv src = runInterp True h $ do
+evalExpr h mfn lenv src =
+    spawnExtWaitHandle h $ \_ -> runInterp True h $ do
     ast <- either error id <$> useSource mfn "evalExpr" src parseExpr
     -- todo: how to make this local to this call only
     forM_ lenv $ \(n,v) -> letValue n v
@@ -187,7 +181,8 @@ evalFun :: Handle
         -> String 
         -> [Value]
         -> IO Value
-evalFun h fun args = runInterp True h $ do
+evalFun h fun args =
+    spawnExtWaitHandle h $ \_ -> runInterp True h $ do
     ast <- either error id <$> useSource Nothing "evalFun" fun parseExpr
     f <- interpStatements [StmtExpr ast]
     let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
@@ -594,7 +589,7 @@ newBurdockHandle = do
     ch <- openBConcurrency
     rs <- newTVarIO []
     h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF [] 0 rs
-    runInterp False (Handle h) initBootstrapModule
+    spawnWaitCast ch $ \_ -> runInterp False (Handle h) initBootstrapModule
     ip <- getBuiltInModulePath "_internals"
     runInterp False (Handle h) $ loadAndRunModule False "_internals" ip
     pure h
@@ -830,6 +825,30 @@ addFFIImpls' fs = do
 
 ---------------------------------------
 
+-- concurrency support
+
+spawnExtWaitHandle :: Typeable a => Handle -> (ThreadHandle -> IO a) -> IO a
+spawnExtWaitHandle (Handle h) f = do
+    st <- atomically $ readTVar h
+    spawnWaitCast (hsConcurrencyHandle st) f
+
+-- this resets the interpreter state for a fresh thread
+-- there are two kinds of spawn: api level, and regular subthread spawn
+-- which modify the new state differently
+spawnExtWaitI :: Typeable a => (ThreadHandle -> Interpreter a) -> Interpreter a
+spawnExtWaitI f = do
+    st <- ask
+    h <- hsConcurrencyHandle <$> liftIO (atomically $ readTVar (tlHandleState st))
+    liftIO $ spawnWaitCast h $ \th -> do
+        flip runReaderT st (f th)
+    
+spawnWaitCast :: Typeable a => BConcurrencyHandle -> (ThreadHandle -> IO a) -> IO a
+spawnWaitCast h f = do
+    r <- spawnExtWait h (\th -> toDyn <$> f th)
+    pure (fromJust $ fromDynamic r)
+
+---------------------------------------
+
 -- new handles, running interpreter functions using a handle
 
 baseEnv :: [(String,Value)]
@@ -860,13 +879,12 @@ baseEnv =
 runInterp :: Bool -> Handle -> Interpreter a -> IO a
 runInterp incG (Handle h) f = do
     sh <- newSourceHandle h
-    runReaderT (do
+    flip runReaderT sh $ do
         -- will become the use context thing
         -- only bootstrapping a handle with the bootstrap and _internals
         -- loading skips including globals atm
         when incG $ void $ interpStatement (Include (ImportName "globals"))
-        f)
-        sh
+        f
 
 ---------------------------------------
 
@@ -2345,7 +2363,7 @@ runModule filename moduleName f =
 
 -- todo: replace the includeGlobals flag with use context
 loadAndRunModule :: Bool -> String -> FilePath -> Interpreter ()
-loadAndRunModule includeGlobals moduleName fn = do
+loadAndRunModule includeGlobals moduleName fn = spawnExtWaitI $ \_ -> do
     src <- liftIO $ readFile fn
     -- auto include globals, revisit when use context added
     let incG = if includeGlobals && moduleName /= "globals"
