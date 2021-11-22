@@ -59,7 +59,7 @@ import Data.IORef (IORef
                   ,modifyIORef
                   ,writeIORef)
 
-import Data.Maybe (catMaybes, isJust)
+import Data.Maybe (catMaybes, isJust, fromJust)
 import Text.Read (readMaybe)
 
 import Burdock.Scientific
@@ -72,6 +72,9 @@ import Burdock.HsConcurrency
     (openBConcurrency
     ,closeBConcurrency
     ,BConcurrencyHandle
+    ,ThreadHandle
+
+    ,spawnExtWait
     )
 
 
@@ -105,6 +108,7 @@ import System.FilePath
 import Data.Dynamic (Dynamic
                     ,toDyn
                     ,fromDynamic
+                    ,Typeable
                     )
 
 import Data.Char (isSpace)
@@ -140,26 +144,34 @@ closeHandle :: Handle -> IO ()
 closeHandle (Handle h) =
     closeBConcurrency . hsConcurrencyHandle =<< atomically (readTVar h)
 
+spawnExtWaitHandle :: Typeable a => Handle -> (ThreadHandle -> IO a) -> IO a
+spawnExtWaitHandle (Handle h) f = do
+    st <- atomically $ readTVar h
+    r <- spawnExtWait (hsConcurrencyHandle st) (\th -> toDyn <$> f th)
+    pure (fromJust $ fromDynamic r)
+
 runScript :: Handle
           -> Maybe FilePath
           -> [(String,Value)]
           -> String
           -> IO Value
-runScript h mfn lenv src = runInterp True h $ do
-    Script ast <- either error id <$> useSource mfn "runScript" src parseScript
-    -- todo: how to make this local to this call only
-    forM_ lenv $ \(n,v) -> letValue n v
-    ret <- interpStatements ast
-    printTestResults <- interp $ internalsRef "auto-print-test-results"
-    case printTestResults of
-        BoolV True -> do
-            trs <- getTestResultsI
-            when (not $ null trs) $
-                liftIO $ putStrLn $ formatTestResults trs
-        BoolV False -> pure ()
-        x -> error $ "bad value in auto-print-test-results (should be boolv): " ++ show x
-    pure ret
-
+runScript h mfn lenv src = do
+    spawnExtWaitHandle h $ \_ ->
+        runInterp True h $ do
+        Script ast <- either error id <$> useSource mfn "runScript" src parseScript
+        -- todo: how to make this local to this call only
+        forM_ lenv $ \(n,v) -> letValue n v
+        ret <- interpStatements ast
+        printTestResults <- interp $ internalsRef "auto-print-test-results"
+        case printTestResults of
+            BoolV True -> do
+                trs <- getTestResultsI
+                when (not $ null trs) $
+                    liftIO $ putStrLn $ formatTestResults trs
+            BoolV False -> pure ()
+            x -> error $ "bad value in auto-print-test-results (should be boolv): " ++ show x
+        pure ret
+    
 evalExpr :: Handle
          -> Maybe FilePath
          -> [(String,Value)]
