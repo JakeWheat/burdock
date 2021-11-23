@@ -23,24 +23,23 @@ end
 data Msg: msg(ret,val) end
 
 pid = spawn(lam(): block:
-      print("spawned1")
+      #print("spawned1")
       receive:
         | msg(ret,val) => block:
-            print("spawned2")
+            #print("spawned2")
             send(ret, msg(self,"hello " + val))
-            print("spawned3")
+            #print("spawned3")
           end
       end
-      print("spawned4")
+      #print("spawned4")
     end
   end)
 
-print("send1")
+#print("send1")
 send(pid, msg(self,"world"))
-print("send2")
+#print("send2")
 x = receive: | msg(_,a) => a end
-# todo: add a syntax shortcut like with data?
-print("send3")
+#print("send3")
 
 check:
   x is "hello world"

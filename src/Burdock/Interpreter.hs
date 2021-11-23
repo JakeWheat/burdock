@@ -81,7 +81,9 @@ import Burdock.HsConcurrency
     ,spawn
     ,addr
     ,send
-    ,receive
+    --,receive
+    ,zreceive
+    ,zreceiveTimeout
     )
 
 
@@ -136,8 +138,8 @@ import Control.Concurrent.STM.TVar
 import Control.Concurrent.STM
     (atomically)
 
-import Control.Monad.IO.Class
-    (MonadIO)
+--import Control.Monad.IO.Class
+--    (MonadIO)
 
 --import Debug.Trace (trace)
 
@@ -897,7 +899,7 @@ bSend x = error $ "wrong args to bSend: " ++ show x
 bReceive :: [Value] -> Interpreter Value
 bReceive [] = do
     th <- askThreadHandle
-    v <- liftIO $ receive th (const True)
+    v <- liftIO $ zreceive th (\x -> pure $ Just x)
     let x = maybe (error $ "got non value from receive: " ++ show v) id $ fromDynamic v
     pure x
 bReceive x = error $ "wrong args to bReceive: " ++ show x
@@ -909,7 +911,7 @@ bReceive x = error $ "wrong args to bReceive: " ++ show x
 -- try to hack it first using unsafeperformio
 -- then can check everything else works before doing this big rewrite
 -- xreceive :: MonadIO m => ThreadHandle -> (Dynamic -> m (Maybe Dynamic)) -> m Dynamic
-xreceive :: ThreadHandle -> (Dynamic -> Interpreter (Maybe Dynamic)) -> Interpreter Dynamic
+{-xreceive :: ThreadHandle -> (Dynamic -> Interpreter (Maybe Dynamic)) -> Interpreter Dynamic
 xreceive th prd = do
     st <- ask
     let prd' :: Dynamic -> Bool
@@ -930,7 +932,7 @@ xreceiveTimeout :: MonadIO m =>
                 -> Int
                 -> (Dynamic -> m (Maybe Dynamic))
                 -> m (Maybe Dynamic)
-xreceiveTimeout = undefined
+xreceiveTimeout = undefined-}
 
 
 ---------------------------------------
@@ -1814,7 +1816,6 @@ interp (Receive cs aft) = do
         cs' = flip map cs $ \(cb, e) -> (cb, App Nothing some [e])
         prdf = Lam (FunHeader [] [NameBinding Shadow "receiveval" Nothing] Nothing)
                $ Cases (Iden "receiveval") Nothing cs' (Just none)
-
     prdfv <- interp prdf
     let prd :: Dynamic -> Interpreter (Maybe Dynamic)
         prd v = do
@@ -1826,20 +1827,19 @@ interp (Receive cs aft) = do
                     VariantV tg "none" [] | tg == internalsType "Option" -> pure Nothing
                     VariantV tg "some" [(_,x)] | tg == internalsType "Option" -> pure $ Just $ toDyn x
                     _ -> error $ "expected Option type in prdfv ret, got " ++ show r
-
     th <- askThreadHandle
     let getVal v | Just v' <- fromDynamic v = v'
                  | otherwise = error $ "expected <<Value>> from receive, got " ++ show v
     case aft of
-        Nothing -> getVal <$> xreceive th prd
+        Nothing -> getVal <$> zreceive th prd
         Just (a, e) -> do
             tme <- interp a
             case tme of
                 VariantV tg "infinity" []
                     | tg == internalsType "Infinity"
-                      -> getVal <$> xreceive th prd                   
+                      -> getVal <$> zreceive th prd                   
                 NumV tme' -> do
-                    v <- xreceiveTimeout th (floor (tme' * 1000 * 1000)) prd
+                    v <- zreceiveTimeout th (floor (tme' * 1000 * 1000)) prd
                     case v of
                         Just v' -> getVal v'
                         Nothing -> interp e

@@ -40,6 +40,9 @@ module Burdock.HsConcurrency
     ,asyncExit
     ,extractDynValExceptionVal
 
+    ,zreceive
+    ,zreceiveTimeout
+
     ,openBConcurrency
     ,closeBConcurrency
     ,spawnExtWait
@@ -147,6 +150,9 @@ import Data.Dynamic (Dynamic
 
 import Data.Maybe (fromMaybe)
 import Data.Tuple (swap)
+
+import Control.Monad.IO.Class (MonadIO, liftIO)
+
 
 --import Data.Typeable (typeOf)
 
@@ -263,8 +269,20 @@ receiveTimeout :: --Show a =>
                -> IO (Maybe Dynamic)
 receiveTimeout h tme f = receiveInboxTimeout (myInbox h) tme f
 
+zreceiveTimeout :: MonadIO m => 
+                   ThreadHandle
+                -> Int -- timeout in microseconds
+                -> (Dynamic -> m (Maybe Dynamic)) -- accept function for selective receive
+                -> m (Maybe Dynamic)
+zreceiveTimeout h tme f = zreceiveInboxTimeout (myInbox h) tme f
+
+
 receive :: ThreadHandle -> (Dynamic -> Bool) -> IO Dynamic
 receive h f = receiveInbox (myInbox h) f
+
+zreceive :: MonadIO m => ThreadHandle -> (Dynamic -> m (Maybe Dynamic)) -> m Dynamic
+zreceive h f = zreceiveInbox (myInbox h) f
+
 
 spawn :: ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
 spawn h f = spawnImpl h Nothing f
@@ -563,6 +581,93 @@ receiveNoBuffered ib f = do
         else do
             atomically $ modifyTVar (ibbuffer ib) (++[msg])
             receiveNoBuffered ib f
+
+zreceiveInbox:: MonadIO m => Inbox -> (Dynamic -> m (Maybe Dynamic)) -> m Dynamic
+zreceiveInbox ib f = do
+    liftIO $ assertMyThreadIdIs $ ibThreadId ib
+    b <- liftIO $ atomically $ readTVar (ibbuffer ib)
+    (newBuf, mres) <- zflushInboxForMatch b [] (ibaddr ib) f
+    liftIO $ atomically $ writeTVar (ibbuffer ib) $ newBuf
+    case mres of
+        Just res -> pure res
+        Nothing -> zreceiveNoBuffered ib f
+
+zflushInboxForMatch :: MonadIO m =>
+                      [a]
+                   -> [a]
+                   -> (CQueue a)
+                   -> (a -> m (Maybe a))
+                   -> m ([a], Maybe a)
+zflushInboxForMatch buf bdm inQueue prd = go1 buf bdm
+  where
+    go1 (x:xs) bufferDidntMatch = do
+        r <- prd x
+        case r of
+            Just {} -> pure (reverse bufferDidntMatch ++ xs, r)
+            Nothing -> go1 xs (x:bufferDidntMatch)
+    go1 [] bufferDidntMatch = do
+        x <- liftIO $ atomically $ tryReadCQueue inQueue
+        case x of
+            Nothing -> pure (reverse bufferDidntMatch, x)
+            Just y -> do
+                r <- prd y
+                case r of
+                    Just {} -> pure (reverse bufferDidntMatch, r)
+                    Nothing -> go1 [] (y:bufferDidntMatch)
+
+zreceiveNoBuffered :: MonadIO m =>
+                      Inbox
+                   -> (Dynamic -> m (Maybe Dynamic))
+                   -> m Dynamic
+zreceiveNoBuffered ib f = do
+    msg <- liftIO $ atomically (readCQueue $ ibaddr ib)
+    v <- f msg
+    case v of
+        Nothing -> do
+            liftIO $ atomically $ modifyTVar (ibbuffer ib) (++[msg])
+            zreceiveNoBuffered ib f
+        Just v' -> pure v'
+            
+
+zreceiveInboxTimeout :: MonadIO m =>
+                        Inbox
+                     -> Int
+                     -> (Dynamic -> m (Maybe Dynamic))
+                     -> m (Maybe Dynamic)
+zreceiveInboxTimeout ib tme f = do
+    liftIO $ assertMyThreadIdIs $ ibThreadId ib
+    startTime <- liftIO getCurrentTime
+    b <- liftIO $ atomically $ readTVar (ibbuffer ib)
+    (newBuf, mres) <- zflushInboxForMatch b [] (ibaddr ib) f
+    liftIO $ atomically $ writeTVar (ibbuffer ib) $ newBuf
+    case (mres, tme) of
+        (Just {},_) -> pure mres
+        (Nothing, 0)  -> pure mres
+        (_, _) -> zreceiveNoBufferedTimeout ib tme f startTime
+
+
+zreceiveNoBufferedTimeout :: MonadIO m =>
+                             Inbox
+                         -> Int -- timeout in microseconds
+                         -> (Dynamic -> m (Maybe Dynamic)) -- accept function for selective receive
+                         -> UTCTime
+                         -> m (Maybe Dynamic)
+zreceiveNoBufferedTimeout ib tme f startTime = do
+    msg <- liftIO $ smartTimeout tme $ readCQueue $ ibaddr ib
+    case msg of
+        Nothing -> pure Nothing
+        Just msg' -> do
+            r <- f msg'
+            case r of
+                Just {} -> pure r
+                Nothing -> do
+                  liftIO $ atomically $ modifyTVar (ibbuffer ib) (++[msg'])
+                  nw <- liftIO $ getCurrentTime
+                  let elapsed = diffUTCTime nw startTime
+                  if elapsed > realToFrac tme / 1000 / 1000
+                      then pure Nothing
+                      else zreceiveNoBufferedTimeout ib tme f startTime
+
 
 ------------------------------------------------------------------------------
 
