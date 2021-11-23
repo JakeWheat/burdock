@@ -274,19 +274,19 @@ end
 receive:
   | after infinity => c
 end
-     |], Receive [] (Just (AfterInfinity, Iden "c")))
+     |], Receive [] (Just (Iden "infinity", Iden "c")))
     ,([R.r|
 receive:
   | after 1.1 => c
 end
-     |], Receive [] (Just (After 1.1, Iden "c")))
+     |], Receive [] (Just (Num 1.1, Iden "c")))
     ,([R.r|
 receive:
   | pat1(a) => a
-  | after 10 => c
+  | after f(10) => c
 end
      |], Receive [(CaseBinding ["pat1"] [nm "a"], Iden "a")]
-                 (Just (After 10, Iden "c")))
+                 (Just (App Nothing (Iden "f") [Num 10], Iden "c")))
 
     ,([R.r|
 table a,b:

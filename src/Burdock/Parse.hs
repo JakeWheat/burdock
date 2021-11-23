@@ -507,22 +507,14 @@ receive = do
                     Right el -> endCase cs (Just el)
                     Left c -> nextCase (c:cs)
                ,endCase cs Nothing]
-    casePart :: Parser (Either (CaseBinding,Expr) (AfterVal,Expr))
+    casePart :: Parser (Either (CaseBinding,Expr) (Expr,Expr))
     casePart = do
         symbol_ "|"
         choice
             [Right <$> ((,) <$> after <*> (symbol_ "=>" *> expr))
             ,Left <$> ((,) <$> (caseBinding <?> "case pattern") <*> (symbol_ "=>" *> expr))]
     endCase cs aft = keyword_ "end" *> pure (Receive (reverse cs) aft)
-    after = do
-        keyword_ "after"
-        choice [AfterInfinity <$ keyword_ "infinity"
-               ,After <$> numv
-               ]
-    numv = do
-        x <- num
-        maybe (fail $ "parsing number failed: " ++ x)
-                           pure (readMaybe x)
+    after = keyword_ "after" *> expr
 
 numE :: Parser Expr
 numE = do

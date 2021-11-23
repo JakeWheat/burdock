@@ -73,6 +73,9 @@ data Option<a>:
   | some(value :: a)
 end
 
+data Infinity:
+  | infinity
+end
 
 # if tests are run, automatically print the results
 # this is used to disable the printing when you are getting the test

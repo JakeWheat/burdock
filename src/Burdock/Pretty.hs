@@ -143,11 +143,7 @@ expr (Receive mats after) =
   where
     mf (p, e1) = pretty "|" <+> caseBinding p <+> pretty "=>" <+> expr e1
     aft (a, e) =
-        pretty "|" <+>
-        (case a of
-            AfterInfinity -> pretty "after infinity"
-            After n -> pretty "after" <+> pretty (showScientific n))
-        <+> pretty "=>" <+> expr e
+        pretty "|" <+> pretty "after" <+> expr a <+> pretty "=>" <+> expr e
 
 bindExpr :: Binding -> Expr -> Doc a
 bindExpr n e =

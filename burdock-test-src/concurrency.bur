@@ -1,6 +1,9 @@
 
 include concurrency
 
+# test function
+# todo: allow writing receive()?
+
 pid = spawn(lam(): block:
       x = rcv()
       send(x.ret, "hello " + x.val)
@@ -14,3 +17,52 @@ x = rcv()
 check:
   x is "hello world"
 end
+
+# receive pattern matching
+
+data Msg: msg(ret,val) end
+
+pid = spawn(lam(): block:
+      print("spawned1")
+      receive:
+        | msg(ret,val) => block:
+            print("spawned2")
+            send(ret, msg(self,"hello " + val))
+            print("spawned3")
+          end
+      end
+      print("spawned4")
+    end
+  end)
+
+print("send1")
+send(pid, msg(self,"world"))
+print("send2")
+x = receive: | msg(_,a) => a end
+# todo: add a syntax shortcut like with data?
+print("send3")
+
+check:
+  x is "hello world"
+end
+
+
+# receive timeout
+
+# explicit infinity timeout
+
+# receive buffering non matching
+
+# check block in spawn
+
+# spawn in check block
+
+# the check block in spawn and spawn in check block need better
+# testing than this -> assert the results include the expected test
+# predicates
+
+# spawn-monitor: exit val, exit exception
+
+# spawn-monitor-tag
+
+# async-ext + spawn-monitor exit val

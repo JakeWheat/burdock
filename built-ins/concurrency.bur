@@ -3,7 +3,12 @@ provide:
   self,
   spawn,
   send,
-  rcv
+  rcv,
+  infinity,
+  _casepattern-infinity,
+  is-Infinity,
+  is-infinity,
+  _typeinfo-Infinity
 end
 
 include _internals
