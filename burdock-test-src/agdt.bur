@@ -131,3 +131,16 @@ check "when clause":
     | else => false
   end is false
 end       
+
+check "cases wildcard":
+  cases 1:
+    | _ => 2
+  end is 2
+
+  cases 1:
+    | _ when false => true
+    | _ when true => "xxx"
+  end is "xxx"
+  
+      
+end

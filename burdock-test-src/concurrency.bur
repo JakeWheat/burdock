@@ -3,60 +3,12 @@ include concurrency
 include option
 include either
 
-# test function
-# todo: allow writing receive()?
 
-# todo: make these tests more robust by not sharing the main process inbox
-# -> run each test exclusively in a thread spawned just for that test
+# utils for the testing
+# perhaps these should be in the standard lib?
 
 fun receive-any():
   receive as zz: | _ => zz end
-end
-
-pid = spawn(lam(): block:
-      x = receive-any()
-      send(x.ret, "hello " + x.val)
-    end
-  end)
-
-send(pid, {ret:self, val:"world"})
-
-check:
-  cases 1:
-    | _ => 2
-  end is 2
-end
-
-check:
-  cases 1:
-    | _ when false => true
-    | _ when true => "xxx"
-  end is "xxx"
-end
-
-
-
-check:
-  receive-any() is "hello world"
-end
-
-pid = spawn(lam(): block:
-      x = receive-any()
-      send(x, left("skip1"))
-      send(x, left("skip2"))
-      send(x, right("got it"))
-    end
-  end)
-
-# how do you pass self to a spawned thread via the closure?
-send(pid, self)
-
-check:
-  receive:
-    | right(x) => x
-  end is "got it"
-  receive-any() is left("skip1")
-  receive-any() is left("skip2")
 end
 
 fun wait-ref(mref):
@@ -65,22 +17,120 @@ fun wait-ref(mref):
   end
 end
 
-# sanity check:
-x = spawn-monitor(lam(): "myret" end)
-check:
+check "wait-ref":
+  x = spawn-monitor(lam(): "myret" end)
   wait-ref(x.{1}) is "myret"
+
+  x1 = spawn-monitor(lam(): raise("myretexc") end)
+  wait-ref(x1.{1}).{0} is "myretexc"
 end
 
-x = spawn-monitor(lam(): raise("myretexc") end)
-check:
-  wait-ref(x.{1}).{0} is "myretexc"
+# quick hack to run tests in a new thread, so the inbox
+# isn't shared between tests - one test messing up
+# won't affect others
+# it makes sure to wait until the thread has finished
+# and checks the thread didn't exit with an exception
+# (this check isn't quite bullet proof yet)
+
+fun wait-ref-is-nothing(mref):
+  ret = wait-ref(mref)
+  check "wait-ref-is-nothing":
+    ret is nothing
+  end
+end
+
+fun wait-ref-is-nothing-no-cb(mref):
+  ret = wait-ref(mref)
+  ret is nothing
 end
 
 
+fun run-tests-in-thread(f):
+  ar = spawn-monitor(f)
+  wait-ref-is-nothing(ar.{1})
+end
+
+fun receive-all-inbox():
+  receive as zz:
+    | _ => link(zz, receive-all-inbox())
+    | after 0 => empty
+  end
+end
+
+run-tests-in-thread(lam(): block:
+  check "receive-all-inbox":
+    send(self,1)
+    send(self,2)
+    receive-all-inbox() is [list: 1,2]
+    receive-all-inbox() is [list: ]
+    
+  end
+end end)
+
+#######################################
+
+data Msg: msg(ret,val) end
+
+run-tests-in-thread(lam(): block:
+
+  check "trivial send and receive":
+
+    pid = spawn(lam(): block:
+        x = receive-any()
+        send(x.ret, "hello " + x.val)
+        end
+      end)
+
+    send(pid, {ret:self, val:"world"})
+
+    receive-any() is "hello world"
+  end
+end end)
 
 
+run-tests-in-thread(lam(): block:
 
+  check "receive pattern matching":
 
+    pid = spawn(lam(): block:
+          receive:
+            | msg(ret,val) =>
+                send(ret, msg(self,"hello " + val))
+          end
+        end
+      end)
+    
+    send(pid, msg(self,"world"))
+    x = receive: | msg(_,a) => a end
+    
+    x is "hello world"
+  end
+end end)
+
+run-tests-in-thread(lam(): block:
+
+  check "trivial selective receive":
+
+    # alias self so can use it from the closure of the spawned thread
+    outer-self = self
+
+    pid = spawn(lam(): block:
+          #x = receive-any()
+          send(outer-self, left("skip1"))
+          send(outer-self, left("skip2"))
+          send(outer-self, right("got it"))
+        end
+      end)
+    
+    receive:
+      | right(x) => x
+    end is "got it"
+    receive-any() is left("skip1")
+    receive-any() is left("skip2")
+  end
+end end)
+
+# test?:
 # spawn 1
 # spawn 2
 # spawn: tell 2 to exit
@@ -88,96 +138,65 @@ end
 # wait-ref on 1
 # wait-ref on 2
 
-data Msg: msg(ret,val) end
+run-tests-in-thread(lam(): block:
 
-#print("HERE1")
-pid = spawn(lam(): block:
-      #print("HEREa1")
-      ret = receive-any()
-      #print("HEREa2")
-      send(ret, msg(self,2))
-      send(ret, msg(self,3))
-      send(ret, msg(self,4))
-      #print("HEREa3")
-    end
-  end)
-#print("HERE2")
-
-send(pid, self)
-#print("HERE3")
-
-check:
-  receive:
-    | msg(ret,v) when v == 3 => 3
-  end is 3
-  #print("HERE4")
-  x1 = receive-any()
-  x2 = receive-any()
-  x1.val is 2
-  x2.val is 4
-end
-#print("HERE5")
+  check "a trivial select receive":
+  
+    pid = spawn(lam(): block:
+          ret = receive-any()
+          send(ret, msg(self,2))
+          send(ret, msg(self,3))
+          send(ret, msg(self,4))
+        end
+      end)
+    
+    send(pid, self)
+    
+    receive:
+      | msg(ret,v) when v == 3 => 3
+    end is 3
+    x1 = receive-any()
+    x2 = receive-any()
+    x1.val is 2
+    x2.val is 4
+  end
+end end)
 
 
-# receive pattern matching
+run-tests-in-thread(lam(): block:
 
-pid = spawn(lam(): block:
-      #print("spawned1")
-      receive:
-        | msg(ret,val) => #block:
-            #print("spawned2")
-            send(ret, msg(self,"hello " + val))
-            #print("spawned3")
-          #end
+  check "receive timeout":
+  
+    # timeout 0 with nothing in the queue
+    
+    x = receive:
+        | msg(ret,val) => some(val)
+        | after 0 => none
       end
-      #print("spawned4")
-    end
-  end)
+    
+    x is none
+    
+    # timeout 0 with something in the queue
+    
+    send(self, msg(self,"stuff"))
+    
+    x = receive:
+        | msg(ret,val) => some(val)
+        | after 0 => none
+      end
+    
+    x is some("stuff")
+    
+    #todo:
+    # timeout 1 with nothing in the queue
+    
+    # timeout 1 with something posted to the queue after 0.1
 
-#print("send1")
-send(pid, msg(self,"world"))
-#print("send2")
-x = receive: | msg(_,a) => a end
-#print("send3")
-
-check:
-  x is "hello world"
-end
-
-# receive timeout
-
-# timeout 0 with nothing in the queue
-
-x = receive:
-    | msg(ret,val) => some(val)
-    | after 0 => none
   end
 
-check:
-  x is none
-end
+end end)
 
-# timeout 0 with something in the queue
-
-send(self, msg(self,"stuff"))
-
-x = receive:
-    | msg(ret,val) => some(val)
-    | after 0 => none
-  end
-
-check:
-  x is some("stuff")
-end
-
-# timeout 1 with nothing in the queue
-
-# timeout 1 with something posted to the queue after 0.1
-
-# receive buffering non matching
-# put a non matching then a matching
-# get the matching
-# get the remaining item
+# todo:
 
 # timeout 1 with non matching in queue, non matching posted after 0.1
 # then matching posted after another 0.1
@@ -185,30 +204,34 @@ end
 # explicit infinity timeout
 # duplicate the implicit infinity timeout test above
 
-# check block in spawn
-# redo these when do the helper to wait on a particular thread
-#|
-spawn(lam(): block:
-    check:
-      1 is 2
+r = spawn-monitor(lam(): block:
+    check "check block in spawn":
+      1 is 1
     end end end)
+wait-ref-is-nothing(r.{1})
 
-# spawn in check block
-
-check:
-  spawn(lam(): block:
+#|
+check "spawn in check block":
+  r = spawn-monitor(lam(): block:
+      print(1)
       1 is 31
+      print(2)
     end end)
+  # todo: not sure why this isn't working
+  # maybe some unintended variable sharing across the threads?
+  #wait-ref-is-nothing-no-cb(r.{1})
+  #wait-ref-is-nothing(r.{1})
+  
 end
-
-sleep(0.4)
+|#
 
 # the check block in spawn and spawn in check block need better
 # testing than this -> assert the results include the expected test
 # predicates
 
 # spawn-monitor: exit val, exit exception
-|#
+
+run-tests-in-thread(lam(): block:
 
 check "spawn-monitor":
 
@@ -222,6 +245,10 @@ check "spawn-monitor":
       end
   end is some("result")
 end
+
+end end)
+
+run-tests-in-thread(lam(): block:
 
 check "spawn-monitor-exception":
 
@@ -241,7 +268,7 @@ check "spawn-monitor-exception":
 
   x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
 
-receive:
+  receive:
     | monitor-down(tg,et,v,mr) => block:
         {cases v.{0}:
           | msg(ret,val) => val
@@ -251,6 +278,8 @@ receive:
   end is {"errorthing"; x.{1}}
 
 end
+
+end end)
 
 # todo with spawn-monitor:
 # check the tag

@@ -157,10 +157,7 @@ import Control.Monad.IO.Class (MonadIO, liftIO)
 
 --import Data.Typeable (typeOf)
 
-{-import Debug.Trace (--traceM
-                   --,
-                   trace
-                   )-}
+--import Debug.Trace (trace)
 
 ------------------------------------------------------------------------------
 
@@ -471,7 +468,8 @@ spawnImpl h ifMonitorTag f = do
                     -- this would be a little nicer, but is not a big deal
                     -- for burdock - it's error prone, but only has to be done
                     -- once in the interpreter
-                    Just mpib -> writeCQueue mpib $ toDyn $ MonitorDown tg exitType exitVal ref
+                    Just mpib -> --trace (show $ MonitorDown tg exitType exitVal ref) $
+                        writeCQueue mpib $ toDyn $ MonitorDown tg exitType exitVal ref
             -- remove monitoring entries
             modifyTVar (globalMonitors $ occHandle h)
                 $ filter $ \(a,b,_,_) -> a /= ah && b /= ah

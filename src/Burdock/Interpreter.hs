@@ -147,7 +147,7 @@ import Control.Concurrent.STM
 --import Control.Monad.IO.Class
 --    (MonadIO)
 
--- import Debug.Trace (trace)
+--import Debug.Trace (trace)
 
 ------------------------------------------------------------------------------
 
@@ -1905,7 +1905,9 @@ interp (Receive ma cs aft) = do
                       ExitException -> VariantV (internalsType "ExitType") "exit-exception" []
             v' = case fromDynamic v of
                      Just vx -> vx
-                     _ -> FFIValue tg
+                     _ -> case fromDynamic v of
+                              Just s -> TextV s
+                              _ -> FFIValue v
             r' = convertHsMonitorRef r
         in VariantV (internalsType "MonitorDown") "monitor-down"
                [("tag", tg')
