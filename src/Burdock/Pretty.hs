@@ -141,7 +141,10 @@ expr (Receive mats after) =
     ,vsep (map mf mats ++
            [maybe mempty aft after])]
   where
-    mf (p, e1) = pretty "|" <+> caseBinding p <+> pretty "=>" <+> expr e1
+    mf (p, mw, e1) =
+        pretty "|" <+> caseBinding p
+        <+> (maybe mempty (\x -> pretty "when" <+> expr x) mw)
+        <+> pretty "=>" <+> expr e1
     aft (a, e) =
         pretty "|" <+> pretty "after" <+> expr a <+> pretty "=>" <+> expr e
 

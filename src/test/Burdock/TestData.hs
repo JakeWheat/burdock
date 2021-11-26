@@ -272,14 +272,14 @@ end|]
 receive:
   | a => b
 end
-     |], Receive [(CaseBinding ["a"] [], Iden "b")] Nothing)
+     |], Receive [(CaseBinding ["a"] [], Nothing, Iden "b")] Nothing)
     ,([R.r|
 receive:
   | pat1(a) => a
   | pat2(b) => b
 end
-     |], Receive [(CaseBinding ["pat1"] [nm "a"], Iden "a")
-                 ,(CaseBinding ["pat2"] [nm "b"], Iden "b")] Nothing)
+     |], Receive [(CaseBinding ["pat1"] [nm "a"], Nothing, Iden "a")
+                 ,(CaseBinding ["pat2"] [nm "b"], Nothing, Iden "b")] Nothing)
     ,([R.r|
 receive:
   | after infinity => c
@@ -295,7 +295,7 @@ receive:
   | pat1(a) => a
   | after f(10) => c
 end
-     |], Receive [(CaseBinding ["pat1"] [nm "a"], Iden "a")]
+     |], Receive [(CaseBinding ["pat1"] [nm "a"], Nothing, Iden "a")]
                  (Just (App Nothing (Iden "f") [Num 10], Iden "c")))
 
     ,([R.r|

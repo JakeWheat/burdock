@@ -509,12 +509,14 @@ receive = do
                     Right el -> endCase cs (Just el)
                     Left c -> nextCase (c:cs)
                ,endCase cs Nothing]
-    casePart :: Parser (Either (CaseBinding,Expr) (Expr,Expr))
+    casePart :: Parser (Either (CaseBinding,Maybe Expr, Expr) (Expr,Expr))
     casePart = do
         symbol_ "|"
         choice
             [Right <$> ((,) <$> after <*> (symbol_ "=>" *> expr))
-            ,Left <$> ((,) <$> (caseBinding <?> "case pattern") <*> (symbol_ "=>" *> expr))]
+            ,Left <$> ((,,) <$> (caseBinding <?> "case pattern")
+                       <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
+                       <*> (symbol_ "=>" *> expr))]
     endCase cs aft = keyword_ "end" *> pure (Receive (reverse cs) aft)
     after = keyword_ "after" *> expr
 

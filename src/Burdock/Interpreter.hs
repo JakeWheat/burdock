@@ -1853,7 +1853,7 @@ interp (Receive cs aft) = do
     -- create a wrapper which unlifts the some/none to Maybe
     let some = internalsRef "some"
         none = internalsRef "none"
-        cs' = flip map cs $ \(cb, e) -> (cb, Nothing, App Nothing some [e])
+        cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, App Nothing some [e])
         prdf = Lam (FunHeader [] [NameBinding Shadow "receiveval" Nothing] Nothing)
                $ Cases (Iden "receiveval") Nothing cs' (Just none)
     prdfv <- interp prdf

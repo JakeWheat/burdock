@@ -97,6 +97,28 @@ where:
 
 end
 
+
+#|
+   todo: try this syntax out for guards:
+
+cases x:
+  | msg(a,b) ask | b == 5 => ...
+                 | b == 6 => ...
+                 | otherwise => ...
+             end
+  | else ask | xxx => ...
+             | yyy => ...
+             | otherwise =>
+         end
+end
+
+cases x:
+  | msg(a,b) ask | b == 5 => ... end
+  | else => ...
+end
+   
+|#
+
 check "when clause":
   x = pt1({1;2}, 3)
   cases x:

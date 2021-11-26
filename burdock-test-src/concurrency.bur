@@ -42,18 +42,53 @@ check:
   rcv() is left("skip2")
 end
 
-#fun wait-ref(ref):
-#  receive:
-#    | monitor-down(_tg,_et,v,mr) when mr == f => v
-#  end
-#end
+fun wait-ref(mref):
+  receive:
+    | monitor-down(_tg,_et,v,mr) when mr == mref => v
+  end
+end
 
+# spawn 1
+# spawn 2
+# spawn: tell 2 to exit
+#   then tell 1 to exit - race possibility?
+# wait-ref on 1
+# wait-ref on 2
+
+data Msg: msg(ret,val) end
+
+#print("HERE1")
+pid = spawn(lam(): block:
+      #print("HEREa1")
+      ret = rcv()
+      #print("HEREa2")
+      send(ret, msg(self,2))
+      send(ret, msg(self,3))
+      send(ret, msg(self,4))
+      #print("HEREa3")
+    end
+  end)
+#print("HERE2")
+
+send(pid, self)
+#print("HERE3")
+
+check:
+  receive:
+    | msg(ret,v) when v == 3 => 3
+  end is 3
+  #print("HERE4")
+  x1 = rcv()
+  x2 = rcv()
+  x1.val is 2
+  x2.val is 4
+end
+#print("HERE5")
 
 
 
 # receive pattern matching
 
-data Msg: msg(ret,val) end
 
 pid = spawn(lam(): block:
       #print("spawned1")
