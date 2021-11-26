@@ -897,8 +897,16 @@ bSpawnMonitor [f] = do
         toDyn <$> app f []
     pure $ VariantV (bootstrapType "Tuple") "tuple"
         [("0",FFIValue $ toDyn saddr)
-        ,("1", FFIValue $ toDyn ref)]
+        ,("1", convertHsMonitorRef ref)]
 bSpawnMonitor x = error $ "wrong args to bSpawnMonitor: " ++ show x
+
+convertHsMonitorRef :: MonitorRef -> Value
+convertHsMonitorRef (MonitorRef s i) =
+    VariantV (internalsType "MonitorRef") "monitor-ref"
+        [("a", TextV s)
+        ,("b", NumV $ fromIntegral i)
+        ]
+     
 
 
 bSelf :: [Value] -> Interpreter Value
@@ -1886,11 +1894,7 @@ interp (Receive cs aft) = do
             v' = case fromDynamic v of
                      Just vx -> vx
                      _ -> FFIValue tg
-            r' = case r of
-                     MonitorRef s i -> VariantV (internalsType "MonitorRef") "monitor-ref"
-                         [("a", TextV s)
-                         ,("b", NumV $ fromIntegral i)
-                         ]
+            r' = convertHsMonitorRef r
         in VariantV (internalsType "MonitorDown") "monitor-down"
                [("tag", tg')
                ,("exit-type", et')

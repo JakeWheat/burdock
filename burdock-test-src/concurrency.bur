@@ -129,15 +129,29 @@ end
 
 check "spawn-monitor-exception":
 
-  _ = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
+  x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
   
-  receive:
-    | monitor-down(tg,et,v,mr) =>
-      cases v.{0}:
-        | msg(ret,val) => some(val)
-        | _ => none
+
+  # should this work? I think so
+  #|receive:
+    | monitor-down(tg,et,v,mr) => block:
+        cases v.{0}:
+          | msg(ret,val) => val is "errorthing"
+          | _ => none
+        end
+        mr is x.{1}
       end
-  end is some("errorthing")
+  end|#
+
+  receive:
+    | monitor-down(tg,et,v,mr) => block:
+        {cases v.{0}:
+          | msg(ret,val) => val
+          | _ => v.{0}
+        end;mr}
+      end
+  end is {"errorthing"; x.{1}}
+
 end
 
 # todo with spawn-monitor:
