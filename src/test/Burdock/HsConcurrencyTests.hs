@@ -522,15 +522,16 @@ check its exit value via monitor
 testSpawnMonitorExitVal :: T.TestTree
 testSpawnMonitorExitVal = T.testCase "testSpawnMonitorExitVal" $
     void $ runBConcurrency $ \ib -> do
-        _spaddr <- spawnMonitor ib Nothing $ \_sib -> do
+        (_spaddr,ref) <- spawnMonitor ib Nothing $ \_sib -> do
             pure $ toDyn "I am an exit value"
         x <- receive ib (const True)
-        let MonitorDown a et b = fromJust $ fromDynamic x
+        let MonitorDown a et b ref' = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
         assertEqual "" () a'
         assertEqual "" ExitValue et
         assertEqual "" "I am an exit value" b'
+        assertEqual "" ref ref'
         pure $ toDyn ()
     
 {-
@@ -547,16 +548,17 @@ data MyVal = MyVal String
 testSpawnMonitorException :: T.TestTree
 testSpawnMonitorException = T.testCase "testSpawnMonitorException" $ do
     void $ runBConcurrency $ \ib -> do
-        _spaddr <- spawnMonitor ib Nothing $ \_sib ->
+        (_spaddr,ref) <- spawnMonitor ib Nothing $ \_sib ->
             throwIO $ DynValException $ toDyn $ MyVal "custom"
             -- pure $ toDyn () -- "I am an exit value"
         x <- receive ib (const True)
-        let MonitorDown a et b = fromJust $ fromDynamic x
+        let MonitorDown a et b ref' = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
         assertEqual "" () a'
         assertEqual "" ExitException et
         assertEqual "" (MyVal "custom") b'
+        assertEqual "" ref ref'
         pure $ toDyn ()
 
 {-
@@ -566,20 +568,21 @@ repeat both exit val tests with a custom monitor tag
 testSpawnMonitorTag :: T.TestTree
 testSpawnMonitorTag = T.testCase "testSpawnMonitorTag" $
     void $ runBConcurrency $ \ib -> do
-        _spaddr <- spawnMonitor ib (Just $ toDyn $ "tag-a") $ \_sib -> do
+        (_spaddr,ref) <- spawnMonitor ib (Just $ toDyn $ "tag-a") $ \_sib -> do
             pure $ toDyn "I am an exit value"
-        _spaddr <- spawnMonitor ib (Just $ toDyn $ "tag-b") $ \sib -> do
+        _ <- spawnMonitor ib (Just $ toDyn $ "tag-b") $ \sib -> do
             -- don't exit
             _ <- receive sib (const True)
             pure $ toDyn "I am an exit value"
 
         x <- receive ib (const True)
-        let MonitorDown a et b = fromJust $ fromDynamic x
+        let MonitorDown a et b ref' = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
         assertEqual "" "tag-a" a'
         assertEqual "" ExitValue et
         assertEqual "" "I am an exit value" b'
+        assertEqual "" ref ref'
         pure $ toDyn ()
 
 
@@ -605,7 +608,7 @@ testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
             pure $ toDyn ()
 
         -- the actual test bit
-        spaddr <- spawnMonitor ib Nothing $ \sib -> do
+        (spaddr,ref) <- spawnMonitor ib Nothing $ \sib -> do
             -- don't exit - no one will send it a message
             _ <- receive sib (const True)
             pure $ toDyn "I am an exit value"
@@ -621,12 +624,13 @@ testSpawnAsyncExit = T.testCase "testSpawnAsyncExit" $
         asyncExit ib spaddr $ toDyn "it's time"
 
         x <- receive ib (const True)
-        let MonitorDown a et b = fromJust $ fromDynamic x
+        let MonitorDown a et b ref' = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
         assertEqual "" () a'
         assertEqual "" ExitException et
         assertEqual "" "it's time" b'
+        assertEqual "" ref ref'
         
         send ib canaryOne (toDyn (addr ib, "c1"))
         x1 <- receive ib $ const True
@@ -668,17 +672,18 @@ testTopParenticide = T.testCase "testTopParenticide" $ do
 testSpawnSelfAsync :: T.TestTree
 testSpawnSelfAsync = T.testCase "testSpawnSelfAsync" $ do
     void $ runBConcurrency $ \ib -> do
-        _r <- spawnMonitor ib Nothing $ \sib -> do
+        (_,ref) <- spawnMonitor ib Nothing $ \sib -> do
             asyncExit sib (addr sib) $ toDyn "audi"
             pure $ toDyn "I am an exit value"
 
         x <- receive ib (const True)
-        let MonitorDown a et b = fromJust $ fromDynamic x
+        let MonitorDown a et b ref' = fromJust $ fromDynamic x
             a' = fromJust $ fromDynamic a
             b' = fromJust $ fromDynamic b
         assertEqual "" () a'
         assertEqual "" ExitException et
         assertEqual "" "audi" b'
+        assertEqual "" ref ref'
         
         pure $ toDyn ()
 

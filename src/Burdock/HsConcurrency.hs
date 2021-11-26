@@ -178,7 +178,8 @@ data BConcurrencyHandle =
         -- monitoring process - the one that gets the thread down message,
         -- monitored process,
         -- monitor tag
-    ,globalMonitors :: TVar [(Async Dynamic, Async Dynamic, Dynamic)]
+        -- monitor ref
+    ,globalMonitors :: TVar [(Async Dynamic, Async Dynamic, Dynamic, MonitorRef)]
     ,globalIsExiting :: TVar Bool
     }
 
@@ -212,7 +213,15 @@ data MonitorDown
     = MonitorDown
     {mdTag :: Dynamic
     ,mdExitType :: ExitType
-    ,mdValue :: Dynamic}
+    ,mdValue :: Dynamic
+    ,mdRef :: MonitorRef
+    }
+    deriving (Show)
+
+data MonitorRef
+    = MonitorRef String Int
+    deriving (Eq,Show)
+    
 
 data ExitType = ExitValue
               | ExitException
@@ -288,11 +297,14 @@ zreceive h f = zreceiveInbox (myInbox h) f
 
 
 spawn :: ThreadHandle -> (ThreadHandle -> IO Dynamic) -> IO Addr
-spawn h f = spawnImpl h Nothing f
+spawn h f = fst <$> spawnImpl h Nothing f
 
-spawnMonitor :: ThreadHandle -> Maybe Dynamic -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawnMonitor :: ThreadHandle -> Maybe Dynamic -> (ThreadHandle -> IO Dynamic) -> IO (Addr,MonitorRef)
 spawnMonitor h mtag f =
-    spawnImpl h (Just $ fromMaybe (toDyn ()) mtag) f
+    g <$> spawnImpl h (Just $ fromMaybe (toDyn ()) mtag) f
+  where
+    g (_x,Nothing) = error $ "internal error: no tag from spawnimpl with spawn monitor"
+    g (x, Just y) = (x,y)
 
 asyncExit :: ThreadHandle -> Addr -> Dynamic -> IO ()
 asyncExit h target val = do
@@ -388,7 +400,10 @@ exited during the call to spawn/spawnMonitor
 
 -}
 
-spawnImpl :: ThreadHandle -> Maybe Dynamic -> (ThreadHandle -> IO Dynamic) -> IO Addr
+spawnImpl :: ThreadHandle
+          -> Maybe Dynamic
+          -> (ThreadHandle -> IO Dynamic)
+          -> IO (Addr,Maybe MonitorRef)
 spawnImpl h ifMonitorTag f = do
     assertMyThreadIdIs $ ibThreadId $ myInbox h
     -- this queue is used to pass its own async handle
@@ -417,27 +432,34 @@ spawnImpl h ifMonitorTag f = do
                 unless isExiting $ closeCQueue ch)
         pure (ch,ah)
     atomically $ writeCQueue asyncOnlyCh ah
-    pure ch
+    -- hack - reconstruct the monitor ref if there is one
+    -- todo: make it so it only makes this in one place
+    let mr =case ifMonitorTag of
+            Nothing -> Nothing
+            Just {} -> Just $ MonitorRef (show (asyncThreadId ah)) 0
+    pure (ch, mr)
   where
-    registerRunningThread asyncOnlyCh ch = atomically $ do
-        -- register the async handle in the concurrency handle
-        ah <- readCQueue asyncOnlyCh
-        modifyTVar (globalThreads $ occHandle h) ((ah,ch):)
-        case ifMonitorTag of
-            Nothing -> pure ()
-            Just tg -> do
-                modifyTVar (globalMonitors $ occHandle h)
-                   ((myAsyncHandle h, ah, tg):)
-        pure ah
+    registerRunningThread asyncOnlyCh ch = do
+        tid <- show <$> myThreadId
+        atomically $ do
+            -- register the async handle in the concurrency handle
+            ah <- readCQueue asyncOnlyCh
+            modifyTVar (globalThreads $ occHandle h) ((ah,ch):)
+            case ifMonitorTag of
+                Nothing -> pure ()
+                Just tg -> do
+                    modifyTVar (globalMonitors $ occHandle h)
+                       ((myAsyncHandle h, ah, tg, MonitorRef tid 0):)
+            pure ah
     cleanupRunningThread ah ev = atomically $ do
         isExiting <- readTVar (globalIsExiting $ occHandle h)
         unless isExiting $ do
             let (exitType,exitVal) = extractExitVal ev
             -- send monitor message to each monitoring process
             --trace ("tracehere: " ++ show exitVal) $ pure ()
-            let isMonitoringMe (_,x,_) = x == ah
+            let isMonitoringMe (_,x,_,_) = x == ah
             ips <- filter isMonitoringMe <$> readTVar (globalMonitors $ occHandle h)
-            forM_ ips $ \(mp, _, tg) -> do
+            forM_ ips $ \(mp, _, tg,ref) -> do
                 x <- readTVar (globalThreads $ occHandle h)
                 case lookup mp x of
                     Nothing -> pure () -- the spawning process already exited?
@@ -447,10 +469,10 @@ spawnImpl h ifMonitorTag f = do
                     -- this would be a little nicer, but is not a big deal
                     -- for burdock - it's error prone, but only has to be done
                     -- once in the interpreter
-                    Just mpib -> writeCQueue mpib $ toDyn $ MonitorDown tg exitType exitVal
+                    Just mpib -> writeCQueue mpib $ toDyn $ MonitorDown tg exitType exitVal ref
             -- remove monitoring entries
             modifyTVar (globalMonitors $ occHandle h)
-                $ filter $ \(a,b,_) -> a /= ah && b /= ah
+                $ filter $ \(a,b,_,_) -> a /= ah && b /= ah
             -- remove entry from processes table
             modifyTVar (globalThreads $ occHandle h) (\a -> filter ((/= ah) . fst) a)
     runThread ch ah = do
