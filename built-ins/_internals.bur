@@ -93,8 +93,22 @@ fun set-auto-run-tests(b):
   auto-run-tests := b
 end
 
+data ExitType:
+  | exit-value
+  | exit-exception
+end
+
+data MonitorRef:
+    monitor-ref(a,b)
+end
+
+data MonitorDown<a,b>:
+    monitor-down(tag :: a, exit-type :: ExitType, v :: b, mref :: MonitorRef)
+end
+
 
 spawn = get-ffi-value("spawn")
+spawn-monitor = get-ffi-value("spawn-monitor")
 self = get-ffi-value("self")
 sleep = get-ffi-value("sleep")
 send = get-ffi-value("send")

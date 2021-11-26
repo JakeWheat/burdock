@@ -79,19 +79,25 @@ import Burdock.HsConcurrency
 
     ,spawnExtWait
     ,spawn
+    ,spawnMonitor
     ,addr
     ,send
     --,receive
     ,zreceive
     ,zreceiveTimeout
+
+    ,MonitorDown(..)
+    ,ExitType(..)
+    ,MonitorRef(..)
     )
 
 
 import Control.Exception.Safe (catch
-                              --,SomeException
+                              ,SomeException
                               ,Exception
                               ,throwM
                               ,catchAny
+                              ,fromException
                               )
 
 import qualified Prettyprinter as P
@@ -601,7 +607,7 @@ interpreterExceptionToValue (ValueException _ v) = v
 
 newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
-    ch <- openBConcurrency
+    ch <- openBConcurrency (Just extractValueException)
     rs <- newTVarIO []
     h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF [] 0 rs
     spawnWaitCast ch $ \th -> runInterp th False (Handle h) initBootstrapModule
@@ -864,17 +870,36 @@ spawnWaitCast h f = do
 askThreadHandle :: Interpreter ThreadHandle
 askThreadHandle = tlThreadHandle <$> ask
 
+extractValueException :: SomeException -> Maybe Dynamic
+extractValueException e = case fromException e of
+    Just (InterpreterException cs s) -> f (TextV s) cs
+    Just (ValueException cs v) -> f v cs
+    _ -> Nothing
+  where
+    f v cs = Just $ toDyn $ VariantV (bootstrapType "Tuple") "tuple"
+                  [("0", v), ("1", FFIValue $ toDyn cs)]
+
+
 bSpawn :: [Value] -> Interpreter Value
 bSpawn [f] = do
     st <- ask
     x <- liftIO $ spawn (tlThreadHandle st) $ \th ->
         runInterp th True (Handle $ tlHandleState st) $ do
-        void $ app f []
-        pure $ toDyn ()
-    --let y :: Addr
-    --    Just y = fromDynamic x
+        toDyn <$> app f []
     pure $ FFIValue $ toDyn x
 bSpawn x = error $ "wrong args to bSpawn: " ++ show x
+
+bSpawnMonitor :: [Value] -> Interpreter Value
+bSpawnMonitor [f] = do
+    st <- ask
+    (saddr,ref) <- liftIO $ spawnMonitor (tlThreadHandle st) Nothing $ \th ->
+        runInterp th True (Handle $ tlHandleState st) $ do
+        toDyn <$> app f []
+    pure $ VariantV (bootstrapType "Tuple") "tuple"
+        [("0",FFIValue $ toDyn saddr)
+        ,("1", FFIValue $ toDyn ref)]
+bSpawnMonitor x = error $ "wrong args to bSpawnMonitor: " ++ show x
+
 
 bSelf :: [Value] -> Interpreter Value
 bSelf [] = do
@@ -1190,6 +1215,7 @@ builtInFF =
     ,("hack-parse-table", hackParseTable)
     ,("union-recs", unionRecs)
     ,("spawn", bSpawn)
+    ,("spawn-monitor", bSpawnMonitor)
     ,("self", bSelf)
     ,("sleep", bSleep)
     ,("send", bSend)
@@ -1821,7 +1847,10 @@ interp (Receive cs aft) = do
         prd v = do
                 let v' = case fromDynamic v of
                         Just w -> w
-                        _ -> error $ "receive pred got something that wasn't a value: " ++ show v
+                        _ -> case fromDynamic v of
+                            Just (MonitorDown tg et mv r) -> --trace(show (tg,et,mv,r)) $
+                                makeMonitorDown tg et mv r
+                            _ -> error $ "receive pred got something that wasn't a value: " ++ show v
                 r <- app prdfv [v']
                 case r of
                     VariantV tg "none" [] | tg == internalsType "Option" -> pure Nothing
@@ -1845,6 +1874,28 @@ interp (Receive cs aft) = do
                         Just v' -> pure $ getVal v'
                         Nothing -> interp e
                 _ -> error $ "after timeout value not number: " ++ show tme
+
+  where
+    makeMonitorDown tg et v r = --trace (show (fromDynamic v :: Maybe String)) $
+        let tg' = case fromDynamic tg of
+                      Just vx -> vx
+                      _ -> FFIValue tg
+            et' = case et of
+                      ExitValue -> VariantV (internalsType "ExitType") "exit-value" []
+                      ExitException -> VariantV (internalsType "ExitType") "exit-exception" []
+            v' = case fromDynamic v of
+                     Just vx -> vx
+                     _ -> FFIValue tg
+            r' = case r of
+                     MonitorRef s i -> VariantV (internalsType "MonitorRef") "monitor-ref"
+                         [("a", TextV s)
+                         ,("b", NumV $ fromIntegral i)
+                         ]
+        in VariantV (internalsType "MonitorDown") "monitor-down"
+               [("tag", tg')
+               ,("exit-type", et')
+               ,("v", v')
+               ,("mref", r')]
 
 -- todo: the source position should be part of the error
 -- not pushed to the call stack

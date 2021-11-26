@@ -112,18 +112,40 @@ sleep(0.4)
 # predicates
 
 # spawn-monitor: exit val, exit exception
+|#
 
 check "spawn-monitor":
 
   _ = spawn-monitor(lam(): msg(self,"result") end)
   
   receive:
-    | msg(ret,val) => some(val)
-    | after 0 => none
+    | monitor-down(tg,et,v,mr) =>
+      cases v:
+        | msg(ret,val) => some(val)
+        | _ => none
+      end
   end is some("result")
 end
-|#
+
+check "spawn-monitor-exception":
+
+  _ = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
+  
+  receive:
+    | monitor-down(tg,et,v,mr) =>
+      cases v.{0}:
+        | msg(ret,val) => some(val)
+        | _ => none
+      end
+  end is some("errorthing")
+end
+
+# todo with spawn-monitor:
+# check the tag
+# check the error type
+# check the callstack when it's an exception
+# check the ref
 
 # spawn-monitor-tag
 
-# async-ext + spawn-monitor exit val
+# async-exit + spawn-monitor exit val

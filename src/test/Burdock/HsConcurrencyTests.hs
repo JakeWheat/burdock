@@ -859,7 +859,7 @@ testing the open/close api
 
 testSpawnExt :: T.TestTree
 testSpawnExt = T.testCase "testSpawnExt" $ void $
-    bracket openBConcurrency closeBConcurrency $ \oh ->
+    bracket (openBConcurrency Nothing) closeBConcurrency $ \oh ->
     spawnExtWait oh $ \ib -> do
         spaddr <- spawn ib subThread
         send ib spaddr (toDyn (addr ib, "testSimpleSpawn"))
@@ -877,7 +877,7 @@ testSpawnExt = T.testCase "testSpawnExt" $ void $
 
 testSelfAsyncExt :: T.TestTree
 testSelfAsyncExt = T.testCase "testSelfAsyncExt" $
-    bracket openBConcurrency closeBConcurrency $ \oh -> do
+    bracket (openBConcurrency Nothing) closeBConcurrency $ \oh -> do
         (x :: Either SomeException Dynamic) <-
             tryAsync $ spawnExtWait oh $ \ib -> do
             asyncExit ib (addr ib) $ toDyn "bye"
@@ -887,7 +887,7 @@ testSelfAsyncExt = T.testCase "testSelfAsyncExt" $
 
 testParenticideExt :: T.TestTree
 testParenticideExt = T.testCase "testParenticideExt" $
-    bracket openBConcurrency closeBConcurrency $ \oh -> do
+    bracket (openBConcurrency Nothing) closeBConcurrency $ \oh -> do
         (x :: Either SomeException Dynamic) <-
             tryAsync $ spawnExtWait oh $ \ib -> do
             _ <- spawn ib $ \sib -> do
@@ -900,13 +900,13 @@ testParenticideExt = T.testCase "testParenticideExt" $
 
 testRetExt :: T.TestTree
 testRetExt = T.testCase "testRetExt" $
-    bracket openBConcurrency closeBConcurrency $ \oh -> do
+    bracket (openBConcurrency Nothing) closeBConcurrency $ \oh -> do
         x <- spawnExtWait oh $ \_ib -> pure $ toDyn "hello"
         assertEqual "" (Just "hello") $ fromDynamic x
 
 testThrowExt :: T.TestTree
 testThrowExt = T.testCase "testThrowExt" $
-    bracket openBConcurrency closeBConcurrency $ \oh -> do
+    bracket (openBConcurrency Nothing) closeBConcurrency $ \oh -> do
         (x :: Either SomeException Dynamic) <-
             tryAsync $ spawnExtWait oh $ \_ib -> do
             void $ throwIO $ DynValException $ toDyn $ MyVal "stuff"

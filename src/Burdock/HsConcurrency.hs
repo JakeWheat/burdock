@@ -53,6 +53,7 @@ module Burdock.HsConcurrency
     ,Inbox
     ,DynValException(..)
     ,MonitorDown(..)
+    ,MonitorRef(..)
     ,ExitType(..)
 
     ,testAddToBuffer
@@ -181,6 +182,7 @@ data BConcurrencyHandle =
         -- monitor ref
     ,globalMonitors :: TVar [(Async Dynamic, Async Dynamic, Dynamic, MonitorRef)]
     ,globalIsExiting :: TVar Bool
+    ,globalCustomExceptionConvertor :: Maybe (SomeException -> Maybe Dynamic)
     }
 
 data ThreadHandle
@@ -235,10 +237,10 @@ instance Exception DynValException
 -- functions
 
 runBConcurrency :: (ThreadHandle -> IO Dynamic) -> IO Dynamic
-runBConcurrency f = bracket openBConcurrency closeBConcurrency (flip spawnExtWait f)
+runBConcurrency f = bracket (openBConcurrency Nothing) closeBConcurrency (flip spawnExtWait f)
 
-openBConcurrency :: IO BConcurrencyHandle
-openBConcurrency = BConcurrencyHandle <$> newTVarIO [] <*> newTVarIO [] <*> newTVarIO False
+openBConcurrency :: Maybe (SomeException -> Maybe Dynamic) -> IO BConcurrencyHandle
+openBConcurrency c = BConcurrencyHandle <$> newTVarIO [] <*> newTVarIO [] <*> newTVarIO False <*> pure c
 
 closeBConcurrency :: BConcurrencyHandle -> IO ()
 closeBConcurrency oh =  do
@@ -486,11 +488,12 @@ spawnImpl h ifMonitorTag f = do
     -- asyncexceptionwrapper (not sure that asyncexceptionwrapper
     -- doesn't return the displayexception of the wrapped exception
     -- without the extra logic needed)
+    userExtractor = globalCustomExceptionConvertor $ occHandle h
     extractExitVal ev = case ev of
         ExitCaseSuccess a -> (ExitValue, a)
         ExitCaseException e
-            | Just v <- extractDynException e
-            -> (ExitException, v)
+            | Just v <- extractDynException e -> (ExitException, v)
+            | Just v <- maybe Nothing ($ e) userExtractor -> (ExitException, v)
             | otherwise -> (ExitException, toDyn $ displayException e)
         ExitCaseAbort -> (ExitException, toDyn $ "internal issue?: ExitCaseAbort")
 

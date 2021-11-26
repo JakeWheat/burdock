@@ -2,13 +2,37 @@
 provide:
   self,
   spawn,
+  spawn-monitor,
   send,
   rcv,
+
   infinity,
   _casepattern-infinity,
   is-Infinity,
   is-infinity,
-  _typeinfo-Infinity
+  _typeinfo-Infinity,
+
+  exit-value,
+  exit-exception,
+  _casepattern-exit-value,
+  _casepattern-exit-exception,
+  is-ExitType,
+  is-exit-value,
+  is-exit-exception,
+  _typeinfo-ExitType,
+
+  monitor-ref,
+  _casepattern-monitor-ref,
+  is-MonitorRef,
+  is-monitor-ref,
+  _typeinfo-MonitorRef,
+
+  monitor-down,
+  _casepattern-monitor-down,
+  is-MonitorDown,
+  is-monitor-down,
+  _typeinfo-MonitorDown
+  
 end
 
 include _internals
