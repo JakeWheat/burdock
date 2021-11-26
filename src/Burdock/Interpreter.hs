@@ -1853,10 +1853,13 @@ interp (Receive ma cs aft) = do
     -- each branch is wrapped in some()
     -- add an else which return none
     -- create a wrapper which unlifts the some/none to Maybe
+    -- the branches are wrapped in a lambda, so that the bodies
+    -- are run after the hsconcurrency receive is finished,
+    -- so that nested receives work correctly
     let rv = maybe "receiveval" id ma
         some = internalsRef "some"
         none = internalsRef "none"
-        cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, App Nothing some [e])
+        cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, App Nothing some [lam0 e])
         prdf = Lam (FunHeader [] [NameBinding Shadow rv Nothing] Nothing)
                $ Cases (Iden rv) Nothing cs' (Just none)
     prdfv <- interp prdf
@@ -1877,25 +1880,26 @@ interp (Receive ma cs aft) = do
                     VariantV tg "some" [(_,x)] | tg == internalsType "Option" -> pure $ Just $ toDyn x
                     _ -> error $ "expected Option type in prdfv ret, got " ++ show r
     th <- askThreadHandle
-    let getVal :: Dynamic -> Value
-        getVal v | Just v' <- fromDynamic v = v'
+    let getVal :: Dynamic -> Interpreter Value
+        getVal v | Just v' <- fromDynamic v = app v' []
                  | otherwise = error $ "expected <<Value>> from receive, got " ++ show v
     case aft of
-        Nothing -> getVal <$> zreceive th prd
+        Nothing -> getVal =<< zreceive th prd
         Just (a, e) -> do
             tme <- interp a
             case tme of
                 VariantV tg "infinity" []
                     | tg == internalsType "Infinity"
-                      -> getVal <$> zreceive th prd                   
+                      -> getVal =<< zreceive th prd                   
                 NumV tme' -> do
                     v <- zreceiveTimeout th (floor (tme' * 1000 * 1000)) prd
                     case v of
-                        Just v' -> pure $ getVal v'
+                        Just v' -> getVal v'
                         Nothing -> interp e
                 _ -> error $ "after timeout value not number: " ++ show tme
 
   where
+    lam0 e = Lam (FunHeader [] [] Nothing) e
     makeMonitorDown tg et v r = --trace (show (fromDynamic v :: Maybe String)) $
         let tg' = case fromDynamic tg of
                       Just vx -> vx

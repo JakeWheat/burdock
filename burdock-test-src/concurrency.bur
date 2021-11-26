@@ -125,10 +125,47 @@ run-tests-in-thread(lam(): block:
     receive:
       | right(x) => x
     end is "got it"
-    receive-any() is left("skip1")
-    receive-any() is left("skip2")
+    receive-all-inbox() is [list: left("skip1"), left("skip2")]
+
   end
 end end)
+
+run-tests-in-thread(lam(): block:
+
+  check "nested receive":
+
+    outer-self = self
+
+    x = spawn-monitor(lam(): block:
+          send(outer-self, left("skip1"))
+          send(outer-self, left("skip2"))
+        end
+      end)
+
+
+    wait-ref-is-nothing-no-cb(x.{1})
+
+    receive as z0:
+      | _ => receive as z1:
+          | _ => [list: z0,z1]
+        end
+    end is [list: left("skip1") , left("skip2")]
+
+    x = spawn-monitor(lam(): block:
+          send(outer-self, left("skip1"))
+          send(outer-self, left("skip2"))
+        end
+      end)
+
+
+    wait-ref-is-nothing-no-cb(x.{1})
+    receive-all-inbox() is [list: left("skip1") , left("skip2")]
+
+
+  end
+end end)
+
+
 
 # test?:
 # spawn 1
@@ -269,12 +306,11 @@ check "spawn-monitor-exception":
   x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
 
   receive:
-    | monitor-down(tg,et,v,mr) => block:
+    | monitor-down(tg,et,v,mr) =>
         {cases v.{0}:
           | msg(ret,val) => val
           | _ => v.{0}
          end;mr}
-      end
   end is {"errorthing"; x.{1}}
 
 end
