@@ -1743,7 +1743,7 @@ interp (Cases e ty cs els) = do
             ty'' <- shallowizeType <$> typeOfTypeSyntax ty'
             void $ assertTypeCompat v ty''
             -- todo: looks up the patterns twice, optimise this?
-            forM_ cs $ \(CaseBinding ss _, _) -> do
+            forM_ cs $ \(CaseBinding ss _, _, _) -> do
                 let s = prefixLast "_casepattern-" ss
                 caseName <- interp $ makeDotPathExpr s
                 case caseName of
@@ -1753,35 +1753,41 @@ interp (Cases e ty cs els) = do
         Nothing -> pure ()
     matchb v cs
   where
-    matchb v ((p,ce) : cs') = do
-        x <- matches p v ce
+    matchb v ((p,tst,ce) : cs') = do
+        x <- matches p tst v ce
         case x of
             Just f -> f
             Nothing -> matchb v cs'
     matchb v [] = case els of
                       Just ee -> interp ee
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
-    matches (CaseBinding s nms) v ce = doMatch s nms v ce
-    doMatch s' nms (VariantV tg vnm fs) ce = do
+    matches (CaseBinding s nms) tst v ce = doMatch s nms tst v ce
+    doMatch s' nms tst (VariantV tg vnm fs) ce = do
         let s = prefixLast "_casepattern-" s'
         caseName <- interp $ makeDotPathExpr s
         case caseName of
             FFIValue fgt | Just (ptg, pnm) <- fromDynamic fgt ->
                 if ptg == tg && pnm == vnm
                 then if length nms == length fs
-                     then runBranch nms fs ce
+                     then runBranch tst nms fs ce
                      else error $ "wrong number of args to pattern, expected " ++ show (map fst fs) ++ ", got " ++ show nms
                 else pure Nothing
             _ -> error $ "casepattern lookup returned " ++ show caseName
-    doMatch _ _ _ _ = pure Nothing
+    doMatch _ _ _ _ _ = pure Nothing
     bindPatArg (NameBinding _ n Nothing) (_,v) = pure (n,v)
     bindPatArg (NameBinding _ n (Just ta)) (_,v) = do
         void $ assertTypeAnnCompat v ta
         pure (n,v)
-    runBranch nms fs ce = do
+    runBranch tst nms fs ce = do
         letvs <- zipWithM bindPatArg nms fs
         let letvs' = filter ((/="_") . fst) letvs
-        pure $ Just $ localBindings (extendBindings letvs') $ interp ce
+        tstv <- case tst of
+            Nothing -> pure $ BoolV True
+            Just tste -> localBindings (extendBindings letvs') $ interp tste
+        case tstv of
+            BoolV True -> pure $ Just $ localBindings (extendBindings letvs') $ interp ce
+            BoolV False -> pure Nothing
+            _ -> error $ "non bool value in when clause: " ++ show tstv
 
 interp (TupleSel es) = do
     vs <- mapM interp es
@@ -1847,7 +1853,7 @@ interp (Receive cs aft) = do
     -- create a wrapper which unlifts the some/none to Maybe
     let some = internalsRef "some"
         none = internalsRef "none"
-        cs' = flip map cs $ \(cb, e) -> (cb, App Nothing some [e])
+        cs' = flip map cs $ \(cb, e) -> (cb, Nothing, App Nothing some [e])
         prdf = Lam (FunHeader [] [NameBinding Shadow "receiveval" Nothing] Nothing)
                $ Cases (Iden "receiveval") Nothing cs' (Just none)
     prdfv <- interp prdf

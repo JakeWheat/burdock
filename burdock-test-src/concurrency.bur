@@ -1,6 +1,7 @@
 
 include concurrency
 include option
+include either
 
 # test function
 # todo: allow writing receive()?
@@ -21,6 +22,34 @@ x = rcv()
 check:
   x is "hello world"
 end
+
+pid = spawn(lam(): block:
+      x = rcv()
+      send(x, left("skip1"))
+      send(x, left("skip2"))
+      send(x, right("got it"))
+    end
+  end)
+
+# how do you pass self to a spawned thread via the closure?
+send(pid, self)
+
+check:
+  receive:
+    | right(x) => x
+  end is "got it"
+  rcv() is left("skip1")
+  rcv() is left("skip2")
+end
+
+#fun wait-ref(ref):
+#  receive:
+#    | monitor-down(_tg,_et,v,mr) when mr == f => v
+#  end
+#end
+
+
+
 
 # receive pattern matching
 
@@ -91,6 +120,7 @@ end
 # duplicate the implicit infinity timeout test above
 
 # check block in spawn
+# redo these when do the helper to wait on a particular thread
 #|
 spawn(lam(): block:
     check:
@@ -131,19 +161,21 @@ check "spawn-monitor-exception":
 
   x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
   
-
-  # should this work? I think so
-  #|receive:
+  receive:
     | monitor-down(tg,et,v,mr) => block:
         cases v.{0}:
-          | msg(ret,val) => val is "errorthing"
+          | msg(ret,val) => block: # todo: needs the block wrapper, fix this bug
+              val is "errorthing"
+            end
           | _ => none
         end
         mr is x.{1}
       end
-  end|#
+  end
 
-  receive:
+  x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
+
+receive:
     | monitor-down(tg,et,v,mr) => block:
         {cases v.{0}:
           | msg(ret,val) => val
@@ -158,7 +190,6 @@ end
 # check the tag
 # check the error type
 # check the callstack when it's an exception
-# check the ref
 
 # spawn-monitor-tag
 

@@ -455,12 +455,14 @@ cases = do
                     Right el -> endCase t ty cs (Just el)
                     Left c -> nextCase t ty (c:cs)
                ,endCase t ty cs Nothing]
-    casePart :: Parser (Either (CaseBinding,Expr) Expr)
+    casePart :: Parser (Either (CaseBinding,Maybe Expr, Expr) Expr)
     casePart = do
         symbol_ "|"
         choice
             [Right <$> (keyword_ "else" *> symbol_ "=>" *> expr)
-            ,Left <$> ((,) <$> (caseBinding <?> "case pattern") <*> (symbol_ "=>" *> expr))]
+            ,Left <$> ((,,) <$> (caseBinding <?> "case pattern")
+                       <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
+                       <*> (symbol_ "=>" *> expr))]
     endCase t ty cs el = keyword_ "end" *> pure (Cases t ty (reverse cs) el)
 
 caseBinding :: Parser CaseBinding

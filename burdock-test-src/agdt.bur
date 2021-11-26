@@ -96,3 +96,16 @@ where:
   a-btree.right.right.value is 5
 
 end
+
+check "when clause":
+  x = pt1({1;2}, 3)
+  cases x:
+    | pt1(a,b) when a.{1} == 2 => true
+    | else => false
+  end is true
+
+  cases x:
+    | pt1(a,b) when a.{1} == 3 => true
+    | else => false
+  end is false
+end       

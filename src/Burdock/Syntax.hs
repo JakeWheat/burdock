@@ -75,7 +75,7 @@ data Expr =
     | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]
     | DotExpr Expr String
-    | Cases Expr (Maybe Ann) [(CaseBinding, Expr)] (Maybe Expr)
+    | Cases Expr (Maybe Ann) [(CaseBinding, Maybe Expr, Expr)] (Maybe Expr)
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TableSel [String] [RowSel]

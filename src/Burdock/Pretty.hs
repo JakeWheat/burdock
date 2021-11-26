@@ -103,7 +103,7 @@ expr (Cases e ty mats els) =
     ,vsep (map mf mats ++
            [maybe mempty (\x -> pretty "|" <+> pretty "else" <+> pretty "=>" <+> expr x) els])]
   where
-    mf (p, e1) = pretty "|" <+> caseBinding p <+> pretty "=>" <+> expr e1
+    mf (p, mw, e1) = pretty "|" <+> caseBinding p <+> maybe mempty (\x -> pretty "when" <+> expr x) mw <+> pretty "=>" <+> expr e1
 
 expr (TupleSel es) = pretty "{" <> nest 2 (xSep ";" (map expr es) <> pretty "}")
 expr (RecordSel flds) = pretty "{" <> nest 2 (commaSep (map fld flds) <> pretty "}")
