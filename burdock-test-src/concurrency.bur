@@ -9,22 +9,39 @@ include either
 # todo: make these tests more robust by not sharing the main process inbox
 # -> run each test exclusively in a thread spawned just for that test
 
+fun receive-any():
+  receive as zz: | _ => zz end
+end
+
 pid = spawn(lam(): block:
-      x = rcv()
+      x = receive-any()
       send(x.ret, "hello " + x.val)
     end
   end)
 
 send(pid, {ret:self, val:"world"})
 
-x = rcv()
+check:
+  cases 1:
+    | _ => 2
+  end is 2
+end
 
 check:
-  x is "hello world"
+  cases 1:
+    | _ when false => true
+    | _ when true => "xxx"
+  end is "xxx"
+end
+
+
+
+check:
+  receive-any() is "hello world"
 end
 
 pid = spawn(lam(): block:
-      x = rcv()
+      x = receive-any()
       send(x, left("skip1"))
       send(x, left("skip2"))
       send(x, right("got it"))
@@ -38,8 +55,8 @@ check:
   receive:
     | right(x) => x
   end is "got it"
-  rcv() is left("skip1")
-  rcv() is left("skip2")
+  receive-any() is left("skip1")
+  receive-any() is left("skip2")
 end
 
 fun wait-ref(mref):
@@ -47,6 +64,22 @@ fun wait-ref(mref):
     | monitor-down(_tg,_et,v,mr) when mr == mref => v
   end
 end
+
+# sanity check:
+x = spawn-monitor(lam(): "myret" end)
+check:
+  wait-ref(x.{1}) is "myret"
+end
+
+x = spawn-monitor(lam(): raise("myretexc") end)
+check:
+  wait-ref(x.{1}).{0} is "myretexc"
+end
+
+
+
+
+
 
 # spawn 1
 # spawn 2
@@ -60,7 +93,7 @@ data Msg: msg(ret,val) end
 #print("HERE1")
 pid = spawn(lam(): block:
       #print("HEREa1")
-      ret = rcv()
+      ret = receive-any()
       #print("HEREa2")
       send(ret, msg(self,2))
       send(ret, msg(self,3))
@@ -78,17 +111,15 @@ check:
     | msg(ret,v) when v == 3 => 3
   end is 3
   #print("HERE4")
-  x1 = rcv()
-  x2 = rcv()
+  x1 = receive-any()
+  x2 = receive-any()
   x1.val is 2
   x2.val is 4
 end
 #print("HERE5")
 
 
-
 # receive pattern matching
-
 
 pid = spawn(lam(): block:
       #print("spawned1")
@@ -215,7 +246,7 @@ receive:
         {cases v.{0}:
           | msg(ret,val) => val
           | _ => v.{0}
-        end;mr}
+         end;mr}
       end
   end is {"errorthing"; x.{1}}
 

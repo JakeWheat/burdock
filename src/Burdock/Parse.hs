@@ -499,16 +499,18 @@ assertTypeCompat = do
 
 receive :: Parser Expr
 receive = do
-    keyword_ "receive" <* symbol_ ":"
-    nextCase []
+    keyword_ "receive"
+    al <- optional (keyword_ "as" *> identifier)
+    symbol_ ":"
+    nextCase al []
   where
-    nextCase cs =
+    nextCase al cs =
         choice [do
                 x <- casePart
                 case x of
-                    Right el -> endCase cs (Just el)
-                    Left c -> nextCase (c:cs)
-               ,endCase cs Nothing]
+                    Right el -> endCase al cs (Just el)
+                    Left c -> nextCase al (c:cs)
+               ,endCase al cs Nothing]
     casePart :: Parser (Either (CaseBinding,Maybe Expr, Expr) (Expr,Expr))
     casePart = do
         symbol_ "|"
@@ -517,7 +519,7 @@ receive = do
             ,Left <$> ((,,) <$> (caseBinding <?> "case pattern")
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
                        <*> (symbol_ "=>" *> expr))]
-    endCase cs aft = keyword_ "end" *> pure (Receive (reverse cs) aft)
+    endCase al cs aft = keyword_ "end" *> pure (Receive al (reverse cs) aft)
     after = keyword_ "after" *> expr
 
 numE :: Parser Expr

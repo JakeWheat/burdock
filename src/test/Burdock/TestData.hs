@@ -272,30 +272,38 @@ end|]
 receive:
   | a => b
 end
-     |], Receive [(CaseBinding ["a"] [], Nothing, Iden "b")] Nothing)
+     |], Receive Nothing [(CaseBinding ["a"] [], Nothing, Iden "b")] Nothing)
+
+
+    ,([R.r|
+receive as c:
+  | a => b
+end
+     |], Receive (Just "c") [(CaseBinding ["a"] [], Nothing, Iden "b")] Nothing)
+
     ,([R.r|
 receive:
   | pat1(a) => a
   | pat2(b) => b
 end
-     |], Receive [(CaseBinding ["pat1"] [nm "a"], Nothing, Iden "a")
+     |], Receive Nothing [(CaseBinding ["pat1"] [nm "a"], Nothing, Iden "a")
                  ,(CaseBinding ["pat2"] [nm "b"], Nothing, Iden "b")] Nothing)
     ,([R.r|
 receive:
   | after infinity => c
 end
-     |], Receive [] (Just (Iden "infinity", Iden "c")))
+     |], Receive Nothing [] (Just (Iden "infinity", Iden "c")))
     ,([R.r|
 receive:
   | after 1.1 => c
 end
-     |], Receive [] (Just (Num 1.1, Iden "c")))
+     |], Receive Nothing [] (Just (Num 1.1, Iden "c")))
     ,([R.r|
 receive:
   | pat1(a) => a
   | after f(10) => c
 end
-     |], Receive [(CaseBinding ["pat1"] [nm "a"], Nothing, Iden "a")]
+     |], Receive Nothing [(CaseBinding ["pat1"] [nm "a"], Nothing, Iden "a")]
                  (Just (App Nothing (Iden "f") [Num 10], Iden "c")))
 
     ,([R.r|

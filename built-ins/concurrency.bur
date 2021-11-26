@@ -4,7 +4,6 @@ provide:
   spawn,
   spawn-monitor,
   send,
-  rcv,
 
   infinity,
   _casepattern-infinity,

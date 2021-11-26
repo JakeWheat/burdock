@@ -135,9 +135,9 @@ expr (Template _sp) = pretty "..."
 
 expr (UnboxRef e f) = expr e <> pretty "!" <> pretty f
 
-expr (Receive mats after) =
+expr (Receive ma mats after) =
     prettyBlocklike vsep
-    [pretty "receive:"
+    [pretty "receive" <> maybe mempty (\x -> pretty "" <+> pretty "as" <+> pretty x) ma <> pretty ":"
     ,vsep (map mf mats ++
            [maybe mempty aft after])]
   where

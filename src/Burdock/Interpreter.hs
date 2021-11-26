@@ -147,7 +147,7 @@ import Control.Concurrent.STM
 --import Control.Monad.IO.Class
 --    (MonadIO)
 
---import Debug.Trace (trace)
+-- import Debug.Trace (trace)
 
 ------------------------------------------------------------------------------
 
@@ -929,13 +929,13 @@ bSend [FFIValue to, val] = do
     pure nothing
 bSend x = error $ "wrong args to bSend: " ++ show x
 
-bReceive :: [Value] -> Interpreter Value
+{-bReceive :: [Value] -> Interpreter Value
 bReceive [] = do
     th <- askThreadHandle
     v <- liftIO $ zreceive th (\x -> pure $ Just x)
     let x = maybe (error $ "got non value from receive: " ++ show v) id $ fromDynamic v
     pure x
-bReceive x = error $ "wrong args to bReceive: " ++ show x
+bReceive x = error $ "wrong args to bReceive: " ++ show x-}
 
 
 -- stubs - this is what the new api in hsconcurrency should be modified too
@@ -1227,7 +1227,7 @@ builtInFF =
     ,("self", bSelf)
     ,("sleep", bSleep)
     ,("send", bSend)
-    ,("receive", bReceive)
+    --,("receive", bReceive)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -1743,7 +1743,7 @@ interp (Cases e ty cs els) = do
             ty'' <- shallowizeType <$> typeOfTypeSyntax ty'
             void $ assertTypeCompat v ty''
             -- todo: looks up the patterns twice, optimise this?
-            forM_ cs $ \(CaseBinding ss _, _, _) -> do
+            forM_ cs $ \(CaseBinding ss _, _, _) -> when (ss /= ["_"]) $ do
                 let s = prefixLast "_casepattern-" ss
                 caseName <- interp $ makeDotPathExpr s
                 case caseName of
@@ -1762,6 +1762,8 @@ interp (Cases e ty cs els) = do
                       Just ee -> interp ee
                       Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
     matches (CaseBinding s nms) tst v ce = doMatch s nms tst v ce
+    -- wildcard match
+    doMatch ["_"] [] tst _x ce = runBranch tst [] [] ce
     doMatch s' nms tst (VariantV tg vnm fs) ce = do
         let s = prefixLast "_casepattern-" s'
         caseName <- interp $ makeDotPathExpr s
@@ -1845,18 +1847,22 @@ interp (TypeLet tds e) = do
                  $ newEnv tds'
     newEnv tds
 
-interp (Receive cs aft) = do
+interp (Receive ma cs aft) = do
     -- turn the cs into a function which returns a maybe x
     -- put the branches in a cases
     -- each branch is wrapped in some()
     -- add an else which return none
     -- create a wrapper which unlifts the some/none to Maybe
-    let some = internalsRef "some"
+    let rv = maybe "receiveval" id ma
+        some = internalsRef "some"
         none = internalsRef "none"
         cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, App Nothing some [e])
-        prdf = Lam (FunHeader [] [NameBinding Shadow "receiveval" Nothing] Nothing)
-               $ Cases (Iden "receiveval") Nothing cs' (Just none)
+        prdf = Lam (FunHeader [] [NameBinding Shadow rv Nothing] Nothing)
+               $ Cases (Iden rv) Nothing cs' (Just none)
     prdfv <- interp prdf
+    let bindInVal iv = case ma of
+                            Nothing -> id
+                            Just al -> localBindings (extendBindings [(al, iv)])
     let prd :: Dynamic -> Interpreter (Maybe Dynamic)
         prd v = do
                 let v' = case fromDynamic v of
@@ -1865,7 +1871,7 @@ interp (Receive cs aft) = do
                             Just (MonitorDown tg et mv r) -> --trace(show (tg,et,mv,r)) $
                                 makeMonitorDown tg et mv r
                             _ -> error $ "receive pred got something that wasn't a value: " ++ show v
-                r <- app prdfv [v']
+                r <- bindInVal v' $ app prdfv [v']
                 case r of
                     VariantV tg "none" [] | tg == internalsType "Option" -> pure Nothing
                     VariantV tg "some" [(_,x)] | tg == internalsType "Option" -> pure $ Just $ toDyn x
