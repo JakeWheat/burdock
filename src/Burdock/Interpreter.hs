@@ -1828,7 +1828,8 @@ interp (Receive cs aft) = do
                     VariantV tg "some" [(_,x)] | tg == internalsType "Option" -> pure $ Just $ toDyn x
                     _ -> error $ "expected Option type in prdfv ret, got " ++ show r
     th <- askThreadHandle
-    let getVal v | Just v' <- fromDynamic v = v'
+    let getVal :: Dynamic -> Value
+        getVal v | Just v' <- fromDynamic v = v'
                  | otherwise = error $ "expected <<Value>> from receive, got " ++ show v
     case aft of
         Nothing -> getVal <$> zreceive th prd
@@ -1841,7 +1842,7 @@ interp (Receive cs aft) = do
                 NumV tme' -> do
                     v <- zreceiveTimeout th (floor (tme' * 1000 * 1000)) prd
                     case v of
-                        Just v' -> getVal v'
+                        Just v' -> pure $ getVal v'
                         Nothing -> interp e
                 _ -> error $ "after timeout value not number: " ++ show tme
 

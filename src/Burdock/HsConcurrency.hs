@@ -52,7 +52,7 @@ module Burdock.HsConcurrency
     ,Addr
     ,Inbox
     ,DynValException(..)
-    ,Down(..)
+    ,MonitorDown(..)
     ,ExitType(..)
 
     ,testAddToBuffer
@@ -208,8 +208,11 @@ data Inbox
 
 -- data types
 
-data Down = Down
-          deriving (Eq,Show)
+data MonitorDown
+    = MonitorDown
+    {mdTag :: Dynamic
+    ,mdExitType :: ExitType
+    ,mdValue :: Dynamic}
 
 data ExitType = ExitValue
               | ExitException
@@ -289,7 +292,7 @@ spawn h f = spawnImpl h Nothing f
 
 spawnMonitor :: ThreadHandle -> Maybe Dynamic -> (ThreadHandle -> IO Dynamic) -> IO Addr
 spawnMonitor h mtag f =
-    spawnImpl h (Just $ fromMaybe (toDyn Down) mtag) f
+    spawnImpl h (Just $ fromMaybe (toDyn ()) mtag) f
 
 asyncExit :: ThreadHandle -> Addr -> Dynamic -> IO ()
 asyncExit h target val = do
@@ -444,7 +447,7 @@ spawnImpl h ifMonitorTag f = do
                     -- this would be a little nicer, but is not a big deal
                     -- for burdock - it's error prone, but only has to be done
                     -- once in the interpreter
-                    Just mpib -> writeCQueue mpib $ toDyn (tg, exitType, exitVal)
+                    Just mpib -> writeCQueue mpib $ toDyn $ MonitorDown tg exitType exitVal
             -- remove monitoring entries
             modifyTVar (globalMonitors $ occHandle h)
                 $ filter $ \(a,b,_) -> a /= ah && b /= ah

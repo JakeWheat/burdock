@@ -1,8 +1,12 @@
 
 include concurrency
+include option
 
 # test function
 # todo: allow writing receive()?
+
+# todo: make these tests more robust by not sharing the main process inbox
+# -> run each test exclusively in a thread spawned just for that test
 
 pid = spawn(lam(): block:
       x = rcv()
@@ -25,11 +29,11 @@ data Msg: msg(ret,val) end
 pid = spawn(lam(): block:
       #print("spawned1")
       receive:
-        | msg(ret,val) => block:
+        | msg(ret,val) => #block:
             #print("spawned2")
             send(ret, msg(self,"hello " + val))
             #print("spawned3")
-          end
+          #end
       end
       #print("spawned4")
     end
@@ -45,22 +49,80 @@ check:
   x is "hello world"
 end
 
-
 # receive timeout
 
-# explicit infinity timeout
+# timeout 0 with nothing in the queue
+
+x = receive:
+    | msg(ret,val) => some(val)
+    | after 0 => none
+  end
+
+check:
+  x is none
+end
+
+# timeout 0 with something in the queue
+
+send(self, msg(self,"stuff"))
+
+x = receive:
+    | msg(ret,val) => some(val)
+    | after 0 => none
+  end
+
+check:
+  x is some("stuff")
+end
+
+# timeout 1 with nothing in the queue
+
+# timeout 1 with something posted to the queue after 0.1
 
 # receive buffering non matching
+# put a non matching then a matching
+# get the matching
+# get the remaining item
+
+# timeout 1 with non matching in queue, non matching posted after 0.1
+# then matching posted after another 0.1
+
+# explicit infinity timeout
+# duplicate the implicit infinity timeout test above
 
 # check block in spawn
+#|
+spawn(lam(): block:
+    check:
+      1 is 2
+    end end end)
 
 # spawn in check block
+
+check:
+  spawn(lam(): block:
+      1 is 31
+    end end)
+end
+
+sleep(0.4)
 
 # the check block in spawn and spawn in check block need better
 # testing than this -> assert the results include the expected test
 # predicates
 
 # spawn-monitor: exit val, exit exception
+
+check "spawn-monitor":
+
+  _ = spawn-monitor(lam(): msg(self,"result") end)
+  
+  receive:
+    | msg(ret,val) => some(val)
+    | after 0 => none
+  end is some("result")
+end
+|#
 
 # spawn-monitor-tag
 
