@@ -103,6 +103,9 @@ runSrc fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
         case pv of
             Nothing -> pure ()
             Just s -> putStrLn s
+        when rTests $ do
+            p <- B.allTestsPassed h
+            when (not p) exitFailure
   where
     handleEx :: B.Handle -> B.InterpreterException -> IO ()
     handleEx h ex = do

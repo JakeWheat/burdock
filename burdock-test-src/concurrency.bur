@@ -243,25 +243,16 @@ r = spawn-monitor(lam(): block:
     check "check block in spawn":
       1 is 1
     end end end)
-check:
+check "check block in spawn exit":
   wait-ref(r.{1}) satisfies wait-ref-regular-exit
 end
 
-# todo: not sure why this isn't working
-# maybe some unintended variable sharing across the threads?
-# once it's working, refactor all the tests to call run-tests-in-thread
-# inside a check block instead of the check block inside the lambda
-# can fix the wait-ref satisfies thing nicely then
-#|
 check "spawn in check block":
   r = spawn-monitor(lam(): block:
-      print(1)
-      1 is 31
-      print(2)
+      1 is 1
     end end)
   wait-ref(r.{1}) satisfies wait-ref-regular-exit
 end
-|#
 
 # the check block in spawn and spawn in check block need better
 # testing than this -> assert the results include the expected test

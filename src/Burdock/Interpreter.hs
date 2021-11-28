@@ -5,6 +5,8 @@ module Burdock.Interpreter
     (TestResult(..)
     ,CheckBlockResult(..)
     ,getTestResults
+    ,allTestsPassed
+
 
     --,Value
     ,valueToString
@@ -30,7 +32,9 @@ module Burdock.Interpreter
 
 import Control.Concurrent
     (setNumCapabilities
-    ,threadDelay)
+    ,threadDelay
+    --,myThreadId
+    )
 
 import GHC.Conc (getNumProcessors)
 
@@ -217,7 +221,15 @@ addFFIImpls :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
 addFFIImpls h ffis =
     spawnExtWaitHandle h $ \th -> runInterp th True h $ addFFIImpls' ffis
 
-
+allTestsPassed :: Handle -> IO Bool
+allTestsPassed h = spawnExtWaitHandle h $ \th -> runInterp th True h $ do
+    trs <- getTestResultsI
+    pure $ and $ map isPass $ concatMap tr $ concatMap snd trs
+  where
+    tr (CheckBlockResult _ x) = x
+    isPass (TestPass {}) = True
+    isPass (TestFail {}) = False
+    
 ---------------------------------------
 
 -- testing, uses haskell values atm, will move to burdock
@@ -884,8 +896,7 @@ bSpawn :: [Value] -> Interpreter Value
 bSpawn [f] = do
     st <- ask
     x <- liftIO $ spawn (tlThreadHandle st) $ \th ->
-        runInterp th True (Handle $ tlHandleState st) $ do
-        toDyn <$> app f []
+        runInterpInherit st th True $ toDyn <$> app f []
     pure $ FFIValue $ toDyn x
 bSpawn x = error $ "wrong args to bSpawn: " ++ show x
 
@@ -901,7 +912,7 @@ spawnMonitorWrap :: Maybe Value -> Value -> Interpreter Value
 spawnMonitorWrap tag f = do
     st <- ask
     (saddr,ref) <- liftIO $ spawnMonitor (tlThreadHandle st) (toDyn <$> tag) $ \th ->
-        runInterp th True (Handle $ tlHandleState st) $ do
+        runInterpInherit st th True $ do
         toDyn <$> app f []
     pure $ VariantV (bootstrapType "Tuple") "tuple"
         [("0",FFIValue $ toDyn saddr)
@@ -1011,6 +1022,25 @@ runInterp th incG (Handle h) f = do
         -- will become the use context thing
         -- only bootstrapping a handle with the bootstrap and _internals
         -- loading skips including globals atm
+        when incG $ void $ interpStatement (Include (ImportName "globals"))
+        f
+
+-- used for a local thread - one that isn't for a new api call or
+-- new module/source file - it preserves the right part of the
+-- enclosing state
+runInterpInherit :: ThreadLocalState -> ThreadHandle -> Bool -> Interpreter a -> IO a
+runInterpInherit parentSh th incG f = do
+    p <- newIORef []
+    b <- newIORef =<< readIORef (tlLocalBindings parentSh)
+    cbn <- newIORef 0
+    let sh = parentSh
+            {tlThreadHandle = th
+            ,tlProvides = p
+            ,tlLocalBindings = b
+            ,tlNextAnonCheckblockNum = cbn
+            ,_tlIsModuleRootThread = False
+            }
+    flip runReaderT sh $ do
         when incG $ void $ interpStatement (Include (ImportName "globals"))
         f
 
