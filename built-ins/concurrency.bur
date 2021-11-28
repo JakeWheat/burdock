@@ -3,6 +3,7 @@ provide:
   self,
   spawn,
   spawn-monitor,
+  spawn-monitor-tag,
   send,
 
   infinity,

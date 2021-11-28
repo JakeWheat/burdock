@@ -890,15 +890,22 @@ bSpawn [f] = do
 bSpawn x = error $ "wrong args to bSpawn: " ++ show x
 
 bSpawnMonitor :: [Value] -> Interpreter Value
-bSpawnMonitor [f] = do
+bSpawnMonitor [f] =  spawnMonitorWrap Nothing f
+bSpawnMonitor x = error $ "wrong args to bSpawnMonitor: " ++ show x
+
+bSpawnMonitorTag :: [Value] -> Interpreter Value
+bSpawnMonitorTag [tg,f] = spawnMonitorWrap (Just tg) f
+bSpawnMonitorTag x = error $ "wrong args to bSpawnMonitorTag: " ++ show x
+
+spawnMonitorWrap :: Maybe Value -> Value -> Interpreter Value
+spawnMonitorWrap tag f = do
     st <- ask
-    (saddr,ref) <- liftIO $ spawnMonitor (tlThreadHandle st) Nothing $ \th ->
+    (saddr,ref) <- liftIO $ spawnMonitor (tlThreadHandle st) (toDyn <$> tag) $ \th ->
         runInterp th True (Handle $ tlHandleState st) $ do
         toDyn <$> app f []
     pure $ VariantV (bootstrapType "Tuple") "tuple"
         [("0",FFIValue $ toDyn saddr)
         ,("1", convertHsMonitorRef ref)]
-bSpawnMonitor x = error $ "wrong args to bSpawnMonitor: " ++ show x
 
 convertHsMonitorRef :: MonitorRef -> Value
 convertHsMonitorRef (MonitorRef s i) =
@@ -1224,6 +1231,7 @@ builtInFF =
     ,("union-recs", unionRecs)
     ,("spawn", bSpawn)
     ,("spawn-monitor", bSpawnMonitor)
+    ,("spawn-monitor-tag", bSpawnMonitorTag)
     ,("self", bSelf)
     ,("sleep", bSleep)
     ,("send", bSend)

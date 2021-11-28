@@ -249,6 +249,9 @@ end
 
 # todo: not sure why this isn't working
 # maybe some unintended variable sharing across the threads?
+# once it's working, refactor all the tests to call run-tests-in-thread
+# inside a check block instead of the check block inside the lambda
+# can fix the wait-ref satisfies thing nicely then
 #|
 check "spawn in check block":
   r = spawn-monitor(lam(): block:
@@ -308,8 +311,37 @@ end end)
 # come back to this when write anomaly and error tests which check the
 # call stack in detail
 
-# todo: spawn-monitor-tag with custom tag
-# check all the fields in monitor-down like above
+run-tests-in-thread(lam(): block:
+
+check "spawn-monitor-tag":
+
+  admr = spawn-monitor-tag({a:1,b:true}, lam(): msg(self,"result") end)
+
+  receive as x:
+    | monitor-down(tg,et,v,mr) => block:
+        v.val is "result"
+        tg is {a:1,b:true}
+        et is exit-value
+        mr is admr.{1}
+      end
+  end
+
+  x = spawn-monitor-tag({a:2,b:false}, lam(): raise(msg(self,"errorthing")) end)
+
+  receive:
+    | monitor-down(tg,et,v,mr) => block:
+        v.{0}.val is "errorthing"
+        # v.{1} is a callstack
+        tg is {a:2,b:false}
+        et is exit-exception
+        mr is x.{1}
+      end
+  end
+
+end
+
+end end)
+
 
 # async-exit + spawn-monitor exit val
 # check all the fields in monitor-down like above

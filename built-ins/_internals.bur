@@ -106,9 +106,10 @@ data MonitorDown<a,b>:
     monitor-down(tag :: a, exit-type :: ExitType, v :: b, mref :: MonitorRef)
 end
 
-
+# todo: do these need to be here? or can they just be in the concurrency module
 spawn = get-ffi-value("spawn")
 spawn-monitor = get-ffi-value("spawn-monitor")
+spawn-monitor-tag = get-ffi-value("spawn-monitor-tag")
 self = get-ffi-value("self")
 sleep = get-ffi-value("sleep")
 send = get-ffi-value("send")
