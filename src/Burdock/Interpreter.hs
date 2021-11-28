@@ -173,7 +173,7 @@ runScript :: Handle
           -> IO Value
 runScript h mfn lenv src =
     spawnExtWaitHandle h $ \th -> runInterp th True h $ do
-        Script ast <- either error id <$> useSource mfn "runScript" src parseScript
+        Script ast <- either error id <$> useSource mfn (maybe "runScript" id mfn) src parseScript
         -- todo: how to make this local to this call only
         forM_ lenv $ \(n,v) -> letValue n v
         ret <- interpStatements ast
@@ -194,7 +194,7 @@ evalExpr :: Handle
          -> IO Value
 evalExpr h mfn lenv src =
     spawnExtWaitHandle h $ \th -> runInterp th True h $ do
-    ast <- either error id <$> useSource mfn "evalExpr" src parseExpr
+    ast <- either error id <$> useSource mfn (maybe "evalExpr" id mfn) src parseExpr
     -- todo: how to make this local to this call only
     forM_ lenv $ \(n,v) -> letValue n v
     interp ast
@@ -864,15 +864,6 @@ spawnExtWaitHandle :: Typeable a => Handle -> (ThreadHandle -> IO a) -> IO a
 spawnExtWaitHandle (Handle h) f = do
     st <- atomically $ readTVar h
     spawnWaitCast (hsConcurrencyHandle st) f
-
--- this resets the interpreter state for a fresh thread
--- there are two kinds of spawn: api level, and regular subthread spawn
--- which modify the new state differently
-spawnExtWaitI :: Typeable a => (ThreadHandle -> Interpreter a) -> Interpreter a
-spawnExtWaitI f = do
-    st <- ask
-    h <- hsConcurrencyHandle <$> liftIO (atomically $ readTVar (tlHandleState st))
-    liftIO $ spawnWaitCast h $ \th -> flip runReaderT st (f th)
 
 spawnWaitCast :: Typeable a => BConcurrencyHandle -> (ThreadHandle -> IO a) -> IO a
 spawnWaitCast h f = do
@@ -2654,6 +2645,31 @@ loadAndRunModule includeGlobals moduleName fn = spawnExtWaitI $ \_ -> do
     let ast = incG ast'
     -- todo: track generated unique names better?
     runModule fn moduleName $ void $ interpStatements ast
+
+-- todo: refactor all these spawn thread and runreadert wrapper variations
+-- this resets the interpreter state for a fresh thread
+-- there are two kinds of spawn: api level, and regular subthread spawn
+-- which modify the new state differently
+spawnExtWaitI :: Typeable a => (ThreadHandle -> Interpreter a) -> Interpreter a
+spawnExtWaitI f = do
+    st <- ask
+    h <- hsConcurrencyHandle <$> liftIO (atomically $ readTVar (tlHandleState st))
+    liftIO $ spawnWaitCast h $ \th -> do
+        ms <- newIORef =<< readIORef (tlModuleState st)
+        p <- newIORef []
+        b <- newIORef []
+        cbn <- newIORef 0
+        let st1 = st
+                {tlModuleState = ms
+                ,tlThreadHandle = th
+                ,tlProvides = p
+                ,tlCallStack = []
+                ,tlLocalBindings = b
+                ,tlCurrentCheckblock = Nothing
+                ,tlNextAnonCheckblockNum = cbn
+                ,_tlIsModuleRootThread = True
+                }
+        flip runReaderT st1 (f th)
 
 -- TODO: not really happy with how messy these functions are
 
