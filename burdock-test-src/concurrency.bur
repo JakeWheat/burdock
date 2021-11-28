@@ -30,214 +30,12 @@ check "wait-ref":
   wait-ref(x1.{1}) is {exit-exception;"myretexc"}
 end
 
-# quick hack to run tests in a new thread, so the inbox isn't shared
-# between tests - one test messing up won't affect others
-# it makes sure to wait until the thread has finished and checks the
-# thread didn't exit with an exception (this check isn't quite bullet
-# proof yet)
-
 fun wait-ref-regular-exit(val):
   val.{0} == exit-value
 end
 
-fun run-tests-in-thread(f):
-  ar = spawn-monitor(f)
-  # todo: come up with a better way to factor this
-  check "run-tests-in-thread":
-    wait-ref(ar.{1}) satisfies wait-ref-regular-exit
-  end
-end
-
-fun receive-all-inbox():
-  receive as zz:
-    | _ => link(zz, receive-all-inbox())
-    | after 0 => empty
-  end
-end
-
-run-tests-in-thread(lam(): block:
-  check "receive-all-inbox":
-    send(self,1)
-    send(self,2)
-    receive-all-inbox() is [list: 1,2]
-    receive-all-inbox() is [list: ]
-    
-  end
-end end)
-
-#######################################
-
-data Msg: msg(ret,val) end
-
-run-tests-in-thread(lam(): block:
-
-  check "trivial send and receive":
-
-    pid = spawn(lam(): block:
-        x = receive-any()
-        send(x.ret, "hello " + x.val)
-        end
-      end)
-
-    send(pid, {ret:self, val:"world"})
-
-    receive-any() is "hello world"
-  end
-end end)
-
-
-run-tests-in-thread(lam(): block:
-
-  check "receive pattern matching":
-
-    pid = spawn(lam(): block:
-          receive:
-            | msg(ret,val) =>
-                send(ret, msg(self,"hello " + val))
-          end
-        end
-      end)
-    
-    send(pid, msg(self,"world"))
-    x = receive: | msg(_,a) => a end
-    
-    x is "hello world"
-  end
-end end)
-
-run-tests-in-thread(lam(): block:
-
-  check "trivial selective receive":
-
-    # alias self so can use it from the closure of the spawned thread
-    outer-self = self
-
-    pid = spawn(lam(): block:
-          #x = receive-any()
-          send(outer-self, left("skip1"))
-          send(outer-self, left("skip2"))
-          send(outer-self, right("got it"))
-        end
-      end)
-    
-    receive:
-      | right(x) => x
-    end is "got it"
-    receive-all-inbox() is [list: left("skip1"), left("skip2")]
-
-  end
-end end)
-
-run-tests-in-thread(lam(): block:
-
-  check "nested receive":
-
-    outer-self = self
-
-    x = spawn-monitor(lam(): block:
-          send(outer-self, left("skip1"))
-          send(outer-self, left("skip2"))
-        end
-      end)
-
-    
-    wait-ref(x.{1}) satisfies wait-ref-regular-exit
-
-    receive as z0:
-      | _ => receive as z1:
-          | _ => [list: z0,z1]
-        end
-    end is [list: left("skip1") , left("skip2")]
-
-    x = spawn-monitor(lam(): block:
-          send(outer-self, left("skip1"))
-          send(outer-self, left("skip2"))
-        end
-      end)
-
-    wait-ref(x.{1}) satisfies wait-ref-regular-exit
-
-    receive-all-inbox() is [list: left("skip1") , left("skip2")]
-
-
-  end
-end end)
-
-
-
-# test?:
-# spawn 1
-# spawn 2
-# spawn: tell 2 to exit
-#   then tell 1 to exit - race possibility?
-# wait-ref on 1
-# wait-ref on 2
-
-run-tests-in-thread(lam(): block:
-
-  check "a trivial select receive":
-  
-    pid = spawn(lam(): block:
-          ret = receive-any()
-          send(ret, msg(self,2))
-          send(ret, msg(self,3))
-          send(ret, msg(self,4))
-        end
-      end)
-    
-    send(pid, self)
-    
-    receive:
-      | msg(ret,v) when v == 3 => 3
-    end is 3
-    x1 = receive-any()
-    x2 = receive-any()
-    x1.val is 2
-    x2.val is 4
-  end
-end end)
-
-
-run-tests-in-thread(lam(): block:
-
-  check "receive timeout":
-  
-    # timeout 0 with nothing in the queue
-    
-    x = receive:
-        | msg(ret,val) => some(val)
-        | after 0 => none
-      end
-    
-    x is none
-    
-    # timeout 0 with something in the queue
-    
-    send(self, msg(self,"stuff"))
-    
-    x = receive:
-        | msg(ret,val) => some(val)
-        | after 0 => none
-      end
-    
-    x is some("stuff")
-    
-    #todo:
-    # timeout 1 with nothing in the queue
-    
-    # timeout 1 with something posted to the queue after 0.1
-
-  end
-
-end end)
-
-# todo:
-
-# timeout 1 with non matching in queue, non matching posted after 0.1
-# then matching posted after another 0.1
-
-# explicit infinity timeout
-# duplicate the implicit infinity timeout test above
+# demonstrate a check block inside a spawned thread
+# needs some design thought?
 
 r = spawn-monitor(lam(): block:
     check "check block in spawn":
@@ -246,6 +44,8 @@ r = spawn-monitor(lam(): block:
 check "check block in spawn exit":
   wait-ref(r.{1}) satisfies wait-ref-regular-exit
 end
+
+# spawn inside a check block - straightforward design
 
 check "spawn in check block":
   r = spawn-monitor(lam(): block:
@@ -258,14 +58,172 @@ end
 # testing than this -> assert the results include the expected test
 # predicates
 
+# quick hack to run tests in a new thread, so the inbox isn't shared
+# between tests - one test messing up won't affect others
+# it makes sure to wait until the thread has finished and checks the
+# thread didn't exit with an exception (this check isn't quite bullet
+# proof yet)
+
+fun run-tests-in-thread(f):
+  ar = spawn-monitor(f)
+  wait-ref(ar.{1}) satisfies wait-ref-regular-exit
+end
+
+fun receive-all-inbox():
+  receive as zz:
+    | _ => link(zz, receive-all-inbox())
+    | after 0 => empty
+  end
+end
+
+check "receive-all-inbox":
+  run-tests-in-thread(lam(): block:
+    send(self,1)
+    send(self,2)
+    receive-all-inbox() is [list: 1,2]
+    receive-all-inbox() is [list: ]
+  end end)
+end
+
+#######################################
+
+data Msg: msg(ret,val) end
+
+check "trivial send and receive":
+  run-tests-in-thread(lam(): block:
+    pid = spawn(lam(): block:
+        x = receive-any()
+        send(x.ret, "hello " + x.val)
+        end
+      end)
+    send(pid, {ret:self, val:"world"})
+    receive-any() is "hello world"
+  end end)
+end
+
+
+check "receive pattern matching":
+  run-tests-in-thread(lam(): block:
+    pid = spawn(lam(): block:
+          receive:
+            | msg(ret,val) =>
+                send(ret, msg(self,"hello " + val))
+          end
+        end
+      end)
+    send(pid, msg(self,"world"))
+    x = receive: | msg(_,a) => a end
+    x is "hello world"
+  end end)
+end
+
+check "trivial selective receive":
+  run-tests-in-thread(lam(): block:
+    # alias self so can use it from the closure of the spawned thread
+    outer-self = self
+    pid = spawn(lam(): block:
+          send(outer-self, left("skip1"))
+          send(outer-self, left("skip2"))
+          send(outer-self, right("got it"))
+        end
+      end)
+    receive:
+      | right(x) => x
+    end is "got it"
+    receive-all-inbox() is [list: left("skip1"), left("skip2")]
+  end end)
+end
+
+check "nested receive":
+  run-tests-in-thread(lam(): block:
+    outer-self = self
+    x = spawn-monitor(lam(): block:
+          send(outer-self, left("skip1"))
+          send(outer-self, left("skip2"))
+        end
+      end)
+    wait-ref(x.{1}) satisfies wait-ref-regular-exit
+    receive as z0:
+      | _ => receive as z1:
+          | _ => [list: z0,z1]
+        end
+    end is [list: left("skip1") , left("skip2")]
+    x = spawn-monitor(lam(): block:
+          send(outer-self, left("skip1"))
+          send(outer-self, left("skip2"))
+        end
+      end)
+    wait-ref(x.{1}) satisfies wait-ref-regular-exit
+    receive-all-inbox() is [list: left("skip1") , left("skip2")]
+  end end)
+end
+
+
+
+# test?:
+# spawn 1
+# spawn 2
+# spawn: tell 2 to exit
+#   then tell 1 to exit - race possibility?
+# wait-ref on 1
+# wait-ref on 2
+
+check "a trivial select receive":
+  run-tests-in-thread(lam(): block:
+    pid = spawn(lam(): block:
+          ret = receive-any()
+          send(ret, msg(self,2))
+          send(ret, msg(self,3))
+          send(ret, msg(self,4))
+        end
+      end)
+    send(pid, self)
+    receive:
+      | msg(ret,v) when v == 3 => 3
+    end is 3
+    x1 = receive-any()
+    x2 = receive-any()
+    x1.val is 2
+    x2.val is 4
+  end end)
+end
+
+
+check "receive timeout":
+  run-tests-in-thread(lam(): block:
+    # timeout 0 with nothing in the queue
+    x = receive:
+        | msg(ret,val) => some(val)
+        | after 0 => none
+      end
+    x is none
+    # timeout 0 with something in the queue
+    send(self, msg(self,"stuff"))
+    x = receive:
+        | msg(ret,val) => some(val)
+        | after 0 => none
+      end
+    x is some("stuff")
+    #todo:
+    # timeout 1 with nothing in the queue
+    # timeout 1 with something posted to the queue after 0.1
+  end end)
+end
+
+
+# todo:
+
+# timeout 1 with non matching in queue, non matching posted after 0.1
+# then matching posted after another 0.1
+
+# explicit infinity timeout
+# duplicate the implicit infinity timeout test above
+
 # spawn-monitor: exit val, exit exception
 
-run-tests-in-thread(lam(): block:
-
 check "spawn-monitor":
-
+  run-tests-in-thread(lam(): block:
   admr = spawn-monitor(lam(): msg(self,"result") end)
-
   receive as x:
     | monitor-down(tg,et,v,mr) => block:
         v.val is "result"
@@ -274,64 +232,54 @@ check "spawn-monitor":
         mr is admr.{1}
       end
   end
+  end end)
 end
 
-end end)
-
-run-tests-in-thread(lam(): block:
 
 check "spawn-monitor-exception":
-
-  x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
-
-  receive:
-    | monitor-down(tg,et,v,mr) => block:
-        v.{0}.val is "errorthing"
-        # v.{1} is a callstack
-        tg is nothing
-        et is exit-exception
-        mr is x.{1}
-      end
-  end
-
+  run-tests-in-thread(lam(): block:
+    x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
+    receive:
+      | monitor-down(tg,et,v,mr) => block:
+          v.{0}.val is "errorthing"
+          # v.{1} is a callstack
+          tg is nothing
+          et is exit-exception
+          mr is x.{1}
+        end
+    end
+  end end)
 end
 
-end end)
 
 # TODO check the callstack when it's an exception
 # come back to this when write anomaly and error tests which check the
 # call stack in detail
 
-run-tests-in-thread(lam(): block:
-
 check "spawn-monitor-tag":
-
-  admr = spawn-monitor-tag({a:1,b:true}, lam(): msg(self,"result") end)
-
-  receive as x:
-    | monitor-down(tg,et,v,mr) => block:
-        v.val is "result"
-        tg is {a:1,b:true}
-        et is exit-value
-        mr is admr.{1}
-      end
-  end
-
-  x = spawn-monitor-tag({a:2,b:false}, lam(): raise(msg(self,"errorthing")) end)
-
-  receive:
-    | monitor-down(tg,et,v,mr) => block:
-        v.{0}.val is "errorthing"
-        # v.{1} is a callstack
-        tg is {a:2,b:false}
-        et is exit-exception
-        mr is x.{1}
-      end
-  end
-
+  run-tests-in-thread(lam(): block:
+    admr = spawn-monitor-tag({a:1,b:true}, lam(): msg(self,"result") end)
+    receive as x:
+      | monitor-down(tg,et,v,mr) => block:
+          v.val is "result"
+          tg is {a:1,b:true}
+          et is exit-value
+          mr is admr.{1}
+        end
+    end
+    x = spawn-monitor-tag({a:2,b:false}, lam(): raise(msg(self,"errorthing")) end)
+    receive:
+      | monitor-down(tg,et,v,mr) => block:
+          v.{0}.val is "errorthing"
+          # v.{1} is a callstack
+          tg is {a:2,b:false}
+          et is exit-exception
+          mr is x.{1}
+        end
+    end
+  end end)
 end
 
-end end)
 
 
 # async-exit + spawn-monitor exit val
