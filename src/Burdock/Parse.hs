@@ -346,6 +346,7 @@ testPred = choice (map keyword ["is"
                                ,"is-not"
                                ,"raises"
                                ,"raises-satisfies"
+                               ,"satisfies"
                                ])
 
 

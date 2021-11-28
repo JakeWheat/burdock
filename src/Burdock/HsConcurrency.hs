@@ -5,26 +5,11 @@ Haskell concurrency library
 an approach to concurrency modelled on a subset of erlang, uses
 haskell async lib threads, which are a thin wrapper around ghc threads
 
-It only exists to help implement concurrency in Burdock
-
-Plan:
-
-inbox
-send and receive messages
-typed only for now, since burdock only needs to be able to send a
-single type
-
-timeouts
-selective receive
-
-there's no implicit self in the haskell layer - too much distraction
-to implement something not needed
-
-spawn monitor
-
-runs a function in a new ghc thread which takes an inbox which is
-created for the thread
-send and receive with the new spawn, sending self address
+It only exists to help implement concurrency in Burdock. It's not
+really usable as a library for this sort of concurrency from native
+Haskell, but it's probably fairly easily repurposed to provide a
+concurrency layer like this to another language or dsl implemented in
+Haskell.
 
 -}
 

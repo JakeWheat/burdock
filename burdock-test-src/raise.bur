@@ -14,5 +14,9 @@ check:
 
   fun g(x): x == "test2" end
   raise("test2") raises-satisfies g
+
+  is-three = _ == 3
+
+  1 + 2 satisfies is-three
   
 end

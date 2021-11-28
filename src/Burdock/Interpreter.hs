@@ -1622,9 +1622,9 @@ interp (App sp f es) = do
             localPushCallStack sp $ app fv vs
 
 -- special case binops
-interp (BinOp _ "is" _) = error $ "'is' test predicate only allowed in check block"
-interp (BinOp _ "raises" _) = error $ "'raises' test predicate only allowed in check block"
-interp (BinOp _ "raises-satisfies" _) = error $ "'raises-satisfies' test predicate only allowed in check block"
+interp (BinOp _ x _)
+    | x `elem` ["is","raises","raises-satisfies", "satisfies"]
+    = error $ "'" ++ x ++ "' test predicate only allowed in check block"
 
 interp (BinOp e0 "and" e1) = do
     x <- interp e0
@@ -1903,7 +1903,9 @@ interp (Receive ma cs aft) = do
     makeMonitorDown tg et v r = --trace (show (fromDynamic v :: Maybe String)) $
         let tg' = case fromDynamic tg of
                       Just vx -> vx
-                      _ -> FFIValue tg
+                      _ -> case fromDynamic tg of
+                          Just () -> nothing
+                          _ -> FFIValue tg
             et' = case et of
                       ExitValue -> VariantV (internalsType "ExitType") "exit-value" []
                       ExitException -> VariantV (internalsType "ExitType") "exit-exception" []
@@ -1918,7 +1920,6 @@ interp (Receive ma cs aft) = do
                ,("exit-type", et')
                ,("v", v')
                ,("mref", r')]
-
 -- todo: the source position should be part of the error
 -- not pushed to the call stack
 interp (Template sp) =
@@ -2154,6 +2155,9 @@ interpStatement s@(StmtExpr (BinOp e0 "is-not" e1)) =
 
 interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) =
     testRaises (prettyStmt s) e0 e1
+
+interpStatement s@(StmtExpr (BinOp e0 "satisfies" e1)) =
+    testSatisfies (prettyStmt s) e0 e1
 
 interpStatement s@(StmtExpr (BinOp e0 "raises-satisfies" f)) =
     testRaisesSatisfies (prettyStmt s) e0 f
@@ -2480,6 +2484,29 @@ testRaisesSatisfies msg e0 f = do
                 BoolV True -> atr $ TestPass msg
                 BoolV False -> atr $ TestFail msg ("failed: " ++ show er0 ++ ", didn't satisfy predicate " ++ show f)
                 _ -> atr $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
+    pure nothing
+
+testSatisfies :: String -> Expr -> Expr -> Interpreter Value
+testSatisfies msg e0 f = do
+    (v0,fv,atr) <- testPredSupport e0 f
+    case (v0,fv) of
+        (Right v', Right f') -> do
+            r <- app f' [v']
+            case r of
+                BoolV True -> atr $ TestPass msg
+                BoolV False -> atr $ TestFail msg ("failed: " ++ show v' ++ ", didn't satisfy predicate " ++ show f)
+                _ -> atr $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
+        (Left er0, Right {}) -> do
+            er0' <- liftIO $ torepr' er0
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
+        (Right {}, Left er1) -> do
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1')
+        (Left er0, Left er1) -> do
+            er0' <- liftIO $ torepr' er0
+            er1' <- liftIO $ torepr' er1
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
+                                ++ "\n" ++ prettyExpr f ++ " failed: " ++ er1')
     pure nothing
 
 testPredSupport :: Expr

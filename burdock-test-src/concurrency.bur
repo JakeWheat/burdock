@@ -13,41 +13,39 @@ end
 
 fun wait-ref(mref):
   receive:
-    | monitor-down(_tg,_et,v,mr) when mr == mref => v
+    | monitor-down(_tg,et,v,mr) when mr == mref =>
+        cases et:
+          | exit-value => {exit-value;v}
+            # don't return the callstack, just the exception value
+          | exit-exception => {exit-exception; v.{0}}
+        end
   end
 end
 
 check "wait-ref":
   x = spawn-monitor(lam(): "myret" end)
-  wait-ref(x.{1}) is "myret"
+  wait-ref(x.{1}) is {exit-value;"myret"}
 
   x1 = spawn-monitor(lam(): raise("myretexc") end)
-  wait-ref(x1.{1}).{0} is "myretexc"
+  wait-ref(x1.{1}) is {exit-exception;"myretexc"}
 end
 
-# quick hack to run tests in a new thread, so the inbox
-# isn't shared between tests - one test messing up
-# won't affect others
-# it makes sure to wait until the thread has finished
-# and checks the thread didn't exit with an exception
-# (this check isn't quite bullet proof yet)
+# quick hack to run tests in a new thread, so the inbox isn't shared
+# between tests - one test messing up won't affect others
+# it makes sure to wait until the thread has finished and checks the
+# thread didn't exit with an exception (this check isn't quite bullet
+# proof yet)
 
-fun wait-ref-is-nothing(mref):
-  ret = wait-ref(mref)
-  check "wait-ref-is-nothing":
-    ret is nothing
-  end
+fun wait-ref-regular-exit(val):
+  val.{0} == exit-value
 end
-
-fun wait-ref-is-nothing-no-cb(mref):
-  ret = wait-ref(mref)
-  ret is nothing
-end
-
 
 fun run-tests-in-thread(f):
   ar = spawn-monitor(f)
-  wait-ref-is-nothing(ar.{1})
+  # todo: come up with a better way to factor this
+  check "run-tests-in-thread":
+    wait-ref(ar.{1}) satisfies wait-ref-regular-exit
+  end
 end
 
 fun receive-all-inbox():
@@ -142,8 +140,8 @@ run-tests-in-thread(lam(): block:
         end
       end)
 
-
-    wait-ref-is-nothing-no-cb(x.{1})
+    
+    wait-ref(x.{1}) satisfies wait-ref-regular-exit
 
     receive as z0:
       | _ => receive as z1:
@@ -157,8 +155,8 @@ run-tests-in-thread(lam(): block:
         end
       end)
 
+    wait-ref(x.{1}) satisfies wait-ref-regular-exit
 
-    wait-ref-is-nothing-no-cb(x.{1})
     receive-all-inbox() is [list: left("skip1") , left("skip2")]
 
 
@@ -245,8 +243,12 @@ r = spawn-monitor(lam(): block:
     check "check block in spawn":
       1 is 1
     end end end)
-wait-ref-is-nothing(r.{1})
+check:
+  wait-ref(r.{1}) satisfies wait-ref-regular-exit
+end
 
+# todo: not sure why this isn't working
+# maybe some unintended variable sharing across the threads?
 #|
 check "spawn in check block":
   r = spawn-monitor(lam(): block:
@@ -254,11 +256,7 @@ check "spawn in check block":
       1 is 31
       print(2)
     end end)
-  # todo: not sure why this isn't working
-  # maybe some unintended variable sharing across the threads?
-  #wait-ref-is-nothing-no-cb(r.{1})
-  #wait-ref-is-nothing(r.{1})
-  
+  wait-ref(r.{1}) satisfies wait-ref-regular-exit
 end
 |#
 
@@ -272,15 +270,16 @@ run-tests-in-thread(lam(): block:
 
 check "spawn-monitor":
 
-  _ = spawn-monitor(lam(): msg(self,"result") end)
-  
-  receive:
-    | monitor-down(tg,et,v,mr) =>
-      cases v:
-        | msg(ret,val) => some(val)
-        | _ => none
+  admr = spawn-monitor(lam(): msg(self,"result") end)
+
+  receive as x:
+    | monitor-down(tg,et,v,mr) => block:
+        v.val is "result"
+        tg is nothing
+        et is exit-value
+        mr is admr.{1}
       end
-  end is some("result")
+  end
 end
 
 end end)
@@ -290,38 +289,28 @@ run-tests-in-thread(lam(): block:
 check "spawn-monitor-exception":
 
   x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
-  
+
   receive:
     | monitor-down(tg,et,v,mr) => block:
-        cases v.{0}:
-          | msg(ret,val) => block: # todo: needs the block wrapper, fix this bug
-              val is "errorthing"
-            end
-          | _ => none
-        end
+        v.{0}.val is "errorthing"
+        # v.{1} is a callstack
+        tg is nothing
+        et is exit-exception
         mr is x.{1}
       end
   end
-
-  x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
-
-  receive:
-    | monitor-down(tg,et,v,mr) =>
-        {cases v.{0}:
-          | msg(ret,val) => val
-          | _ => v.{0}
-         end;mr}
-  end is {"errorthing"; x.{1}}
 
 end
 
 end end)
 
-# todo with spawn-monitor:
-# check the tag
-# check the error type
-# check the callstack when it's an exception
+# TODO check the callstack when it's an exception
+# come back to this when write anomaly and error tests which check the
+# call stack in detail
 
-# spawn-monitor-tag
+# todo: spawn-monitor-tag with custom tag
+# check all the fields in monitor-down like above
 
 # async-exit + spawn-monitor exit val
+# check all the fields in monitor-down like above
+
