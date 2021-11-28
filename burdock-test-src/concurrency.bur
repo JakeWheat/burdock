@@ -22,6 +22,10 @@ fun wait-ref(mref):
   end
 end
 
+fun wait-ref-regular-exit(val):
+  val.{0} == exit-value
+end
+
 check "wait-ref":
   x = spawn-monitor(lam(): "myret" end)
   wait-ref(x.{1}) is {exit-value;"myret"}
@@ -29,11 +33,6 @@ check "wait-ref":
   x1 = spawn-monitor(lam(): raise("myretexc") end)
   wait-ref(x1.{1}) is {exit-exception;"myretexc"}
 end
-
-fun wait-ref-regular-exit(val):
-  val.{0} == exit-value
-end
-
 # demonstrate a check block inside a spawned thread
 # needs some design thought?
 
@@ -282,6 +281,48 @@ end
 
 
 
-# async-exit + spawn-monitor exit val
-# check all the fields in monitor-down like above
+check "async exit":
 
+  run-tests-in-thread(lam(): block:
+    waiter = spawn-monitor(lam(): block:
+        _ = receive:
+              | _ => nothing
+            end
+      end end)
+
+    # todo: bug
+    # intermittent test failures, the bug is due to a race condition
+    # the async-exit executes before the spawned thread is running
+    # so you get an error from the ghc thread system 'thread not found'
+    # this bug appears if you remove the sleep call
+    sleep(0.01)
+    async-exit(waiter.{0}, "on yer bike")
+
+    # todo: spawn-monitor should return a record instead of a tuple?
+    # todo: should the monitor down distinguish between async and
+    # non async exceptions?
+    receive:
+      | monitor-down(tg,et,v,mr) => block:
+          v is "on yer bike"
+          # todo: how to get a callstack for this?
+          # need to maintain the callstack differently?
+          # i.e. not using ReaderT::local
+          # v.{0} is "on yer bike"
+          # v.{1} is a callstack
+          tg is nothing
+          et is exit-exception
+          mr is waiter.{1}
+        end
+    end
+
+  end end)
+  
+
+end
+
+# todo: add support for non local exit from a thread
+# with arbitrary value
+# it will raise an exception internally
+# the system knows to produce the monitor-down with
+# exit-value instead of exit-exception when it sees this
+# particular exception

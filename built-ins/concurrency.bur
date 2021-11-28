@@ -5,6 +5,7 @@ provide:
   spawn-monitor,
   spawn-monitor-tag,
   send,
+  async-exit,
 
   infinity,
   _casepattern-infinity,

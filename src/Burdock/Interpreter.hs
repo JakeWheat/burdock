@@ -86,9 +86,9 @@ import Burdock.HsConcurrency
     ,spawnMonitor
     ,addr
     ,send
-    --,receive
     ,zreceive
     ,zreceiveTimeout
+    ,asyncExit
 
     ,MonitorDown(..)
     ,ExitType(..)
@@ -918,14 +918,20 @@ spawnMonitorWrap tag f = do
         [("0",FFIValue $ toDyn saddr)
         ,("1", convertHsMonitorRef ref)]
 
+bAsyncExit :: [Value] -> Interpreter Value
+bAsyncExit [FFIValue to,val] = do
+    let toaddr = maybe (error $ "async-exit to non addr: " ++ show to) id $ fromDynamic to
+    th <- askThreadHandle
+    liftIO $ asyncExit th toaddr $ toDyn val
+    pure nothing
+bAsyncExit x = error $ "wrong args to bAsyncExit: " ++ show x
+
 convertHsMonitorRef :: MonitorRef -> Value
 convertHsMonitorRef (MonitorRef s i) =
     VariantV (internalsType "MonitorRef") "monitor-ref"
         [("a", TextV s)
         ,("b", NumV $ fromIntegral i)
         ]
-     
-
 
 bSelf :: [Value] -> Interpreter Value
 bSelf [] = do
@@ -1265,7 +1271,7 @@ builtInFF =
     ,("self", bSelf)
     ,("sleep", bSleep)
     ,("send", bSend)
-    --,("receive", bReceive)
+    ,("async-exit", bAsyncExit)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value

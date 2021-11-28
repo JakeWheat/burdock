@@ -66,7 +66,7 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
         _ <- runScript h Nothing []
              "_system.modules._internals.set-auto-print-test-results(false)\n\
              \_system.modules._internals.set-auto-run-tests(true)"
-        _ <- runScript h Nothing [] src
+        _ <- runScript h (Just fn) [] src
         trs <- getTestResults h
         
         let ts = flip map trs $ \(modName, cbs) ->
