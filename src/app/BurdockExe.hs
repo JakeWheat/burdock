@@ -115,27 +115,28 @@ runSrc fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
 
 -- repl
 
-process :: B.Handle -> String -> IO ()
-process h src = (do
-    v <- B.runScript h Nothing [] src
-    pv <- B.valueToString v
-    case pv of
-            Nothing -> pure ()
-            Just s -> putStrLn s)
+process :: B.Handle -> B.Value -> String -> IO ()
+process h replH src =
+    void (B.runScript
+             h
+             Nothing [("handle", replH)
+                     ,("src", B.TextV src)]
+             "include repl\n\
+             \repl-execute(handle,src)")
     `catch` (\e -> do
         x <- B.formatException h True e
         putStrLn $ "Error: " ++ x)
     `catchAny` (\e -> putStrLn $ "Error: " ++ displayException e)
 
-repl :: B.Handle -> InputT IO ()
-repl h = go
+repl :: B.Handle -> B.Value -> InputT IO ()
+repl h replH = go
   where
     go = withInterrupt (do
         minput <- getInputLine "b > "
         case minput of
             Nothing -> pure ()
             Just input -> do
-                liftIO $ process h input
+                liftIO $ process h replH input
                 go)
         -- ctrl-c resets to the prompt, doesn't exit the repl
         `catch` (\(_::Interrupt) -> liftIO (putStr "^C") >> go)
@@ -143,12 +144,15 @@ repl h = go
 
 doRepl :: IO ()
 doRepl = bracket B.newHandle B.closeHandle $ \h -> do
+    replH <- B.runScript h Nothing []
+        "include repl\n\
+        \create-repl()"
     --putStrLn "test print"
     --a1 <- B.evalExpr h Nothing [] "1"
     --a2 <- B.evalExpr h Nothing [] "true"
     --B.evalFun h "print" [a1]
     --B.evalFun h "print" [a2]
-    runInputT st (repl h)
+    runInputT st (repl h replH)
   where
     st = defaultSettings {historyFile = Just ".burdockreplhistory"}
 

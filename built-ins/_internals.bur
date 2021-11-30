@@ -20,6 +20,28 @@ module which reexports these
 
 include _bootstrap
 
+provide:
+  *,
+  # todo: add the provide module support
+  # these are the contents of the _bootstrap module
+  true,
+  false,
+  nothing,
+  is-nothing,
+  is-Nothing,
+  _casepattern-nothing,
+  get-ffi-value,
+  make-variant,
+  is-variant,
+  _typeinfo-Any,
+  _typeinfo-Number,
+  _typeinfo-String,
+  _typeinfo-Boolean,
+  _typeinfo-Tuple,
+  _typeinfo-Record,
+  _typeinfo-Function
+end
+
 # list construct
 list = {make : lam(x): x end}
 
@@ -28,6 +50,8 @@ haskell-error = get-ffi-value("haskell-error")
 
 get-call-stack = get-ffi-value("get-call-stack")
 format-call-stack = get-ffi-value("format-call-stack")
+
+run-script = get-ffi-value("run-script")
 
 # debugging and troubleshooting support
 

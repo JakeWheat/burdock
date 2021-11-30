@@ -19,13 +19,13 @@ data Stmt =
     | When Expr Expr
     | LetDecl Binding Expr
     | Check (Maybe String) [Stmt]
-    | VarDecl Binding Expr
+    | VarDecl SimpleBinding Expr
     | SetVar String Expr
     | SetRef Expr [(String,Expr)]
     | DataDecl String [String] [VariantDecl] (Maybe [Stmt])
     | RecDecl Binding Expr
     | FunDecl
-        Binding -- name
+        SimpleBinding -- name
         FunHeader -- args and return type
         (Maybe String) -- doc string
         Expr -- body
@@ -42,7 +42,7 @@ data Stmt =
 data FunHeader = FunHeader [String] [Binding] (Maybe Ann)
     deriving (Eq,Show,Data)
 
-data VariantDecl = VariantDecl String [(Ref,Binding)]
+data VariantDecl = VariantDecl String [(Ref,SimpleBinding)]
                  deriving (Eq,Show,Data) 
 
 data Ref = Ref | Con
@@ -97,6 +97,8 @@ data CaseBinding = CaseBinding [String] [Binding]
 data Binding =
       NameBinding Shadow String (Maybe Ann)
     deriving (Eq,Show,Data)
+
+type SimpleBinding = Binding
 
 data Shadow = NoShadow | Shadow
           deriving (Eq,Show,Data) 

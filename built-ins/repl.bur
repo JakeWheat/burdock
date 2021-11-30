@@ -1,0 +1,178 @@
+
+#|
+   run a repl somewhat robustly, with a dedicated monitor thread
+   this is designed to be used from the handle api which starts
+   an new thread on each api call
+
+   todo: general demo of how to run something in a thread like this
+   make the repl remotable -> the client side will print the results
+   instead of the repl-loop
+   make it more robust: start the repl-loop with the address of the
+     repl-monitor, then it can tell the repl monitor when there
+     are non client-synchronous problems
+     can also add ability for client to register an address for the
+     same
+   see if there's something in erlang to copy
+   
+|#
+
+provide:
+  create-repl,
+  repl-execute,
+  close-repl
+end
+
+include concurrency
+include either
+
+import _internals as _internals
+include from _internals:
+  run-script
+end
+
+#######################################
+
+# internal messages data type
+
+data ReplMsg:
+  | run-src(ret,src)
+  | error(ret, e)
+  | exiting(ret)
+  | exit(ret)
+  | repl-down(ret,e)
+  | run-src-ok(ret)
+end  
+
+#######################################
+
+# api
+# runs in the user's thread
+
+fun create-repl():
+  spawn(repl-monitor)
+end
+
+fun repl-execute(handle, src):
+  #print("execute")
+  send(handle, run-src(self,src))
+  #print("execute receiving")
+  receive:
+    | run-src-ok(r) when r == handle => nothing
+    | error(r,e) when r == handle => raise(e)
+    | repl-down(r,e) when r == handle => raise(e)
+  end
+  #print("execute done")
+end
+
+fun close-repl(handle):
+  send(handle, exit(self))
+  receive:
+    | exiting(r) when r == handle => nothing
+  end
+end
+
+#######################################
+# internals
+
+#|
+   split the repl monitor out, this is a thread which does
+   very little except a small amount of co-ordination, and
+   can monitor the repl thread for exit
+   this is useful only because the embedded handle api doesn't
+   offer a persistent thread to use, this is the way to implement
+   that
+   the repl thread itself runs the user code which isn't constrained
+   and could do anything, but is always monitored by the monitor
+   thread
+|#
+
+fun repl-monitor():
+  sm = spawn-monitor(repl-loop)
+  # todo: tuple binding
+  repl = sm.{0}
+  rf = sm.{1}
+
+  fun repl-down(v):
+    receive as e:
+      | exit(ret) => block:
+          send(ret,exiting(self))
+          # exit
+        end
+      | run-src(r,_) => block:
+          send(r,repl-down(self,v))
+          repl-down(v)
+        end
+      | _ #|as e|# => block:
+          #print("repl-monitor: unexpected message: " + torepr(e))
+          repl-down(v)
+        end
+    end
+  end
+
+  fun repl-monitor-loop():
+    receive as e:
+      | run-src(ret,src) => block:
+          send(repl,run-src(self,src))
+          #print("monitor receiving")
+          receive as e:
+            | run-src-ok(r) when r == repl => block:
+                #print("monitor received")
+                send(ret, run-src-ok(self))
+                repl-monitor-loop()
+              end
+            | error(r,e) when r == repl => block:
+                send(ret, error(self,e))
+                repl-monitor-loop()
+              end
+            | monitor-down(_,et,v,mr) when mr == rf => block:
+                #print("repl-loop unexpectedly exited: " + torepr(v))
+                send(ret,repl-down(self, v))
+                repl-down(v)
+              end
+          end
+        end
+      | exit(ret) => block:
+          send(repl, exit(self))
+          receive:
+            | exiting(r) when r == repl => block:
+                send(ret,exiting(self))
+                #exit
+                # todo: wait for monitor down signal instead of an exiting signal?
+              end
+          end
+        end
+      | monitor-down(_,_et,v,mr) when mr == rf => block:
+          print("repl-loop unexpectedly exited: " + torepr(v))
+          repl-down(v)
+        end
+      | _ #|as e|# => print("repl-monitor: unexpected message: " + torepr(e))
+    end
+  end
+  repl-monitor-loop()
+end
+
+fun repl-loop():
+  receive as e:
+    | run-src(ret,src) => block:
+        v = catch-as-either(run-script(src))
+        cases v:
+          | left(e) => print("Error: " + torepr(e))
+          | right(v) when v == nothing => nothing
+          | right(v) => print(tostring(v))
+        end
+        #print("repl loop sending")
+        send(ret, run-src-ok(self))
+        #print("repl loop sent")
+        repl-loop()
+      end
+    | exit(ret) => block:
+        send(ret, exiting(self))
+        # exit
+      end
+    | _ #|as e|# => block:
+        print("repl-loop: unexpected message: " + torepr(e))
+        repl-loop()
+      end
+  end
+end
+
