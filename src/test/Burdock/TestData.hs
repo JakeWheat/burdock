@@ -109,8 +109,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | link(f, r) => \"link\"\n\
       \end"
      ,Cases (Iden "a") (Just (TName ["List"]))
-        [(CaseBinding ["empty"] [], Nothing, Text "empty")
-        ,(CaseBinding ["link"] [nm "f", nm "r"], Nothing, Text "link")]
+        [(NameBinding "empty", Nothing, Text "empty")
+        ,(VariantBinding ["link"] [nm "f", nm "r"], Nothing, Text "link")]
         Nothing)
      
     ,("cases a:\n\
@@ -118,7 +118,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | else => \"else\"\n\
       \end"
      ,Cases (Iden "a") Nothing
-        [(CaseBinding ["empty"] [], Nothing, Text "empty")]
+        [(NameBinding "empty", Nothing, Text "empty")]
         (Just $ Text "else"))
    
     ,("cases a :: z.List:\n\
@@ -127,8 +127,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | else => \"else\"\n\
       \end"
      ,Cases (Iden "a") (Just $ TName ["z", "List"])
-        [(CaseBinding ["z","empty"] [], Nothing, Text "empty")
-        ,(CaseBinding ["z","link"] [nm "f", nm "r"], Nothing, Iden "x")]
+        [(VariantBinding ["z","empty"] [], Nothing, Text "empty")
+        ,(VariantBinding ["z","link"] [nm "f", nm "r"], Nothing, Iden "x")]
         (Just $ Text "else"))
 
      ,("cases a:\n\
@@ -136,8 +136,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | link(f, r) when d => \"link\"\n\
       \end"
      ,Cases (Iden "a") Nothing
-        [(CaseBinding ["empty"] [], Just (Iden "c"), Text "empty")
-        ,(CaseBinding ["link"] [nm "f", nm "r"], Just (Iden "d"), Text "link")]
+        [(NameBinding "empty", Just (Iden "c"), Text "empty")
+        ,(VariantBinding ["link"] [nm "f", nm "r"], Just (Iden "d"), Text "link")]
         Nothing)
 
     
@@ -238,8 +238,8 @@ end|]
             [TypedBinding (NameBinding "x") (TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"]))
       $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
-        [(CaseBinding ["empty"] [], Nothing, Iden "true")
-        ,(CaseBinding ["link"] [nm "_", nm "_"], Nothing, Iden "false")]
+        [(NameBinding "empty", Nothing, Iden "true")
+        ,(VariantBinding ["link"] [nm "_", nm "_"], Nothing, Iden "false")]
         Nothing)
 
      ,("{(y) : x + y}"
@@ -272,22 +272,22 @@ end|]
 receive:
   | a => b
 end
-     |], Receive Nothing [(CaseBinding ["a"] [], Nothing, Iden "b")] Nothing)
+     |], Receive Nothing [(NameBinding "a", Nothing, Iden "b")] Nothing)
 
 
     ,([R.r|
 receive as c:
   | a => b
 end
-     |], Receive (Just "c") [(CaseBinding ["a"] [], Nothing, Iden "b")] Nothing)
+     |], Receive (Just "c") [(NameBinding "a", Nothing, Iden "b")] Nothing)
 
     ,([R.r|
 receive:
   | pat1(a) => a
   | pat2(b) => b
 end
-     |], Receive Nothing [(CaseBinding ["pat1"] [nm "a"], Nothing, Iden "a")
-                 ,(CaseBinding ["pat2"] [nm "b"], Nothing, Iden "b")] Nothing)
+     |], Receive Nothing [(VariantBinding ["pat1"] [nm "a"], Nothing, Iden "a")
+                 ,(VariantBinding  ["pat2"] [nm "b"], Nothing, Iden "b")] Nothing)
     ,([R.r|
 receive:
   | after infinity => c
@@ -303,7 +303,7 @@ receive:
   | pat1(a) => a
   | after f(10) => c
 end
-     |], Receive Nothing [(CaseBinding ["pat1"] [nm "a"], Nothing, Iden "a")]
+     |], Receive Nothing [(VariantBinding ["pat1"] [nm "a"], Nothing, Iden "a")]
                  (Just (App Nothing (Iden "f") [Num 10], Iden "c")))
 
     ,([R.r|
@@ -469,8 +469,8 @@ end|]
             [TypedBinding (NameBinding "x") (TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"])) Nothing
       (Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
-        [(CaseBinding ["empty"] [], Nothing, Iden "true")
-        ,(CaseBinding ["link"] [nm "_", nm "_"], Nothing, Iden "false")]
+        [(NameBinding "empty", Nothing, Iden "true")
+        ,(VariantBinding ["link"] [nm "_", nm "_"], Nothing, Iden "false")]
         Nothing) Nothing)
 
     

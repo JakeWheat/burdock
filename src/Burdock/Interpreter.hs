@@ -1834,53 +1834,40 @@ interp (Cases e ty cs els) = do
             ty'' <- shallowizeType <$> typeOfTypeSyntax ty'
             void $ assertTypeCompat v ty''
             -- todo: looks up the patterns twice, optimise this?
-            forM_ cs $ \(CaseBinding ss _, _, _) -> when (ss /= ["_"]) $ do
-                let s = prefixLast "_casepattern-" ss
-                caseName <- interp $ makeDotPathExpr s
-                case caseName of
-                    FFIValue fgt | Just (ptg::TypeInfo, _::String) <- fromDynamic fgt ->
-                        assertPatternTagMatchesCasesTag ty'' ptg
-                    _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
+            mapM_ (\(b,_,_) -> bindingMatchesType ty'' b) cs
         Nothing -> pure ()
     matchb v cs
   where
-    matchb v ((p,tst,ce) : cs') = do
-        x <- matches p tst v ce
-        case x of
-            Just f -> f
-            Nothing -> matchb v cs'
+    bindingMatchesType a _ | a == bootstrapType "Any" = pure ()
+    bindingMatchesType _ (ShadowBinding {}) = pure ()
+    bindingMatchesType t (TypedBinding _ a) = do
+        ta <- typeOfTypeSyntax a
+        when (t /= ta) $ _errorWithCallStack $ "type not compatible: type of pattern not the same as the type of the case: " ++ show (t,ta)
+    bindingMatchesType t (VariantBinding nm _) = checkVariantType t nm
+    bindingMatchesType t (NameBinding nm) = checkVariantType t [nm]
+    checkVariantType t ss = do
+        let s = prefixLast "_casepattern-" ss
+        caseName <- interp $ makeDotPathExpr s
+        case caseName of
+            FFIValue fgt | Just (ptg::TypeInfo, _::String) <- fromDynamic fgt ->
+                assertPatternTagMatchesCasesTag t ptg
+            _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
     matchb v [] = case els of
                       Just ee -> interp ee
                       Nothing -> _errorWithCallStack $ "no cases match and no else " ++ show v ++ " " ++ show cs
-    matches (CaseBinding s nms) tst v ce = doMatch s nms tst v ce
-    -- wildcard match
-    doMatch ["_"] [] tst _x ce = runBranch tst [] [] ce
-    doMatch s' nms tst (VariantV tg vnm fs) ce = do
-        let s = prefixLast "_casepattern-" s'
-        caseName <- interp $ makeDotPathExpr s
-        case caseName of
-            FFIValue fgt | Just (ptg, pnm) <- fromDynamic fgt ->
-                if ptg == tg && pnm == vnm
-                then if length nms == length fs
-                     then runBranch tst nms fs ce
-                     else _errorWithCallStack $ "wrong number of args to pattern, expected " ++ show (map fst fs) ++ ", got " ++ show nms
-                else pure Nothing
-            _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
-    doMatch _ _ _ _ _ = pure Nothing
-    bindPatArg (NameBinding n) (_,v) = pure (n,v)
-    bindPatArg (TypedBinding (NameBinding n) ta) (_,v) = do
-        void $ assertTypeAnnCompat v ta
-        pure (n,v)
-    runBranch tst nms fs ce = do
-        letvs <- zipWithM bindPatArg nms fs
-        let letvs' = filter ((/="_") . fst) letvs
-        tstv <- case tst of
-            Nothing -> pure $ BoolV True
-            Just tste -> localBindings (extendBindings letvs') $ interp tste
-        case tstv of
-            BoolV True -> pure $ Just $ localBindings (extendBindings letvs') $ interp ce
-            BoolV False -> pure Nothing
-            _ -> _errorWithCallStack $ "non bool value in when clause: " ++ show tstv
+    matchb v ((b,tst,ce) : cs') = do
+        r <- matchBindingMaybe True b v
+        case r of
+            Nothing -> matchb v cs'
+            Just bbs -> do
+                let rbbs = localBindings (extendBindings bbs)
+                tstv <- case tst of
+                    Nothing -> pure $ BoolV True
+                    Just tste -> rbbs $ interp tste
+                case tstv of
+                    BoolV True -> rbbs $ interp ce
+                    BoolV False -> matchb v cs'
+                    _ -> _errorWithCallStack $ "non bool value in when clause: " ++ show tstv
 
 interp (TupleSel es) = do
     vs <- mapM interp es
@@ -2865,6 +2852,7 @@ doLetRec bs =
     makeVar (TypedBinding b _) = makeVar b
     makeVar (ShadowBinding nm) = makeVar1 (Shadow, nm)
     makeVar (NameBinding nm) = makeVar1 (NoShadow, nm)
+    makeVar x = error $ "unsupported binding in recursive let: " ++ show x
     makeVar1 (sh, nm) =
         VarDecl (SimpleBinding sh nm Nothing) $ Lam (FunHeader [] [] Nothing)
         $ App appSourcePos (Iden "raise")
@@ -2905,6 +2893,46 @@ matchBindingOrError (TypedBinding b ty) v = do
     void $ assertTypeAnnCompat v ty
     matchBindingOrError b v
 
+-- bool is if this is a variant context, so treat a namebinding
+-- as a unqualified zero arg variant match
+matchBindingMaybe :: Bool -> Binding -> Value -> Interpreter (Maybe [(String,Value)])
+
+-- todo: will turn it to wildcard in the parser
+matchBindingMaybe _ (NameBinding "_") _ = pure $ Just []
+
+matchBindingMaybe _ (ShadowBinding nm) v = do
+    pure $ Just [(nm,v)]
+
+matchBindingMaybe True (NameBinding nm) v = matchBindingMaybe False (VariantBinding [nm] []) v
+matchBindingMaybe False (NameBinding nm) v = do
+    pure $ Just [(nm,v)]
+
+matchBindingMaybe _ (VariantBinding cnm bs) (VariantV tg vnm fs) = do
+    let s = prefixLast "_casepattern-" cnm
+    caseName <- interp $ makeDotPathExpr s
+    case caseName of
+            FFIValue fgt | Just (ptg, pnm) <- fromDynamic fgt ->
+                if ptg == tg && pnm == vnm
+                then if length bs == length fs
+                     then do
+                         newbs <- zipWithM (matchBindingMaybe False) bs $ map snd fs
+                         case sequence newbs of
+                             Nothing -> pure Nothing
+                             Just nbs -> pure $ Just $ concat nbs
+                     else _errorWithCallStack $ "wrong number of args to pattern, expected " ++ show (map fst fs) ++ ", got " ++ show bs
+                else pure Nothing
+            _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
+
+matchBindingMaybe _ (VariantBinding {}) _ = pure Nothing
+
+matchBindingMaybe c (TypedBinding b ty) v = do
+    r <- matchBindingMaybe c b v
+    case r of
+        Just {} -> do
+            void $ assertTypeAnnCompat v ty
+            pure r
+        Nothing -> pure Nothing
+    
 
 simpleBindingToBinding :: SimpleBinding -> Binding
 simpleBindingToBinding = \case

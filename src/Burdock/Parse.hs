@@ -375,14 +375,25 @@ simpleBinding allowImplicitTypeTuple =
     <*> identifier
     <*> optional (symbol_ "::" *> typ allowImplicitTypeTuple)
 
+-- todo: needs some work
 binding :: Bool -> Parser Binding
 binding allowImplicitTypeTuple = do
-    sh <- optional (() <$ keyword_ "shadow")
-    nm <- identifier
+    b1 <- shadowBinding <|> maybeVariantBinding
     ty <- optional (symbol_ "::" *> typ allowImplicitTypeTuple)
-    let w1 = maybe (NameBinding nm) (const $ ShadowBinding nm) sh
-        w2 = maybe w1 (\x -> TypedBinding w1 x) ty
-    pure w2
+    pure $ maybe b1 (\x -> TypedBinding b1 x) ty
+  where
+    shadowBinding = ShadowBinding <$> (keyword_ "shadow" *> identifier)
+    maybeVariantBinding = do
+        n <- nm
+        as <- option [] varArgs
+        pure $ case (n,as) of
+            ([n'],[]) -> NameBinding n'
+            _ -> VariantBinding n as
+    nm = do
+        i <- identifier
+        sfs <- many (symbol_ "." *> identifier)
+        pure (i:sfs)
+    varArgs = parens (commaSep (binding False))
 
 expressionLetRec :: Parser Expr
 expressionLetRec = keyword_ "letrec" *> letBody LetRec
@@ -466,24 +477,16 @@ cases = do
                     Right el -> endCase t ty cs (Just el)
                     Left c -> nextCase t ty (c:cs)
                ,endCase t ty cs Nothing]
-    casePart :: Parser (Either (CaseBinding,Maybe Expr, Expr) Expr)
+    casePart :: Parser (Either (Binding,Maybe Expr, Expr) Expr)
     casePart = do
         symbol_ "|"
         choice
             [Right <$> (keyword_ "else" *> symbol_ "=>" *> expr)
-            ,Left <$> ((,,) <$> (caseBinding <?> "case pattern")
+            ,Left <$> ((,,) <$> (binding False <?> "case pattern")
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
                        <*> (symbol_ "=>" *> expr))]
     endCase t ty cs el = keyword_ "end" *> pure (Cases t ty (reverse cs) el)
 
-caseBinding :: Parser CaseBinding
-caseBinding = CaseBinding <$> nm <*> (option [] caseArgs)
-  where
-    nm = do
-        i <- identifier
-        sfs <- many (symbol_ "." *> identifier)
-        pure (i:sfs)
-    caseArgs = parens (commaSep (binding False))
 
 typeLet :: Parser Expr
 typeLet = TypeLet
@@ -522,12 +525,12 @@ receive = do
                     Right el -> endCase al cs (Just el)
                     Left c -> nextCase al (c:cs)
                ,endCase al cs Nothing]
-    casePart :: Parser (Either (CaseBinding,Maybe Expr, Expr) (Expr,Expr))
+    casePart :: Parser (Either (Binding,Maybe Expr, Expr) (Expr,Expr))
     casePart = do
         symbol_ "|"
         choice
             [Right <$> ((,) <$> after <*> (symbol_ "=>" *> expr))
-            ,Left <$> ((,,) <$> (caseBinding <?> "case pattern")
+            ,Left <$> ((,,) <$> (binding False <?> "case pattern")
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
                        <*> (symbol_ "=>" *> expr))]
     endCase al cs aft = keyword_ "end" *> pure (Receive al (reverse cs) aft)

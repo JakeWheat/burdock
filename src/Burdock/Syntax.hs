@@ -76,7 +76,7 @@ data Expr =
     | LetRec [(Binding,Expr)] Expr
     | Block [Stmt]
     | DotExpr Expr String
-    | Cases Expr (Maybe Ann) [(CaseBinding, Maybe Expr, Expr)] (Maybe Expr)
+    | Cases Expr (Maybe Ann) [(Binding, Maybe Expr, Expr)] (Maybe Expr)
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TableSel [String] [RowSel]
@@ -86,17 +86,15 @@ data Expr =
     | TypeLet [TypeDecl] Expr
     | Template SourcePosition
     | UnboxRef Expr String
-    | Receive (Maybe String) [(CaseBinding, Maybe Expr, Expr)] (Maybe (Expr, Expr))
+    | Receive (Maybe String) [(Binding, Maybe Expr, Expr)] (Maybe (Expr, Expr))
     deriving (Eq,Show,Data)
 
 data TypeDecl = TypeDecl String [String] Ann
               deriving (Eq,Show,Data)
 
-data CaseBinding = CaseBinding [String] [Binding]
-                 deriving (Eq,Show,Data) 
-
 data Binding
     = NameBinding String
+    | VariantBinding [String] [Binding]
     | TypedBinding Binding Ann
     | ShadowBinding String
     deriving (Eq,Show,Data)
