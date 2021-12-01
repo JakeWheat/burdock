@@ -20,6 +20,12 @@ end
 #  y is 2
 #end
 
+check:
+  let {x; y} = {1; 2}: {y;x} end
+    is {2;1}
+end
+
+
 # todo: restore when tuple binding restored
 #check:
 #  {x; y} as z = {1; 2}

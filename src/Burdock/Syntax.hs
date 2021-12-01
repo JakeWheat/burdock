@@ -99,6 +99,7 @@ data Binding
     | ShadowBinding String
     | WildcardBinding
     | AsBinding Binding String
+    | TupleBinding [Binding]
     deriving (Eq,Show,Data)
 
 data SimpleBinding = SimpleBinding Shadow String (Maybe Ann)

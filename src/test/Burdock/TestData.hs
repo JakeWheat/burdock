@@ -60,6 +60,11 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
 
     ,("let _ as b = 3: b end"
      ,Let [(AsBinding WildcardBinding "b", Num 3)] $ Iden "b")
+
+    ,("let {a;b} = {1;2}: a end"
+     ,Let [(TupleBinding [NameBinding "a", NameBinding "b"]
+           ,(TupleSel [Num 1, Num 2]))] $ Iden "a")
+
     
     ,("letrec a = 5: a end"
      ,LetRec [(nm "a",Num 5)] (Iden "a"))

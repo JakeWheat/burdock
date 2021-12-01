@@ -380,7 +380,7 @@ limitedBinding :: Bool -> Parser Binding
 limitedBinding allowImplicitTypeTuple =
     bindingSuffixes allowImplicitTypeTuple =<< bterm
   where
-    bterm = shadowBinding <|> nameBinding
+    bterm = shadowBinding <|> nameBinding <|> tupleBinding
     nameBinding = do
         x <- identifier
         if x == "_"
@@ -403,11 +403,14 @@ bindingSuffixes allowImplicitTypeTuple e = option e $ do
 shadowBinding :: Parser Binding
 shadowBinding = ShadowBinding <$> (keyword_ "shadow" *> identifier)
 
+tupleBinding :: Parser Binding
+tupleBinding = TupleBinding <$> (symbol "{" *> xSep1 ';' (binding True) <* symbol "}")
+
 binding :: Bool -> Parser Binding
 binding allowImplicitTypeTuple =
     bindingSuffixes allowImplicitTypeTuple =<< bterm
   where
-    bterm = shadowBinding <|> nameOrVariantBinding
+    bterm = shadowBinding <|> nameOrVariantBinding <|> tupleBinding
     nameOrVariantBinding = do
         n <- variantName
         as <- option [] variantArgs

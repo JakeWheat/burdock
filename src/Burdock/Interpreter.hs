@@ -2937,6 +2937,16 @@ matchBindingMaybe c (AsBinding b nm) v = do
         Nothing -> Nothing
         Just cs -> Just ((nm,v) : cs)
 
+matchBindingMaybe c (TupleBinding bs) (VariantV tg "tuple" fs)
+    | tg == bootstrapType "Tuple" = do
+          when (length bs /= length fs) $
+              error $ "mismatched tuple sizes: " ++ show bs ++ " " ++ show fs
+          xs <- zipWithM (matchBindingMaybe c) bs $ map snd fs
+          pure (concat <$> sequence xs)
+          
+matchBindingMaybe c (TupleBinding {}) _ = pure Nothing
+
+          
 simpleBindingToBinding :: SimpleBinding -> Binding
 simpleBindingToBinding = \case
     SimpleBinding Shadow nm ty -> wrapTy ty (ShadowBinding nm)

@@ -161,6 +161,10 @@ binding (VariantBinding nms bs) =
 binding (TypedBinding b t) = binding b <+> pretty "::" <+> typ t
 binding (ShadowBinding s) = pretty "shadow" <+> pretty s
 binding (AsBinding b as) = binding b <+> pretty "as" <+> pretty as
+binding (TupleBinding bs) =
+    pretty "{"
+    <> nest 2 (xSep ";" $ map binding bs)
+    <> pretty "}"
 
 simpleBinding :: SimpleBinding -> Doc a
 simpleBinding (SimpleBinding s nm ty) =
