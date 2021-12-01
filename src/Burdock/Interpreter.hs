@@ -2892,6 +2892,13 @@ matchBindingMaybe :: Bool -> Binding -> Value -> Interpreter (Maybe [(String,Val
 -- todo: will turn it to wildcard in the parser
 matchBindingMaybe _ (NameBinding "_") _ = pure $ Just []
 
+
+-- temp until boolean becomes an actual agdt
+matchBindingMaybe _ (NameBinding "true") (BoolV True) = pure $ Just []
+matchBindingMaybe _ (NameBinding "true") _ = pure Nothing
+matchBindingMaybe _ (NameBinding "false") (BoolV False) = pure $ Just []
+matchBindingMaybe _ (NameBinding "false") _ = pure Nothing
+
 matchBindingMaybe _ (ShadowBinding nm) v = do
     pure $ Just [(nm,v)]
 

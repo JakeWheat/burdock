@@ -27,3 +27,19 @@ check "short circuiting":
   true or raise("broke") is true
   false and raise("broke") is false
 end
+
+check "cases":
+
+  a = true
+  cases a:
+    | true => 1
+    | false => 0
+  end is 1
+
+  b = false
+  cases b:
+    | true => 1
+    | false => 0
+  end is 0
+
+end
