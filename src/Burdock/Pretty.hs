@@ -154,6 +154,7 @@ bindExpr n e =
 
 binding :: Binding -> Doc a
 binding (NameBinding s) = pretty s
+binding WildcardBinding = pretty "_"
 binding (VariantBinding nms []) = xSep "." $ map pretty nms
 binding (VariantBinding nms bs) =
     xSep "." (map pretty nms) <> parens (commaSep $ map binding bs)

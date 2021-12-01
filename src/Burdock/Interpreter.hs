@@ -2773,12 +2773,12 @@ modulePath nm = ["_system", "modules", nm]
 
 
 letValue :: String -> Value -> Interpreter ()
-letValue "_" _ = pure ()
+--letValue "_" _ = pure ()
 letValue nm v = modifyBindings (extendBindings [(nm,v)])
 
 -- used for prelude statement support
 letIncludedValue :: String -> Value -> Interpreter ()
-letIncludedValue "_" _ = pure ()
+--letIncludedValue "_" _ = pure ()
 letIncludedValue nm v = modifyIncludedBindings (extendBindings [(nm,v)])
 
 
@@ -2890,7 +2890,7 @@ matchBindingOrError b v = do
 matchBindingMaybe :: Bool -> Binding -> Value -> Interpreter (Maybe [(String,Value)])
 
 -- todo: will turn it to wildcard in the parser
-matchBindingMaybe _ (NameBinding "_") _ = pure $ Just []
+matchBindingMaybe _ (WildcardBinding) _ = pure $ Just []
 
 
 -- temp until boolean becomes an actual agdt

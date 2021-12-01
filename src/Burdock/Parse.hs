@@ -387,6 +387,7 @@ binding allowImplicitTypeTuple = do
         n <- nm
         as <- option [] varArgs
         pure $ case (n,as) of
+            (["_"],[]) -> WildcardBinding
             ([n'],[]) -> NameBinding n'
             _ -> VariantBinding n as
     nm = do

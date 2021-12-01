@@ -97,6 +97,7 @@ data Binding
     | VariantBinding [String] [Binding]
     | TypedBinding Binding Ann
     | ShadowBinding String
+    | WildcardBinding
     deriving (Eq,Show,Data)
 
 data SimpleBinding = SimpleBinding Shadow String (Maybe Ann)

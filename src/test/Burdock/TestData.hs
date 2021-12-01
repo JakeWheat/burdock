@@ -239,7 +239,7 @@ end|]
             (Just $ TName ["Boolean"]))
       $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(NameBinding "empty", Nothing, Iden "true")
-        ,(VariantBinding ["link"] [nm "_", nm "_"], Nothing, Iden "false")]
+        ,(VariantBinding ["link"] [WildcardBinding, WildcardBinding], Nothing, Iden "false")]
         Nothing)
 
      ,("{(y) : x + y}"
@@ -470,7 +470,7 @@ end|]
             (Just $ TName ["Boolean"])) Nothing
       (Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(NameBinding "empty", Nothing, Iden "true")
-        ,(VariantBinding ["link"] [nm "_", nm "_"], Nothing, Iden "false")]
+        ,(VariantBinding ["link"] [WildcardBinding, WildcardBinding], Nothing, Iden "false")]
         Nothing) Nothing)
 
     
