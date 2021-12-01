@@ -375,28 +375,51 @@ simpleBinding allowImplicitTypeTuple =
     <*> identifier
     <*> optional (symbol_ "::" *> typ allowImplicitTypeTuple)
 
--- todo: needs some work
-binding :: Bool -> Parser Binding
-binding allowImplicitTypeTuple = do
-    b1 <- shadowBinding <|> maybeVariantBinding
-    as <- optional (keyword_ "as" *> identifier)
-    ty <- optional (symbol_ "::" *> typ allowImplicitTypeTuple)
-    let b2 = maybe b1 (\x -> AsBinding b1 x) as
-    pure $ maybe b2 (\x -> TypedBinding b2 x) ty
+-- doesn't parse number, string, variant bindings
+limitedBinding :: Bool -> Parser Binding
+limitedBinding allowImplicitTypeTuple =
+    bindingSuffixes allowImplicitTypeTuple =<< bterm
   where
-    shadowBinding = ShadowBinding <$> (keyword_ "shadow" *> identifier)
-    maybeVariantBinding = do
-        n <- nm
-        as <- option [] varArgs
+    bterm = shadowBinding <|> nameBinding
+    nameBinding = do
+        x <- identifier
+        if x == "_"
+           then pure WildcardBinding
+           else pure $ NameBinding x
+
+bindingSuffixes :: Bool
+                -> Binding
+                -> Parser Binding
+bindingSuffixes allowImplicitTypeTuple e = option e $ do
+        s <- choice [asSuffix
+                    ,typedSuffix
+                    ]
+        bindingSuffixes allowImplicitTypeTuple $ s e
+  where
+    asSuffix = flip AsBinding <$> (keyword "as" *> identifier)
+    typedSuffix =
+        flip TypedBinding <$> (symbol_ "::" *> typ allowImplicitTypeTuple)
+
+shadowBinding :: Parser Binding
+shadowBinding = ShadowBinding <$> (keyword_ "shadow" *> identifier)
+
+binding :: Bool -> Parser Binding
+binding allowImplicitTypeTuple =
+    bindingSuffixes allowImplicitTypeTuple =<< bterm
+  where
+    bterm = shadowBinding <|> nameOrVariantBinding
+    nameOrVariantBinding = do
+        n <- variantName
+        as <- option [] variantArgs
         pure $ case (n,as) of
             (["_"],[]) -> WildcardBinding
             ([n'],[]) -> NameBinding n'
             _ -> VariantBinding n as
-    nm = do
+    variantName = do
         i <- identifier
         sfs <- many (symbol_ "." *> identifier)
         pure (i:sfs)
-    varArgs = parens (commaSep (binding False))
+    variantArgs = parens (commaSep (binding False))
 
 expressionLetRec :: Parser Expr
 expressionLetRec = keyword_ "letrec" *> letBody LetRec
@@ -409,7 +432,7 @@ letBody ctor = ctor <$> commaSep1 bindExpr
                     <*> (symbol_ ":" *> expr <* keyword_ "end")
 
 bindExpr :: Parser (Binding,Expr)
-bindExpr = (,) <$> binding True <*> (symbol_ "=" *> expr)
+bindExpr = (,) <$> limitedBinding True <*> (symbol_ "=" *> expr)
 
 simpleBindExpr :: Parser (SimpleBinding,Expr)
 simpleBindExpr = (,) <$> simpleBinding True <*> (symbol_ "=" *> expr)
