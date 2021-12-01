@@ -1,21 +1,18 @@
 
 #|
-   run a repl somewhat robustly, with a dedicated monitor thread
-   this is designed to be used from the handle api which starts
-   an new thread on each api call
-
-   todo: general demo of how to run something in a thread like this
-   make the repl remotable -> the client side will print the results
-   instead of the repl-loop
-   make it more robust: start the repl-loop with the address of the
-     repl-monitor, then it can tell the repl monitor when there
-     are non client-synchronous problems
-     can also add ability for client to register an address for the
-     same
-   see if there's something in erlang to copy
-   
+  way overengineered code to run a "repl engine" in a thread
+  despite being overengineered, it still has issues
+  todo: switch to an evaluator object which is similar to a thread
+    change run-script to not use app to evaluate, so it doesn't
+      create a local bindings, but modifies the top level bindings
+    adjust all the weird hacky stuff added to the thread local state
+      to support the current not very good approach
+    then can go back to a local thing in the repl in burdockexe
+    can add a demo of one running in a another thread
+    -> this is a building block of job control for the repl
+       and of an attach feature, where you can start a repl
+       in a running burdock process and interact with the process
 |#
-
 provide:
   create-repl,
   repl-execute,
@@ -25,8 +22,7 @@ end
 include concurrency
 include either
 
-import _internals as _internals
-include from _internals:
+import from _internals:
   run-script
 end
 
@@ -53,15 +49,12 @@ fun create-repl():
 end
 
 fun repl-execute(handle, src):
-  #print("execute")
   send(handle, run-src(self,src))
-  #print("execute receiving")
   receive:
     | run-src-ok(r) when r == handle => nothing
     | error(r,e) when r == handle => raise(e)
     | repl-down(r,e) when r == handle => raise(e)
   end
-  #print("execute done")
 end
 
 fun close-repl(handle):
@@ -74,18 +67,6 @@ end
 #######################################
 # internals
 
-#|
-   split the repl monitor out, this is a thread which does
-   very little except a small amount of co-ordination, and
-   can monitor the repl thread for exit
-   this is useful only because the embedded handle api doesn't
-   offer a persistent thread to use, this is the way to implement
-   that
-   the repl thread itself runs the user code which isn't constrained
-   and could do anything, but is always monitored by the monitor
-   thread
-|#
-
 fun repl-monitor():
   sm = spawn-monitor(repl-loop)
   # todo: tuple binding
@@ -96,14 +77,12 @@ fun repl-monitor():
     receive as e:
       | exit(ret) => block:
           send(ret,exiting(self))
-          # exit
         end
       | run-src(r,_) => block:
           send(r,repl-down(self,v))
           repl-down(v)
         end
       | _ #|as e|# => block:
-          #print("repl-monitor: unexpected message: " + torepr(e))
           repl-down(v)
         end
     end
@@ -113,10 +92,8 @@ fun repl-monitor():
     receive as e:
       | run-src(ret,src) => block:
           send(repl,run-src(self,src))
-          #print("monitor receiving")
           receive as e:
             | run-src-ok(r) when r == repl => block:
-                #print("monitor received")
                 send(ret, run-src-ok(self))
                 repl-monitor-loop()
               end
@@ -125,7 +102,6 @@ fun repl-monitor():
                 repl-monitor-loop()
               end
             | monitor-down(_,et,v,mr) when mr == rf => block:
-                #print("repl-loop unexpectedly exited: " + torepr(v))
                 send(ret,repl-down(self, v))
                 repl-down(v)
               end
@@ -136,8 +112,8 @@ fun repl-monitor():
           receive:
             | exiting(r) when r == repl => block:
                 send(ret,exiting(self))
-                #exit
-                # todo: wait for monitor down signal instead of an exiting signal?
+                # todo: wait for monitor down signal instead of using
+                # an exiting message
               end
           end
         end
@@ -160,14 +136,11 @@ fun repl-loop():
           | right(v) when v == nothing => nothing
           | right(v) => print(tostring(v))
         end
-        #print("repl loop sending")
         send(ret, run-src-ok(self))
-        #print("repl loop sent")
         repl-loop()
       end
     | exit(ret) => block:
         send(ret, exiting(self))
-        # exit
       end
     | _ #|as e|# => block:
         print("repl-loop: unexpected message: " + torepr(e))

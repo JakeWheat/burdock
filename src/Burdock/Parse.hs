@@ -719,9 +719,13 @@ importSource = do
             ,pure $ ImportName a]
 
 importStmt :: Parser Stmt
-importStmt = keyword_ "import" *> (Import <$> importSource
-                      <*> (keyword_ "as" *> identifier))
-
+importStmt = keyword_ "import" *> (importFrom <|> importAs)
+  where
+    importFrom = ImportFrom
+        <$> (keyword_ "from" *> importSource <* symbol_ ":")
+        <*> (commaSep provideItem <* keyword_ "end")
+    importAs = (Import <$> importSource
+                <*> (keyword_ "as" *> identifier))
 
 whenStmt :: Parser Stmt
 whenStmt = When

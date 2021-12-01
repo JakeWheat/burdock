@@ -267,7 +267,10 @@ stmt (IncludeFrom a pis) =
          [pretty "include" <+> pretty "from" <+> pretty a <> pretty ":"
          ,nest 2 $ commaSep $ map provideItem pis]
 stmt (Import is a) = pretty "import" <+> importSource is <+> pretty "as" <+> pretty a
-
+stmt (ImportFrom is pis) =
+    prettyBlocklike vsep
+         [pretty "import" <+> pretty "from" <+> importSource is <> pretty ":"
+         ,nest 2 $ commaSep $ map provideItem pis]
 
 funHeader :: FunHeader -> Doc a
 funHeader (FunHeader ts as rt) =

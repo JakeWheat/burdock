@@ -36,6 +36,7 @@ data Stmt =
     | Import ImportSource String
     | Include ImportSource
     | IncludeFrom String [ProvideItem]
+    | ImportFrom ImportSource [ProvideItem]
     deriving (Eq,Show,Data)
 
 -- ty params args return ann

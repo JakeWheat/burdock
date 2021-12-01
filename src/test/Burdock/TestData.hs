@@ -523,7 +523,6 @@ end|]
     ,("import string-dict as X"
      ,Import (ImportName "string-dict") "X")
 
-
     ,("include from X: * end"
      ,IncludeFrom "X" [ProvideAll])
 
@@ -535,6 +534,9 @@ end|]
 
     ,("include from X: a as b end"
      ,IncludeFrom "X" [ProvideAlias "a" "b"])
+
+    ,("import from string-dict: a as b end"
+     ,ImportFrom (ImportName "string-dict") [ProvideAlias "a" "b"])
 
     ]
   where

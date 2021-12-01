@@ -1498,7 +1498,7 @@ bRunScript [TextV src] = do
     Script ast <- either error id <$> useSource Nothing "run-script" src parseScript
     x <- interpStatements ast
     -- todo: need to only get the new bindings created in the interpstatements
-    -- just called, 
+    -- just called
     stuff <- askLocallyCreatedBindings
     modifyReplCreatedBindings (extendBindings stuff)
     pure x
@@ -2458,6 +2458,25 @@ interpStatement (Include is) = do
     ls <- aliasModule modName [ProvideAll]
     mapM_ (uncurry letIncludedValue) ls
     pure nothing
+
+{-
+
+import from file(x):
+  y,
+  z as t
+end
+
+-> short hand to import the import source with a temp alias,
+then includefrom the items written
+
+-}
+
+interpStatement (ImportFrom is pis) =
+    -- not quite right, it introduces the is name which
+    -- will stick around
+    let al = show is
+    in interpStatements [Import is al, IncludeFrom al pis]
+
 
 {-
 provide:
