@@ -1867,8 +1867,8 @@ interp (Cases e ty cs els) = do
                 else pure Nothing
             _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
     doMatch _ _ _ _ _ = pure Nothing
-    bindPatArg (NameBinding (SimpleBinding _ n Nothing)) (_,v) = pure (n,v)
-    bindPatArg (NameBinding (SimpleBinding _ n (Just ta))) (_,v) = do
+    bindPatArg (NameBinding n) (_,v) = pure (n,v)
+    bindPatArg (TypedBinding (NameBinding n) ta) (_,v) = do
         void $ assertTypeAnnCompat v ta
         pure (n,v)
     runBranch tst nms fs ce = do
@@ -1944,7 +1944,7 @@ interp (Receive ma cs aft) = do
         some = internalsRef "some"
         none = internalsRef "none"
         cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, App Nothing some [lam0 e])
-        prdf = Lam (FunHeader [] [NameBinding $ SimpleBinding Shadow rv Nothing] Nothing)
+        prdf = Lam (FunHeader [] [NameBinding rv] Nothing)
                $ Cases (Iden rv) Nothing cs' (Just none)
     prdfv <- interp prdf
     let bindInVal iv = case ma of
@@ -2026,7 +2026,7 @@ makeCurriedApp sp f es =
         (newf,nms2) = case f of
                         Iden "_" -> (Iden "_p0", ("_p0":nms))
                         _ -> (f, nms)
-        bs = flip map nms2 $ \n -> NameBinding $ SimpleBinding NoShadow n Nothing
+        bs = flip map nms2 $ \n -> NameBinding n
     in Lam (FunHeader [] bs Nothing) (App sp newf newEs)
   where
     makeNewEs _ [] = []
@@ -2151,17 +2151,20 @@ currently a contract must immediately precede its let/var/rec/fun decl
 desugarContracts :: [Stmt] -> [Stmt]
 desugarContracts
     (Contract cnm ta : x : sts)
-    | Just (ctor, NameBinding (SimpleBinding sh bnm lta), e) <- letorrec x
+    | Just (ctor, b@(NameBinding bnm), e) <- letorrec x
     , cnm == bnm
-    = case lta of
-          Just _ -> error $ "contract for binding that already has type annotation: " ++ cnm
-          Nothing -> ctor (NameBinding (SimpleBinding sh bnm (Just ta))) e : desugarContracts sts
+    = ctor (TypedBinding b ta) e : desugarContracts sts
   where
     letorrec (LetDecl b e) = Just (LetDecl,b,e)
     letorrec (RecDecl b e) = Just (RecDecl,b,e)
-    letorrec (VarDecl b e) = Just (\(NameBinding z) -> VarDecl z,NameBinding b,e)
     letorrec _ = Nothing
 
+desugarContracts
+    (Contract cnm ta : VarDecl (SimpleBinding sh bnm lta) e : sts)
+    | cnm == bnm
+    = case lta of
+          Just _ -> error $ "contract for binding that already has type annotation: " ++ cnm
+          Nothing -> VarDecl (SimpleBinding sh bnm (Just ta)) e : desugarContracts sts
 
 desugarContracts
     (Contract cnm ta : s@(FunDecl (SimpleBinding _ fnm _) _ _ _ _) : sts)
@@ -2182,9 +2185,9 @@ desugarContracts
     else FunDecl nb (FunHeader ps bindArgs (Just trt)) ds e chk : desugarContracts sts
   where
     bindArgs | length as /= length tas = error $ "type not compatible: different number of args in contract and fundecl" ++ show (cd,fd)
-             | otherwise = zipWith (\ta (NameBinding (SimpleBinding sh nm _)) ->
-                                        NameBinding (SimpleBinding sh nm (Just ta))) tas as
-    getTa (NameBinding (SimpleBinding _ _ bta)) = bta
+             | otherwise = zipWith (\ta b -> TypedBinding b ta) tas as
+    getTa (TypedBinding _ ta) = Just $ ta
+    getTa _ = Nothing
 
 desugarContracts
     (c@(Contract {}) : s@(FunDecl {}) : _sts) =
@@ -2202,9 +2205,12 @@ interpStatements' ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
     interpStatements' (doLetRec recbs ++ chks ++ ss')
   where
     getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
-    getRecs accdecls accchks (FunDecl nm fh _ds bdy whr : ss') =
-        let accchks' = maybe accchks (\w -> Check (Just $ sbindingName nm) w : accchks) whr
-        in getRecs ((NameBinding nm, Lam fh bdy):accdecls) accchks' ss'
+    getRecs accdecls accchks (FunDecl (SimpleBinding _ nm mty) fh _ds bdy whr : ss') =
+        let accchks' = maybe accchks (\w -> Check (Just nm) w : accchks) whr
+            b = case mty of
+                    Nothing -> NameBinding nm
+                    Just ty -> TypedBinding (NameBinding nm) ty
+        in getRecs ((b, Lam fh bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
 -- collect a contract with a following letdecl
@@ -2360,16 +2366,10 @@ interpStatement (DataDecl dnm dpms vs whr) = do
                        [Iden typeInfoName
                        ,Text vnm
                        ,Construct ["list"] $ concatMap mvf fs]
-            tcs = catMaybes $ map (\case
-                SimpleBinding _ nm (Just ta) -> Just (nm,ta)
-                _ -> Nothing) $ map snd fs
-            typeCheck = case tcs of
-                [] -> id
-                _ -> Let (map (\(nm,ta) -> (NameBinding (SimpleBinding NoShadow "_" (Just ta)), Iden nm)) tcs)
         in letDecl vnm
            $ typeLetWrapper dpms
-           $ (if null fs then id else Lam (fh $ map (NameBinding . snd) fs))
-           $ typeCheck $ appMakeV
+           $ (if null fs then id else Lam (fh $ map (simpleBindingToBinding . snd) fs))
+           $ appMakeV
     mvf (r, b) = let nm = sbindingName b
                  in ([case r of
                           Ref -> Iden "true"
@@ -2380,11 +2380,10 @@ interpStatement (DataDecl dnm dpms vs whr) = do
     lam as e = Lam (fh $ map mnm as) e
     fh as = FunHeader [] as Nothing
     orE a b = BinOp a "or" b
-    mnm x = NameBinding $ SimpleBinding NoShadow x Nothing
+    mnm x = NameBinding x
 
 interpStatement (TypeStmt {}) = _errorWithCallStack $ "TODO: interp typestmt"
 interpStatement c@(Contract {}) = _errorWithCallStack $ "contract without corresponding statement: " ++ show c
-
 
 ---------------------------------------
 
@@ -2859,15 +2858,23 @@ only allow simple bindings in letrec for now
 
 doLetRec :: [(Binding, Expr)] -> [Stmt]
 doLetRec bs = 
-    let vars = map makeVar bs
+    let vars = map (makeVar . fst) bs
         assigned = map makeAssign bs
     in vars ++ assigned
   where
-    makeVar (NameBinding (SimpleBinding s nm _),_) =
-        VarDecl (SimpleBinding s nm Nothing) $ Lam (FunHeader [] [] Nothing)
+    makeVar (TypedBinding b _) = makeVar b
+    makeVar (ShadowBinding nm) = makeVar1 (Shadow, nm)
+    makeVar (NameBinding nm) = makeVar1 (NoShadow, nm)
+    makeVar1 (sh, nm) =
+        VarDecl (SimpleBinding sh nm Nothing) $ Lam (FunHeader [] [] Nothing)
         $ App appSourcePos (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
-    makeAssign (NameBinding (SimpleBinding _ nm ty),v) =
+    makeAssign (ShadowBinding nm, v) = makeAssign1 (nm,Nothing,v)
+    makeAssign (NameBinding nm, v) = makeAssign1 (nm,Nothing,v)
+    makeAssign (TypedBinding (NameBinding nm) ty, v) = makeAssign1 (nm,Just ty,v)
+    makeAssign (TypedBinding (ShadowBinding nm) ty, v) = makeAssign1 (nm,Just ty,v)
+    makeAssign x = error $ "unsupported binding in recursive let: " ++ show x
+    makeAssign1 (nm,ty,v)=
         SetVar nm $ (case ty of
                          Nothing -> id
                          Just ta -> flip AssertTypeCompat ta) v
@@ -2884,11 +2891,25 @@ appSourcePos = Nothing
 -- when bindings can fail, this will throw an error
 -- the other version is for cases and similar, it will return a maybe
 matchBindingOrError :: Binding -> Value -> Interpreter [(String,Value)]
-matchBindingOrError (NameBinding (SimpleBinding _ nm mty)) v = do
-    v' <- case mty of
-              Just ty -> assertTypeAnnCompat v ty
-              Nothing -> pure v
+matchBindingOrError (NameBinding nm) v = do
     if nm == "_"
         then pure []
-        else  pure [(nm,v')]
+        else  pure [(nm,v)]
 
+matchBindingOrError (ShadowBinding nm) v = do
+    if nm == "_"
+        then pure []
+        else  pure [(nm,v)]
+
+matchBindingOrError (TypedBinding b ty) v = do
+    void $ assertTypeAnnCompat v ty
+    matchBindingOrError b v
+
+
+simpleBindingToBinding :: SimpleBinding -> Binding
+simpleBindingToBinding = \case
+    SimpleBinding Shadow nm ty -> wrapTy ty (ShadowBinding nm)
+    SimpleBinding NoShadow nm ty -> wrapTy ty (NameBinding nm)
+  where
+    wrapTy Nothing b = b
+    wrapTy (Just ty) b = TypedBinding b ty

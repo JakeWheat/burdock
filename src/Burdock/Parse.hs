@@ -376,8 +376,13 @@ simpleBinding allowImplicitTypeTuple =
     <*> optional (symbol_ "::" *> typ allowImplicitTypeTuple)
 
 binding :: Bool -> Parser Binding
-binding allowImplicitTypeTuple =
-    NameBinding <$> simpleBinding allowImplicitTypeTuple
+binding allowImplicitTypeTuple = do
+    sh <- optional (() <$ keyword_ "shadow")
+    nm <- identifier
+    ty <- optional (symbol_ "::" *> typ allowImplicitTypeTuple)
+    let w1 = maybe (NameBinding nm) (const $ ShadowBinding nm) sh
+        w2 = maybe w1 (\x -> TypedBinding w1 x) ty
+    pure w2
 
 expressionLetRec :: Parser Expr
 expressionLetRec = keyword_ "letrec" *> letBody LetRec
@@ -745,7 +750,11 @@ shadowDecl =
     <*> optional ((symbol_ "::" <?> "") *> typ True)
     <*> ((symbol_ "=" <?> "") *> expr)
   where
-    f i ty v = LetDecl (NameBinding $ SimpleBinding Shadow i ty) v
+    f i ty v = let b = ShadowBinding i
+                   b1 = case ty of
+                      Nothing -> b
+                      Just tyx -> TypedBinding b tyx
+               in LetDecl b1 v
 
 
 startsWithExprOrBinding :: Parser Stmt
@@ -758,9 +767,9 @@ startsWithExprOrBinding = do
              ty <- (symbol_ "::" <?> "") *> typ True
              choice [do
                      v <- (symbol_ "=" <?> "") *> expr
-                     pure $ LetDecl (NameBinding $ SimpleBinding NoShadow i (Just ty)) v
+                     pure $ LetDecl (TypedBinding (NameBinding i) ty) v
                     ,pure $ Contract i ty]
-            ,LetDecl (NameBinding $ SimpleBinding NoShadow i Nothing)
+            ,LetDecl (NameBinding i)
              <$> ((symbol_ "=" <?> "") *> expr)
             ,handleExpr ex]
         _ -> handleExpr ex

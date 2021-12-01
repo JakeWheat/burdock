@@ -101,7 +101,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
 
 
     ,("let shadow a = 4 : a end"
-     ,Let [(NameBinding $ SimpleBinding Shadow "a" Nothing, Num 4)] (Iden "a"))
+     ,Let [(ShadowBinding "a", Num 4)] (Iden "a"))
     ,("a.b", DotExpr (Iden "a") "b")
     ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [Num 1, Num 2]) "c")
      ,("cases a :: List:\n\
@@ -195,7 +195,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("assert-type-compat", Iden "assert-type-compat")
 
     ,("let a :: MyType = 4: a end"
-     ,Let [(NameBinding $ SimpleBinding NoShadow "a" (Just $ TName ["MyType"]), Num 4)] (Iden "a"))
+     ,Let [(TypedBinding (NameBinding "a") (TName ["MyType"]), Num 4)] (Iden "a"))
 
     ,("callf<A,B>(x)"
      ,App Nothing (InstExpr (Iden "callf") [TName ["A"], TName ["B"]]) [Iden "x"])
@@ -235,7 +235,7 @@ lam<a>(x :: List<a>) -> Boolean:
 end|]
      ,Lam (FunHeader
             ["a"]
-            [NameBinding $ SimpleBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
+            [TypedBinding (NameBinding "x") (TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"]))
       $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(CaseBinding ["empty"] [], Nothing, Iden "true")
@@ -253,7 +253,7 @@ end|]
 
      ,("{(y :: Number) -> Number: x + y}"
       ,CurlyLam (FunHeader []
-                [NameBinding $ SimpleBinding NoShadow "y" $ Just $ TName ["Number"]]
+                [TypedBinding (NameBinding "y") $ TName ["Number"]]
                 (Just $ TName ["Number"]))
        $ BinOp (Iden "x") "+" (Iden "y"))
 
@@ -314,8 +314,8 @@ end|], TableSel ["a", "b"] [RowSel [Num 1, Iden "true"]
                            ,RowSel [Num 2, Iden "false"]])
     ]
   where
-    nm x = NameBinding $ SimpleBinding NoShadow x Nothing
-    nmt x t = NameBinding $ SimpleBinding NoShadow x (Just $ TName [t])
+    nm x = NameBinding x
+    nmt x t = TypedBinding (NameBinding x) (TName [t])
     lam as = Lam (FunHeader [] (map nm as) Nothing)
 
 statementParseTests :: TestTree
@@ -323,7 +323,7 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
     [("a = 5"
      ,LetDecl (nm "a") (Num 5))
     ,("shadow a = 5"
-     ,LetDecl (NameBinding $ SimpleBinding Shadow "a" Nothing) (Num 5))
+     ,LetDecl (ShadowBinding "a") (Num 5))
 
     ,("when x == 3: 4 end"
      ,When (BinOp (Iden "x") "==" (Num 3)) (Num 4))
@@ -374,7 +374,7 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
      ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
 
     ,("PI :: Number = 3.141592"
-     ,LetDecl (NameBinding $ SimpleBinding NoShadow "PI" (Just $ TName ["Number"])) (Num 3.141592))
+     ,LetDecl (TypedBinding (NameBinding "PI") (TName ["Number"])) (Num 3.141592))
 
 
     
@@ -466,7 +466,7 @@ fun f<a>(x :: List<a>) -> Boolean:
 end|]
      ,FunDecl (snm "f") (FunHeader
             ["a"]
-            [NameBinding $ SimpleBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
+            [TypedBinding (NameBinding "x") (TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"])) Nothing
       (Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(CaseBinding ["empty"] [], Nothing, Iden "true")
@@ -540,10 +540,10 @@ end|]
 
     ]
   where
-    nm x = NameBinding $ snm x
+    nm x = NameBinding x
     snm x = SimpleBinding NoShadow x Nothing
     fh as = FunHeader [] (map nm as) Nothing
-    nmt x t = NameBinding $ snmt x t
+    nmt x t = TypedBinding (NameBinding x) (TName [t])
     snmt x t = SimpleBinding NoShadow x (Just $ TName [t])
 
 
@@ -592,7 +592,7 @@ end
      ,Script [])
     ]
   where
-    nm x = NameBinding $ SimpleBinding NoShadow x Nothing
+    nm x = NameBinding x
 
 interpreterTests :: TestTree
 interpreterTests =
@@ -626,7 +626,8 @@ interpreterTests =
      ,"burdock-test-src/functions.bur"
      ,"burdock-test-src/ref.bur"
      ,"burdock-test-src/template.bur"
-     ,"burdock-test-src/curly-lam.bur"]
+     ,"burdock-test-src/curly-lam.bur"
+     ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["burdock-test-src/built-in-functions.bur"
      ,"built-ins/lists.bur"

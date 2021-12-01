@@ -159,7 +159,9 @@ caseBinding (CaseBinding nms ps) =
     xSep "." (map pretty nms) <> parens (commaSep $ map binding ps)
 
 binding :: Binding -> Doc a
-binding (NameBinding b) = simpleBinding b
+binding (NameBinding s) = pretty s
+binding (TypedBinding b t) = binding b <+> pretty "::" <+> typ t
+binding (ShadowBinding s) = pretty "shadow" <+> pretty s
 
 simpleBinding :: SimpleBinding -> Doc a
 simpleBinding (SimpleBinding s nm ty) =

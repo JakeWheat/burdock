@@ -96,7 +96,9 @@ data CaseBinding = CaseBinding [String] [Binding]
                  deriving (Eq,Show,Data) 
 
 data Binding
-    = NameBinding SimpleBinding
+    = NameBinding String
+    | TypedBinding Binding Ann
+    | ShadowBinding String
     deriving (Eq,Show,Data)
 
 data SimpleBinding = SimpleBinding Shadow String (Maybe Ann)
