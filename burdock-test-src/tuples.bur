@@ -13,12 +13,11 @@ check:
 end
 
 
-# todo: restore when tuple binding restored
-#check:
-#  {x; y} = {1; 2}
-#  x is 1
-#  y is 2
-#end
+check:
+  {x; y} = {1; 2}
+  x is 1
+  y is 2
+end
 
 check:
   let {x; y} = {1; 2}: {y;x} end
@@ -26,37 +25,32 @@ check:
 end
 
 
-# todo: restore when tuple binding restored
-#check:
-#  {x; y} as z = {1; 2}
-#  x is 1
-#  y is 2
-#  z is {1;2}
-#end
+check:
+  {x; y} as z = {1; 2}
+  x is 1
+  y is 2
+  z is {1;2}
+end
 
 
-# todo: restore when tuple binding restored
-# check:
-#   {{w; x}; {y; z}} = {{5; true}; {"hello"; 4}}
-#   w is 5
-#   x is true
-#   y is "hello"
-#   z is 4
-# end
+check:
+  {{w; x}; {y; z}} = {{5; true}; {"hello"; 4}}
+  w is 5
+  x is true
+  y is "hello"
+  z is 4
+end
 
-# todo: restore when tuple binding restored
-# check:
-#   {{w; x} as wx; {y; z} as yz} as wxyz = {{5; true}; {"hello"; 4}}
-#   w is 5
-#   x is true
-#   y is "hello"
-#   z is 4
-#   wx is {5; true}
-#   yz is {"hello"; 4}
-#   wxyz is {wx; yz}
-# end
-
-#|
+check:
+  {{w; x} as wx; {y; z} as yz} as wxyz = {{5; true}; {"hello"; 4}}
+  w is 5
+  x is true
+  y is "hello"
+  z is 4
+  wx is {5; true}
+  yz is {"hello"; 4}
+  wxyz is {wx; yz}
+end
 
 check:
   {x; y} = {1; 2}
@@ -69,6 +63,7 @@ check:
 
   sum-two({10; 12}, {1; 4; 5}) is 32
 
+  #|
   fun sum-vals(elts) block:
     var sum = 0
     for each({k; v} from elts):
@@ -79,6 +74,5 @@ check:
 
   elts = [list: {"a"; 5}, {"b"; 6}, {"c"; 7}]
   sum-vals(elts) is 18
+  |#
 end
-
-|#

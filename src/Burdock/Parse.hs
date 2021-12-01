@@ -787,30 +787,62 @@ shadowDecl =
                       Just tyx -> TypedBinding b tyx
                in LetDecl b1 v
 
+{-
+starts with expr or binding
+used at the start of parsing statements
+an identifier can become:
+
+setvar, followed by :=
+contract, followed by ::
+setref, followed by !{
+
+letdecl, followed by the rest of a binding and then =
+or a stmtexpr, anything thats an expr that starts with an iden
+
+a { can become
+a tuple expr, record expr or tuple binding (plus record binding in the
+future)
+
+a "pattern or expression" is fixed to be one or the other:
+iden only: := :: (becomes a contract or letdecl)
+pattern: followed by =
+expression: followed by !{, default if not followed by any of the above
+-}
+
+{-
+
+TODO: factor the following code so that 'try startsWithPattern'
+commits as soon as possible
+otherwise the parse errors are very bad
+-}
 
 startsWithExprOrBinding :: Parser Stmt
-startsWithExprOrBinding = do
-    ex <- expr
-    case ex of
-        Iden i -> choice
-            [SetVar i <$> ((symbol_ ":=" <?> "") *> expr)
-            ,do
-             ty <- (symbol_ "::" <?> "") *> typ True
-             choice [do
-                     v <- (symbol_ "=" <?> "") *> expr
-                     pure $ LetDecl (TypedBinding (NameBinding i) ty) v
-                    ,pure $ Contract i ty]
-            ,LetDecl (NameBinding i)
-             <$> ((symbol_ "=" <?> "") *> expr)
-            ,handleExpr ex]
-        _ -> handleExpr ex
+startsWithExprOrBinding =
+    try startsWithPattern <|> startsWithExpr
   where
-    handleExpr ex =
-        bchoice
-        [let rf = (,) <$> identifier <*> (symbol_ ":" *> expr)
-         in SetRef ex <$> ((symbol_ "!{" <?> "") *> commaSep1 rf <* symbol "}")
-        ,pure $ StmtExpr ex]
-
+    startsWithPattern = do
+        p <- limitedBinding True
+        case p of
+            WildcardBinding -> LetDecl p <$> ((symbol_ "=" <?> "") *> expr)
+            NameBinding i -> choice
+                [SetVar i <$> ((symbol_ ":=" <?> "") *> expr)
+                ,LetDecl p <$> ((symbol_ "=" <?> "") *> expr)
+                ]
+            TypedBinding (NameBinding i) ty -> choice
+                [LetDecl p <$> ((symbol_ "=" <?> "") *> expr)
+                ,pure $ Contract i ty]
+            _ | isTupleBinding p -> LetDecl p <$> ((symbol_ "=" <?> "") *> expr)
+            _ -> fail ""
+    startsWithExpr = do
+        ex <- expr
+        let rf = (,) <$> identifier <*> (symbol_ ":" *> expr)
+        choice
+            [SetRef ex <$> ((symbol_ "!{" <?> "") *> commaSep1 rf <* symbol "}")
+            ,pure $ StmtExpr ex]
+    isTupleBinding (TupleBinding {}) = True
+    isTupleBinding (TypedBinding b _) = isTupleBinding b
+    isTupleBinding (AsBinding b _) =  isTupleBinding b
+    isTupleBinding _ = False
 
 typ :: Bool -> Parser Ann
 typ allowImplicitTuple =

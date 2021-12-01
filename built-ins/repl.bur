@@ -68,10 +68,7 @@ end
 # internals
 
 fun repl-monitor():
-  sm = spawn-monitor(repl-loop)
-  # todo: tuple binding
-  repl = sm.{0}
-  rf = sm.{1}
+  {repl;rf} = spawn-monitor(repl-loop)
 
   fun repl-down(v):
     receive:
