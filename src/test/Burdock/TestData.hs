@@ -148,6 +148,15 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
         ,(VariantBinding ["link"] [nm "f", nm "r"], Just (Iden "d"), Text "link")]
         Nothing)
 
+     ,("cases a:\n\
+      \  | 1 => true\n\
+      \  | \"test\" => false\n\
+      \end"
+     ,Cases (Iden "a") Nothing
+        [(NumberLitBinding 1, Nothing, Iden "true")
+        ,(StringLitBinding "test", Nothing, Iden "false")]
+        Nothing)
+
     
     -- tuple selector
     ,("{\"a\";\"b\";true}", TupleSel [Text "a", Text "b", Iden "true"])
@@ -629,6 +638,7 @@ interpreterTests =
      ,"burdock-test-src/ref.bur"
      ,"burdock-test-src/template.bur"
      ,"burdock-test-src/curly-lam.bur"
+     ,"burdock-test-src/binding.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["burdock-test-src/built-in-functions.bur"

@@ -1,0 +1,30 @@
+
+check "literal binding":
+
+  fun fib(n):
+    cases n:
+      | 0 => 1
+      | 1 => 1
+      | else => fib(n - 1) + fib(n - 2)
+    end
+  end
+
+  fib(0) is 1
+  fib(1) is 1
+  fib(2) is 2
+  fib(3) is 3
+  fib(4) is 5
+  fib(5) is 8
+
+
+  fun is-dave(x):
+    cases x:
+      | "dave" => true
+      | else => false
+    end
+  end
+
+  is-dave("dave") is true
+  is-dave("barry") is false
+
+end

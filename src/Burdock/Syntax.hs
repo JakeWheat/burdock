@@ -100,6 +100,8 @@ data Binding
     | WildcardBinding
     | AsBinding Binding String
     | TupleBinding [Binding]
+    | NumberLitBinding Scientific
+    | StringLitBinding String
     deriving (Eq,Show,Data)
 
 data SimpleBinding = SimpleBinding Shadow String (Maybe Ann)

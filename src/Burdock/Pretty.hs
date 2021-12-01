@@ -165,6 +165,8 @@ binding (TupleBinding bs) =
     pretty "{"
     <> nest 2 (xSep ";" $ map binding bs)
     <> pretty "}"
+binding (NumberLitBinding n) = expr (Num n)
+binding (StringLitBinding t) = expr (Text t)
 
 simpleBinding :: SimpleBinding -> Doc a
 simpleBinding (SimpleBinding s nm ty) =

@@ -1847,6 +1847,10 @@ interp (Cases e ty cs els) = do
     bindingMatchesType t (NameBinding nm) = checkVariantType t [nm]
     bindingMatchesType _ WildcardBinding = pure ()
     bindingMatchesType t (AsBinding b _) = bindingMatchesType t b
+    bindingMatchesType _t (TupleBinding {}) = error $ "todo: implement tuple binding type check"
+    bindingMatchesType _t (NumberLitBinding {}) = error $ "todo: implement numberlit binding type check"
+    bindingMatchesType _t (StringLitBinding {}) = error $ "todo: implement numberlit binding type check"
+
     checkVariantType t ss = do
         let s = prefixLast "_casepattern-" ss
         caseName <- interp $ makeDotPathExpr s
@@ -2944,7 +2948,13 @@ matchBindingMaybe c (TupleBinding bs) (VariantV tg "tuple" fs)
           xs <- zipWithM (matchBindingMaybe c) bs $ map snd fs
           pure (concat <$> sequence xs)
           
-matchBindingMaybe c (TupleBinding {}) _ = pure Nothing
+matchBindingMaybe _ (TupleBinding {}) _ = pure Nothing
+
+matchBindingMaybe _ (NumberLitBinding n) (NumV m) | n == m = pure $ Just []
+matchBindingMaybe _ (NumberLitBinding {}) _ = pure Nothing
+
+matchBindingMaybe _ (StringLitBinding t) (TextV s) | t == s = pure $ Just []
+matchBindingMaybe _ (StringLitBinding {}) _ = pure Nothing
 
           
 simpleBindingToBinding :: SimpleBinding -> Binding

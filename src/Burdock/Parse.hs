@@ -411,6 +411,12 @@ binding allowImplicitTypeTuple =
     bindingSuffixes allowImplicitTypeTuple =<< bterm
   where
     bterm = shadowBinding <|> nameOrVariantBinding <|> tupleBinding
+            <|> numLitBinding <|> stringLitBinding
+    numLitBinding = do
+        x <- num
+        maybe (fail $ "parsing number failed: " ++ x)
+          (pure . NumberLitBinding) (readMaybe x)
+    stringLitBinding = StringLitBinding <$> stringRaw
     nameOrVariantBinding = do
         n <- variantName
         as <- option [] variantArgs
