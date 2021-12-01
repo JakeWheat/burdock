@@ -1772,13 +1772,7 @@ interp (Lam (FunHeader dpms bs rt) e) =
     pure $ FunV bs wrapRt env
   where
     tls = flip map dpms $ \t -> TypeDecl t [] (TName ["Any"])
-    argAsserts =
-        catMaybes $ flip map bs $ \(NameBinding (SimpleBinding _ nm ta))
-            -> fmap (StmtExpr . AssertTypeCompat (Iden nm)) ta
-    wrapArgAsserts = case argAsserts of
-        [] -> e
-        _ -> Block (argAsserts ++ [StmtExpr e])
-    wrapRt = maybe wrapArgAsserts (AssertTypeCompat wrapArgAsserts) rt
+    wrapRt = maybe e (AssertTypeCompat e) rt
 
 interp (CurlyLam fh e) = interp (Lam fh e)
 
