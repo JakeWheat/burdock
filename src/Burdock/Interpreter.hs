@@ -320,7 +320,7 @@ data Value = NumV Scientific
            -- easier like this since it's used a lot
            | BoolV Bool
            | TextV String
-           | FunV [String] Expr Env
+           | FunV [Binding] Expr Env
            | ForeignFunV String
            | VariantV TypeInfo String [(String,Value)]
            | BoxV TypeInfo (IORef Value)
@@ -1766,10 +1766,12 @@ end
 
 -}
 
-interp (Lam (FunHeader dpms bs rt) e) = do
+interp (Lam (FunHeader dpms bs rt) e) =
+    typeLet tls $ do
     env <- askBindings
-    pure $ FunV (map bindingName bs) wrapDpms env
+    pure $ FunV bs wrapRt env
   where
+    tls = flip map dpms $ \t -> TypeDecl t [] (TName ["Any"])
     argAsserts =
         catMaybes $ flip map bs $ \(NameBinding (SimpleBinding _ nm ta))
             -> fmap (StmtExpr . AssertTypeCompat (Iden nm)) ta
@@ -1777,22 +1779,15 @@ interp (Lam (FunHeader dpms bs rt) e) = do
         [] -> e
         _ -> Block (argAsserts ++ [StmtExpr e])
     wrapRt = maybe wrapArgAsserts (AssertTypeCompat wrapArgAsserts) rt
-    wrapDpms = typeLetWrapper dpms wrapRt
 
 interp (CurlyLam fh e) = interp (Lam fh e)
 
 interp (Let bs e) = do
     let newEnv [] = interp e
         newEnv ((b,ex):bs') = do
-            let at = case b of
-                    NameBinding (SimpleBinding _ _ (Just t)) ->
-                        AssertTypeCompat ex t
-                    _ -> ex
-            v <- interp at
-            (if bindingName b == "_"
-                then id
-                else localBindings (extendBindings [(bindingName b,v)]))
-                     $ newEnv bs'
+            v <- interp ex
+            lbs <- matchBindingOrError b v
+            localBindings (extendBindings lbs) $ newEnv bs'
     newEnv bs
 
 interp (Block ss) = localBindings id $ interpStatements ss
@@ -1830,7 +1825,6 @@ interp (DotExpr e f) = do
               ++ "\n for field " ++ f
               ++ "\nit's fields are: " ++ show fs
         _ -> _errorWithCallStack $ "dot called on non variant: " ++ show v
-
 
 {-
 run through each branch
@@ -1941,14 +1935,7 @@ interp (AssertTypeCompat e t) = do
     ty' <- shallowizeType <$> typeOfTypeSyntax t
     assertTypeCompat v ty'
 
-interp (TypeLet tds e) = do
-    let newEnv [] = interp e
-        newEnv (TypeDecl _ (_:_) _ : _) = _errorWithCallStack $ "todo: parameterized type-let"
-        newEnv (TypeDecl n _ t:tds') = do
-            ty <- typeOfTypeSyntax t
-            localBindings (extendBindings [("_typeinfo-" ++ n,FFIValue $ toDyn ty)])
-                 $ newEnv tds'
-    newEnv tds
+interp (TypeLet tds e) = typeLet tds $ interp e
 
 interp (Receive ma cs aft) = do
     -- turn the cs into a function which returns a maybe x
@@ -2034,12 +2021,8 @@ makeBList :: [Value] -> Value
 makeBList [] = VariantV (internalsType "List") "empty" []
 makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest", makeBList xs)]
 
-bindingName :: Binding -> String
-bindingName (NameBinding (SimpleBinding _ nm _)) = nm
-
 sbindingName :: SimpleBinding -> String
 sbindingName (SimpleBinding _ nm _) = nm
-
 
 makeCurriedApp :: SourcePosition -> Expr -> [Expr] -> Expr
 makeCurriedApp sp f es =
@@ -2063,8 +2046,13 @@ app fv vs =
     case fv of
         FunV ps bdy env -> do
             as <- safeZip ps vs
-            let as' = filter ((/="_") . fst) as
-            localBindings (const $ extendBindings as' env) $ interp bdy
+            let fbas acc [] = do
+                    let got = concat $ reverse acc
+                    localBindings (extendBindings got) $ interp bdy
+                fbas acc ((b,v):as') = do
+                    lbs <- matchBindingOrError b v
+                    fbas (lbs:acc) as'
+            localBindings (const env) $ fbas [] as
         ForeignFunV nm -> do
             ffs <- askFF
             case lookup nm ffs of
@@ -2074,6 +2062,16 @@ app fv vs =
   where
     safeZip ps xs | length ps == length xs  = pure $ zip ps xs
                   | otherwise = error $ "wrong number of args: " ++ show ps ++ ", " ++ show xs
+
+typeLet :: [TypeDecl] -> Interpreter a -> Interpreter a
+typeLet tds f = do
+    let newEnv [] = f
+        newEnv (TypeDecl _ (_:_) _ : _) = _errorWithCallStack $ "todo: parameterized type-let"
+        newEnv (TypeDecl n _ t:tds') = do
+            ty <- typeOfTypeSyntax t
+            localBindings (extendBindings [("_typeinfo-" ++ n,FFIValue $ toDyn ty)])
+                 $ newEnv tds'
+    newEnv tds
 
 catchAsEither :: [Expr] -> Interpreter Value
 catchAsEither [e] = do
@@ -2118,7 +2116,7 @@ assertTypeAnnCompat v t = do
 -- the syntax is used in a few places
 typeLetWrapper :: [String] -> Expr -> Expr
 typeLetWrapper [] = id
-typeLetWrapper ps = 
+typeLetWrapper ps =
     TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) ps)
 
 ---------------------------------------
@@ -2279,10 +2277,8 @@ interpStatement (Check cbnm ss) = do
     
 interpStatement (LetDecl b e) = do
     v <- interp e
-    v' <- case b of
-              NameBinding (SimpleBinding _ _ (Just ta)) -> assertTypeAnnCompat v ta
-              _ -> pure v
-    letValue (bindingName b) v'
+    bs <- matchBindingOrError b v
+    mapM_ (uncurry letValue) bs
     pure nothing
 
 interpStatement (VarDecl b e) = do
@@ -2860,6 +2856,11 @@ a := memoize(lam(): assert-type-compat(... :: ty))
 then the type will be checked the first time the value is evaluated
 
 
+how will this work with the new flexible bindings?
+no idea
+maybe the answer is the same as with other non lambda vals?
+only allow simple bindings in letrec for now
+
 -}
 
 doLetRec :: [(Binding, Expr)] -> [Stmt]
@@ -2882,3 +2883,18 @@ doLetRec bs =
 
 appSourcePos :: SourcePosition
 appSourcePos = Nothing
+
+---------------------------------------
+-- bindings
+
+-- when bindings can fail, this will throw an error
+-- the other version is for cases and similar, it will return a maybe
+matchBindingOrError :: Binding -> Value -> Interpreter [(String,Value)]
+matchBindingOrError (NameBinding (SimpleBinding _ nm mty)) v = do
+    v' <- case mty of
+              Just ty -> assertTypeAnnCompat v ty
+              Nothing -> pure v
+    if nm == "_"
+        then pure []
+        else  pure [(nm,v')]
+
