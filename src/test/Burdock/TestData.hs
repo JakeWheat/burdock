@@ -101,7 +101,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
 
 
     ,("let shadow a = 4 : a end"
-     ,Let [(NameBinding Shadow "a" Nothing, Num 4)] (Iden "a"))
+     ,Let [(NameBinding $ SimpleBinding Shadow "a" Nothing, Num 4)] (Iden "a"))
     ,("a.b", DotExpr (Iden "a") "b")
     ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [Num 1, Num 2]) "c")
      ,("cases a :: List:\n\
@@ -195,7 +195,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("assert-type-compat", Iden "assert-type-compat")
 
     ,("let a :: MyType = 4: a end"
-     ,Let [(NameBinding NoShadow "a" (Just $ TName ["MyType"]), Num 4)] (Iden "a"))
+     ,Let [(NameBinding $ SimpleBinding NoShadow "a" (Just $ TName ["MyType"]), Num 4)] (Iden "a"))
 
     ,("callf<A,B>(x)"
      ,App Nothing (InstExpr (Iden "callf") [TName ["A"], TName ["B"]]) [Iden "x"])
@@ -235,7 +235,7 @@ lam<a>(x :: List<a>) -> Boolean:
 end|]
      ,Lam (FunHeader
             ["a"]
-            [NameBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
+            [NameBinding $ SimpleBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"]))
       $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(CaseBinding ["empty"] [], Nothing, Iden "true")
@@ -253,7 +253,7 @@ end|]
 
      ,("{(y :: Number) -> Number: x + y}"
       ,CurlyLam (FunHeader []
-                [NameBinding NoShadow "y" $ Just $ TName ["Number"]]
+                [NameBinding $ SimpleBinding NoShadow "y" $ Just $ TName ["Number"]]
                 (Just $ TName ["Number"]))
        $ BinOp (Iden "x") "+" (Iden "y"))
 
@@ -314,8 +314,8 @@ end|], TableSel ["a", "b"] [RowSel [Num 1, Iden "true"]
                            ,RowSel [Num 2, Iden "false"]])
     ]
   where
-    nm x = NameBinding NoShadow x Nothing
-    nmt x t = NameBinding NoShadow x (Just $ TName [t])
+    nm x = NameBinding $ SimpleBinding NoShadow x Nothing
+    nmt x t = NameBinding $ SimpleBinding NoShadow x (Just $ TName [t])
     lam as = Lam (FunHeader [] (map nm as) Nothing)
 
 statementParseTests :: TestTree
@@ -323,12 +323,12 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
     [("a = 5"
      ,LetDecl (nm "a") (Num 5))
     ,("shadow a = 5"
-     ,LetDecl (NameBinding Shadow "a" Nothing) (Num 5))
+     ,LetDecl (NameBinding $ SimpleBinding Shadow "a" Nothing) (Num 5))
 
     ,("when x == 3: 4 end"
      ,When (BinOp (Iden "x") "==" (Num 3)) (Num 4))
     ,("var a = 5"
-     ,VarDecl (nm "a") (Num 5))
+     ,VarDecl (snm "a") (Num 5))
     ,("a := 6"
      ,SetVar "a" (Num 6))
 
@@ -345,27 +345,27 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
     ,("data BTree:\n\
       \  | node(value, left, right)\n\
       \  | leaf(value)\n\
-      \end", DataDecl "BTree" [] [VariantDecl "node" [(Con, nm "value"), (Con, nm "left"), (Con, nm "right")]
-                                 ,VariantDecl "leaf" [(Con, nm "value")]] Nothing)
+      \end", DataDecl "BTree" [] [VariantDecl "node" [(Con, snm "value"), (Con, snm "left"), (Con, snm "right")]
+                                 ,VariantDecl "leaf" [(Con, snm "value")]] Nothing)
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf\n\
-      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, nm "left"), (Con, nm "right")]
+      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")]
                     ,VariantDecl "leaf" []] Nothing)
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf()\n\
-      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, nm "left"), (Con, nm "right")]
+      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")]
                     ,VariantDecl "leaf" []] Nothing)
 
     ,("data Point:\n\
       \  | pt(x, y)\n\
-      \end", DataDecl "Point" [] [VariantDecl "pt" [(Con, nm "x"), (Con, nm "y")]] Nothing)
+      \end", DataDecl "Point" [] [VariantDecl "pt" [(Con, snm "x"), (Con, snm "y")]] Nothing)
 
     ,("data Point: pt(x, y) end"
-     ,DataDecl "Point" [] [VariantDecl "pt" [(Con, nm "x"), (Con, nm "y")]] Nothing)
+     ,DataDecl "Point" [] [VariantDecl "pt" [(Con, snm "x"), (Con, snm "y")]] Nothing)
 
     ,("data Point: pt() end"
      ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
@@ -374,7 +374,7 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
      ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
 
     ,("PI :: Number = 3.141592"
-     ,LetDecl (NameBinding NoShadow "PI" (Just $ TName ["Number"])) (Num 3.141592))
+     ,LetDecl (NameBinding $ SimpleBinding NoShadow "PI" (Just $ TName ["Number"])) (Num 3.141592))
 
 
     
@@ -386,9 +386,9 @@ end
   |]
     ,DataDecl "BinTree" []
       [VariantDecl "leaf" []
-      ,VariantDecl "node" [(Con, nmt "value" "Number")
-                          ,(Con, nmt "left" "BinTree")
-                          ,(Con, nmt "right" "BinTree")]
+      ,VariantDecl "node" [(Con, snmt "value" "Number")
+                          ,(Con, snmt "left" "BinTree")
+                          ,(Con, snmt "right" "BinTree")]
       ]
       Nothing)
 
@@ -400,19 +400,19 @@ end
   |]
     ,DataDecl "List" ["A"]
       [VariantDecl "empty" []
-      ,VariantDecl "link" [(Con, nmt "first" "A")
-                          ,(Con, NameBinding NoShadow "rest" (Just $ TParam ["List"] [TName ["A"]]))]
+      ,VariantDecl "link" [(Con, snmt "first" "A")
+                          ,(Con, SimpleBinding NoShadow "rest" (Just $ TParam ["List"] [TName ["A"]]))]
       ]
       Nothing)
 
     
     ,("fun f(a): a + 1 end"
-     ,FunDecl (nm "f") (fh ["a"]) Nothing (BinOp (Iden "a") "+" (Num 1)) Nothing)
+     ,FunDecl (snm "f") (fh ["a"]) Nothing (BinOp (Iden "a") "+" (Num 1)) Nothing)
 
     ,("fun f(a):\n\
       \  a = 1\n\
       \  a + 1\n\
-      \end", FunDecl (nm "f")
+      \end", FunDecl (snm "f")
                         (fh ["a"]) Nothing
                         (Block [LetDecl (nm "a") (Num 1)
                                ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing)
@@ -422,7 +422,7 @@ end
       \  double(10) is 20\n\
       \  double(15) is 30\n\
       \end"
-     ,FunDecl (nm "double") (fh ["n"]) Nothing (BinOp (Iden "n") "+" (Iden "n"))
+     ,FunDecl (snm "double") (fh ["n"]) Nothing (BinOp (Iden "n") "+" (Iden "n"))
       (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [Num 10]) "is" (Num 20)
            ,StmtExpr $ BinOp (App Nothing (Iden "double") [Num 15]) "is" (Num 30)]))
 
@@ -431,7 +431,7 @@ fun f(x):
   doc: "adds one to the argument"
   x + 1
 end|]
-     ,FunDecl (nm "f") (FunHeader [] [nm "x"] Nothing)
+     ,FunDecl (snm "f") (FunHeader [] [nm "x"] Nothing)
       (Just "adds one to the argument")
       (BinOp (Iden "x") "+" (Num 1)) Nothing)
 
@@ -440,21 +440,21 @@ end|]
 fun f(x :: Number):
   x + 1
 end|]
-     ,FunDecl (nm "f") (FunHeader [] [nmt "x" "Number"] Nothing) Nothing
+     ,FunDecl (snm "f") (FunHeader [] [nmt "x" "Number"] Nothing) Nothing
       (BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
 fun f(x) -> Number:
   x + 1
 end|]
-     ,FunDecl (nm "f") (FunHeader [] [nm "x"] (Just $ TName ["Number"])) Nothing
+     ,FunDecl (snm "f") (FunHeader [] [nm "x"] (Just $ TName ["Number"])) Nothing
       (BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
 fun f(x :: Number) -> Number:
   x + 1
 end|]
-     ,FunDecl (nm "f") (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"])) Nothing
+     ,FunDecl (snm "f") (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"])) Nothing
       (BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
@@ -464,9 +464,9 @@ fun f<a>(x :: List<a>) -> Boolean:
     | link(_,_) => false
   end
 end|]
-     ,FunDecl (nm "f") (FunHeader
+     ,FunDecl (snm "f") (FunHeader
             ["a"]
-            [NameBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
+            [NameBinding $ SimpleBinding NoShadow "x" (Just $ TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"])) Nothing
       (Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
         [(CaseBinding ["empty"] [], Nothing, Iden "true")
@@ -540,9 +540,12 @@ end|]
 
     ]
   where
-    nm x = NameBinding NoShadow x Nothing
+    nm x = NameBinding $ snm x
+    snm x = SimpleBinding NoShadow x Nothing
     fh as = FunHeader [] (map nm as) Nothing
-    nmt x t = NameBinding NoShadow x (Just $ TName [t])
+    nmt x t = NameBinding $ snmt x t
+    snmt x t = SimpleBinding NoShadow x (Just $ TName [t])
+
 
 scriptParseTests :: TestTree
 scriptParseTests = TestGroup "scriptParseTests" $ map (uncurry ScriptParseTest)
@@ -589,7 +592,7 @@ end
      ,Script [])
     ]
   where
-    nm x = NameBinding NoShadow x Nothing
+    nm x = NameBinding $ SimpleBinding NoShadow x Nothing
 
 interpreterTests :: TestTree
 interpreterTests =

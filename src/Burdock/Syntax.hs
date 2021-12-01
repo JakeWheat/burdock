@@ -95,11 +95,12 @@ data TypeDecl = TypeDecl String [String] Ann
 data CaseBinding = CaseBinding [String] [Binding]
                  deriving (Eq,Show,Data) 
 
-data Binding =
-      NameBinding Shadow String (Maybe Ann)
+data Binding
+    = NameBinding SimpleBinding
     deriving (Eq,Show,Data)
 
-type SimpleBinding = Binding
+data SimpleBinding = SimpleBinding Shadow String (Maybe Ann)
+    deriving (Eq,Show,Data)
 
 data Shadow = NoShadow | Shadow
           deriving (Eq,Show,Data) 

@@ -369,13 +369,15 @@ but this isn't allowed when it can be ambiguous and the , could mean something
 else too,
 -}
 
-binding :: Bool -> Parser Binding
-binding allowImplicitTypeTuple =
-    NameBinding <$> boption NoShadow (Shadow <$ keyword_ "shadow")
+simpleBinding :: Bool -> Parser SimpleBinding
+simpleBinding allowImplicitTypeTuple =
+    SimpleBinding <$> boption NoShadow (Shadow <$ keyword_ "shadow")
     <*> identifier
     <*> optional (symbol_ "::" *> typ allowImplicitTypeTuple)
 
-
+binding :: Bool -> Parser Binding
+binding allowImplicitTypeTuple =
+    NameBinding <$> simpleBinding allowImplicitTypeTuple
 
 expressionLetRec :: Parser Expr
 expressionLetRec = keyword_ "letrec" *> letBody LetRec
@@ -389,6 +391,9 @@ letBody ctor = ctor <$> commaSep1 bindExpr
 
 bindExpr :: Parser (Binding,Expr)
 bindExpr = (,) <$> binding True <*> (symbol_ "=" *> expr)
+
+simpleBindExpr :: Parser (SimpleBinding,Expr)
+simpleBindExpr = (,) <$> simpleBinding True <*> (symbol_ "=" *> expr)
 
 ifE :: Parser Expr
 ifE = do
@@ -629,7 +634,7 @@ recDecl = uncurry RecDecl <$> (keyword_ "rec" *> bindExpr)
 
 funDecl :: Parser Stmt
 funDecl = FunDecl
-    <$> (keyword "fun" *> binding True)
+    <$> (keyword "fun" *> simpleBinding True)
     <*> funHeader
     <*> (symbol_ ":" *> optional ds)
     <*> (unwrapSingle <$> (Block <$> some stmt))
@@ -651,7 +656,7 @@ whereBlock :: Parser [Stmt]
 whereBlock = keyword_ "where" *> symbol_ ":" *> many stmt
 
 varDecl :: Parser Stmt
-varDecl = uncurry VarDecl <$> (keyword_ "var" *> bindExpr)
+varDecl = uncurry VarDecl <$> (keyword_ "var" *> simpleBindExpr)
 
 dataDecl :: Parser Stmt
 dataDecl = DataDecl
@@ -665,7 +670,7 @@ dataDecl = DataDecl
     variant = VariantDecl
               <$> (symbol_ "|" *> identifier)
               <*> boption [] (parens (commaSep fld))
-    fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> binding False
+    fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> simpleBinding False
 
 -- todo: remove the try when implement the whitespace rules
 tyNameList :: Parser [String]
@@ -740,7 +745,7 @@ shadowDecl =
     <*> optional ((symbol_ "::" <?> "") *> typ True)
     <*> ((symbol_ "=" <?> "") *> expr)
   where
-    f i ty v = LetDecl (NameBinding Shadow i ty) v
+    f i ty v = LetDecl (NameBinding $ SimpleBinding Shadow i ty) v
 
 
 startsWithExprOrBinding :: Parser Stmt
@@ -753,9 +758,9 @@ startsWithExprOrBinding = do
              ty <- (symbol_ "::" <?> "") *> typ True
              choice [do
                      v <- (symbol_ "=" <?> "") *> expr
-                     pure $ LetDecl (NameBinding NoShadow i (Just ty)) v
+                     pure $ LetDecl (NameBinding $ SimpleBinding NoShadow i (Just ty)) v
                     ,pure $ Contract i ty]
-            ,LetDecl (NameBinding NoShadow i Nothing)
+            ,LetDecl (NameBinding $ SimpleBinding NoShadow i Nothing)
              <$> ((symbol_ "=" <?> "") *> expr)
             ,handleExpr ex]
         _ -> handleExpr ex

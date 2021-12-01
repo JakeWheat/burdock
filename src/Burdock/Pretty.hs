@@ -159,7 +159,10 @@ caseBinding (CaseBinding nms ps) =
     xSep "." (map pretty nms) <> parens (commaSep $ map binding ps)
 
 binding :: Binding -> Doc a
-binding (NameBinding s nm ty) =
+binding (NameBinding b) = simpleBinding b
+
+simpleBinding :: SimpleBinding -> Doc a
+simpleBinding (SimpleBinding s nm ty) =
     sep $ catMaybes [case s of
                         Shadow -> Just $ pretty "shadow"
                         NoShadow -> Nothing
@@ -219,7 +222,7 @@ stmt (Check nm s) = prettyBlocklike vsep
                 Nothing -> pretty "check:"
                 Just nm' -> pretty "check" <+> (expr $ Text nm') <> pretty ":"
         ,stmts s]
-stmt (VarDecl pn e) = pretty "var" <+> binding pn <+> pretty "=" <+> expr e
+stmt (VarDecl pn e) = pretty "var" <+> simpleBinding pn <+> pretty "=" <+> expr e
 stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
 stmt (SetRef e fs) = expr e <> pretty "!{" <> commaSep (map f fs) <> pretty "}"
   where
@@ -239,7 +242,7 @@ stmt (DataDecl nm ts vs w) =
       f (m, x) = (case m of
                      Ref -> pretty "ref"
                      _ -> mempty)
-                 <+> binding x
+                 <+> simpleBinding x
       tnl [] = mempty
       tnl xs = pretty "<" <> commaSep (map pretty xs) <> pretty ">"
 
@@ -247,7 +250,7 @@ stmt (DataDecl nm ts vs w) =
 stmt (RecDecl n e) = pretty "rec" <+> bindExpr n e
 stmt (FunDecl pn hdr ds e w) =
     prettyBlocklike sep
-     [pretty "fun" <+> binding pn <> funHeader hdr <> pretty ":"
+     [pretty "fun" <+> simpleBinding pn <> funHeader hdr <> pretty ":"
      ,maybe mempty (\x -> pretty "doc: " <+> expr (Text x)) ds
      ,expr e
      ,maybe mempty whereBlock w]

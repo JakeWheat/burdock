@@ -1771,7 +1771,7 @@ interp (Lam (FunHeader dpms bs rt) e) = do
     pure $ FunV (map bindingName bs) wrapDpms env
   where
     argAsserts =
-        catMaybes $ flip map bs $ \(NameBinding _ nm ta)
+        catMaybes $ flip map bs $ \(NameBinding (SimpleBinding _ nm ta))
             -> fmap (StmtExpr . AssertTypeCompat (Iden nm)) ta
     wrapArgAsserts = case argAsserts of
         [] -> e
@@ -1785,7 +1785,7 @@ interp (Let bs e) = do
     let newEnv [] = interp e
         newEnv ((b,ex):bs') = do
             let at = case b of
-                    NameBinding _ _ (Just t) ->
+                    NameBinding (SimpleBinding _ _ (Just t)) ->
                         AssertTypeCompat ex t
                     _ -> ex
             v <- interp at
@@ -1879,8 +1879,8 @@ interp (Cases e ty cs els) = do
                 else pure Nothing
             _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
     doMatch _ _ _ _ _ = pure Nothing
-    bindPatArg (NameBinding _ n Nothing) (_,v) = pure (n,v)
-    bindPatArg (NameBinding _ n (Just ta)) (_,v) = do
+    bindPatArg (NameBinding (SimpleBinding _ n Nothing)) (_,v) = pure (n,v)
+    bindPatArg (NameBinding (SimpleBinding _ n (Just ta))) (_,v) = do
         void $ assertTypeAnnCompat v ta
         pure (n,v)
     runBranch tst nms fs ce = do
@@ -1963,7 +1963,7 @@ interp (Receive ma cs aft) = do
         some = internalsRef "some"
         none = internalsRef "none"
         cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, App Nothing some [lam0 e])
-        prdf = Lam (FunHeader [] [NameBinding Shadow rv Nothing] Nothing)
+        prdf = Lam (FunHeader [] [NameBinding $ SimpleBinding Shadow rv Nothing] Nothing)
                $ Cases (Iden rv) Nothing cs' (Just none)
     prdfv <- interp prdf
     let bindInVal iv = case ma of
@@ -2035,7 +2035,11 @@ makeBList [] = VariantV (internalsType "List") "empty" []
 makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest", makeBList xs)]
 
 bindingName :: Binding -> String
-bindingName (NameBinding _ nm _) = nm
+bindingName (NameBinding (SimpleBinding _ nm _)) = nm
+
+sbindingName :: SimpleBinding -> String
+sbindingName (SimpleBinding _ nm _) = nm
+
 
 makeCurriedApp :: SourcePosition -> Expr -> [Expr] -> Expr
 makeCurriedApp sp f es =
@@ -2045,7 +2049,7 @@ makeCurriedApp sp f es =
         (newf,nms2) = case f of
                         Iden "_" -> (Iden "_p0", ("_p0":nms))
                         _ -> (f, nms)
-        bs = flip map nms2 $ \n -> NameBinding NoShadow n Nothing
+        bs = flip map nms2 $ \n -> NameBinding $ SimpleBinding NoShadow n Nothing
     in Lam (FunHeader [] bs Nothing) (App sp newf newEs)
   where
     makeNewEs _ [] = []
@@ -2155,20 +2159,20 @@ currently a contract must immediately precede its let/var/rec/fun decl
 desugarContracts :: [Stmt] -> [Stmt]
 desugarContracts
     (Contract cnm ta : x : sts)
-    | Just (ctor, NameBinding sh bnm lta, e) <- letorrec x
+    | Just (ctor, NameBinding (SimpleBinding sh bnm lta), e) <- letorrec x
     , cnm == bnm
     = case lta of
           Just _ -> error $ "contract for binding that already has type annotation: " ++ cnm
-          Nothing -> ctor (NameBinding sh bnm (Just ta)) e : desugarContracts sts
+          Nothing -> ctor (NameBinding (SimpleBinding sh bnm (Just ta))) e : desugarContracts sts
   where
     letorrec (LetDecl b e) = Just (LetDecl,b,e)
     letorrec (RecDecl b e) = Just (RecDecl,b,e)
-    letorrec (VarDecl b e) = Just (VarDecl,b,e)
+    letorrec (VarDecl b e) = Just (\(NameBinding z) -> VarDecl z,NameBinding b,e)
     letorrec _ = Nothing
 
 
 desugarContracts
-    (Contract cnm ta : s@(FunDecl (NameBinding _ fnm _) _ _ _ _) : sts)
+    (Contract cnm ta : s@(FunDecl (SimpleBinding _ fnm _) _ _ _ _) : sts)
         | cnm == fnm
         , ta `elem` [TName ["Function"] -- todo: need to look these up in the env
                     ,TName ["Any"]]
@@ -2176,7 +2180,7 @@ desugarContracts
 
 desugarContracts
     (cd@(Contract cnm (TArrow tas trt)) :
-     fd@(FunDecl nb@(NameBinding _ fnm _) (FunHeader ps as rt) ds e chk) :
+     fd@(FunDecl nb@(SimpleBinding _ fnm _) (FunHeader ps as rt) ds e chk) :
      sts)
     | cnm == fnm
     =
@@ -2186,8 +2190,9 @@ desugarContracts
     else FunDecl nb (FunHeader ps bindArgs (Just trt)) ds e chk : desugarContracts sts
   where
     bindArgs | length as /= length tas = error $ "type not compatible: different number of args in contract and fundecl" ++ show (cd,fd)
-             | otherwise = zipWith (\ta (NameBinding sh nm _) -> NameBinding sh nm (Just ta)) tas as
-    getTa (NameBinding _ _ bta) = bta
+             | otherwise = zipWith (\ta (NameBinding (SimpleBinding sh nm _)) ->
+                                        NameBinding (SimpleBinding sh nm (Just ta))) tas as
+    getTa (NameBinding (SimpleBinding _ _ bta)) = bta
 
 desugarContracts
     (c@(Contract {}) : s@(FunDecl {}) : _sts) =
@@ -2206,8 +2211,8 @@ interpStatements' ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
   where
     getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
     getRecs accdecls accchks (FunDecl nm fh _ds bdy whr : ss') =
-        let accchks' = maybe accchks (\w -> Check (Just $ bindingName nm) w : accchks) whr
-        in getRecs ((nm, Lam fh bdy):accdecls) accchks' ss'
+        let accchks' = maybe accchks (\w -> Check (Just $ sbindingName nm) w : accchks) whr
+        in getRecs ((NameBinding nm, Lam fh bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
 -- collect a contract with a following letdecl
@@ -2275,7 +2280,7 @@ interpStatement (Check cbnm ss) = do
 interpStatement (LetDecl b e) = do
     v <- interp e
     v' <- case b of
-              NameBinding _ _ (Just ta) -> assertTypeAnnCompat v ta
+              NameBinding (SimpleBinding _ _ (Just ta)) -> assertTypeAnnCompat v ta
               _ -> pure v
     letValue (bindingName b) v'
     pure nothing
@@ -2286,12 +2291,12 @@ interpStatement (VarDecl b e) = do
     -- if the user used a contract, and not if they used a type
     -- annotation on the value the var is initialized with?
     (v',ty) <- case b of
-              NameBinding _ _ (Just ta) -> do
+              SimpleBinding _ _ (Just ta) -> do
                   (,) <$> assertTypeAnnCompat v ta
                   <*> typeOfTypeSyntax ta
               _ -> pure (v, bootstrapType "Any")
     vr <- liftIO $ newIORef v'
-    letValue (bindingName b) (BoxV ty vr)
+    letValue (sbindingName b) (BoxV ty vr)
     pure nothing
 
 interpStatement (SetVar nm e) = do
@@ -2366,16 +2371,16 @@ interpStatement (DataDecl dnm dpms vs whr) = do
                        ,Text vnm
                        ,Construct ["list"] $ concatMap mvf fs]
             tcs = catMaybes $ map (\case
-                NameBinding _ nm (Just ta) -> Just (nm,ta)
+                SimpleBinding _ nm (Just ta) -> Just (nm,ta)
                 _ -> Nothing) $ map snd fs
             typeCheck = case tcs of
                 [] -> id
-                _ -> Let (map (\(nm,ta) -> (NameBinding NoShadow "_" (Just ta), Iden nm)) tcs)
+                _ -> Let (map (\(nm,ta) -> (NameBinding (SimpleBinding NoShadow "_" (Just ta)), Iden nm)) tcs)
         in letDecl vnm
            $ typeLetWrapper dpms
-           $ (if null fs then id else Lam (fh $ map snd fs))
+           $ (if null fs then id else Lam (fh $ map (NameBinding . snd) fs))
            $ typeCheck $ appMakeV
-    mvf (r, b) = let nm = bindingName b
+    mvf (r, b) = let nm = sbindingName b
                  in ([case r of
                           Ref -> Iden "true"
                           Con -> Iden "false"
@@ -2385,7 +2390,7 @@ interpStatement (DataDecl dnm dpms vs whr) = do
     lam as e = Lam (fh $ map mnm as) e
     fh as = FunHeader [] as Nothing
     orE a b = BinOp a "or" b
-    mnm x = NameBinding NoShadow x Nothing
+    mnm x = NameBinding $ SimpleBinding NoShadow x Nothing
 
 interpStatement (TypeStmt {}) = _errorWithCallStack $ "TODO: interp typestmt"
 interpStatement c@(Contract {}) = _errorWithCallStack $ "contract without corresponding statement: " ++ show c
@@ -2863,11 +2868,11 @@ doLetRec bs =
         assigned = map makeAssign bs
     in vars ++ assigned
   where
-    makeVar (NameBinding s nm _,_) =
-        VarDecl (NameBinding s nm Nothing) $ Lam (FunHeader [] [] Nothing)
+    makeVar (NameBinding (SimpleBinding s nm _),_) =
+        VarDecl (SimpleBinding s nm Nothing) $ Lam (FunHeader [] [] Nothing)
         $ App appSourcePos (Iden "raise")
             [Text "internal error: uninitialized letrec implementation var"]
-    makeAssign (NameBinding _ nm ty,v) =
+    makeAssign (NameBinding (SimpleBinding _ nm ty),v) =
         SetVar nm $ (case ty of
                          Nothing -> id
                          Just ta -> flip AssertTypeCompat ta) v
