@@ -379,8 +379,10 @@ simpleBinding allowImplicitTypeTuple =
 binding :: Bool -> Parser Binding
 binding allowImplicitTypeTuple = do
     b1 <- shadowBinding <|> maybeVariantBinding
+    as <- optional (keyword_ "as" *> identifier)
     ty <- optional (symbol_ "::" *> typ allowImplicitTypeTuple)
-    pure $ maybe b1 (\x -> TypedBinding b1 x) ty
+    let b2 = maybe b1 (\x -> AsBinding b1 x) as
+    pure $ maybe b2 (\x -> TypedBinding b2 x) ty
   where
     shadowBinding = ShadowBinding <$> (keyword_ "shadow" *> identifier)
     maybeVariantBinding = do
@@ -515,17 +517,16 @@ assertTypeCompat = do
 receive :: Parser Expr
 receive = do
     keyword_ "receive"
-    al <- optional (keyword_ "as" *> identifier)
     symbol_ ":"
-    nextCase al []
+    nextCase []
   where
-    nextCase al cs =
+    nextCase cs =
         choice [do
                 x <- casePart
                 case x of
-                    Right el -> endCase al cs (Just el)
-                    Left c -> nextCase al (c:cs)
-               ,endCase al cs Nothing]
+                    Right el -> endCase cs (Just el)
+                    Left c -> nextCase (c:cs)
+               ,endCase cs Nothing]
     casePart :: Parser (Either (Binding,Maybe Expr, Expr) (Expr,Expr))
     casePart = do
         symbol_ "|"
@@ -534,7 +535,7 @@ receive = do
             ,Left <$> ((,,) <$> (binding False <?> "case pattern")
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
                        <*> (symbol_ "=>" *> expr))]
-    endCase al cs aft = keyword_ "end" *> pure (Receive al (reverse cs) aft)
+    endCase cs aft = keyword_ "end" *> pure (Receive (reverse cs) aft)
     after = keyword_ "after" *> expr
 
 numE :: Parser Expr

@@ -74,7 +74,7 @@ fun repl-monitor():
   rf = sm.{1}
 
   fun repl-down(v):
-    receive as e:
+    receive:
       | exit(ret) => block:
           send(ret,exiting(self))
         end
@@ -82,17 +82,17 @@ fun repl-monitor():
           send(r,repl-down(self,v))
           repl-down(v)
         end
-      | _ #|as e|# => block:
+      | _ as e => block:
           repl-down(v)
         end
     end
   end
 
   fun repl-monitor-loop():
-    receive as e:
+    receive:
       | run-src(ret,src) => block:
           send(repl,run-src(self,src))
-          receive as e:
+          receive:
             | run-src-ok(r) when r == repl => block:
                 send(ret, run-src-ok(self))
                 repl-monitor-loop()
@@ -121,14 +121,14 @@ fun repl-monitor():
           print("repl-loop unexpectedly exited: " + torepr(v))
           repl-down(v)
         end
-      | _ #|as e|# => print("repl-monitor: unexpected message: " + torepr(e))
+      | _ as e => print("repl-monitor: unexpected message: " + torepr(e))
     end
   end
   repl-monitor-loop()
 end
 
 fun repl-loop():
-  receive as e:
+  receive:
     | run-src(ret,src) => block:
         v = catch-as-either(run-script(src))
         cases v:
@@ -142,7 +142,7 @@ fun repl-loop():
     | exit(ret) => block:
         send(ret, exiting(self))
       end
-    | _ #|as e|# => block:
+    | _ as e => block:
         print("repl-loop: unexpected message: " + torepr(e))
         repl-loop()
       end

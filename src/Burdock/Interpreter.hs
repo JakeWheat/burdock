@@ -1845,6 +1845,8 @@ interp (Cases e ty cs els) = do
         when (t /= ta) $ _errorWithCallStack $ "type not compatible: type of pattern not the same as the type of the case: " ++ show (t,ta)
     bindingMatchesType t (VariantBinding nm _) = checkVariantType t nm
     bindingMatchesType t (NameBinding nm) = checkVariantType t [nm]
+    bindingMatchesType _ WildcardBinding = pure ()
+    bindingMatchesType t (AsBinding b _) = bindingMatchesType t b
     checkVariantType t ss = do
         let s = prefixLast "_casepattern-" ss
         caseName <- interp $ makeDotPathExpr s
@@ -1918,7 +1920,7 @@ interp (AssertTypeCompat e t) = do
 
 interp (TypeLet tds e) = typeLet tds $ interp e
 
-interp (Receive ma cs aft) = do
+interp (Receive cs aft) = do
     -- turn the cs into a function which returns a maybe x
     -- put the branches in a cases
     -- each branch is wrapped in some()
@@ -1927,16 +1929,13 @@ interp (Receive ma cs aft) = do
     -- the branches are wrapped in a lambda, so that the bodies
     -- are run after the hsconcurrency receive is finished,
     -- so that nested receives work correctly
-    let rv = maybe "receiveval" id ma
+    let rv = "receiveval"
         some = internalsRef "some"
         none = internalsRef "none"
         cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, App Nothing some [lam0 e])
         prdf = Lam (FunHeader [] [NameBinding rv] Nothing)
                $ Cases (Iden rv) Nothing cs' (Just none)
     prdfv <- interp prdf
-    let bindInVal iv = case ma of
-                            Nothing -> id
-                            Just al -> localBindings (extendBindings [(al, iv)])
     let prd :: Dynamic -> Interpreter (Maybe Dynamic)
         prd v = do
                 let v' = case fromDynamic v of
@@ -1945,7 +1944,7 @@ interp (Receive ma cs aft) = do
                             Just (MonitorDown tg et mv r) -> --trace(show (tg,et,mv,r)) $
                                 makeMonitorDown tg et mv r
                             _ -> error $ "receive pred got something that wasn't a value: " ++ show v
-                r <- bindInVal v' $ app prdfv [v']
+                r <- app prdfv [v']
                 case r of
                     VariantV tg "none" [] | tg == internalsType "Option" -> pure Nothing
                     VariantV tg "some" [(_,x)] | tg == internalsType "Option" -> pure $ Just $ toDyn x
@@ -2931,7 +2930,12 @@ matchBindingMaybe c (TypedBinding b ty) v = do
             void $ assertTypeAnnCompat v ty
             pure r
         Nothing -> pure Nothing
-    
+
+matchBindingMaybe c (AsBinding b nm) v = do
+    r <- matchBindingMaybe c b v
+    pure $ case r of
+        Nothing -> Nothing
+        Just cs -> Just ((nm,v) : cs)
 
 simpleBindingToBinding :: SimpleBinding -> Binding
 simpleBindingToBinding = \case

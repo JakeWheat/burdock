@@ -135,9 +135,9 @@ expr (Template _sp) = pretty "..."
 
 expr (UnboxRef e f) = expr e <> pretty "!" <> pretty f
 
-expr (Receive ma mats after) =
+expr (Receive mats after) =
     prettyBlocklike vsep
-    [pretty "receive" <> maybe mempty (\x -> pretty "" <+> pretty "as" <+> pretty x) ma <> pretty ":"
+    [pretty "receive:"
     ,vsep (map mf mats ++
            [maybe mempty aft after])]
   where
@@ -160,6 +160,7 @@ binding (VariantBinding nms bs) =
     xSep "." (map pretty nms) <> parens (commaSep $ map binding bs)
 binding (TypedBinding b t) = binding b <+> pretty "::" <+> typ t
 binding (ShadowBinding s) = pretty "shadow" <+> pretty s
+binding (AsBinding b as) = binding b <+> pretty "as" <+> pretty as
 
 simpleBinding :: SimpleBinding -> Doc a
 simpleBinding (SimpleBinding s nm ty) =

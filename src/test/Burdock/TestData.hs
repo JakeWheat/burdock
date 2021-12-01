@@ -57,6 +57,9 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("let x=3: x + 4 end"
      ,Let [(nm "x", Num 3)]
          (BinOp (Iden "x") "+" (Num 4)))
+
+    ,("let _ as b = 3: b end"
+     ,Let [(AsBinding WildcardBinding "b", Num 3)] $ Iden "b")
     
     ,("letrec a = 5: a end"
      ,LetRec [(nm "a",Num 5)] (Iden "a"))
@@ -272,38 +275,32 @@ end|]
 receive:
   | a => b
 end
-     |], Receive Nothing [(NameBinding "a", Nothing, Iden "b")] Nothing)
+     |], Receive [(NameBinding "a", Nothing, Iden "b")] Nothing)
 
-
-    ,([R.r|
-receive as c:
-  | a => b
-end
-     |], Receive (Just "c") [(NameBinding "a", Nothing, Iden "b")] Nothing)
 
     ,([R.r|
 receive:
   | pat1(a) => a
   | pat2(b) => b
 end
-     |], Receive Nothing [(VariantBinding ["pat1"] [nm "a"], Nothing, Iden "a")
+     |], Receive [(VariantBinding ["pat1"] [nm "a"], Nothing, Iden "a")
                  ,(VariantBinding  ["pat2"] [nm "b"], Nothing, Iden "b")] Nothing)
     ,([R.r|
 receive:
   | after infinity => c
 end
-     |], Receive Nothing [] (Just (Iden "infinity", Iden "c")))
+     |], Receive [] (Just (Iden "infinity", Iden "c")))
     ,([R.r|
 receive:
   | after 1.1 => c
 end
-     |], Receive Nothing [] (Just (Num 1.1, Iden "c")))
+     |], Receive [] (Just (Num 1.1, Iden "c")))
     ,([R.r|
 receive:
   | pat1(a) => a
   | after f(10) => c
 end
-     |], Receive Nothing [(VariantBinding ["pat1"] [nm "a"], Nothing, Iden "a")]
+     |], Receive [(VariantBinding ["pat1"] [nm "a"], Nothing, Iden "a")]
                  (Just (App Nothing (Iden "f") [Num 10], Iden "c")))
 
     ,([R.r|

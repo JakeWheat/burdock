@@ -76,3 +76,6 @@ check "unary minus":
   4 - 8 is - a
 end
 
+check "as binding":
+  let _ as b = 3: b end is 3
+end

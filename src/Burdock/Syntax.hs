@@ -86,7 +86,7 @@ data Expr =
     | TypeLet [TypeDecl] Expr
     | Template SourcePosition
     | UnboxRef Expr String
-    | Receive (Maybe String) [(Binding, Maybe Expr, Expr)] (Maybe (Expr, Expr))
+    | Receive [(Binding, Maybe Expr, Expr)] (Maybe (Expr, Expr))
     deriving (Eq,Show,Data)
 
 data TypeDecl = TypeDecl String [String] Ann
@@ -98,6 +98,7 @@ data Binding
     | TypedBinding Binding Ann
     | ShadowBinding String
     | WildcardBinding
+    | AsBinding Binding String
     deriving (Eq,Show,Data)
 
 data SimpleBinding = SimpleBinding Shadow String (Maybe Ann)
