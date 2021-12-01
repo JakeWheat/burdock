@@ -2879,19 +2879,11 @@ appSourcePos = Nothing
 -- when bindings can fail, this will throw an error
 -- the other version is for cases and similar, it will return a maybe
 matchBindingOrError :: Binding -> Value -> Interpreter [(String,Value)]
-matchBindingOrError (NameBinding nm) v = do
-    if nm == "_"
-        then pure []
-        else  pure [(nm,v)]
-
-matchBindingOrError (ShadowBinding nm) v = do
-    if nm == "_"
-        then pure []
-        else  pure [(nm,v)]
-
-matchBindingOrError (TypedBinding b ty) v = do
-    void $ assertTypeAnnCompat v ty
-    matchBindingOrError b v
+matchBindingOrError b v = do
+    x <- matchBindingMaybe False b v
+    case x of
+        Nothing -> error $ "value doesn't match binding: " ++ show v ++ ", " ++ show b
+        Just y -> pure y
 
 -- bool is if this is a variant context, so treat a namebinding
 -- as a unqualified zero arg variant match
