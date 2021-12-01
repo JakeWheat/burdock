@@ -47,6 +47,7 @@ list = {make : lam(x): x end}
 
 raise = get-ffi-value("raise")
 haskell-error = get-ffi-value("haskell-error")
+haskell-undefined = get-ffi-value("haskell-undefined")
 
 get-call-stack = get-ffi-value("get-call-stack")
 format-call-stack = get-ffi-value("format-call-stack")

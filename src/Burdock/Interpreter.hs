@@ -1255,6 +1255,7 @@ builtInFF =
     ,("load-module", bLoadModule)
     ,("show-handle-state", bShowHandleState)
     ,("haskell-error", haskellError)
+    ,("haskell-undefined", haskellUndefined)
 
     ,("is-nothing", isNothing)
     ,("is-Nothing", isNothing)
@@ -1467,6 +1468,10 @@ raise _ = error "wrong args to raise"
 haskellError :: [Value] -> Interpreter Value
 haskellError [TextV v] = error v
 haskellError _ = error $ "wrong args to haskell-error"
+
+haskellUndefined :: [Value] -> Interpreter Value
+haskellUndefined [] = undefined
+haskellUndefined _ = error $ "wrong args to haskell-undefined"
 
 bParseFile :: [Value] -> Interpreter Value
 bParseFile [TextV fn] = do

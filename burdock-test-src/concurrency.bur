@@ -3,6 +3,11 @@ include concurrency
 include option
 include either
 
+import from _internals:
+  haskell-error,
+  haskell-undefined
+end
+
 
 # utils for the testing
 # perhaps these should be in the standard lib?
@@ -276,6 +281,33 @@ check "spawn-monitor-tag":
           mr is x.{1}
         end
     end
+  end end)
+end
+
+check "spawn-monitor-haskell-stuff":
+  run-tests-in-thread(lam(): block:
+
+    admr = spawn-monitor(lam(): haskell-error("check this message gets through") end)
+    receive as x:
+      | monitor-down(tg,et,v,mr) => block:
+          v satisfies lam(x): string-index-of(x, "check this message gets through") > -1 end
+          tg is nothing
+          et is exit-exception
+          mr is admr.{1}
+        end
+    end
+
+    admr2 = spawn-monitor(lam(): haskell-undefined() end)
+    receive as x:
+      | monitor-down(tg,et,v,mr) => block:
+          v satisfies lam(x): string-index-of(x, "Prelude.undefined") > -1 end
+          tg is nothing
+          et is exit-exception
+          mr is admr2.{1}
+        end
+    end
+
+
   end end)
 end
 
