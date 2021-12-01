@@ -311,8 +311,6 @@ check "spawn-monitor-haskell-stuff":
   end end)
 end
 
-
-
 check "async exit":
 
   run-tests-in-thread(lam(): block:

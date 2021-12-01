@@ -184,7 +184,7 @@ runScript h mfn lenv src =
                 when (not $ null trs) $
                     liftIO $ putStrLn $ formatTestResults trs
             BoolV False -> pure ()
-            x -> error $ "bad value in auto-print-test-results (should be boolv): " ++ show x
+            x -> _errorWithCallStack $ "bad value in auto-print-test-results (should be boolv): " ++ show x
         pure ret
     
 evalExpr :: Handle
@@ -413,10 +413,10 @@ internalsType x = SimpleTypeInfo ["_system","modules","_internals",x]
 typeOfTypeSyntax :: Ann -> Interpreter TypeInfo
 typeOfTypeSyntax (TName x) = do
     v <- interp (makeDotPathExpr $ prefixLast "_typeinfo-" x)
-    pure $ case v of
-               FFIValue v' | Just z <- fromDynamic v' -> (z :: TypeInfo)
-                           | otherwise -> error $ "type info reference isn't a type info: " ++ show v'
-               _ -> error $ "type info reference isn't a type info: " ++ show v
+    case v of
+        FFIValue v' | Just z <- fromDynamic v' -> pure (z :: TypeInfo)
+                    | otherwise -> _errorWithCallStack $ "type info reference isn't a type info: " ++ show v'
+        _ -> _errorWithCallStack $ "type info reference isn't a type info: " ++ show v
 typeOfTypeSyntax (TTuple xs) = do
     fs <- mapM typeOfTypeSyntax xs
     pure $ TupleTypeInfo fs
@@ -439,7 +439,7 @@ typeOfTypeSyntax (TArrow as r) = do
 
 typeOfTypeSyntax (TParens t) = typeOfTypeSyntax t
 
-typeOfTypeSyntax x = error $ "typeOfTypeSyntax: " ++ show x
+typeOfTypeSyntax x = _errorWithCallStack $ "typeOfTypeSyntax: " ++ show x
 
 secondM :: Functor m => (b -> m b') -> (a, b) -> m (a, b')
 secondM f (a,b) = (a,) <$> f b
@@ -510,7 +510,7 @@ assertPatternTagMatchesCasesTag :: TypeInfo -> TypeInfo -> Interpreter ()
 assertPatternTagMatchesCasesTag a b
     | a == bootstrapType "Any" = pure ()
     | otherwise =
-          when (a /= b) $ error $ "type not compatible: type of pattern not the same as the type of the case: " ++ show (b,a)
+          when (a /= b) $ _errorWithCallStack $ "type not compatible: type of pattern not the same as the type of the case: " ++ show (b,a)
 
 prefixLast :: [a] -> [[a]] -> [[a]]
 prefixLast pre is = f is
@@ -809,7 +809,7 @@ enterCheckBlock :: Maybe String -> Interpreter a -> Interpreter a
 enterCheckBlock mcbnm f = do
     st <- ask
     when (isJust $ tlCurrentCheckblock st)
-        $ error $ "nested checkblock " ++ show (tlCurrentCheckblock st) ++ " / " ++ show mcbnm
+        $ _errorWithCallStack $ "nested checkblock " ++ show (tlCurrentCheckblock st) ++ " / " ++ show mcbnm
     -- generate unique name if anon
     -- todo: incorporate thread id if not root thread
     cbnm <- case mcbnm of
@@ -832,7 +832,7 @@ addTestResult tr = do
         -- todo: this check should be done before the test is executed
         -- this can happen once implement static checks on the syntax
         -- before interpretation
-        Nothing -> error $ "test predicate not in check block: " ++ show tr
+        Nothing -> _errorWithCallStack $ "test predicate not in check block: " ++ show tr
     liftIO $ atomically $ do
         v <- readTVar (tlHandleState st)
         -- nested tvar will be removed when test results per module
@@ -928,15 +928,15 @@ bSpawn [f] = do
     x <- liftIO $ spawn (tlThreadHandle st) $ \th ->
         runInterpInherit st th True $ toDyn <$> app f []
     pure $ FFIValue $ toDyn x
-bSpawn x = error $ "wrong args to bSpawn: " ++ show x
+bSpawn x = _errorWithCallStack $ "wrong args to bSpawn: " ++ show x
 
 bSpawnMonitor :: [Value] -> Interpreter Value
 bSpawnMonitor [f] =  spawnMonitorWrap Nothing f
-bSpawnMonitor x = error $ "wrong args to bSpawnMonitor: " ++ show x
+bSpawnMonitor x = _errorWithCallStack $ "wrong args to bSpawnMonitor: " ++ show x
 
 bSpawnMonitorTag :: [Value] -> Interpreter Value
 bSpawnMonitorTag [tg,f] = spawnMonitorWrap (Just tg) f
-bSpawnMonitorTag x = error $ "wrong args to bSpawnMonitorTag: " ++ show x
+bSpawnMonitorTag x = _errorWithCallStack $ "wrong args to bSpawnMonitorTag: " ++ show x
 
 spawnMonitorWrap :: Maybe Value -> Value -> Interpreter Value
 spawnMonitorWrap tag f = do
@@ -954,7 +954,7 @@ bAsyncExit [FFIValue to,val] = do
     th <- askThreadHandle
     liftIO $ asyncExit th toaddr $ toDyn val
     pure nothing
-bAsyncExit x = error $ "wrong args to bAsyncExit: " ++ show x
+bAsyncExit x = _errorWithCallStack $ "wrong args to bAsyncExit: " ++ show x
 
 convertHsMonitorRef :: MonitorRef -> Value
 convertHsMonitorRef (MonitorRef s i) =
@@ -967,13 +967,13 @@ bSelf :: [Value] -> Interpreter Value
 bSelf [] = do
     x <- askThreadHandle
     pure $ FFIValue $ toDyn $ addr x
-bSelf x = error $ "wrong args to bSelf: " ++ show x
+bSelf x = _errorWithCallStack $ "wrong args to bSelf: " ++ show x
 
 bSleep :: [Value] -> Interpreter Value
 bSleep [NumV t] = do
     liftIO $ threadDelay (floor (t * 1000 * 1000))
     pure nothing
-bSleep x = error $ "wrong args to sleep: " ++ show x
+bSleep x = _errorWithCallStack $ "wrong args to sleep: " ++ show x
 
 bSend :: [Value] -> Interpreter Value
 bSend [FFIValue to, val] = do
@@ -981,7 +981,7 @@ bSend [FFIValue to, val] = do
     th <- askThreadHandle
     liftIO $ send th toaddr $ toDyn val
     pure nothing
-bSend x = error $ "wrong args to bSend: " ++ show x
+bSend x = _errorWithCallStack $ "wrong args to bSend: " ++ show x
 
 {-bReceive :: [Value] -> Interpreter Value
 bReceive [] = do
@@ -1162,6 +1162,15 @@ formatCallStack cs = do
             caret = replicate (c - 1) ' ' ++ "^"
         pure $ fn ++ ":" ++ show l ++ ":\n" ++ lne ++ "\n" ++ caret
 
+_undefinedWithCallStack :: Interpreter a
+_undefinedWithCallStack = _errorWithCallStack "undefined"
+
+_errorWithCallStack :: String -> Interpreter a
+_errorWithCallStack msg = do
+    cs <- readCallStack
+    css <- formatCallStack cs
+    error $ msg ++ "\n" ++ css
+
 ---------------------------------------
 
 -- converting values to strings
@@ -1221,7 +1230,7 @@ builtInFF =
                  , Just b' <- fromDynamic b
                  -> either (error . show) (pure . BoolV) $ R.relEqual a' b'
              [a,b] -> pure $ BoolV $ a == b
-             as -> error $ "bad args to ==: " ++ show as)
+             as -> _errorWithCallStack $ "bad args to ==: " ++ show as)
     ,("<", bLT)
     ,(">", bGT)
     ,("<=", bLTE)
@@ -1230,14 +1239,14 @@ builtInFF =
     ,("+", \case
              [NumV a,NumV b] -> pure $ NumV $ a + b
              [TextV a, TextV b] -> pure $ TextV $ a ++ b
-             as -> error $ "unsupported args to + :" ++ show as)
+             as -> _errorWithCallStack $ "unsupported args to + :" ++ show as)
     ,("-", \case
              [NumV a] -> pure $ NumV (- a)
              [NumV a,NumV b] -> pure $ NumV $ a - b
-             as -> error $ "unsupported args to - :" ++ show as)
+             as -> _errorWithCallStack $ "unsupported args to - :" ++ show as)
     ,("*", \case
              [NumV a,NumV b] -> pure $ NumV $ a * b
-             xs -> error $ "bad args to * " ++ show xs)
+             xs -> _errorWithCallStack $ "bad args to * " ++ show xs)
     ,("/", \case
              [NumV a,NumV b] -> pure $ NumV $ divideScientific a b
              xs -> error $ "bad args to / " ++ show xs)
@@ -1288,7 +1297,7 @@ builtInFF =
              _ -> error $ "bad args to table-dee maker")
     ,("table-dum", \case
              [] -> pure $ FFIValue $ toDyn (R.tableDum :: R.Relation Value)
-             _ -> error $ "bad args to table-dee maker")
+             _ -> _errorWithCallStack $ "bad args to table-dee maker")
     ,("rel-union", relUnion)
     ,("rel-where", relWhere)
     ,("rel-update", relUpdate)
@@ -1315,7 +1324,7 @@ getFFIValue :: [Value] -> Interpreter Value
 getFFIValue [TextV nm] = do
     -- todo: check the value exists in the ffi catalog
     pure $ ForeignFunV nm
-getFFIValue _ = error "wrong args to get-ffi-value"
+getFFIValue _ = _errorWithCallStack "wrong args to get-ffi-value"
 
 
 fromBList :: Value -> Maybe [Value]
@@ -1338,76 +1347,76 @@ makeVariant [FFIValue ftg, TextV nm, as']
     f (BoolV True : TextV fnm : v : asx) = do
         vb <- BoxV (internalsType "Any") <$> liftIO (newIORef v)
         ((fnm,vb):) <$> f asx
-    f x = error $ "wrong args to make-variant: " ++ show x
-makeVariant x = error $ "wrong args to make-variant: " ++ show x
+    f x = _errorWithCallStack $ "wrong args to make-variant: " ++ show x
+makeVariant x = _errorWithCallStack $ "wrong args to make-variant: " ++ show x
 
 isVariant :: [Value] -> Interpreter Value
 isVariant [FFIValue ftg, TextV nm, VariantV vtg vt _]
     | Just tg <- fromDynamic ftg
     = pure $ BoolV $ tg == vtg && nm == vt
 isVariant [FFIValue _, TextV _nm, _] = pure $ BoolV False
-isVariant _ = error $ "wrong args to is-variant"
+isVariant _ = _errorWithCallStack $ "wrong args to is-variant"
 
 isNothing :: [Value] -> Interpreter Value
 isNothing [VariantV tg "nothing" _] | tg == bootstrapType "Nothing" = pure $ BoolV True
 isNothing [_] = pure $ BoolV False
-isNothing _ = error $ "wrong args to is-nothing/is-Nothing"
+isNothing _ = _errorWithCallStack $ "wrong args to is-nothing/is-Nothing"
 
 isTuple :: [Value] -> Interpreter Value
 isTuple [VariantV tg "tuple" _] | tg == bootstrapType "Tuple" = pure $ BoolV True
 isTuple [_] = pure $ BoolV False
-isTuple _ = error $ "wrong args to is-tuple"
+isTuple _ = _errorWithCallStack $ "wrong args to is-tuple"
 
 isRecord :: [Value] -> Interpreter Value
 isRecord [VariantV tg "record" _] | tg == bootstrapType "Record" = pure $ BoolV True
 isRecord [_] = pure $ BoolV False
-isRecord _ = error $ "wrong args to is-record"
+isRecord _ = _errorWithCallStack $ "wrong args to is-record"
 
 isBoolean :: [Value] -> Interpreter Value
 isBoolean [BoolV _] = pure $ BoolV True
 isBoolean [_] = pure $ BoolV False
-isBoolean _ = error $ "wrong args to is-boolean"
+isBoolean _ = _errorWithCallStack $ "wrong args to is-boolean"
 
 isString :: [Value] -> Interpreter Value
 isString [TextV _] = pure $ BoolV True
 isString [_] = pure $ BoolV False
-isString _ = error $ "wrong args to is-string"
+isString _ = _errorWithCallStack $ "wrong args to is-string"
 
 isNumber :: [Value] -> Interpreter Value
 isNumber [NumV _] = pure $ BoolV True
 isNumber [_] = pure $ BoolV False
-isNumber _ = error $ "wrong args to is-number"
+isNumber _ = _errorWithCallStack $ "wrong args to is-number"
 
 isFunction :: [Value] -> Interpreter Value
 isFunction [FunV {}] = pure $ BoolV True
 isFunction [ForeignFunV {}] = pure $ BoolV True
 isFunction [_] = pure $ BoolV False
-isFunction _ = error $ "wrong args to is-function"
+isFunction _ = _errorWithCallStack $ "wrong args to is-function"
 
 
 reverseApp :: [Value] -> Interpreter Value
 reverseApp [a, f] = app f [a]
-reverseApp as = error $ "wrong args to ^ " ++ show as
+reverseApp as = _errorWithCallStack $ "wrong args to ^ " ++ show as
 
 chainApp :: [Value] -> Interpreter Value
 chainApp [f, a] = app f [a]
-chainApp as = error $ "wrong args to |> " ++ show as
+chainApp as = _errorWithCallStack $ "wrong args to |> " ++ show as
 
 bLT :: [Value] -> Interpreter Value
 bLT [NumV a, NumV b] = pure $ BoolV $ a < b
-bLT as = error $ "unsupported args to < (todo?) " ++ show as
+bLT as = _errorWithCallStack $ "unsupported args to < (todo?) " ++ show as
 
 bGT :: [Value] -> Interpreter Value
 bGT [NumV a, NumV b] = pure $ BoolV $ a > b
-bGT as = error $ "unsupported args to > (todo?) " ++ show as
+bGT as = _errorWithCallStack $ "unsupported args to > (todo?) " ++ show as
 
 bLTE :: [Value] -> Interpreter Value
 bLTE [NumV a, NumV b] = pure $ BoolV $ a <= b
-bLTE as = error $ "unsupported args to <= (todo?) " ++ show as
+bLTE as = _errorWithCallStack $ "unsupported args to <= (todo?) " ++ show as
 
 bGTE :: [Value] -> Interpreter Value
 bGTE [NumV a, NumV b] = pure $ BoolV $ a >= b
-bGTE as = error $ "unsupported args to >= (todo?) " ++ show as
+bGTE as = _errorWithCallStack $ "unsupported args to >= (todo?) " ++ show as
 
 
 bPrint :: [Value] -> Interpreter Value
@@ -1418,14 +1427,14 @@ bPrint [v] = do
     liftIO $ putStrLn v'
     pure nothing
 
-bPrint _ = error $ "wrong number of args to print"
+bPrint _ = _errorWithCallStack $ "wrong number of args to print"
 
 -- load module at filepath
 bLoadModule :: [Value] -> Interpreter Value
 bLoadModule [TextV moduleName, TextV fn] = do
     loadAndRunModule True moduleName fn
     pure nothing
-bLoadModule _ = error $ "wrong args to load module"
+bLoadModule _ = _errorWithCallStack $ "wrong args to load module"
 
 bShowHandleState :: [Value] -> Interpreter Value
 bShowHandleState [] = do
@@ -1433,16 +1442,16 @@ bShowHandleState [] = do
     v <- liftIO $ showState st
     pure $ TextV v
     
-bShowHandleState _ = error $ "wrong args to show-handle-state"
+bShowHandleState _ = _errorWithCallStack $ "wrong args to show-handle-state"
 
 torepr :: [Value] -> Interpreter Value
 torepr [x] = TextV <$> liftIO (torepr' x)
-torepr _ = error "wrong number of args to torepr"
+torepr _ = _errorWithCallStack "wrong number of args to torepr"
 
 toString :: [Value] -> Interpreter Value
 toString [s@(TextV {})] = pure s
 toString [x] = torepr [x]
-toString _ = error "wrong number of args to tostring"
+toString _ = _errorWithCallStack "wrong number of args to tostring"
 
 stringToNumber :: [Value] -> Interpreter Value
 stringToNumber [TextV t] = case readMaybe t of
@@ -1450,28 +1459,28 @@ stringToNumber [TextV t] = case readMaybe t of
         pure $ VariantV (internalsType "Option") "some" [("value", NumV n)]
     Nothing ->
         pure $ VariantV (internalsType "Option") "none" []
-stringToNumber _ = error "wrong args to string-to-number"
+stringToNumber _ = _errorWithCallStack "wrong args to string-to-number"
 
 stringIndexOf :: [Value] -> Interpreter Value
 stringIndexOf [TextV t, TextV s] =
     case (s `isPrefixOf`) `findIndex` (tails t) of
         Just i -> pure $ NumV $ fromIntegral i
         Nothing -> pure $ NumV (-1)
-stringIndexOf _ = error "wrong args to string-index-of"
+stringIndexOf _ = _errorWithCallStack "wrong args to string-index-of"
 
 raise :: [Value] -> Interpreter Value
 raise [v] = do
     cs <- readCallStack
     throwM $ ValueException cs v
-raise _ = error "wrong args to raise"
+raise _ = _errorWithCallStack "wrong args to raise"
 
 haskellError :: [Value] -> Interpreter Value
 haskellError [TextV v] = error v
-haskellError _ = error $ "wrong args to haskell-error"
+haskellError _ = _errorWithCallStack $ "wrong args to haskell-error"
 
 haskellUndefined :: [Value] -> Interpreter Value
 haskellUndefined [] = undefined
-haskellUndefined _ = error $ "wrong args to haskell-undefined"
+haskellUndefined _ = _errorWithCallStack $ "wrong args to haskell-undefined"
 
 bParseFile :: [Value] -> Interpreter Value
 bParseFile [TextV fn] = do
@@ -1479,24 +1488,24 @@ bParseFile [TextV fn] = do
     let ast = either error id $ parseScript fn src
     pure $ FFIValue $ toDyn $ ast
     
-bParseFile _ = error $ "wrong args to parse-file"
+bParseFile _ = _errorWithCallStack $ "wrong args to parse-file"
 
 bShowHaskellAst :: [Value] -> Interpreter Value
 bShowHaskellAst [FFIValue v] = do
     let ast :: Script
         ast = maybe (error "bad arg type to haskell-show-ast") id $ fromDynamic v
     pure $ TextV $ ppShow ast
-bShowHaskellAst _ = error $ "wrong args to show-haskell-ast"
+bShowHaskellAst _ = _errorWithCallStack $ "wrong args to show-haskell-ast"
     
 getCallStack :: [Value] -> Interpreter Value
 getCallStack [] = (FFIValue . toDyn) <$> readCallStack
-getCallStack _ = error $ "wrong args to get-call-stack"
+getCallStack _ = _errorWithCallStack $ "wrong args to get-call-stack"
 
 bFormatCallStack :: [Value] -> Interpreter Value
 bFormatCallStack [FFIValue cs] = do
     let hcs = maybe (error "bad arg type to format-call-stack") id $ fromDynamic cs
     TextV <$> formatCallStack hcs
-bFormatCallStack _ = error $ "wrong args to format-call-stack"
+bFormatCallStack _ = _errorWithCallStack $ "wrong args to format-call-stack"
 
 bRunScript :: [Value] -> Interpreter Value
 bRunScript [TextV src] = do
@@ -1508,7 +1517,7 @@ bRunScript [TextV src] = do
     modifyReplCreatedBindings (extendBindings stuff)
     pure x
 
-bRunScript _ = error $ "wrong args to run-script"
+bRunScript _ = _errorWithCallStack $ "wrong args to run-script"
 
 -------------------
 
@@ -1519,7 +1528,7 @@ relToList [FFIValue v]
   where
     mkl = makeBList . map mkr
     mkr = VariantV (bootstrapType "Record") "record"
-relToList _ = error "bad args to relToList"
+relToList _ = _errorWithCallStack "bad args to relToList"
 
 relFromList :: [Value] -> Interpreter Value
 relFromList [l]
@@ -1530,10 +1539,7 @@ relFromList [l]
     unr (VariantV tg "record" fs)
         | tg == bootstrapType "Record" = Just fs
     unr _ = Nothing
-    
-relFromList x = error
-    $ "bad args to relFromList: " ++ show x
-
+relFromList x = _errorWithCallStack $ "bad args to relFromList: " ++ show x
 
 relFromTable :: [Value] -> Interpreter Value
 relFromTable = relFromList
@@ -1543,7 +1549,7 @@ relUnion [FFIValue a, FFIValue b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
     = either (error . show) (pure . FFIValue . toDyn) $ R.relUnion a' b'
-relUnion _ = error "bad args to relUnion"
+relUnion _ = _errorWithCallStack "bad args to relUnion"
 
 relWhere :: [Value] -> Interpreter Value
 relWhere [FFIValue a, f]
@@ -1551,14 +1557,14 @@ relWhere [FFIValue a, f]
     = either (error . show) (FFIValue . toDyn) <$>
       R.relWhere a' (wrapBPredicate f)
 
-relWhere _ = error "bad args to relWhere"
+relWhere _ = _errorWithCallStack "bad args to relWhere"
 
 relUpdate :: [Value] -> Interpreter Value
 relUpdate [FFIValue a, uf, pf]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     =  either (error . show) (FFIValue . toDyn) <$>
        R.relUpdate a' (wrapBRecFn uf) (wrapBPredicate pf)
-relUpdate _ = error "bad args to relUpdate"
+relUpdate _ = _errorWithCallStack "bad args to relUpdate"
 
 relProject :: [Value] -> Interpreter Value
 relProject [l, FFIValue a]
@@ -1569,7 +1575,7 @@ relProject [l, FFIValue a]
   where
     unText (TextV t) = Just t
     unText _ = Nothing
-relProject _ = error "bad args to relProject"
+relProject _ = _errorWithCallStack "bad args to relProject"
 
 relRename :: [Value] -> Interpreter Value
 relRename [l, FFIValue a]
@@ -1581,7 +1587,7 @@ relRename [l, FFIValue a]
     unTextPair (VariantV tg "tuple" [(_, TextV x), (_, TextV y)])
         | tg == bootstrapType "Tuple" = Just (x,y)
     unTextPair _ = Nothing
-relRename _ = error "bad args to relRename"
+relRename _ = _errorWithCallStack "bad args to relRename"
 
 relJoin :: [Value] -> Interpreter Value
 relJoin [FFIValue a, FFIValue b]
@@ -1589,7 +1595,7 @@ relJoin [FFIValue a, FFIValue b]
     , Just b' <- fromDynamic b
     = either (error . show) (pure . FFIValue . toDyn)
       $ R.relJoin a' b'
-relJoin _ = error "bad args to relJoin"
+relJoin _ = _errorWithCallStack "bad args to relJoin"
 
 relNotMatching :: [Value] -> Interpreter Value
 relNotMatching [FFIValue a, FFIValue b]
@@ -1622,7 +1628,7 @@ relUngroup [TextV a, FFIValue b]
     unmakeRel (FFIValue x) | Just (y :: R.Relation Value) <- fromDynamic x
        = either (error . show) id $ R.toList y
     unmakeRel x = error $ "ungroup unmake rel, not a relation:" ++ show x
-relUngroup _ = error "bad args to relUngroup"
+relUngroup _ = _errorWithCallStack "bad args to relUngroup"
 
 
 relSummarize :: [Value] -> Interpreter Value
@@ -1635,7 +1641,7 @@ relSummarize [p, TextV c, FFIValue r]
         | tg == bootstrapType "Tuple" =
           Just (z,(\a b -> app bo [a,b]))
     extractPair _ = Nothing
-relSummarize _ = error "bad args to relSummarize"
+relSummarize _ = _errorWithCallStack "bad args to relSummarize"
 
 
 unionRecs :: [Value] -> Interpreter Value
@@ -1643,7 +1649,7 @@ unionRecs [VariantV tg "record" as, VariantV tg' "record" bs]
     | tg == bootstrapType "Record" && tg' == tg
     = pure $ VariantV tg "record" (as ++ bs)
     
-unionRecs x = error $ "bad args to unionRecs" ++ show x
+unionRecs x = _errorWithCallStack $ "bad args to unionRecs" ++ show x
 
 wrapBRecFn :: Value -> [(String,Value)] -> Interpreter [(String,Value)]
 wrapBRecFn f r = do
@@ -1651,7 +1657,7 @@ wrapBRecFn f r = do
     x <- app f [rc]
     case x of
         VariantV tg "record" r' | tg == bootstrapType "Record" -> pure r'
-        _ -> error $ "expected record result from predicate, got " ++ show x
+        _ -> _errorWithCallStack $ "expected record result from predicate, got " ++ show x
 
 wrapBPredicate :: Value -> [(String,Value)] -> Interpreter Bool
 wrapBPredicate f r = do
@@ -1659,7 +1665,7 @@ wrapBPredicate f r = do
     x <- app f [rc]
     case x of
         BoolV v -> pure v
-        _ -> error $ "expected bool result from predicate, got " ++ show x
+        _ -> _errorWithCallStack $ "expected bool result from predicate, got " ++ show x
 
 
 hackParseTable :: [Value] -> Interpreter Value
@@ -1667,7 +1673,7 @@ hackParseTable [TextV str] =
     either (error . show) (pure . FFIValue . toDyn)
     $ R.parseTable (BoolV, TextV, NumV) str
     
-hackParseTable _ = error "bad args to hackParseTable"
+hackParseTable _ = _errorWithCallStack "bad args to hackParseTable"
 ------------------------------------------------------------------------------
 
 -- the interpreter itself
@@ -1677,7 +1683,7 @@ interp :: Expr -> Interpreter Value
 interp (Num n) = pure $ NumV n
 interp (Text s) = pure $ TextV s
 interp (Parens e) = interp e
-interp (Iden "_") = error $ "wildcard/partial application not supported in this context"
+interp (Iden "_") = _errorWithCallStack $ "wildcard/partial application not supported in this context"
 interp (Iden a) = do
     mv <- lookupBinding a
     case mv of
@@ -1685,15 +1691,15 @@ interp (Iden a) = do
         Just f@(ForeignFunV "self") -> app f []
         Just (BoxV _ vr) -> liftIO $ readIORef vr
         Just v -> pure v
-        Nothing -> error $ "identifier not found: " ++ a
+        Nothing -> _errorWithCallStack $ "identifier not found: " ++ a
 
 interp (UnboxRef e f) = do
     v <- interp e
     case v of
         VariantV _ _ fs
             | Just (BoxV _ vr) <- lookup f fs -> liftIO $ readIORef vr
-            | Just _  <- lookup f fs -> error $ "set ref on non ref: " ++ f ++ " in " ++ show v
-        _ -> error $ "setref on non variant: " ++ show v
+            | Just _  <- lookup f fs -> _errorWithCallStack $ "set ref on non ref: " ++ f ++ " in " ++ show v
+        _ -> _errorWithCallStack $ "setref on non variant: " ++ show v
 
 interp (InstExpr e ts) = do
     -- todo: add type check - check the ty param list has valid types
@@ -1721,21 +1727,21 @@ interp (App sp f es) = do
 -- special case binops
 interp (BinOp _ x _)
     | x `elem` ["is","raises","raises-satisfies", "satisfies"]
-    = error $ "'" ++ x ++ "' test predicate only allowed in check block"
+    = _errorWithCallStack $ "'" ++ x ++ "' test predicate only allowed in check block"
 
 interp (BinOp e0 "and" e1) = do
     x <- interp e0
     case x of
         BoolV False -> pure x
         BoolV True -> interp e1
-        _ -> error $ "bad value type to 'and' operator: " ++ show x
+        _ -> _errorWithCallStack $ "bad value type to 'and' operator: " ++ show x
 
 interp (BinOp e0 "or" e1) = do
     x <- interp e0
     case x of
         BoolV True -> pure x
         BoolV False -> interp e1
-        _ -> error $ "bad value type to 'or' operator: " ++ show x
+        _ -> _errorWithCallStack $ "bad value type to 'or' operator: " ++ show x
 
 interp (BinOp e0 op e1) = interp (App Nothing (Iden op) [e0,e1])
 
@@ -1797,10 +1803,10 @@ interp (If bs e) = do
             case c' of
                 BoolV True -> interp t
                 BoolV False -> f bs'
-                _ -> error $ "throwExpectedType 'Boolean'" ++ show c'
+                _ -> _errorWithCallStack $ "throwExpectedType 'Boolean'" ++ show c'
         f [] = case e of
                    Just x -> interp x
-                   Nothing -> error "NoBranchesSatisfied"
+                   Nothing -> _errorWithCallStack "NoBranchesSatisfied"
     f bs
 interp (Ask bs e) = interp (If bs e)
 
@@ -1820,10 +1826,10 @@ interp (DotExpr e f) = do
                   BoxV _ vr -> liftIO $ readIORef vr
                   _ -> pure fv
             | otherwise ->
-              error $ "field not found in dotexpr\nlooking in value:\n" ++ show v
+              _errorWithCallStack $ "field not found in dotexpr\nlooking in value:\n" ++ show v
               ++ "\n for field " ++ f
               ++ "\nit's fields are: " ++ show fs
-        _ -> error $ "dot called on non variant: " ++ show v
+        _ -> _errorWithCallStack $ "dot called on non variant: " ++ show v
 
 
 {-
@@ -1846,7 +1852,7 @@ interp (Cases e ty cs els) = do
                 case caseName of
                     FFIValue fgt | Just (ptg::TypeInfo, _::String) <- fromDynamic fgt ->
                         assertPatternTagMatchesCasesTag ty'' ptg
-                    _ -> error $ "casepattern lookup returned " ++ show caseName
+                    _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
         Nothing -> pure ()
     matchb v cs
   where
@@ -1857,7 +1863,7 @@ interp (Cases e ty cs els) = do
             Nothing -> matchb v cs'
     matchb v [] = case els of
                       Just ee -> interp ee
-                      Nothing -> error $ "no cases match and no else " ++ show v ++ " " ++ show cs
+                      Nothing -> _errorWithCallStack $ "no cases match and no else " ++ show v ++ " " ++ show cs
     matches (CaseBinding s nms) tst v ce = doMatch s nms tst v ce
     -- wildcard match
     doMatch ["_"] [] tst _x ce = runBranch tst [] [] ce
@@ -1869,9 +1875,9 @@ interp (Cases e ty cs els) = do
                 if ptg == tg && pnm == vnm
                 then if length nms == length fs
                      then runBranch tst nms fs ce
-                     else error $ "wrong number of args to pattern, expected " ++ show (map fst fs) ++ ", got " ++ show nms
+                     else _errorWithCallStack $ "wrong number of args to pattern, expected " ++ show (map fst fs) ++ ", got " ++ show nms
                 else pure Nothing
-            _ -> error $ "casepattern lookup returned " ++ show caseName
+            _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
     doMatch _ _ _ _ _ = pure Nothing
     bindPatArg (NameBinding _ n Nothing) (_,v) = pure (n,v)
     bindPatArg (NameBinding _ n (Just ta)) (_,v) = do
@@ -1886,7 +1892,7 @@ interp (Cases e ty cs els) = do
         case tstv of
             BoolV True -> pure $ Just $ localBindings (extendBindings letvs') $ interp ce
             BoolV False -> pure Nothing
-            _ -> error $ "non bool value in when clause: " ++ show tstv
+            _ -> _errorWithCallStack $ "non bool value in when clause: " ++ show tstv
 
 interp (TupleSel es) = do
     vs <- mapM interp es
@@ -1911,7 +1917,7 @@ interp (TupleGet e f) = do
         VariantV tg "tuple" fs | tg == bootstrapType "Tuple" ->
             maybe (error $ "tuple field not found: " ++ show f ++ ", " ++ show v) pure
                  $ lookup (show f) fs
-        _ -> error $ "tuple get called on non tuple value: " ++ show v
+        _ -> _errorWithCallStack $ "tuple get called on non tuple value: " ++ show v
 
 interp (Construct c es) = do
     maker <- interp (makeDotPathExpr c)
@@ -1926,9 +1932,9 @@ interp (Construct c es) = do
                            Just f -> do
                                vs <- makeBList <$> mapM interp es
                                app f [vs]
-                           Nothing -> error $ "no matching construct make: " ++ show c ++ ": " ++ show maker ++ " for " ++ show (length es) ++ " args"
+                           Nothing -> _errorWithCallStack $ "no matching construct make: " ++ show c ++ ": " ++ show maker ++ " for " ++ show (length es) ++ " args"
               -- otherwise try to call the make
-        _ -> error $ "non construct record used in construct " ++ show c ++ ": " ++ show maker
+        _ -> _errorWithCallStack $ "non construct record used in construct " ++ show c ++ ": " ++ show maker
 
 interp (AssertTypeCompat e t) = do
     v <- interp e
@@ -1937,7 +1943,7 @@ interp (AssertTypeCompat e t) = do
 
 interp (TypeLet tds e) = do
     let newEnv [] = interp e
-        newEnv (TypeDecl _ (_:_) _ : _) = error $ "todo: parameterized type-let"
+        newEnv (TypeDecl _ (_:_) _ : _) = _errorWithCallStack $ "todo: parameterized type-let"
         newEnv (TypeDecl n _ t:tds') = do
             ty <- typeOfTypeSyntax t
             localBindings (extendBindings [("_typeinfo-" ++ n,FFIValue $ toDyn ty)])
@@ -1975,11 +1981,11 @@ interp (Receive ma cs aft) = do
                 case r of
                     VariantV tg "none" [] | tg == internalsType "Option" -> pure Nothing
                     VariantV tg "some" [(_,x)] | tg == internalsType "Option" -> pure $ Just $ toDyn x
-                    _ -> error $ "expected Option type in prdfv ret, got " ++ show r
+                    _ -> _errorWithCallStack $ "expected Option type in prdfv ret, got " ++ show r
     th <- askThreadHandle
     let getVal :: Dynamic -> Interpreter Value
         getVal v | Just v' <- fromDynamic v = app v' []
-                 | otherwise = error $ "expected <<Value>> from receive, got " ++ show v
+                 | otherwise = _errorWithCallStack $ "expected <<Value>> from receive, got " ++ show v
     case aft of
         Nothing -> getVal =<< zreceive th prd
         Just (a, e) -> do
@@ -1993,7 +1999,7 @@ interp (Receive ma cs aft) = do
                     case v of
                         Just v' -> getVal v'
                         Nothing -> interp e
-                _ -> error $ "after timeout value not number: " ++ show tme
+                _ -> _errorWithCallStack $ "after timeout value not number: " ++ show tme
 
   where
     lam0 e = Lam (FunHeader [] [] Nothing) e
@@ -2080,7 +2086,7 @@ catchAsEither [e] = do
     -- catch any haskell exception, for dealing with error and undefined
     -- not sure about this, but definitely wanted for testing
     ca f = catchAny f (pure . Left . TextV . show)
-catchAsEither _ = error $ "wrong args to catch as either"
+catchAsEither _ = _errorWithCallStack $ "wrong args to catch as either"
 
 assertTypeCompat :: Value -> TypeInfo -> Interpreter Value
 assertTypeCompat v ti = 
@@ -2110,14 +2116,6 @@ typeLetWrapper :: [String] -> Expr -> Expr
 typeLetWrapper [] = id
 typeLetWrapper ps = 
     TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) ps)
-
-{-
-errorWithCallStack :: String -> Interpreter a
-errorWithCallStack msg = do
-    cs <- readCallStack
-    csf <- formatCallStack cs
-    error $ msg ++ "\nCALLSTACK:\n" ++ csf ++ "\n-------"
--}
 
 ---------------------------------------
 
@@ -2227,8 +2225,8 @@ interpStatement :: Stmt -> Interpreter Value
 
 -- interpStatement x | trace ("interp: " ++ show x) False = undefined
 
-interpStatement (RecDecl {}) = error $ "internal error, rec decl not captured by letrec desugaring"
-interpStatement (FunDecl {}) = error $ "internal error, fun decl not captured by letrec desugaring"
+interpStatement (RecDecl {}) = _errorWithCallStack $ "internal error, rec decl not captured by letrec desugaring"
+interpStatement (FunDecl {}) = _errorWithCallStack $ "internal error, fun decl not captured by letrec desugaring"
 
 {-
 
@@ -2265,14 +2263,14 @@ interpStatement (When t b) = do
     case tv of
         BoolV True -> interp b
         BoolV False -> pure nothing
-        _ -> error $ "expected when test to have boolean type, but is " ++ show tv
+        _ -> _errorWithCallStack $ "expected when test to have boolean type, but is " ++ show tv
 
 interpStatement (Check cbnm ss) = do
     runTestsEnabled <- interp $ internalsRef "auto-run-tests"
     case runTestsEnabled of
         BoolV True -> enterCheckBlock cbnm $ interpStatements ss
         BoolV False -> pure nothing
-        x -> error $ "auto-run-tests not set right (should be boolv): " ++ show x
+        x -> _errorWithCallStack $ "auto-run-tests not set right (should be boolv): " ++ show x
     
 interpStatement (LetDecl b e) = do
     v <- interp e
@@ -2321,7 +2319,7 @@ interpStatement (SetRef e fs) = do
         Nothing -> error $ "setref field not found: " ++ nm
     setBox bx v = case bx of
         BoxV _ b -> liftIO $ writeIORef b v
-        _ -> error $ "attempt to assign to something which isn't a ref: " ++ show bx
+        _ -> _errorWithCallStack $ "attempt to assign to something which isn't a ref: " ++ show bx
 
 {-
 
@@ -2389,8 +2387,8 @@ interpStatement (DataDecl dnm dpms vs whr) = do
     orE a b = BinOp a "or" b
     mnm x = NameBinding NoShadow x Nothing
 
-interpStatement (TypeStmt {}) = error $ "TODO: interp typestmt"
-interpStatement c@(Contract {}) = error $ "contract without corresponding statement: " ++ show c
+interpStatement (TypeStmt {}) = _errorWithCallStack $ "TODO: interp typestmt"
+interpStatement c@(Contract {}) = _errorWithCallStack $ "contract without corresponding statement: " ++ show c
 
 
 ---------------------------------------
@@ -2448,7 +2446,7 @@ interpStatement (IncludeFrom nm pis) = do
         VariantV tg "record" fs | tg == bootstrapType "Record" -> do
             let as = aliasSomething fs [] pis
             mapM_ (uncurry letIncludedValue) as
-        _ -> error $ "trying to alias from something that isn't a record: " ++ show v
+        _ -> _errorWithCallStack $ "trying to alias from something that isn't a record: " ++ show v
     pure nothing
 
 {-
@@ -2651,7 +2649,7 @@ resolveImportPath _moduleSearchPath is = do
     case is of
         ImportSpecial "file" [fn] ->
             pure (dropExtension $ takeFileName fn, fn)
-        ImportSpecial {} -> error "unsupported import"
+        ImportSpecial {} -> _errorWithCallStack "unsupported import"
         -- todo: set this path in a sensible and flexible way
         ImportName nm -> (nm,) <$> liftIO (getBuiltInModulePath nm)
 
@@ -2666,7 +2664,7 @@ ensureModuleLoaded moduleName moduleFile = do
                 loadAndRunModule True moduleName moduleFile
             | tg == bootstrapType "Record"
             , otherwise -> pure ()
-        _ -> error $ "_system.modules is not a record??"
+        _ -> _errorWithCallStack $ "_system.modules is not a record??"
 
 -- bootstrap is a special built in module which carefully creates
 -- the minimal in language infrastructure for the language itself to work
