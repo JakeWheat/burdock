@@ -72,16 +72,12 @@ fun repl-monitor():
 
   fun repl-down(v):
     receive:
-      | exit(ret) => block:
-          send(ret,exiting(self))
-        end
+      | exit(ret) => send(ret,exiting(self))
       | run-src(r,_) => block:
           send(r,repl-down(self,v))
           repl-down(v)
         end
-      | _ as e => block:
-          repl-down(v)
-        end
+      | _ as e => repl-down(v)
     end
   end
 
@@ -107,10 +103,11 @@ fun repl-monitor():
       | exit(ret) => block:
           send(repl, exit(self))
           receive:
-            | exiting(r) when r == repl => block:
+            | monitor-down(_,et,"exiting",mr) when mr == rf =>
                 send(ret,exiting(self))
-                # todo: wait for monitor down signal instead of using
-                # an exiting message
+            | monitor-down(_,et,v,mr) when mr == rf => block:
+                print("repl didn't exit nicely: " + torepr(et,v))            
+                send(ret,exiting(self))
               end
           end
         end
@@ -136,9 +133,7 @@ fun repl-loop():
         send(ret, run-src-ok(self))
         repl-loop()
       end
-    | exit(ret) => block:
-        send(ret, exiting(self))
-      end
+    | exit(ret) => "exiting"
     | _ as e => block:
         print("repl-loop: unexpected message: " + torepr(e))
         repl-loop()

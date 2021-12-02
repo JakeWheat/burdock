@@ -815,40 +815,41 @@ pattern: followed by =
 expression: followed by !{, default if not followed by any of the above
 -}
 
-{-
-
-TODO: factor the following code so that 'try startsWithPattern'
-commits as soon as possible
-otherwise the parse errors are very bad
--}
 
 startsWithExprOrBinding :: Parser Stmt
 startsWithExprOrBinding =
-    try startsWithPattern <|> startsWithExpr
+    startsWithPattern <|> startsWithExpr
   where
     startsWithPattern = do
-        p <- limitedBinding True
-        case p of
-            WildcardBinding -> LetDecl p <$> ((symbol_ "=" <?> "") *> expr)
-            NameBinding i -> choice
-                [SetVar i <$> ((symbol_ ":=" <?> "") *> expr)
-                ,LetDecl p <$> ((symbol_ "=" <?> "") *> expr)
-                ]
-            TypedBinding (NameBinding i) ty -> choice
-                [LetDecl p <$> ((symbol_ "=" <?> "") *> expr)
-                ,pure $ Contract i ty]
-            _ | isTupleBinding p -> LetDecl p <$> ((symbol_ "=" <?> "") *> expr)
-            _ -> fail ""
+        {-
+a bit convoluted to make the parse errors better
+want to use try since bindings and expressions overlap
+but don't want e.g. a parse error after the  = part
+in a let decl, to reset the try and just give the error
+as if it's parsing the pattern or "pattern =" as an expression,
+want that exact parse error after the =
+        -}
+        let makeSetVar i e = pure $ SetVar i e
+            makeContract = \case
+                TypedBinding (NameBinding b) t -> pure $ pure $ Contract b t
+                _ -> fail ""
+        (ctu :: Parser Stmt) <- try $ do
+            p <- limitedBinding True
+            choice
+                -- todo: hack to stop it matching ==
+                -- fix this when do the whitespace fix pass
+                [symbol_ "= " *> (pure $ (LetDecl p <$> expr))
+                ,case p of
+                     NameBinding i -> symbol_ ":=" *> (pure $ (makeSetVar i =<< expr))
+                     _ -> symbol_ ":=" *> (pure $ fail "cannot assign to non simple binding")
+                ,makeContract p]
+        ctu
     startsWithExpr = do
         ex <- expr
         let rf = (,) <$> identifier <*> (symbol_ ":" *> expr)
         choice
             [SetRef ex <$> ((symbol_ "!{" <?> "") *> commaSep1 rf <* symbol "}")
             ,pure $ StmtExpr ex]
-    isTupleBinding (TupleBinding {}) = True
-    isTupleBinding (TypedBinding b _) = isTupleBinding b
-    isTupleBinding (AsBinding b _) =  isTupleBinding b
-    isTupleBinding _ = False
 
 typ :: Bool -> Parser Ann
 typ allowImplicitTuple =
