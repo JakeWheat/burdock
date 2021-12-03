@@ -71,50 +71,42 @@ fun repl-monitor():
   {repl;rf} = spawn-monitor(repl-loop)
 
   fun repl-down(v):
-    receive:
+    receive block:
       | exit(ret) => send(ret,exiting(self))
-      | run-src(r,_) => block:
+      | run-src(r,_) =>
           send(r,repl-down(self,v))
           repl-down(v)
-        end
       | _ as e => repl-down(v)
     end
   end
 
   fun repl-monitor-loop():
-    receive:
-      | run-src(ret,src) => block:
+    receive block:
+      | run-src(ret,src) =>
           send(repl,run-src(self,src))
-          receive:
-            | run-src-ok(r) when r == repl => block:
+          receive block:
+            | run-src-ok(r) when r == repl =>
                 send(ret, run-src-ok(self))
                 repl-monitor-loop()
-              end
-            | error(r,e) when r == repl => block:
+            | error(r,e) when r == repl =>
                 send(ret, error(self,e))
                 repl-monitor-loop()
-              end
-            | monitor-down(_,et,v,mr) when mr == rf => block:
+            | monitor-down(_,et,v,mr) when mr == rf =>
                 send(ret,repl-down(self, v))
                 repl-down(v)
-              end
           end
-        end
-      | exit(ret) => block:
+      | exit(ret) =>
           send(repl, exit(self))
-          receive:
+          receive block:
             | monitor-down(_,et,"exiting",mr) when mr == rf =>
                 send(ret,exiting(self))
-            | monitor-down(_,et,v,mr) when mr == rf => block:
+            | monitor-down(_,et,v,mr) when mr == rf =>
                 print("repl didn't exit nicely: " + torepr(et,v))            
                 send(ret,exiting(self))
-              end
           end
-        end
-      | monitor-down(_,_et,v,mr) when mr == rf => block:
+      | monitor-down(_,_et,v,mr) when mr == rf =>
           print("repl-loop unexpectedly exited: " + torepr(v))
           repl-down(v)
-        end
       | _ as e => print("repl-monitor: unexpected message: " + torepr(e))
     end
   end
@@ -122,8 +114,8 @@ fun repl-monitor():
 end
 
 fun repl-loop():
-  receive:
-    | run-src(ret,src) => block:
+  receive block:
+    | run-src(ret,src) =>
         v = catch-as-either(run-script(src))
         cases v:
           | left(e) => print("Error: " + torepr(e))
@@ -132,12 +124,10 @@ fun repl-loop():
         end
         send(ret, run-src-ok(self))
         repl-loop()
-      end
     | exit(ret) => "exiting"
-    | _ as e => block:
+    | _ as e =>
         print("repl-loop: unexpected message: " + torepr(e))
         repl-loop()
-      end
   end
 end
 

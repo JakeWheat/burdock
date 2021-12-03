@@ -16,7 +16,7 @@ data Script =
 
 data Stmt =
       StmtExpr Expr
-    | When Expr Expr
+    | When Expr [Stmt]
     | LetDecl Binding Expr
     | Check (Maybe String) [Stmt]
     | VarDecl SimpleBinding Expr
@@ -28,7 +28,7 @@ data Stmt =
         SimpleBinding -- name
         FunHeader -- args and return type
         (Maybe String) -- doc string
-        Expr -- body
+        [Stmt] -- body
         (Maybe [Stmt]) -- test block
     | TypeStmt TypeDecl
     | Contract String Ann
@@ -64,29 +64,29 @@ data Expr =
     | Text String
     | Iden String
     | Parens Expr
-    | If [(Expr,Expr)] (Maybe Expr)
-    | Ask [(Expr,Expr)] (Maybe Expr)
+    | If [(Expr,[Stmt])] (Maybe [Stmt])
+    | Ask [(Expr,[Stmt])] (Maybe [Stmt])
     | App SourcePosition Expr [Expr]
     | InstExpr Expr [Ann]
     | BinOp Expr String Expr
     | UnaryMinus Expr
-    | Lam FunHeader Expr
-    | CurlyLam FunHeader Expr
-    | Let [(Binding,Expr)] Expr
-    | LetRec [(Binding,Expr)] Expr
+    | Lam FunHeader [Stmt]
+    | CurlyLam FunHeader [Stmt]
+    | Let [(Binding,Expr)] [Stmt]
+    | LetRec [(Binding,Expr)] [Stmt]
     | Block [Stmt]
     | DotExpr Expr String
-    | Cases Expr (Maybe Ann) [(Binding, Maybe Expr, Expr)] (Maybe Expr)
+    | Cases Expr (Maybe Ann) [(Binding, Maybe Expr, [Stmt])] (Maybe [Stmt])
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
     | TableSel [String] [RowSel]
     | TupleGet Expr Int
     | Construct [String] [Expr]
     | AssertTypeCompat Expr Ann
-    | TypeLet [TypeDecl] Expr
+    | TypeLet [TypeDecl] [Stmt]
     | Template SourcePosition
     | UnboxRef Expr String
-    | Receive [(Binding, Maybe Expr, Expr)] (Maybe (Expr, Expr))
+    | Receive [(Binding, Maybe Expr, [Stmt])] (Maybe (Expr, [Stmt]))
     deriving (Eq,Show,Data)
 
 data TypeDecl = TypeDecl String [String] Ann

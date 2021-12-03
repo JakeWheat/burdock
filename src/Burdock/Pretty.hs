@@ -60,19 +60,19 @@ expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (UnaryMinus e) = pretty "-" <> expr e
 expr (Lam fh e) = prettyBlocklike sep
     [pretty "lam" <> funHeader fh <> pretty ":"
-    ,expr e]
+    ,stmts e]
 expr (CurlyLam fh e) =
-    pretty "{" <> funHeader fh <> pretty ":" <+> expr e <> pretty "}"
+    pretty "{" <> funHeader fh <> pretty ":" <+> stmts e <> pretty "}"
 
 expr (Let bs e) = prettyBlocklike sep
     [pretty "let" <+> bs' <> pretty ":"
-    ,expr e]
+    ,stmts e]
   where
     bs' | [(n,v)] <- bs = bindExpr n v
         | otherwise = commaSep $ map (uncurry bindExpr) bs
 expr (LetRec bs e) = prettyBlocklike sep
     [pretty "letrec" <+> nest 2 (commaSep $ map (uncurry bindExpr) bs) <> pretty ":"
-    ,expr e]
+    ,stmts e]
 expr (Block ss) = prettyBlocklike vsep
     [pretty "block:"
     ,stmts ss]
@@ -80,20 +80,20 @@ expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
   where
     prettyCs [] = []
     prettyCs ((c,t):cs') = [pretty "if" <+> expr c <> pretty ":"
-                           ,nest 2 (expr t)]
+                           ,nest 2 (stmts t)]
                            ++ concat (map prettyEx cs')
     prettyEx (c,t) = [pretty "else" <+> pretty "if" <+> expr c <> pretty ":"
-                     ,nest 2 (expr t)]
+                     ,nest 2 (stmts t)]
     pel Nothing = []
     pel (Just e) = [pretty "else:"
-                   ,nest 2 (expr e)]
+                   ,nest 2 (stmts e)]
 expr (Ask cs el) = prettyBlocklike vsep
     (pretty "ask:" : map prettyC cs ++ pel el)
   where
     prettyC (c,t) = pretty "|" <+> expr c <+> pretty "then:"
-                    <+> nest 2 (expr t)
+                    <+> nest 2 (stmts t)
     pel Nothing = []
-    pel (Just e) = [pretty "|" <+> pretty "otherwise:" <+> nest 2 (expr e)]
+    pel (Just e) = [pretty "|" <+> pretty "otherwise:" <+> nest 2 (stmts e)]
 
 expr (DotExpr e i) = expr e <> pretty "." <> pretty i
 expr (Cases e ty mats els) =
@@ -101,9 +101,9 @@ expr (Cases e ty mats els) =
     [pretty "cases" <+> expr e
      <> maybe mempty (\x -> pretty " ::" <+> typ x) ty <> pretty ":"
     ,vsep (map mf mats ++
-           [maybe mempty (\x -> pretty "|" <+> pretty "else" <+> pretty "=>" <+> expr x) els])]
+           [maybe mempty (\x -> pretty "|" <+> pretty "else" <+> pretty "=>" <+> stmts x) els])]
   where
-    mf (p, mw, e1) = pretty "|" <+> binding p <+> maybe mempty (\x -> pretty "when" <+> expr x) mw <+> pretty "=>" <+> expr e1
+    mf (p, mw, e1) = pretty "|" <+> binding p <+> maybe mempty (\x -> pretty "when" <+> expr x) mw <+> pretty "=>" <+> stmts e1
 
 expr (TupleSel es) = pretty "{" <> nest 2 (xSep ";" (map expr es) <> pretty "}")
 expr (RecordSel flds) = pretty "{" <> nest 2 (commaSep (map fld flds) <> pretty "}")
@@ -129,7 +129,7 @@ expr (AssertTypeCompat e ty) =
 expr (TypeLet tds e) =
     prettyBlocklike sep
     [pretty "type-let" <+> commaSep (map typeDecl tds) <> pretty ":"
-    ,expr e]
+    ,stmts e]
 
 expr (Template _sp) = pretty "..."
 
@@ -144,9 +144,9 @@ expr (Receive mats after) =
     mf (p, mw, e1) =
         pretty "|" <+> binding p
         <+> (maybe mempty (\x -> pretty "when" <+> expr x) mw)
-        <+> pretty "=>" <+> expr e1
+        <+> pretty "=>" <+> stmts e1
     aft (a, e) =
-        pretty "|" <+> pretty "after" <+> expr a <+> pretty "=>" <+> expr e
+        pretty "|" <+> pretty "after" <+> expr a <+> pretty "=>" <+> stmts e
 
 bindExpr :: Binding -> Expr -> Doc a
 bindExpr n e =
@@ -222,7 +222,7 @@ prettyBlocklike sp bdy =
 stmt :: Stmt -> Doc a
 stmt (StmtExpr e) = expr e
 stmt (When c t) =
-    pretty "when" <+> expr c <> pretty ":" <+> nest 2 (expr t) <+> pretty "end"
+    pretty "when" <+> expr c <> pretty ":" <+> nest 2 (stmts t) <+> pretty "end"
 stmt (LetDecl b e) = nest 2 (bindExpr b e)
 stmt (Check nm s) = prettyBlocklike vsep 
         [case nm of
@@ -259,7 +259,7 @@ stmt (FunDecl pn hdr ds e w) =
     prettyBlocklike sep
      [pretty "fun" <+> simpleBinding pn <> funHeader hdr <> pretty ":"
      ,maybe mempty (\x -> pretty "doc: " <+> expr (Text x)) ds
-     ,expr e
+     ,stmts e
      ,maybe mempty whereBlock w]
 
 stmt (TypeStmt td) = 

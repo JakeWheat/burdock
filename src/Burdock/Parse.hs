@@ -358,12 +358,12 @@ unaryMinus = UnaryMinus <$> (symbol "-" *> term)
 
 lamE :: Parser Expr
 lamE = Lam <$> (keyword_ "lam" *> funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
-           <*> (expr <* keyword_ "end")
+           <*> (stmts <* keyword_ "end")
 
 curlyLam :: Parser Expr
 curlyLam = CurlyLam
     <$> (symbol_ "{" *> funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
-    <*> (expr <* symbol_ "}")
+    <*> (stmts <* symbol_ "}")
 
 {-
 special case for bindings in commasep list -
@@ -439,10 +439,10 @@ expressionLetRec = keyword_ "letrec" *> letBody LetRec
 expressionLet :: Parser Expr
 expressionLet = keyword_ "let" *> letBody Let
  
-letBody :: ([(Binding,Expr)] -> Expr -> Expr) -> Parser Expr
+letBody :: ([(Binding,Expr)] -> [Stmt] -> Expr) -> Parser Expr
 letBody ctor = ctor <$> commaSep1 bindExpr
                     <*> (optional_ (keyword_ "block") *> symbol_ ":"
-                         *> expr <* keyword_ "end")
+                         *> stmts <* keyword_ "end")
 
 bindExpr :: Parser (Binding,Expr)
 bindExpr = (,) <$> limitedBinding True <*> (symbol_ "=" *> expr)
@@ -456,8 +456,8 @@ ifE = do
     ife <- conds
     nextBranch [ife]
   where
-    conds = (,) <$> expr <*> (optional_ (keyword_ "block") *> symbol_ ":" *> expr)
-    cond = (,) <$> expr <*> (symbol_ ":" *> expr)
+    conds = (,) <$> expr <*> (optional_ (keyword_ "block") *> symbol_ ":" *> stmts)
+    cond = (,) <$> expr <*> (symbol_ ":" *> stmts)
     nextBranch bs =
         choice [do
                 x <- elsePart
@@ -465,11 +465,10 @@ ifE = do
                     Right el -> endif bs (Just el)
                     Left b -> nextBranch (b:bs)
                ,endif bs Nothing]
-    elsePart :: Parser (Either (Expr,Expr) Expr)
     elsePart = do
         keyword_ "else"
         choice
-            [Right <$> (symbol_ ":" *> expr)
+            [Right <$> (symbol_ ":" *> stmts)
             ,Left <$> (keyword_ "if" *> cond)
             ]
     endif bs el = keyword_ "end" *> pure (If (reverse bs) el)
@@ -488,13 +487,12 @@ ask = do
                     Right ot -> endask bs (Just ot)
                     Left b -> nextBranch (b:bs)
                ,endask bs Nothing]
-    branchPart :: Parser (Either (Expr,Expr) Expr)
     branchPart = do
         symbol_ "|"
         choice
-            [Right <$> (keyword_ "otherwise" *> symbol_ ":" *> expr)
+            [Right <$> (keyword_ "otherwise" *> symbol_ ":" *> stmts)
             ,Left <$> ((,) <$> (expr <* keyword "then" <* symbol_ ":")
-                          <*> expr)
+                          <*> stmts)
             ]
     endask bs ot = keyword_ "end" *> pure (Ask (reverse bs) ot)     
 
@@ -502,7 +500,7 @@ ask = do
 block :: Parser Expr
 block = Block <$>
     (keyword_ "block" *> symbol_ ":" *>
-    many stmt
+    stmts
     <* keyword_ "end")
 
 cases :: Parser Expr
@@ -519,21 +517,20 @@ cases = do
                     Right el -> endCase t ty cs (Just el)
                     Left c -> nextCase t ty (c:cs)
                ,endCase t ty cs Nothing]
-    casePart :: Parser (Either (Binding,Maybe Expr, Expr) Expr)
     casePart = do
         symbol_ "|"
         choice
-            [Right <$> (keyword_ "else" *> symbol_ "=>" *> expr)
+            [Right <$> (keyword_ "else" *> symbol_ "=>" *> stmts)
             ,Left <$> ((,,) <$> (binding False <?> "case pattern")
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
-                       <*> (symbol_ "=>" *> expr))]
+                       <*> (symbol_ "=>" *> stmts))]
     endCase t ty cs el = keyword_ "end" *> pure (Cases t ty (reverse cs) el)
 
 
 typeLet :: Parser Expr
 typeLet = TypeLet
     <$> (keyword_ "type-let" *> commaSep1 (typeDecl False))
-    <*> (symbol_ ":" *> expr <* keyword_ "end")
+    <*> (symbol_ ":" *> stmts <* keyword_ "end")
 
 tableSel :: Parser Expr
 tableSel = TableSel
@@ -567,14 +564,13 @@ receive = do
                     Right el -> endCase cs (Just el)
                     Left c -> nextCase (c:cs)
                ,endCase cs Nothing]
-    casePart :: Parser (Either (Binding,Maybe Expr, Expr) (Expr,Expr))
     casePart = do
         symbol_ "|"
         choice
-            [Right <$> ((,) <$> after <*> (symbol_ "=>" *> expr))
+            [Right <$> ((,) <$> after <*> (symbol_ "=>" *> stmts))
             ,Left <$> ((,,) <$> (binding False <?> "case pattern")
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
-                       <*> (symbol_ "=>" *> expr))]
+                       <*> (symbol_ "=>" *> stmts))]
     endCase cs aft = keyword_ "end" *> pure (Receive (reverse cs) aft)
     after = keyword_ "after" *> expr
 
@@ -687,12 +683,12 @@ funDecl = FunDecl
     <$> (keyword "fun" *> simpleBinding True)
     <*> funHeader
     <*> (optional_ (keyword_ "block") *> symbol_ ":" *> optional ds)
-    <*> (unwrapSingle <$> (Block <$> some stmt))
+    <*> stmts
     <*> (boptional whereBlock <* keyword_ "end")
     
   where
-    unwrapSingle (Block [StmtExpr (a)]) = a
-    unwrapSingle x = x
+    -- unwrapSingle (Block [StmtExpr (a)]) = a
+    -- unwrapSingle x = x
     ds = keyword_ "doc" *> symbol_ ":" *> stringRaw
 
 funHeader :: Parser FunHeader
@@ -703,7 +699,7 @@ funHeader =
     <*> optional (symbol_ "->" *> typ True)
 
 whereBlock :: Parser [Stmt]
-whereBlock = keyword_ "where" *> symbol_ ":" *> many stmt
+whereBlock = keyword_ "where" *> symbol_ ":" *> stmts
 
 varDecl :: Parser Stmt
 varDecl = uncurry VarDecl <$> (keyword_ "var" *> simpleBindExpr)
@@ -731,7 +727,7 @@ checkBlock = do
     keyword_ "check"
     nm <- optional stringRaw
     symbol_ ":"
-    ss <- many stmt
+    ss <- stmts
     keyword_ "end"
     pure $ Check nm ss
 
@@ -785,7 +781,7 @@ importStmt = keyword_ "import" *> (importFrom <|> importAs)
 whenStmt :: Parser Stmt
 whenStmt = When
            <$> (keyword_ "when" *> expr <* optional_ (keyword_ "block"))
-           <*> (symbol_ ":" *> expr <* keyword_ "end")
+           <*> (symbol_ ":" *> stmts <* keyword_ "end")
 
 -- todo: what other statements can use shadow
 -- fun? rec? var?

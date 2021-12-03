@@ -1772,12 +1772,14 @@ interp (Lam (FunHeader dpms bs rt) e) =
     pure $ FunV bs wrapRt env
   where
     tls = flip map dpms $ \t -> TypeDecl t [] (TName ["Any"])
-    wrapRt = maybe e (AssertTypeCompat e) rt
+    wrapRt = maybe (Block e)
+             (\t -> (AssertTypeCompat (Block e) t))
+             rt 
 
 interp (CurlyLam fh e) = interp (Lam fh e)
 
 interp (Let bs e) = do
-    let newEnv [] = interp e
+    let newEnv [] = interpStatements e
         newEnv ((b,ex):bs') = do
             v <- interp ex
             lbs <- matchBindingOrError b v
@@ -1790,18 +1792,18 @@ interp (If bs e) = do
     let f ((c,t):bs') = do
             c' <- interp c
             case c' of
-                BoolV True -> interp t
+                BoolV True -> interpStatements t
                 BoolV False -> f bs'
                 _ -> _errorWithCallStack $ "throwExpectedType 'Boolean'" ++ show c'
         f [] = case e of
-                   Just x -> interp x
+                   Just x -> interpStatements x
                    Nothing -> _errorWithCallStack "NoBranchesSatisfied"
     f bs
 interp (Ask bs e) = interp (If bs e)
 
 interp (LetRec bs e) =
     let sts = doLetRec bs
-    in interp $ Block (sts ++ [StmtExpr e])
+    in interp $ Block (sts ++ e)
 
 interp (DotExpr e f) = do
     v <- interp e
@@ -1859,7 +1861,7 @@ interp (Cases e ty cs els) = do
                 assertPatternTagMatchesCasesTag t ptg
             _ -> _errorWithCallStack $ "casepattern lookup returned " ++ show caseName
     matchb v [] = case els of
-                      Just ee -> interp ee
+                      Just ee -> interpStatements ee
                       Nothing -> _errorWithCallStack $ "no cases match and no else " ++ show v ++ " " ++ show cs
     matchb v ((b,tst,ce) : cs') = do
         r <- matchBindingMaybe True b v
@@ -1871,7 +1873,7 @@ interp (Cases e ty cs els) = do
                     Nothing -> pure $ BoolV True
                     Just tste -> rbbs $ interp tste
                 case tstv of
-                    BoolV True -> rbbs $ interp ce
+                    BoolV True -> rbbs $ interpStatements ce
                     BoolV False -> matchb v cs'
                     _ -> _errorWithCallStack $ "non bool value in when clause: " ++ show tstv
 
@@ -1922,7 +1924,7 @@ interp (AssertTypeCompat e t) = do
     ty' <- shallowizeType <$> typeOfTypeSyntax t
     assertTypeCompat v ty'
 
-interp (TypeLet tds e) = typeLet tds $ interp e
+interp (TypeLet tds e) = typeLet tds $ interpStatements e
 
 interp (Receive cs aft) = do
     -- turn the cs into a function which returns a maybe x
@@ -1936,9 +1938,9 @@ interp (Receive cs aft) = do
     let rv = "receiveval"
         some = internalsRef "some"
         none = internalsRef "none"
-        cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, App Nothing some [lam0 e])
+        cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, [StmtExpr $ App Nothing some [lam0 $ Block e]])
         prdf = Lam (FunHeader [] [NameBinding rv] Nothing)
-               $ Cases (Iden rv) Nothing cs' (Just none)
+               [StmtExpr $ Cases (Iden rv) Nothing cs' (Just [StmtExpr none])]
     prdfv <- interp prdf
     let prd :: Dynamic -> Interpreter (Maybe Dynamic)
         prd v = do
@@ -1969,11 +1971,11 @@ interp (Receive cs aft) = do
                     v <- zreceiveTimeout th (floor (tme' * 1000 * 1000)) prd
                     case v of
                         Just v' -> getVal v'
-                        Nothing -> interp e
+                        Nothing -> interpStatements e
                 _ -> _errorWithCallStack $ "after timeout value not number: " ++ show tme
 
   where
-    lam0 e = Lam (FunHeader [] [] Nothing) e
+    lam0 e = Lam (FunHeader [] [] Nothing) [StmtExpr e]
     makeMonitorDown tg et v r = --trace (show (fromDynamic v :: Maybe String)) $
         let tg' = case fromDynamic tg of
                       Just vx -> vx
@@ -2017,7 +2019,7 @@ makeCurriedApp sp f es =
                         Iden "_" -> (Iden "_p0", ("_p0":nms))
                         _ -> (f, nms)
         bs = flip map nms2 $ \n -> NameBinding n
-    in Lam (FunHeader [] bs Nothing) (App sp newf newEs)
+    in Lam (FunHeader [] bs Nothing) [StmtExpr $ App sp newf newEs]
   where
     makeNewEs _ [] = []
     makeNewEs n (Iden "_":es') =
@@ -2099,9 +2101,8 @@ assertTypeAnnCompat v t = do
 -- checks for dynamic mode
 -- the syntax is used in a few places
 typeLetWrapper :: [String] -> Expr -> Expr
-typeLetWrapper [] = id
-typeLetWrapper ps =
-    TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) ps)
+typeLetWrapper [] x = x
+typeLetWrapper ps e = TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) ps) [StmtExpr e]
 
 ---------------------------------------
 
@@ -2254,7 +2255,7 @@ interpStatement (StmtExpr e) = interp e
 interpStatement (When t b) = do
     tv <- interp t
     case tv of
-        BoolV True -> interp b
+        BoolV True -> interpStatements b
         BoolV False -> pure nothing
         _ -> _errorWithCallStack $ "expected when test to have boolean type, but is " ++ show tv
 
@@ -2331,13 +2332,13 @@ interpStatement (DataDecl dnm dpms vs whr) = do
     let makeIs (VariantDecl vnm _) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            $ App appSourcePos (bootstrapRef "is-variant") [Iden typeInfoName, Text vnm, Iden "x"]
+            [StmtExpr $ App appSourcePos (bootstrapRef "is-variant") [Iden typeInfoName, Text vnm, Iden "x"]]
         callIs (VariantDecl vnm _) = App appSourcePos (Iden $ "is-" ++ vnm) [Iden "x"]
         -- use the type tag instead
         makeIsDat =
             letDecl ("is-" ++ dnm)
             $ lam ["x"]
-            $ foldl1 orE $ map callIs vs
+           [StmtExpr $ foldl1 orE $ map callIs vs]
         chk = maybe [] (\w -> [Check (Just dnm) w]) whr
     moduleName <- readModuleName
     letValue typeInfoName $ FFIValue $ toDyn
@@ -2358,7 +2359,7 @@ interpStatement (DataDecl dnm dpms vs whr) = do
                        ,Construct ["list"] $ concatMap mvf fs]
         in letDecl vnm
            $ typeLetWrapper dpms
-           $ (if null fs then id else Lam (fh $ map (simpleBindingToBinding . snd) fs))
+           $ (if null fs then id else \e -> Lam (fh $ map (simpleBindingToBinding . snd) fs) [StmtExpr e])
            $ appMakeV
     mvf (r, b) = let nm = sbindingName b
                  in ([case r of
@@ -2858,8 +2859,8 @@ doLetRec bs =
     makeVar x = error $ "unsupported binding in recursive let: " ++ show x
     makeVar1 (sh, nm) =
         VarDecl (SimpleBinding sh nm Nothing) $ Lam (FunHeader [] [] Nothing)
-        $ App appSourcePos (Iden "raise")
-            [Text "internal error: uninitialized letrec implementation var"]
+        [StmtExpr $ App appSourcePos (Iden "raise")
+            [Text "internal error: uninitialized letrec implementation var"]]
     makeAssign (ShadowBinding nm, v) = makeAssign1 (nm,Nothing,v)
     makeAssign (NameBinding nm, v) = makeAssign1 (nm,Nothing,v)
     makeAssign (TypedBinding (NameBinding nm) ty, v) = makeAssign1 (nm,Just ty,v)

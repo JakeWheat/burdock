@@ -45,40 +45,40 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("a + b", BinOp (Iden "a") "+" (Iden "b"))
     ,("a + b + c", BinOp (BinOp (Iden "a") "+" (Iden "b")) "+" (Iden "c"))
 
-    ,("lam(): 2 end", lam [] (Num 2))
+    ,("lam(): 2 end", lam [] (sts $ Num 2))
 
-    ,("lam() block: 2 end", lam [] (Num 2))
+    ,("lam() block: 2 end", lam [] (sts $ Num 2))
 
-    ,("lam(x): x + 1 end", lam ["x"] (BinOp (Iden "x") "+" (Num 1)))
+    ,("lam(x): x + 1 end", lam ["x"] (sts $ BinOp (Iden "x") "+" (Num 1)))
     ,("lam(x, y): x - y end"
-     ,lam ["x","y"] (BinOp (Iden "x") "-" (Iden "y")))
+     ,lam ["x","y"] (sts $ BinOp (Iden "x") "-" (Iden "y")))
 
     ,("let x=3: x + 1 end"
      , Let [(nm "x", Num 3)]
-         (BinOp (Iden "x") "+" (Num 1)))
+         (sts $ BinOp (Iden "x") "+" (Num 1)))
     ,("let x=3 block: x + 1 end"
      , Let [(nm "x", Num 3)]
-         (BinOp (Iden "x") "+" (Num 1)))
+         (sts $ BinOp (Iden "x") "+" (Num 1)))
     ,("let x=3,y=4: x + y end"
      , Let [(nm "x", Num 3)
            ,(nm "y", Num 4)]
-         (BinOp (Iden "x") "+" (Iden "y")))
+         (sts $ BinOp (Iden "x") "+" (Iden "y")))
     ,("let x=3: x + 4 end"
      ,Let [(nm "x", Num 3)]
-         (BinOp (Iden "x") "+" (Num 4)))
+         (sts $ BinOp (Iden "x") "+" (Num 4)))
 
     ,("let _ as b = 3: b end"
-     ,Let [(AsBinding WildcardBinding "b", Num 3)] $ Iden "b")
+     ,Let [(AsBinding WildcardBinding "b", Num 3)] $ sts $ Iden "b")
 
     ,("let {a;b} = {1;2}: a end"
      ,Let [(TupleBinding [NameBinding "a", NameBinding "b"]
-           ,(TupleSel [Num 1, Num 2]))] $ Iden "a")
+           ,(TupleSel [Num 1, Num 2]))] $ sts $ Iden "a")
 
     
     ,("letrec a = 5: a end"
-     ,LetRec [(nm "a",Num 5)] (Iden "a"))
+     ,LetRec [(nm "a",Num 5)] (sts $ Iden "a"))
     ,("letrec a = 5 block: a end"
-     ,LetRec [(nm "a",Num 5)] (Iden "a"))
+     ,LetRec [(nm "a",Num 5)] (sts $ Iden "a"))
 
     
     ,("block: end", Block [])
@@ -91,10 +91,10 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \end", Block [StmtExpr $ Iden "a", StmtExpr $ BinOp (Num 1) "+" (Num 2)])
 
     ,("if n == 1: 1 else: 2 end"
-     ,If [(BinOp (Iden "n") "==" (Num 1), Num 1)] (Just (Num 2)))
+     ,If [(BinOp (Iden "n") "==" (Num 1), sts $ Num 1)] (Just (sts $ Num 2)))
 
     ,("if n == 1 block: 1 else: 2 end"
-     ,If [(BinOp (Iden "n") "==" (Num 1), Num 1)] (Just (Num 2)))
+     ,If [(BinOp (Iden "n") "==" (Num 1), sts $ Num 1)] (Just (sts $ Num 2)))
 
     ,("if n == 1:\n\
       \  0\n\
@@ -103,30 +103,30 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \else:\n\
       \  2\n\
       \end"
-     ,If [(BinOp (Iden "n") "==" (Num 1), Num 0)
-         ,(BinOp (Iden "n") "==" (Num 2), Num 1)] (Just (Num 2)))
+     ,If [(BinOp (Iden "n") "==" (Num 1), sts $ Num 0)
+         ,(BinOp (Iden "n") "==" (Num 2), sts $ Num 1)] (Just (sts $ Num 2)))
 
-    ,("ask: | otherwise: a end", Ask [] (Just (Iden "a")))
-    ,("ask block: | otherwise: a end", Ask [] (Just (Iden "a")))
+    ,("ask: | otherwise: a end", Ask [] (Just (sts $ Iden "a")))
+    ,("ask block: | otherwise: a end", Ask [] (Just (sts $ Iden "a")))
     ,("ask:\n\
       \   | a == b then: c\n\
       \   | c == d then: e\n\
       \   | otherwise: f\n\
       \end"
-      ,Ask [(BinOp (Iden "a") "==" (Iden "b"), Iden "c")
-           ,(BinOp (Iden "c") "==" (Iden "d"), Iden "e")
-           ] (Just (Iden "f")))
+      ,Ask [(BinOp (Iden "a") "==" (Iden "b"), sts $ Iden "c")
+           ,(BinOp (Iden "c") "==" (Iden "d"), sts $ Iden "e")
+           ] (Just (sts $ Iden "f")))
     ,("ask:\n\
       \   | a == b then: c\n\
       \   | c == d then: e\n\
       \end"
-      ,Ask [(BinOp (Iden "a") "==" (Iden "b"), Iden "c")
-           ,(BinOp (Iden "c") "==" (Iden "d"), Iden "e")
+      ,Ask [(BinOp (Iden "a") "==" (Iden "b"), sts $ Iden "c")
+           ,(BinOp (Iden "c") "==" (Iden "d"), sts $ Iden "e")
            ] Nothing)
 
 
     ,("let shadow a = 4 : a end"
-     ,Let [(ShadowBinding "a", Num 4)] (Iden "a"))
+     ,Let [(ShadowBinding "a", Num 4)] (sts $ Iden "a"))
     ,("a.b", DotExpr (Iden "a") "b")
     ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [Num 1, Num 2]) "c")
      ,("cases a :: List:\n\
@@ -134,8 +134,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | link(f, r) => \"link\"\n\
       \end"
      ,Cases (Iden "a") (Just (TName ["List"]))
-        [(NameBinding "empty", Nothing, Text "empty")
-        ,(VariantBinding ["link"] [nm "f", nm "r"], Nothing, Text "link")]
+        [(NameBinding "empty", Nothing, sts $ Text "empty")
+        ,(VariantBinding ["link"] [nm "f", nm "r"], Nothing, sts $ Text "link")]
         Nothing)
 
     ,("cases a:\n\
@@ -143,16 +143,16 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | else => \"else\"\n\
       \end"
      ,Cases (Iden "a") Nothing
-        [(NameBinding "empty", Nothing, Text "empty")]
-        (Just $ Text "else"))
+        [(NameBinding "empty", Nothing, sts $ Text "empty")]
+        (Just $ sts $ Text "else"))
 
     ,("cases a block:\n\
       \  | empty => \"empty\"\n\
       \  | else => \"else\"\n\
       \end"
      ,Cases (Iden "a") Nothing
-        [(NameBinding "empty", Nothing, Text "empty")]
-        (Just $ Text "else"))
+        [(NameBinding "empty", Nothing, sts $ Text "empty")]
+        (Just $ sts $ Text "else"))
 
     
     ,("cases a :: z.List:\n\
@@ -161,17 +161,17 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | else => \"else\"\n\
       \end"
      ,Cases (Iden "a") (Just $ TName ["z", "List"])
-        [(VariantBinding ["z","empty"] [], Nothing, Text "empty")
-        ,(VariantBinding ["z","link"] [nm "f", nm "r"], Nothing, Iden "x")]
-        (Just $ Text "else"))
+        [(VariantBinding ["z","empty"] [], Nothing, sts $ Text "empty")
+        ,(VariantBinding ["z","link"] [nm "f", nm "r"], Nothing, sts $ Iden "x")]
+        (Just $ sts $ Text "else"))
 
      ,("cases a:\n\
       \  | empty when c => \"empty\"\n\
       \  | link(f, r) when d => \"link\"\n\
       \end"
      ,Cases (Iden "a") Nothing
-        [(NameBinding "empty", Just (Iden "c"), Text "empty")
-        ,(VariantBinding ["link"] [nm "f", nm "r"], Just (Iden "d"), Text "link")]
+        [(NameBinding "empty", Just (Iden "c"), sts $ Text "empty")
+        ,(VariantBinding ["link"] [nm "f", nm "r"], Just (Iden "d"), sts $ Text "link")]
         Nothing)
 
      ,("cases a:\n\
@@ -179,8 +179,8 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | \"test\" => false\n\
       \end"
      ,Cases (Iden "a") Nothing
-        [(NumberLitBinding 1, Nothing, Iden "true")
-        ,(StringLitBinding "test", Nothing, Iden "false")]
+        [(NumberLitBinding 1, Nothing, sts $ Iden "true")
+        ,(StringLitBinding "test", Nothing, sts $ Iden "false")]
         Nothing)
 
     
@@ -201,9 +201,9 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("[my.list:]", Construct ["my", "list"] [])
 
     ,("type-let a = b: c end"
-     ,TypeLet [TypeDecl "a" [] (TName ["b"])] (Iden "c"))
+     ,TypeLet [TypeDecl "a" [] (TName ["b"])] (sts $ Iden "c"))
     ,("type-let a<x> = b: c end"
-     ,TypeLet [TypeDecl "a" ["x"] (TName ["b"])] (Iden "c"))
+     ,TypeLet [TypeDecl "a" ["x"] (TName ["b"])] (sts $ Iden "c"))
     
     ,("assert-type-compat(x :: Number)"
      ,AssertTypeCompat (Iden "x") (TName ["Number"]))
@@ -238,7 +238,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("assert-type-compat", Iden "assert-type-compat")
 
     ,("let a :: MyType = 4: a end"
-     ,Let [(TypedBinding (NameBinding "a") (TName ["MyType"]), Num 4)] (Iden "a"))
+     ,Let [(TypedBinding (NameBinding "a") (TName ["MyType"]), Num 4)] (sts $ Iden "a"))
 
     ,("callf<A,B>(x)"
      ,App Nothing (InstExpr (Iden "callf") [TName ["A"], TName ["B"]]) [Iden "x"])
@@ -253,21 +253,21 @@ lam(x :: Number):
   x + 1
 end|]
      ,Lam (FunHeader [] [nmt "x" "Number"] Nothing)
-      (BinOp (Iden "x") "+" (Num 1)))
+      (sts $ BinOp (Iden "x") "+" (Num 1)))
 
     ,([R.r|
 lam(x) -> Number:
   x + 1
 end|]
      ,Lam (FunHeader [] [nm "x"] (Just $ TName ["Number"]))
-      (BinOp (Iden "x") "+" (Num 1)))
+      (sts $ BinOp (Iden "x") "+" (Num 1)))
 
     ,([R.r|
 lam(x :: Number) -> Number:
   x + 1
 end|]
      ,Lam (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"]))
-      (BinOp (Iden "x") "+" (Num 1)))
+      (sts $ BinOp (Iden "x") "+" (Num 1)))
 
     ,([R.r|
 lam<a>(x :: List<a>) -> Boolean:
@@ -280,30 +280,30 @@ end|]
             ["a"]
             [TypedBinding (NameBinding "x") (TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"]))
-      $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
-        [(NameBinding "empty", Nothing, Iden "true")
-        ,(VariantBinding ["link"] [WildcardBinding, WildcardBinding], Nothing, Iden "false")]
+      $ sts $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
+        [(NameBinding "empty", Nothing, sts $ Iden "true")
+        ,(VariantBinding ["link"] [WildcardBinding, WildcardBinding], Nothing, sts $ Iden "false")]
         Nothing)
 
      ,("{(y) : x + y}"
       ,CurlyLam (FunHeader [] [nm "y"] Nothing)
-       $ BinOp (Iden "x") "+" (Iden "y"))
+       $ sts $ BinOp (Iden "x") "+" (Iden "y"))
 
      ,("{(y) block: x + y}"
       ,CurlyLam (FunHeader [] [nm "y"] Nothing)
-       $ BinOp (Iden "x") "+" (Iden "y"))
+       $ sts $ BinOp (Iden "x") "+" (Iden "y"))
 
 
      ,("{(x,y) : x + y}"
       ,CurlyLam (FunHeader [] [nm "x",nm "y"] Nothing)
-       $ BinOp (Iden "x") "+" (Iden "y"))
+       $ sts $ BinOp (Iden "x") "+" (Iden "y"))
 
 
      ,("{(y :: Number) -> Number: x + y}"
       ,CurlyLam (FunHeader []
                 [TypedBinding (NameBinding "y") $ TName ["Number"]]
                 (Just $ TName ["Number"]))
-       $ BinOp (Iden "x") "+" (Iden "y"))
+       $ sts $ BinOp (Iden "x") "+" (Iden "y"))
 
      ,("-1 is 0 - 1"
       ,BinOp (UnaryMinus (Num 1)) "is" (BinOp (Num 0) "-" (Num 1)))
@@ -320,38 +320,38 @@ end|]
 receive:
   | a => b
 end
-     |], Receive [(NameBinding "a", Nothing, Iden "b")] Nothing)
+     |], Receive [(NameBinding "a", Nothing, sts $ Iden "b")] Nothing)
 
     ,([R.r|
 receive block:
   | a => b
 end
-     |], Receive [(NameBinding "a", Nothing, Iden "b")] Nothing)
+     |], Receive [(NameBinding "a", Nothing, sts $ Iden "b")] Nothing)
 
     ,([R.r|
 receive:
   | pat1(a) => a
   | pat2(b) => b
 end
-     |], Receive [(VariantBinding ["pat1"] [nm "a"], Nothing, Iden "a")
-                 ,(VariantBinding  ["pat2"] [nm "b"], Nothing, Iden "b")] Nothing)
+     |], Receive [(VariantBinding ["pat1"] [nm "a"], Nothing, sts $ Iden "a")
+                 ,(VariantBinding  ["pat2"] [nm "b"], Nothing, sts $ Iden "b")] Nothing)
     ,([R.r|
 receive:
   | after infinity => c
 end
-     |], Receive [] (Just (Iden "infinity", Iden "c")))
+     |], Receive [] (Just (Iden "infinity", sts $ Iden "c")))
     ,([R.r|
 receive:
   | after 1.1 => c
 end
-     |], Receive [] (Just (Num 1.1, Iden "c")))
+     |], Receive [] (Just (Num 1.1, sts $ Iden "c")))
     ,([R.r|
 receive:
   | pat1(a) => a
   | after f(10) => c
 end
-     |], Receive [(VariantBinding ["pat1"] [nm "a"], Nothing, Iden "a")]
-                 (Just (App Nothing (Iden "f") [Num 10], Iden "c")))
+     |], Receive [(VariantBinding ["pat1"] [nm "a"], Nothing, sts $ Iden "a")]
+                 (Just (App Nothing (Iden "f") [Num 10], sts $ Iden "c")))
 
     ,([R.r|
 table a,b:
@@ -364,6 +364,7 @@ end|], TableSel ["a", "b"] [RowSel [Num 1, Iden "true"]
     nm x = NameBinding x
     nmt x t = TypedBinding (NameBinding x) (TName [t])
     lam as = Lam (FunHeader [] (map nm as) Nothing)
+    sts e = [StmtExpr e]
 
 statementParseTests :: TestTree
 statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTest)
@@ -373,10 +374,10 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
      ,LetDecl (ShadowBinding "a") (Num 5))
 
     ,("when x == 3: 4 end"
-     ,When (BinOp (Iden "x") "==" (Num 3)) (Num 4))
+     ,When (BinOp (Iden "x") "==" (Num 3)) (sts $ Num 4))
 
     ,("when x == 3 block: 4 end"
-     ,When (BinOp (Iden "x") "==" (Num 3)) (Num 4))
+     ,When (BinOp (Iden "x") "==" (Num 3)) (sts $ Num 4))
 
      
     ,("var a = 5"
@@ -459,10 +460,10 @@ end
 
     
     ,("fun f(a): a + 1 end"
-     ,FunDecl (snm "f") (fh ["a"]) Nothing (BinOp (Iden "a") "+" (Num 1)) Nothing)
+     ,FunDecl (snm "f") (fh ["a"]) Nothing (sts $ BinOp (Iden "a") "+" (Num 1)) Nothing)
 
     ,("fun f(a) block: a + 1 end"
-     ,FunDecl (snm "f") (fh ["a"]) Nothing (BinOp (Iden "a") "+" (Num 1)) Nothing)
+     ,FunDecl (snm "f") (fh ["a"]) Nothing (sts $ BinOp (Iden "a") "+" (Num 1)) Nothing)
 
     
     ,("fun f(a):\n\
@@ -470,7 +471,7 @@ end
       \  a + 1\n\
       \end", FunDecl (snm "f")
                         (fh ["a"]) Nothing
-                        (Block [LetDecl (nm "a") (Num 1)
+                        ([LetDecl (nm "a") (Num 1)
                                ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing)
     ,("fun double(n):\n\
       \  n + n\n\
@@ -478,7 +479,7 @@ end
       \  double(10) is 20\n\
       \  double(15) is 30\n\
       \end"
-     ,FunDecl (snm "double") (fh ["n"]) Nothing (BinOp (Iden "n") "+" (Iden "n"))
+     ,FunDecl (snm "double") (fh ["n"]) Nothing (sts $ BinOp (Iden "n") "+" (Iden "n"))
       (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [Num 10]) "is" (Num 20)
            ,StmtExpr $ BinOp (App Nothing (Iden "double") [Num 15]) "is" (Num 30)]))
 
@@ -489,7 +490,7 @@ fun f(x):
 end|]
      ,FunDecl (snm "f") (FunHeader [] [nm "x"] Nothing)
       (Just "adds one to the argument")
-      (BinOp (Iden "x") "+" (Num 1)) Nothing)
+      (sts $ BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     
     ,([R.r|
@@ -497,21 +498,21 @@ fun f(x :: Number):
   x + 1
 end|]
      ,FunDecl (snm "f") (FunHeader [] [nmt "x" "Number"] Nothing) Nothing
-      (BinOp (Iden "x") "+" (Num 1)) Nothing)
+      (sts $ BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
 fun f(x) -> Number:
   x + 1
 end|]
      ,FunDecl (snm "f") (FunHeader [] [nm "x"] (Just $ TName ["Number"])) Nothing
-      (BinOp (Iden "x") "+" (Num 1)) Nothing)
+      (sts $ BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
 fun f(x :: Number) -> Number:
   x + 1
 end|]
      ,FunDecl (snm "f") (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"])) Nothing
-      (BinOp (Iden "x") "+" (Num 1)) Nothing)
+      (sts $ BinOp (Iden "x") "+" (Num 1)) Nothing)
 
     ,([R.r|
 fun f<a>(x :: List<a>) -> Boolean:
@@ -524,9 +525,9 @@ end|]
             ["a"]
             [TypedBinding (NameBinding "x") (TParam ["List"] [TName ["a"]])]
             (Just $ TName ["Boolean"])) Nothing
-      (Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
-        [(NameBinding "empty", Nothing, Iden "true")
-        ,(VariantBinding ["link"] [WildcardBinding, WildcardBinding], Nothing, Iden "false")]
+      (sts $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
+        [(NameBinding "empty", Nothing, sts $ Iden "true")
+        ,(VariantBinding ["link"] [WildcardBinding, WildcardBinding], Nothing, sts $ Iden "false")]
         Nothing) Nothing)
 
     
@@ -537,9 +538,9 @@ end|]
       \  end"
 
      ,RecDecl (nm "fact")
-            $ Lam (fh ["x"]) $
-                    If [(BinOp (Iden "x") "==" (Num 0), Num 1)]
-                    (Just (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [BinOp (Iden "x") "-" (Num 1)])))
+            $ Lam (fh ["x"]) $ sts $
+                    If [(BinOp (Iden "x") "==" (Num 0), sts $ Num 1)]
+                    (Just $ sts (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [BinOp (Iden "x") "-" (Num 1)])))
             )
 
     ,("type NumPredicate = (Number -> Boolean)"
@@ -601,6 +602,7 @@ end|]
     fh as = FunHeader [] (map nm as) Nothing
     nmt x t = TypedBinding (NameBinding x) (TName [t])
     snmt x t = SimpleBinding NoShadow x (Just $ TName [t])
+    sts e = [StmtExpr e]
 
 
 scriptParseTests :: TestTree
