@@ -1,6 +1,4 @@
 
-
-
 {-# LANGUAGE DeriveDataTypeable #-}
 module Burdock.Syntax where
 
@@ -10,12 +8,12 @@ import Burdock.Scientific
 
 type SourcePosition = Maybe (FilePath, Int, Int)
 
-data Script =
-      Script [Stmt]
+data Script
+    = Script [Stmt]
     deriving (Eq,Show,Data)
 
-data Stmt =
-      StmtExpr Expr
+data Stmt
+    = StmtExpr Expr
     | When Expr [Stmt]
     | LetDecl Binding Expr
     | Check (Maybe String) [Stmt]
@@ -40,27 +38,32 @@ data Stmt =
     deriving (Eq,Show,Data)
 
 -- ty params args return ann
-data FunHeader = FunHeader [String] [Binding] (Maybe Ann)
+data FunHeader
+    = FunHeader [String] [Binding] (Maybe Ann)
     deriving (Eq,Show,Data)
 
-data VariantDecl = VariantDecl String [(Ref,SimpleBinding)]
-                 deriving (Eq,Show,Data) 
+data VariantDecl
+    = VariantDecl String [(Ref,SimpleBinding)]
+    deriving (Eq,Show,Data) 
 
-data Ref = Ref | Con
-         deriving (Eq,Show,Data) 
+data Ref
+    = Ref | Con
+    deriving (Eq,Show,Data) 
 
-data ProvideItem = ProvideAll
-                 | ProvideAlias String String
-                 | ProvideName String
-                 deriving (Eq,Show,Data) 
+data ProvideItem
+    = ProvideAll
+    | ProvideAlias String String
+    | ProvideName String
+    deriving (Eq,Show,Data) 
 
-data ImportSource = ImportSpecial String [String]
-                  | ImportName String
-                  deriving (Eq,Show,Data) 
+data ImportSource
+    = ImportSpecial String [String]
+    | ImportName String
+    deriving (Eq,Show,Data) 
 ----
 
-data Expr =
-      Num Scientific
+data Expr
+    = Num Scientific
     | Text String
     | Iden String
     | Parens Expr
@@ -90,8 +93,9 @@ data Expr =
     | For Expr [(Binding, Expr)] (Maybe Ann) [Stmt]
     deriving (Eq,Show,Data)
 
-data TypeDecl = TypeDecl String [String] Ann
-              deriving (Eq,Show,Data)
+data TypeDecl
+    = TypeDecl String [String] Ann
+    deriving (Eq,Show,Data)
 
 data Binding
     = NameBinding String
@@ -105,20 +109,24 @@ data Binding
     | StringLitBinding String
     deriving (Eq,Show,Data)
 
-data SimpleBinding = SimpleBinding Shadow String (Maybe Ann)
+data SimpleBinding
+    = SimpleBinding Shadow String (Maybe Ann)
     deriving (Eq,Show,Data)
 
-data Shadow = NoShadow | Shadow
-          deriving (Eq,Show,Data) 
+data Shadow
+    = NoShadow | Shadow
+    deriving (Eq,Show,Data) 
 
-data RowSel = RowSel [Expr]
-            deriving (Eq,Show,Data) 
+data RowSel
+    = RowSel [Expr]
+    deriving (Eq,Show,Data) 
 
-data Ann = TName [String]
-                    | TTuple [Ann]
-                    | TRecord [(String,Ann)]
-                    | TParam [String] [Ann]
-                    | TArrow [Ann] Ann
-                    | TNamedArrow [(String,Ann)] Ann
-                    | TParens Ann
-                    deriving (Eq,Show,Data)
+data Ann
+    = TName [String]
+    | TTuple [Ann]
+    | TRecord [(String,Ann)]
+    | TParam [String] [Ann]
+    | TArrow [Ann] Ann
+    | TNamedArrow [(String,Ann)] Ann
+    | TParens Ann
+    deriving (Eq,Show,Data)

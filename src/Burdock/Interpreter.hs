@@ -1813,6 +1813,9 @@ interp (DotExpr e f) = do
               -- not quite sure about this?
               -- it's needed for referencing vars in a module
               -- (including fun which is desugared to a var)
+              -- one improvement would be to representing a module value
+              -- as a distinct variant type, then only doing this behaviour
+              -- on that variant type at least
               case fv of
                   BoxV _ vr -> liftIO $ readIORef vr
                   _ -> pure fv
