@@ -87,6 +87,7 @@ data Expr =
     | Template SourcePosition
     | UnboxRef Expr String
     | Receive [(Binding, Maybe Expr, [Stmt])] (Maybe (Expr, [Stmt]))
+    | For Expr [(Binding, Expr)] (Maybe Ann) [Stmt]
     deriving (Eq,Show,Data)
 
 data TypeDecl = TypeDecl String [String] Ann

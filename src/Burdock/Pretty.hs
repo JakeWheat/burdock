@@ -114,8 +114,16 @@ expr (TableSel cs rs) = prettyBlocklike sep
     : map rl rs)
   where
     rl (RowSel es) = pretty "row:" <+> commaSep (map expr  es)
-    
 
+expr (For ex args mrty bdy) =
+    prettyBlocklike vsep
+    [pretty "for" <+> expr ex
+     <> parens (nest 2 $ commaSep (map f args))
+     <> maybe mempty (\rty -> pretty " ->" <+> typ rty) mrty
+     <> pretty ":"
+    ,stmts bdy]
+  where
+    f (b,e) = binding b <+> pretty "from" <+> expr e
 
 expr (TupleGet e n) = expr e <> pretty ".{" <> pretty (show n) <> pretty "}"
 

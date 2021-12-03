@@ -1919,6 +1919,11 @@ interp (Construct c es) = do
               -- otherwise try to call the make
         _ -> _errorWithCallStack $ "non construct record used in construct " ++ show c ++ ": " ++ show maker
 
+interp (For fn args mty bdy) =
+    interp (App Nothing fn (f : map snd args))
+  where
+    f = Lam (FunHeader [] (map fst args) mty) bdy
+
 interp (AssertTypeCompat e t) = do
     v <- interp e
     ty' <- shallowizeType <$> typeOfTypeSyntax t
@@ -2618,7 +2623,6 @@ testPredSupport e0 e1 = do
     v0 <- bToHEither <$> catchAsEither [e0]
     v1 <- bToHEither <$> catchAsEither [e1]
     pure (v0, v1, addTestResult)
-
 
 ------------------------------------------------------------------------------
 

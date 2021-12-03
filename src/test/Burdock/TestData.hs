@@ -317,6 +317,15 @@ end|]
     ,("...", Template Nothing)
 
     ,([R.r|
+for fold(sum from 0, number from [list: 1,2]):
+  sum + number
+end|], For (Iden "fold")
+           [(NameBinding "sum", Num 0)
+           ,(NameBinding "number", Construct ["list"] [Num 1, Num 2])]
+           Nothing
+           [StmtExpr $ BinOp (Iden "sum") "+" (Iden "number")])
+
+    ,([R.r|
 receive:
   | a => b
 end
@@ -686,6 +695,7 @@ interpreterTests =
      ,"burdock-test-src/template.bur"
      ,"burdock-test-src/curly-lam.bur"
      ,"burdock-test-src/binding.bur"
+     ,"burdock-test-src/for.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["burdock-test-src/built-in-functions.bur"
