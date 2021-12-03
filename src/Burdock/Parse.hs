@@ -828,21 +828,44 @@ but don't want e.g. a parse error after the  = part
 in a let decl, to reset the try and just give the error
 as if it's parsing the pattern or "pattern =" as an expression,
 want that exact parse error after the =
+
+{something;shadow a}
+a = 2
+
+If you write this now, you get something like
+
+NN | a = 2
+   | ^^
+unexpected "a "
+expecting "::", ":=", "= ", or "as"
+
+would prefer to parse it as a pattern, continue, and give an error
+'pattern in expression context' or similar, pointing here:
+   | {something, ...
+   | ^^
+
+don't want to expose this in the user's syntax though, is there a non
+tedious way of doing this?
+maybe it's worth having a separate tree for parsing, which allows
+parsing stuff which will then get a static check on it before converting
+to the user's/interpreter/desugarer syntax
+
         -}
         let makeSetVar i e = pure $ SetVar i e
-            makeContract = \case
-                TypedBinding (NameBinding b) t -> pure $ pure $ Contract b t
-                _ -> fail ""
+            makeContract b t = pure $ pure $ Contract b t
         (ctu :: Parser Stmt) <- try $ do
             p <- limitedBinding True
-            choice
                 -- todo: hack to stop it matching ==
                 -- fix this when do the whitespace fix pass
-                [symbol_ "= " *> (pure $ (LetDecl p <$> expr))
-                ,case p of
-                     NameBinding i -> symbol_ ":=" *> (pure $ (makeSetVar i =<< expr))
-                     _ -> symbol_ ":=" *> (pure $ fail "cannot assign to non simple binding")
-                ,makeContract p]
+            let myLetDecl = symbol_ "= " *> (pure $ (LetDecl p <$> expr))
+                mySetVar = case p of
+                        NameBinding i -> symbol_ ":=" *> (pure $ (makeSetVar i =<< expr))
+                        _ -> symbol_ ":=" *> (pure $ fail "cannot assign to non simple binding")
+                                    
+                myContract = case p of
+                    TypedBinding (NameBinding b) t -> Just $ makeContract b t
+                    _ -> Nothing
+            choice $ (myLetDecl : mySetVar : maybe [] (:[]) myContract)
         ctu
     startsWithExpr = do
         ex <- expr

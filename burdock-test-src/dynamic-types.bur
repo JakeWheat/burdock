@@ -597,6 +597,30 @@ check "contracts":
   
 end
 
+check "tuple types":
+  # todo: this gives a weird error
+  # the offical pyret implementation gives almost the
+  # same weird error (!)
+  # x :: {Number;Number} = {1;2} is {1;2}
+  block:
+    x :: {Number;Number} = {1;2}
+    x
+  end is {1;2}
+  block:
+    x :: {Number;String} = {1;2}
+    x
+  end raises "type not compatible"
+
+  block:
+    x :: {Number;Number;Number} = {1;2}
+    x
+  end raises "type not compatible"
+
+  # todo: test type annotations in the middle of tuples
+  # and with as and stuff
+
+end
+
 check "type stmt":
-  
+  # todo  
 end
