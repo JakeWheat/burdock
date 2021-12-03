@@ -1,0 +1,14 @@
+
+import from lists:
+  fold
+end
+
+check:
+
+  for fold(sum from 0, number from [list: 1,2,3,4]):
+    sum + number
+  end
+  is
+  fold(lam(sum, number): sum + number end, 0, [list: 1,2,3,4])
+
+end

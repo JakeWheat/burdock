@@ -77,7 +77,10 @@ provide:
   set,
   reverse,
   append,
-  map
+  map,
+  fold,
+  foldl,
+  foldr
 end
 
 
@@ -157,4 +160,46 @@ fun map<a,b>(f :: (a -> b), lst :: List<a>) -> List<b>:
 where:
   #map(num-tostring, [list: 1, 2]) is [list: "1", "2"]
   map(lam(x): x + 1 end, [list: 1, 2]) is [list: 2, 3]
+end
+
+
+#fold :: (f :: (Base, Elt -> Base), base :: Base, lst :: List<Elt>) -> Base
+
+# the f in foldl and foldr is backwards compared to haskell ...
+
+fun foldl(f, base, lst):
+  cases lst:
+    | empty => base
+    | link(h,t) => foldl(f, f(base,h), t)
+  end
+end
+
+fold = foldl
+
+check:
+  fold((lam(acc, elt): acc + elt end), 0, [list: 3, 2, 1]) is 6
+  fold((lam(acc, elt): acc + elt end), 10, [list: 3, 2, 1]) is 16
+
+  fun combine(acc, elt) -> String:
+    tostring(elt) + " - " + acc
+  end
+  fold(combine, "END", [list: 3, 2, 1]) is "1 - 2 - 3 - END"
+  fold(combine, "END", empty) is "END"
+end
+
+fun foldr(f, base, lst):
+  cases lst:
+    | empty => base
+    | link(h,t) => f(foldr(f,base,t), h)
+  end
+end
+
+check:
+  foldr((lam(acc, elt): acc + elt end), 0, [list: 3, 2, 1]) is 6
+  foldr((lam(acc, elt): acc + elt end), 10, [list: 3, 2, 1]) is 16
+  fun combine(acc, elt) -> String:
+    tostring(elt) + " - " + acc
+  end
+  foldr(combine, "END", [list: 3, 2, 1]) is "3 - 2 - 1 - END"
+  foldr(combine, "END", empty) is "END"
 end
