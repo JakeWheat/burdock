@@ -15,7 +15,6 @@ provide:
   false,
 
   raise,
-  catch-as-either,
 
   print,
   torepr,

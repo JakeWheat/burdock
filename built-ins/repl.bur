@@ -116,7 +116,7 @@ end
 fun repl-loop():
   receive block:
     | run-src(ret,src) =>
-        v = catch-as-either(run-script(src))
+        v = run-task(run-script(src))
         cases v:
           | left(e) => print("Error: " + torepr(e))
           | right(v) when v == nothing => nothing

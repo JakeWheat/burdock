@@ -3,8 +3,8 @@ include either
 
 
 check:
-  right(4) is catch-as-either(4)
-  left(5) is catch-as-either(raise(5))
+  right(4) is run-task(4)
+  left(5) is run-task(raise(5))
 
   # todo: raises-satisfies, does-not-raise
 

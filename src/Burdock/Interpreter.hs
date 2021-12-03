@@ -1714,7 +1714,7 @@ interp (App sp f es) | f == Iden "_" || any (== Iden "_") es =
 interp (App sp f es) = do
     fv <- interp f
     -- special case apps
-    if fv == ForeignFunV "catch-as-either"
+    if fv == ForeignFunV "run-task"
         then do
             -- todo: maintain call stack
             catchAsEither es
@@ -2059,6 +2059,7 @@ typeLet tds f = do
                  $ newEnv tds'
     newEnv tds
 
+-- pyret spells this run-task
 catchAsEither :: [Expr] -> Interpreter Value
 catchAsEither [e] = do
     v0 <- ca $ catchit (interp e)
@@ -2074,7 +2075,7 @@ catchAsEither [e] = do
     -- catch any haskell exception, for dealing with error and undefined
     -- not sure about this, but definitely wanted for testing
     ca f = catchAny f (pure . Left . TextV . show)
-catchAsEither _ = _errorWithCallStack $ "wrong args to catch as either"
+catchAsEither _ = _errorWithCallStack $ "wrong args to run-task"
 
 assertTypeCompat :: Value -> TypeInfo -> Interpreter Value
 assertTypeCompat v ti = 

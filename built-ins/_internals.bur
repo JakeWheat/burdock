@@ -78,7 +78,7 @@ tostring = get-ffi-value("tostring")
 string-to-number = get-ffi-value("string-to-number")
 string-index-of = get-ffi-value("string-index-of")
 
-catch-as-either = get-ffi-value("catch-as-either")
+run-task = get-ffi-value("run-task")
 
 not = get-ffi-value("not")
 
