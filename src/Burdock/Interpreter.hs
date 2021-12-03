@@ -1813,6 +1813,9 @@ interp (DotExpr e f) = do
               -- not quite sure about this?
               -- it's needed for referencing vars in a module
               -- (including fun which is desugared to a var)
+              -- one improvement would be to representing a module value
+              -- as a distinct variant type, then only doing this behaviour
+              -- on that variant type at least
               case fv of
                   BoxV _ vr -> liftIO $ readIORef vr
                   _ -> pure fv
@@ -1918,6 +1921,11 @@ interp (Construct c es) = do
                            Nothing -> _errorWithCallStack $ "no matching construct make: " ++ show c ++ ": " ++ show maker ++ " for " ++ show (length es) ++ " args"
               -- otherwise try to call the make
         _ -> _errorWithCallStack $ "non construct record used in construct " ++ show c ++ ": " ++ show maker
+
+interp (For fn args mty bdy) =
+    interp (App Nothing fn (f : map snd args))
+  where
+    f = Lam (FunHeader [] (map fst args) mty) bdy
 
 interp (AssertTypeCompat e t) = do
     v <- interp e
@@ -2618,7 +2626,6 @@ testPredSupport e0 e1 = do
     v0 <- bToHEither <$> catchAsEither [e0]
     v1 <- bToHEither <$> catchAsEither [e1]
     pure (v0, v1, addTestResult)
-
 
 ------------------------------------------------------------------------------
 

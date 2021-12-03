@@ -270,6 +270,7 @@ term = (do
         ,block
         ,cases
         ,typeLet
+        ,forExpr
         ,tableSel
         ,template
         ,assertTypeCompat
@@ -531,6 +532,18 @@ typeLet :: Parser Expr
 typeLet = TypeLet
     <$> (keyword_ "type-let" *> commaSep1 (typeDecl False))
     <*> (symbol_ ":" *> stmts <* keyword_ "end")
+
+forExpr :: Parser Expr
+forExpr = For
+    -- there's probably a fairly easy way to make this work with
+    -- any expr in this position
+    <$> (keyword_ "for" *> (Iden <$> identifier))
+    <*> parens (commaSep forArg)
+    <*> optional (symbol "->" *> typ False)
+    <*> (symbol ":" *> stmts <* keyword_ "end")
+  where
+    forArg = (,) <$> binding False
+                 <*> (keyword_ "from" *> expr)
 
 tableSel :: Parser Expr
 tableSel = TableSel
