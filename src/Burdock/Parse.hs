@@ -99,6 +99,9 @@ boption v p = (option v p) <?> ""
 boptional :: Parser a -> Parser (Maybe a)
 boptional p = optional p <?> ""
 
+optional_ :: Parser a -> Parser ()
+optional_ a = optional a *> pure ()
+
 bchoice :: [Parser a] -> Parser a
 bchoice cs = choice $ addEmpty cs
   where
@@ -354,12 +357,12 @@ unaryMinus :: Parser Expr
 unaryMinus = UnaryMinus <$> (symbol "-" *> term)
 
 lamE :: Parser Expr
-lamE = Lam <$> (keyword_ "lam" *> funHeader <* symbol_ ":")
+lamE = Lam <$> (keyword_ "lam" *> funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
            <*> (expr <* keyword_ "end")
 
 curlyLam :: Parser Expr
 curlyLam = CurlyLam
-    <$> (symbol_ "{" *> funHeader <* symbol_ ":")
+    <$> (symbol_ "{" *> funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
     <*> (expr <* symbol_ "}")
 
 {-
@@ -438,7 +441,8 @@ expressionLet = keyword_ "let" *> letBody Let
  
 letBody :: ([(Binding,Expr)] -> Expr -> Expr) -> Parser Expr
 letBody ctor = ctor <$> commaSep1 bindExpr
-                    <*> (symbol_ ":" *> expr <* keyword_ "end")
+                    <*> (optional_ (keyword_ "block") *> symbol_ ":"
+                         *> expr <* keyword_ "end")
 
 bindExpr :: Parser (Binding,Expr)
 bindExpr = (,) <$> limitedBinding True <*> (symbol_ "=" *> expr)
@@ -449,9 +453,10 @@ simpleBindExpr = (,) <$> simpleBinding True <*> (symbol_ "=" *> expr)
 ifE :: Parser Expr
 ifE = do
     keyword_ "if"
-    ife <- cond
+    ife <- conds
     nextBranch [ife]
   where
+    conds = (,) <$> expr <*> (optional_ (keyword_ "block") *> symbol_ ":" *> expr)
     cond = (,) <$> expr <*> (symbol_ ":" *> expr)
     nextBranch bs =
         choice [do
@@ -472,6 +477,7 @@ ifE = do
 ask :: Parser Expr
 ask = do
     keyword_ "ask"
+    optional_ (symbol_ "block")
     symbol_ ":"
     nextBranch []
   where
@@ -502,7 +508,8 @@ block = Block <$>
 cases :: Parser Expr
 cases = do
     t <- keyword_ "cases" *> expr
-    ty <- optional (symbol_ "::" *> typ True) <* symbol_ ":"
+    ty <- optional (symbol_ "::" *> typ True)
+          <* optional_ (keyword_ "block") <* symbol_ ":"
     nextCase t ty []
   where
     nextCase t ty cs =
@@ -549,6 +556,7 @@ assertTypeCompat = do
 receive :: Parser Expr
 receive = do
     keyword_ "receive"
+    optional_ (keyword_ "block")
     symbol_ ":"
     nextCase []
   where
@@ -678,7 +686,7 @@ funDecl :: Parser Stmt
 funDecl = FunDecl
     <$> (keyword "fun" *> simpleBinding True)
     <*> funHeader
-    <*> (symbol_ ":" *> optional ds)
+    <*> (optional_ (keyword_ "block") *> symbol_ ":" *> optional ds)
     <*> (unwrapSingle <$> (Block <$> some stmt))
     <*> (boptional whereBlock <* keyword_ "end")
     
@@ -776,7 +784,7 @@ importStmt = keyword_ "import" *> (importFrom <|> importAs)
 
 whenStmt :: Parser Stmt
 whenStmt = When
-           <$> (keyword_ "when" *> expr)
+           <$> (keyword_ "when" *> expr <* optional_ (keyword_ "block"))
            <*> (symbol_ ":" *> expr <* keyword_ "end")
 
 -- todo: what other statements can use shadow

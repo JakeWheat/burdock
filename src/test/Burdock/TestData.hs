@@ -46,10 +46,19 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     ,("a + b + c", BinOp (BinOp (Iden "a") "+" (Iden "b")) "+" (Iden "c"))
 
     ,("lam(): 2 end", lam [] (Num 2))
+
+    ,("lam() block: 2 end", lam [] (Num 2))
+
     ,("lam(x): x + 1 end", lam ["x"] (BinOp (Iden "x") "+" (Num 1)))
     ,("lam(x, y): x - y end"
      ,lam ["x","y"] (BinOp (Iden "x") "-" (Iden "y")))
 
+    ,("let x=3: x + 1 end"
+     , Let [(nm "x", Num 3)]
+         (BinOp (Iden "x") "+" (Num 1)))
+    ,("let x=3 block: x + 1 end"
+     , Let [(nm "x", Num 3)]
+         (BinOp (Iden "x") "+" (Num 1)))
     ,("let x=3,y=4: x + y end"
      , Let [(nm "x", Num 3)
            ,(nm "y", Num 4)]
@@ -68,7 +77,10 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
     
     ,("letrec a = 5: a end"
      ,LetRec [(nm "a",Num 5)] (Iden "a"))
+    ,("letrec a = 5 block: a end"
+     ,LetRec [(nm "a",Num 5)] (Iden "a"))
 
+    
     ,("block: end", Block [])
     ,("block: \n\
       \  a\n\
@@ -80,6 +92,10 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
 
     ,("if n == 1: 1 else: 2 end"
      ,If [(BinOp (Iden "n") "==" (Num 1), Num 1)] (Just (Num 2)))
+
+    ,("if n == 1 block: 1 else: 2 end"
+     ,If [(BinOp (Iden "n") "==" (Num 1), Num 1)] (Just (Num 2)))
+
     ,("if n == 1:\n\
       \  0\n\
       \else if n == 2:\n\
@@ -91,6 +107,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
          ,(BinOp (Iden "n") "==" (Num 2), Num 1)] (Just (Num 2)))
 
     ,("ask: | otherwise: a end", Ask [] (Just (Iden "a")))
+    ,("ask block: | otherwise: a end", Ask [] (Just (Iden "a")))
     ,("ask:\n\
       \   | a == b then: c\n\
       \   | c == d then: e\n\
@@ -120,7 +137,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
         [(NameBinding "empty", Nothing, Text "empty")
         ,(VariantBinding ["link"] [nm "f", nm "r"], Nothing, Text "link")]
         Nothing)
-     
+
     ,("cases a:\n\
       \  | empty => \"empty\"\n\
       \  | else => \"else\"\n\
@@ -128,7 +145,16 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
      ,Cases (Iden "a") Nothing
         [(NameBinding "empty", Nothing, Text "empty")]
         (Just $ Text "else"))
-   
+
+    ,("cases a block:\n\
+      \  | empty => \"empty\"\n\
+      \  | else => \"else\"\n\
+      \end"
+     ,Cases (Iden "a") Nothing
+        [(NameBinding "empty", Nothing, Text "empty")]
+        (Just $ Text "else"))
+
+    
     ,("cases a :: z.List:\n\
       \  | z.empty => \"empty\"\n\
       \  | z.link(f, r) => x\n\
@@ -263,6 +289,11 @@ end|]
       ,CurlyLam (FunHeader [] [nm "y"] Nothing)
        $ BinOp (Iden "x") "+" (Iden "y"))
 
+     ,("{(y) block: x + y}"
+      ,CurlyLam (FunHeader [] [nm "y"] Nothing)
+       $ BinOp (Iden "x") "+" (Iden "y"))
+
+
      ,("{(x,y) : x + y}"
       ,CurlyLam (FunHeader [] [nm "x",nm "y"] Nothing)
        $ BinOp (Iden "x") "+" (Iden "y"))
@@ -291,6 +322,11 @@ receive:
 end
      |], Receive [(NameBinding "a", Nothing, Iden "b")] Nothing)
 
+    ,([R.r|
+receive block:
+  | a => b
+end
+     |], Receive [(NameBinding "a", Nothing, Iden "b")] Nothing)
 
     ,([R.r|
 receive:
@@ -338,6 +374,11 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
 
     ,("when x == 3: 4 end"
      ,When (BinOp (Iden "x") "==" (Num 3)) (Num 4))
+
+    ,("when x == 3 block: 4 end"
+     ,When (BinOp (Iden "x") "==" (Num 3)) (Num 4))
+
+     
     ,("var a = 5"
      ,VarDecl (snm "a") (Num 5))
     ,("a := 6"
@@ -420,6 +461,10 @@ end
     ,("fun f(a): a + 1 end"
      ,FunDecl (snm "f") (fh ["a"]) Nothing (BinOp (Iden "a") "+" (Num 1)) Nothing)
 
+    ,("fun f(a) block: a + 1 end"
+     ,FunDecl (snm "f") (fh ["a"]) Nothing (BinOp (Iden "a") "+" (Num 1)) Nothing)
+
+    
     ,("fun f(a):\n\
       \  a = 1\n\
       \  a + 1\n\
