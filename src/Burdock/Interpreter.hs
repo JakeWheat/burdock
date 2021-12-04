@@ -215,7 +215,8 @@ evalFun h fun args =
 
 formatException :: Handle -> Bool -> InterpreterException -> IO String
 formatException h includeCallstack e =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ formatExceptionI includeCallstack e
+    spawnExtWaitHandle h $ \th ->
+        runInterp th True h $ formatExceptionI includeCallstack e
 
 addFFIImpls :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
 addFFIImpls h ffis =
@@ -243,7 +244,8 @@ data CheckBlockResult = CheckBlockResult String [TestResult]
                       deriving Show
 
 getTestResults :: Handle -> IO [(String, [CheckBlockResult])]
-getTestResults h = spawnExtWaitHandle h $ \th -> runInterp th True h getTestResultsI
+getTestResults h =
+    spawnExtWaitHandle h $ \th -> runInterp th True h getTestResultsI
 
 getTestResultsI :: Interpreter [(String, [CheckBlockResult])]
 getTestResultsI = do
@@ -1227,13 +1229,24 @@ builtInFF :: [(String, [Value] -> Interpreter Value)]
 builtInFF =
     [("get-ffi-value", getFFIValue)
 
-    ,("==", \case
+    ,("==", equalAlways) {-\case
              [FFIValue a, FFIValue b]
                  | Just (a' :: R.Relation Value) <- fromDynamic a
                  , Just b' <- fromDynamic b
                  -> either (error . show) (pure . BoolV) $ R.relEqual a' b'
+             as@[BoolV {}, _] -> equalAlways as
+             as@[NumV {}, _] -> equalAlways as
+             as@[TextV {}, _] -> equalAlways as
+             as@[BoxV {}, _] -> equalAlways as
+             as@[FunV {}, _] -> equalAlways as
+             as@[ForeignFunV {}, _] -> equalAlways as
+             as@[MethodV {}, _] -> equalAlways as
+             as@[FFIValue {}, _] -> equalAlways as
+             as@[VariantV _ "tuple" _, _] -> equalAlways as
+             as@[VariantV _ "record" _, _] -> equalAlways as
+             as@[VariantV _ _ _, _] -> equalAlways as
              [a,b] -> pure $ BoolV $ a == b
-             as -> _errorWithCallStack $ "bad args to ==: " ++ show as)
+             as -> _errorWithCallStack $ "bad args to ==: " ++ show as-}
     ,("<", bLT)
     ,(">", bGT)
     ,("<=", bLTE)
@@ -1523,6 +1536,94 @@ bRunScript [TextV src] = do
 
 bRunScript _ = _errorWithCallStack $ "wrong args to run-script"
 
+
+equalAlways :: [Value] -> Interpreter Value
+equalAlways [a',b'] = do
+    case (a',b') of
+        (BoolV a, BoolV b) -> pure $ BoolV $ a == b
+        (BoolV {}, _) -> pure $ BoolV False
+        (NumV a, NumV b) -> pure $ BoolV $ a == b
+        (NumV {}, _) -> pure $ BoolV False
+        (TextV a, TextV b) -> pure $ BoolV $ a == b
+        (TextV {}, _) -> pure $ BoolV False
+        -- variant with equal method
+        -- this includes records with an equal-always
+        (VariantV _ _ fs, _)
+            | Just _ <- lookup "equal-always" fs
+              -> do
+                  fn <- interpDotExpr a' "equal-always"
+                  app fn [b']
+        -- tuple
+        (VariantV tg "tuple" fs, VariantV tg1 "tuple" fs1)
+            | tg == bootstrapType "Tuple" && tg1 == bootstrapType "Tuple" ->
+              BoolV <$> fieldsEqual fs fs1
+              {-if (length fs /= length fs1)
+              then pure $ BoolV False
+              else do
+                  BoolV . and
+                      <$> zipWithM (\x y -> unwrapBool <$> equalAlways [(snd x),(snd y)]) fs fs1-}
+        --variant without equal-always
+        (VariantV tg "record" fs, VariantV tg1 "record" fs1)
+            | tg == bootstrapType "Record" && tg1 == bootstrapType "Record" ->
+              BoolV <$> fieldsEqual fs fs1
+              {-if (length fs /= length fs1)
+              then pure $ BoolV False
+              else do
+                  let fieldEquals (na,va) (nb,vb) =
+                          ((na == nb) &&) <$> unwrapBool <$> equalAlways [va, vb]
+                  BoolV . and
+                      <$> zipWithM fieldEquals fs fs1-}
+        (VariantV tg nm fs, VariantV tg1 nm1 fs1)
+            -> BoolV
+                <$> ((tg == tg1 && nm == nm1) &&)
+                <$> fieldsEqual fs fs1
+                {-<$> let fieldEquals (na,va) (nb,vb) =
+                          ((na == nb) &&) <$> unwrapBool <$> equalAlways [va, vb]
+                    in and <$> zipWithM fieldEquals fs fs1-}
+        (VariantV {} , _) -> pure $ BoolV False
+        -- pointer equality on IORef
+        (BoxV _ a, BoxV _ b) -> pure $ BoolV $ a == b
+        (BoxV {}, _) -> pure $ BoolV False
+        --ffivalue
+        -- temp hacks until .equal-always is added to ffi types
+        {-(FFIValue a, FFIValue b)
+            | Just (av :: R.Relation Value) <- fromDynamic a
+            , Just bv <- fromDynamic b
+              -> either (error . show) (pure . BoolV) $ undefined -- R.relEqual av bv-}
+        (FFIValue a, FFIValue b)
+            | Just (av :: Addr) <- fromDynamic a
+            , Just bv <- fromDynamic b
+              -> pure $ BoolV $ av == bv
+        (FFIValue {}, _) -> pure $ BoolV False
+        _ | isFn a' && isFn b' -> incomparable
+        (FunV {}, _) -> pure $ BoolV False
+        (ForeignFunV {}, _) -> pure $ BoolV False
+        (MethodV {}, _) -> pure $ BoolV False
+  where
+    fieldsEqual as bs =
+        if length as /= length bs
+        then pure False
+        else do
+        let as' = sortOn fst as
+            bs' = sortOn fst bs
+            fieldEquals (na,va) (nb,vb) =
+                          ((na == nb) &&) <$> unwrapBool <$> equalAlways [va, vb]
+        and <$> zipWithM fieldEquals as' bs'
+
+    isFn = \case
+        FunV {} -> True
+        ForeignFunV {} -> True
+        MethodV {} -> True
+        _ -> False
+    incomparable = error $ "Attempted to compare two incomparable values:\n" ++ show a' ++ "\n" ++ show b'
+    unwrapBool = \case
+        BoolV True -> True
+        BoolV False -> False
+        x -> error $ "expected boolean from equal always, got  " ++ show x
+
+equalAlways _ = _errorWithCallStack $ "wrong args to equal-always"
+
+    
 -------------------
 
 relToList :: [Value] -> Interpreter Value
@@ -1594,27 +1695,27 @@ relRename [l, FFIValue a]
 relRename _ = _errorWithCallStack "bad args to relRename"
 
 relJoin :: [Value] -> Interpreter Value
-relJoin [FFIValue a, FFIValue b]
+relJoin _ = undefined {-[FFIValue a, FFIValue b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
     = either (error . show) (pure . FFIValue . toDyn)
-      $ R.relJoin a' b'
+      $ undefined --R.relJoin a' b'-}
 relJoin _ = _errorWithCallStack "bad args to relJoin"
 
 relNotMatching :: [Value] -> Interpreter Value
-relNotMatching [FFIValue a, FFIValue b]
+relNotMatching _ = undefined {-[FFIValue a, FFIValue b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
     = either (error . show) (pure . FFIValue . toDyn)
-      $ R.relNotMatching a' b'
+      $ undefined -- R.relNotMatching a' b'-}
 relNotMatching _ = error "bad args to relNotMatching"
 
 relGroup :: [Value] -> Interpreter Value
-relGroup [a, TextV b, FFIValue c]
+relGroup _ = undefined {-[a, TextV b, FFIValue c]
     | Just (c' :: R.Relation Value) <- fromDynamic c
     , Just ks <- mapM unText =<< fromBList a
     = either (error . show) (pure . FFIValue . toDyn)
-      $ R.relGroup makeRelVal ks b c'
+      $ undefined -- R.relGroup makeRelVal ks b c'-}
   where
     makeRelVal :: R.Relation Value -> Value
     makeRelVal rs = FFIValue . toDyn $ rs
@@ -1673,9 +1774,9 @@ wrapBPredicate f r = do
 
 
 hackParseTable :: [Value] -> Interpreter Value
-hackParseTable [TextV str] =
+hackParseTable [TextV str] = undefined {-
     either (error . show) (pure . FFIValue . toDyn)
-    $ R.parseTable (BoolV, TextV, NumV) str
+    $ undefined -- R.parseTable (BoolV, TextV, NumV) str -}
     
 hackParseTable _ = _errorWithCallStack "bad args to hackParseTable"
 ------------------------------------------------------------------------------
@@ -1718,11 +1819,11 @@ interp (App sp f es) | f == Iden "_" || any (== Iden "_") es =
 interp (App sp f es) = do
     fv <- interp f
     -- special case apps
-    if fv == ForeignFunV "run-task"
-        then do
+    case fv of
+        ForeignFunV "run-task" ->
             -- todo: maintain call stack
             catchAsEither es
-        else do
+        _ -> do
             -- TODO: refactor to check the value of fv before
             -- evaluating the es?
             vs <- mapM interp es
@@ -1811,26 +1912,7 @@ interp (LetRec bs e) =
 
 interp (DotExpr e f) = do
     v <- interp e
-    case v of
-        VariantV _ _ fs
-            | Just fv <- lookup f fs ->
-              -- not quite sure about this?
-              -- it's needed for referencing vars in a module
-              -- (including fun which is desugared to a var)
-              -- one improvement would be to representing a module value
-              -- as a distinct variant type, then only doing this behaviour
-              -- on that variant type at least
-              case fv of
-                  -- the hack for modules bit
-                  BoxV _ vr -> liftIO $ readIORef vr
-                  -- regular support for methods
-                  MethodV m -> app m [v]
-                  _ -> pure fv
-            | otherwise ->
-              _errorWithCallStack $ "field not found in dotexpr\nlooking in value:\n" ++ show v
-              ++ "\n for field " ++ f
-              ++ "\nit's fields are: " ++ show fs
-        _ -> _errorWithCallStack $ "dot called on non variant: " ++ show v
+    interpDotExpr v f
 
 {-
 run through each branch
@@ -2018,6 +2100,30 @@ interp (Template sp) =
     throwValueWithStacktrace $ TextV "template-not-finished"
 
 interp (MethodExpr m) = makeMethodValue m
+
+interpDotExpr :: Value -> String -> Interpreter Value
+interpDotExpr v f =
+    case v of
+        VariantV _ _ fs
+            | Just fv <- lookup f fs ->
+              -- not quite sure about this?
+              -- it's needed for referencing vars in a module
+              -- (including fun which is desugared to a var)
+              -- one improvement would be to representing a module value
+              -- as a distinct variant type, then only doing this behaviour
+              -- on that variant type at least
+              case fv of
+                  -- the hack for modules bit
+                  BoxV _ vr -> liftIO $ readIORef vr
+                  -- regular support for methods
+                  MethodV m -> app m [v]
+                  _ -> pure fv
+            | otherwise ->
+              _errorWithCallStack $ "field not found in dotexpr\nlooking in value:\n" ++ show v
+              ++ "\n for field " ++ f
+              ++ "\nit's fields are: " ++ show fs
+        _ -> _errorWithCallStack $ "dot called on non variant: " ++ show v
+
 
 -- todo: deal with ts and mty
 makeMethodValue :: Method -> Interpreter Value
@@ -2534,8 +2640,9 @@ testIs :: String -> Expr -> Expr -> Interpreter Value
 testIs msg e0 e1 = do
     (v0,v1,atr) <- testPredSupport e0 e1
     case (v0,v1) of
-        (Right v0', Right v1') ->
-            if v0' == v1'
+        (Right v0', Right v1') -> do
+            t <- unwrapEqualAlways v0' v1'
+            if t
             then atr $ TestPass msg
             else do
                 p0 <- liftIO $ torepr' v0'
@@ -2558,8 +2665,9 @@ testIsNot :: String -> Expr -> Expr -> Interpreter Value
 testIsNot msg e0 e1 = do
     (v0,v1,atr) <- testPredSupport e0 e1
     case (v0,v1) of
-        (Right v0', Right v1') ->
-            if v0' /= v1'
+        (Right v0', Right v1') -> do
+            t <- unwrapEqualAlways v0' v1'
+            if t
             then atr $ TestPass msg
             else do
                 p0 <- liftIO $ torepr' v0'
@@ -2578,6 +2686,14 @@ testIsNot msg e0 e1 = do
                                 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
     pure nothing
 
+
+unwrapEqualAlways a b = do
+    t' <- equalAlways [a,b]
+    case t' of
+        BoolV True -> pure True
+        BoolV False -> pure False
+        _ -> error $ "expected equal always to return bool, got " ++ show t'
+    
 
 testRaises :: String -> Expr -> Expr -> Interpreter Value
 testRaises msg e0 e1 = do
