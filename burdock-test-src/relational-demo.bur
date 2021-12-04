@@ -21,62 +21,45 @@ check "from list and equals":
       {a : 3, b : 'c'},
       {a : 2, b : 'b'}])
 
+  rel1 is rel-from-table(table a,b:
+      row: 1,'a'
+      row: 2,'b'
+      row: 3,'c'
+    end)
+
 end
 
 check "table dee and table dum":
   table-dee is rel-from-list([list: {}])
   table-dum is rel-from-list([list: ])
   table-dee is-not table-dum
+
+  d = rel-from-table(table: end)
+  d is table-dum
+  e = rel-from-table(table: row: end)
+  e is table-dee
+
 end
-
-check "hack parse relation literal":
-
-  x = ```
-      a,b,c
-      1,2,3
-      3,4,5
-      ```
-
-  y = ```
-    a,b,c
-    true,1,1a
-    false,3,truea```
-
-  hack-parse-table(x) is rel-from-list([list:
-      {a: 1, b: 2, c: 3},
-      {a: 3, b: 4, c: 5}
-    ])
-  hack-parse-table(y) is rel-from-list([list:
-      {a: true, b: 1, c: '1a'},
-      {a: false, b: 3, c: 'truea'}
-    ])
-end
-
 
 check "functional insert, update, delete":
 
   # insert is just union
   block:
-    a = hack-parse-table(
-```
-a,b
-1,2
-2,3
-```)
-    b = hack-parse-table(
-```
-a,b
-3,4
-4,5
-```)
-    r = hack-parse-table(
-```
-a,b
-1,2
-2,3
-3,4
-4,5
-```)
+    a = rel-from-table(table a,b:
+            row: 1,2
+            row: 2,3
+          end)
+    b = rel-from-table(table a,b:
+            row: 3,4
+            row: 4,5
+          end)
+    r = rel-from-table(table a,b:
+            row: 1,2
+            row: 2,3
+            row: 3,4
+            row: 4,5
+          end)
+
     rel-union(a,b) is r
   end
 
@@ -85,20 +68,16 @@ a,b
 
   # functional delete with condition is like where with inverted condition
   block:
-    a = hack-parse-table(
-```
-a,b
-1,2
-2,3
-3,3
-3,4
-```)
-    c = hack-parse-table(
-```
-a,b
-1,2
-3,4
-```)
+    a = rel-from-table(table a,b:
+            row: 1,2
+            row: 2,3
+            row: 3,3
+            row: 3,4
+          end)
+    c = rel-from-table(table a,b:
+            row: 1,2
+            row: 3,4
+          end)
   
     rel-delete(a, {(r): r.b == 3}) is c
 
@@ -106,22 +85,18 @@ a,b
 
   # unconditional update
   block:
-    a = hack-parse-table(
-```
-a,b,c
-1,2,10
-2,3,11
-3,3,12
-3,4,13
-```)
-    c = hack-parse-table(
-```
-a,b,c
-2,2,10
-3,3,11
-4,3,12
-4,4,13
-```)
+    a = rel-from-table(table a,b,c:
+            row: 1,2,10
+            row: 2,3,11
+            row: 3,3,12
+            row: 3,4,13
+          end)
+    c = rel-from-table(table a,b,c:
+            row: 2,2,10
+            row: 3,3,11
+            row: 4,3,12
+            row: 4,4,13
+          end)
     # definitely needs some record update syntax
     # this will also help constraint from changing the type
     # update is more or less a combination of project and extend
@@ -132,143 +107,115 @@ a,b,c
   block:
   # conditional update
 
-    a = hack-parse-table(
-```
-a,b,c
-1,2,10
-2,3,11
-3,3,12
-3,4,13
-```)
-    c = hack-parse-table(
-```
-a,b,c
-1,2,10
-4,3,11
-6,3,12
-3,4,13
-```)
+    a = rel-from-table(table a,b,c:
+            row: 1,2,10
+            row: 2,3,11
+            row: 3,3,12
+            row: 3,4,13
+          end)
+    c = rel-from-table(table a,b,c:
+            row: 1,2,10
+            row: 4,3,11
+            row: 6,3,12
+            row: 3,4,13
+          end)
     rel-update(a, {(r): {a: r.a * 2, b:r.b, c:r.c}}, {(r): r.b == 3})
       is c
   end
 
   # project, rename, extend, select
   block:
-    a = hack-parse-table(
-```
-a,b,c
-1,2,10
-2,3,11
-3,3,12
-3,4,13
-```)
-    c = hack-parse-table(
-```
-a,c
-1,10
-2,11
-3,12
-3,13
-```)
+    a = rel-from-table(table a,b,c:
+            row: 1,2,10
+            row: 2,3,11
+            row: 3,3,12
+            row: 3,4,13
+          end)
+    c = rel-from-table(table a,c:
+            row: 1,10
+            row: 2,11
+            row: 3,12
+            row: 3,13
+          end)
     rel-project([list: 'a','c'], a) is c
   end
 
   block:
-    a = hack-parse-table(
-```
-a,b,c
-1,2,10
-2,3,11
-3,3,12
-3,4,13
-```)
-    c = hack-parse-table(
-```
-a,d,c
-1,2,10
-2,3,11
-3,3,12
-3,4,13
-```)
+    a = rel-from-table(table a,b,c:
+            row: 1,2,10
+            row: 2,3,11
+            row: 3,3,12
+            row: 3,4,13
+          end)
+    c = rel-from-table(table a,d,c:
+            row: 1,2,10
+            row: 2,3,11
+            row: 3,3,12
+            row: 3,4,13
+          end)
     rel-rename([list: {'b';'d'}], a) is c
   end
 
   block:
-    a = hack-parse-table(
-```
-a,b,c
-1,2,10
-2,3,11
-3,3,12
-3,4,13
-```)
-    c = hack-parse-table(
-```
-f,g,c
-1,2,10
-2,3,11
-3,3,12
-3,4,13
-```)
+    a = rel-from-table(table a,b,c:
+            row: 1,2,10
+            row: 2,3,11
+            row: 3,3,12
+            row: 3,4,13
+          end)
+    c = rel-from-table(table f,g,c:
+            row: 1,2,10
+            row: 2,3,11
+            row: 3,3,12
+            row: 3,4,13
+          end)
     rel-rename([list: {'a';'f'}, {'b';'g'}], a) is c
   end
 
 
   block:
-    a = hack-parse-table(
-```
-a,b
-1,2
-2,3
-3,3
-3,4
-```)
-    c = hack-parse-table(
-```
-a,b,c,d
-1,2,2,3
-2,3,6,5
-3,3,9,6
-3,4,12,7
-```)
+    a = rel-from-table(table a,b:
+            row: 1,2
+            row: 2,3
+            row: 3,3
+            row: 3,4
+          end)
+    c = rel-from-table(table a,b,c,d:
+            row: 1,2,2,3
+            row: 2,3,6,5
+            row: 3,3,9,6
+            row: 3,4,12,7
+          end)
     rel-extend(a, {(r): {c: r.a * r.b, d: r.a + r.b}}) is c
   end
 
   block:
-    a = hack-parse-table(
-```
-a,b
-1,2
-2,3
-3,3
-3,4
-```)
-    c = hack-parse-table(
-```
-a,b,c,d
-1,4,2,3
-2,5,6,5
-3,5,9,6
-3,6,12,7
-```)
+    a = rel-from-table(table a,b:
+            row: 1,2
+            row: 2,3
+            row: 3,3
+            row: 3,4
+          end)
+    c = rel-from-table(table a,b,c,d:
+            row: 1,4,2,3
+            row: 2,5,6,5
+            row: 3,5,9,6
+            row: 3,6,12,7
+          end)
     rel-select(a, {(r): {a: r.a, b: r.b + 2, c: r.a * r.b, d: r.a + r.b}}) is c
   end
 
   block:
-    a = hack-parse-table(
-```
-a,b
-1,2
-2,3
-3,3
-3,4
-```)
-    c = hack-parse-table(
-```
-a,b
-2,3
-3,3
-```)
+    a = rel-from-table(table a,b:
+            row: 1,2
+            row: 2,3
+            row: 3,3
+            row: 3,4
+          end)
+    c = rel-from-table(table a,b:
+            row: 2,3
+            row: 3,3
+          end)
   
     rel-where(a, {(r): r.b == 3}) is c
 
@@ -277,81 +224,44 @@ a,b
 
   block:
   # join
-    a = hack-parse-table(
-```
-a,b
-1,2
-2,3
-3,3
-3,4
-```)
-    b = hack-parse-table(
-```
-a,c
-2,3
-3,3
-```)
-    c = hack-parse-table(
-```
-a,b,c
-2,3,3
-3,3,3
-3,4,3
-```)
+    a = rel-from-table(table a,b:
+            row: 1,2
+            row: 2,3
+            row: 3,3
+            row: 3,4
+          end)
+    b = rel-from-table(table a,c:
+            row: 2,3
+            row: 3,3
+          end)
+    c = rel-from-table(table a,b,c:
+            row: 2,3,3
+            row: 3,3,3
+            row: 3,4,3
+          end)
     
     rel-join(a, b) is c
   end
   # antijoin
   block:
   # join
-    a = hack-parse-table(
-```
-a,b
-1,2
-2,3
-3,3
-3,4
-4,5
-```)
-    b = hack-parse-table(
-```
-a
-2
-3
-```)
-    c = hack-parse-table(
-```
-a,b
-1,2
-4,5
-```)
+    a = rel-from-table(table a,b:
+            row: 1,2
+            row: 2,3
+            row: 3,3
+            row: 3,4
+            row: 4,5
+          end)
+    b = rel-from-table(table a:
+            row: 2
+            row: 3
+          end)
+    c = rel-from-table(table a,b:
+            row: 1,2
+            row: 4,5
+          end)
     
     rel-not-matching(a, b) is c
-  end
-
-  block:
-    # pyret style table syntax
-    # useful for more complex values in fields
-    a = hack-parse-table(
-```
-a,b
-1,2
-2,3
-3,3
-```)
-    #
-    b = rel-from-table(table a,b:
-      row: 1,2
-      row: 2,3
-      row: 3,3
-    end)
-    a is b
-
-    d = rel-from-table(table: end)
-    d is table-dum
-    e = rel-from-table(table: row: end)
-    e is table-dee
-    
   end
 
   block:

@@ -1307,7 +1307,6 @@ builtInFF =
     ,("rel-group", relGroup)
     ,("rel-ungroup", relUngroup)
     ,("rel-summarize", relSummarize)
-    ,("hack-parse-table", hackParseTable)
     ,("union-recs", unionRecs)
 
     ,("spawn", bSpawn)
@@ -1739,13 +1738,6 @@ wrapBPredicate f r = do
         BoolV v -> pure v
         _ -> _errorWithCallStack $ "expected bool result from predicate, got " ++ show x
 
-
-hackParseTable :: [Value] -> Interpreter Value
-hackParseTable [TextV str] =
-    either (error . show) (pure . FFIValue . toDyn)
-    $ R.parseTable (BoolV, TextV, NumV) str
-    
-hackParseTable _ = _errorWithCallStack "bad args to hackParseTable"
 ------------------------------------------------------------------------------
 
 -- the interpreter itself
