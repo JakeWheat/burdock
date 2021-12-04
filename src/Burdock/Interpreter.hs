@@ -215,7 +215,8 @@ evalFun h fun args =
 
 formatException :: Handle -> Bool -> InterpreterException -> IO String
 formatException h includeCallstack e =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ formatExceptionI includeCallstack e
+    spawnExtWaitHandle h $ \th ->
+        runInterp th True h $ formatExceptionI includeCallstack e
 
 addFFIImpls :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
 addFFIImpls h ffis =
@@ -243,7 +244,8 @@ data CheckBlockResult = CheckBlockResult String [TestResult]
                       deriving Show
 
 getTestResults :: Handle -> IO [(String, [CheckBlockResult])]
-getTestResults h = spawnExtWaitHandle h $ \th -> runInterp th True h getTestResultsI
+getTestResults h =
+    spawnExtWaitHandle h $ \th -> runInterp th True h getTestResultsI
 
 getTestResultsI :: Interpreter [(String, [CheckBlockResult])]
 getTestResultsI = do
@@ -1227,13 +1229,7 @@ builtInFF :: [(String, [Value] -> Interpreter Value)]
 builtInFF =
     [("get-ffi-value", getFFIValue)
 
-    ,("==", \case
-             [FFIValue a, FFIValue b]
-                 | Just (a' :: R.Relation Value) <- fromDynamic a
-                 , Just b' <- fromDynamic b
-                 -> either (error . show) (pure . BoolV) $ R.relEqual a' b'
-             [a,b] -> pure $ BoolV $ a == b
-             as -> _errorWithCallStack $ "bad args to ==: " ++ show as)
+    ,("==", equalAlways)
     ,("<", bLT)
     ,(">", bGT)
     ,("<=", bLTE)
@@ -1523,6 +1519,78 @@ bRunScript [TextV src] = do
 
 bRunScript _ = _errorWithCallStack $ "wrong args to run-script"
 
+equalAlways :: [Value] -> Interpreter Value
+equalAlways [a,b] = BoolV <$> hEqualAlways a b
+
+equalAlways _ = _errorWithCallStack $ "wrong args to equal-always"
+
+hEqualAlways :: Value -> Value -> Interpreter Bool
+hEqualAlways a' b' =
+    case (a',b') of
+        (BoolV a, BoolV b) -> pure $ a == b
+        (BoolV {}, _) -> pure False
+        (NumV a, NumV b) -> pure $ a == b
+        (NumV {}, _) -> pure False
+        (TextV a, TextV b) -> pure $ a == b
+        (TextV {}, _) -> pure False
+        -- variant with equal method
+        -- this includes records with an equal-always
+        (VariantV _ _ fs, _)
+            | Just _ <- lookup "equal-always" fs
+              -> do
+                  fn <- interpDotExpr a' "equal-always"
+                  unwrapBool <$> app fn [b']
+        -- tuple
+        (VariantV tg "tuple" fs, VariantV tg1 "tuple" fs1)
+            | tg == bootstrapType "Tuple" && tg1 == bootstrapType "Tuple" ->
+              fieldsEqual fs fs1
+        --variant without equal-always
+        (VariantV tg "record" fs, VariantV tg1 "record" fs1)
+            | tg == bootstrapType "Record" && tg1 == bootstrapType "Record" ->
+              fieldsEqual fs fs1
+        (VariantV tg nm fs, VariantV tg1 nm1 fs1)
+            -> ((tg == tg1 && nm == nm1) &&)
+                <$> fieldsEqual fs fs1
+        (VariantV {} , _) -> pure False
+        -- pointer equality on IORef
+        (BoxV _ a, BoxV _ b) -> pure $ a == b
+        (BoxV {}, _) -> pure False
+        --ffivalue
+        -- temp hacks until .equal-always is added to ffi types
+        (FFIValue a, FFIValue b)
+            | Just (av :: R.Relation Value) <- fromDynamic a
+            , Just bv <- fromDynamic b
+              -> either (error . show) pure $ R.relEqual av bv
+        (FFIValue a, FFIValue b)
+            | Just (av :: Addr) <- fromDynamic a
+            , Just bv <- fromDynamic b
+              -> pure $ av == bv
+        (FFIValue {}, _) -> pure False
+        _ | isFn a' && isFn b' -> incomparable
+        (FunV {}, _) -> pure False
+        (ForeignFunV {}, _) -> pure False
+        (MethodV {}, _) -> pure False
+  where
+    fieldsEqual as bs =
+        if length as /= length bs
+        then pure False
+        else do
+        let as' = sortOn fst as
+            bs' = sortOn fst bs
+            fieldEquals (na,va) (nb,vb) =
+                          ((na == nb) &&) <$> unwrapBool <$> equalAlways [va, vb]
+        and <$> zipWithM fieldEquals as' bs'
+    isFn = \case
+        FunV {} -> True
+        ForeignFunV {} -> True
+        MethodV {} -> True
+        _ -> False
+    incomparable = error $ "Attempted to compare two incomparable values:\n" ++ show a' ++ "\n" ++ show b'
+    unwrapBool = \case
+        BoolV True -> True
+        BoolV False -> False
+        x -> error $ "expected boolean from equal always, got  " ++ show x
+    
 -------------------
 
 relToList :: [Value] -> Interpreter Value
@@ -1718,11 +1786,11 @@ interp (App sp f es) | f == Iden "_" || any (== Iden "_") es =
 interp (App sp f es) = do
     fv <- interp f
     -- special case apps
-    if fv == ForeignFunV "run-task"
-        then do
+    case fv of
+        ForeignFunV "run-task" ->
             -- todo: maintain call stack
             catchAsEither es
-        else do
+        _ -> do
             -- TODO: refactor to check the value of fv before
             -- evaluating the es?
             vs <- mapM interp es
@@ -1811,26 +1879,7 @@ interp (LetRec bs e) =
 
 interp (DotExpr e f) = do
     v <- interp e
-    case v of
-        VariantV _ _ fs
-            | Just fv <- lookup f fs ->
-              -- not quite sure about this?
-              -- it's needed for referencing vars in a module
-              -- (including fun which is desugared to a var)
-              -- one improvement would be to representing a module value
-              -- as a distinct variant type, then only doing this behaviour
-              -- on that variant type at least
-              case fv of
-                  -- the hack for modules bit
-                  BoxV _ vr -> liftIO $ readIORef vr
-                  -- regular support for methods
-                  MethodV m -> app m [v]
-                  _ -> pure fv
-            | otherwise ->
-              _errorWithCallStack $ "field not found in dotexpr\nlooking in value:\n" ++ show v
-              ++ "\n for field " ++ f
-              ++ "\nit's fields are: " ++ show fs
-        _ -> _errorWithCallStack $ "dot called on non variant: " ++ show v
+    interpDotExpr v f
 
 {-
 run through each branch
@@ -2018,6 +2067,30 @@ interp (Template sp) =
     throwValueWithStacktrace $ TextV "template-not-finished"
 
 interp (MethodExpr m) = makeMethodValue m
+
+interpDotExpr :: Value -> String -> Interpreter Value
+interpDotExpr v f =
+    case v of
+        VariantV _ _ fs
+            | Just fv <- lookup f fs ->
+              -- not quite sure about this?
+              -- it's needed for referencing vars in a module
+              -- (including fun which is desugared to a var)
+              -- one improvement would be to representing a module value
+              -- as a distinct variant type, then only doing this behaviour
+              -- on that variant type at least
+              case fv of
+                  -- the hack for modules bit
+                  BoxV _ vr -> liftIO $ readIORef vr
+                  -- regular support for methods
+                  MethodV m -> app m [v]
+                  _ -> pure fv
+            | otherwise ->
+              _errorWithCallStack $ "field not found in dotexpr\nlooking in value:\n" ++ show v
+              ++ "\n for field " ++ f
+              ++ "\nit's fields are: " ++ show fs
+        _ -> _errorWithCallStack $ "dot called on non variant: " ++ show v
+
 
 -- todo: deal with ts and mty
 makeMethodValue :: Method -> Interpreter Value
@@ -2534,8 +2607,9 @@ testIs :: String -> Expr -> Expr -> Interpreter Value
 testIs msg e0 e1 = do
     (v0,v1,atr) <- testPredSupport e0 e1
     case (v0,v1) of
-        (Right v0', Right v1') ->
-            if v0' == v1'
+        (Right v0', Right v1') -> do
+            t <- hEqualAlways v0' v1'
+            if t
             then atr $ TestPass msg
             else do
                 p0 <- liftIO $ torepr' v0'
@@ -2558,8 +2632,9 @@ testIsNot :: String -> Expr -> Expr -> Interpreter Value
 testIsNot msg e0 e1 = do
     (v0,v1,atr) <- testPredSupport e0 e1
     case (v0,v1) of
-        (Right v0', Right v1') ->
-            if v0' /= v1'
+        (Right v0', Right v1') -> do
+            t <- hEqualAlways v0' v1'
+            if not t
             then atr $ TestPass msg
             else do
                 p0 <- liftIO $ torepr' v0'
@@ -2577,7 +2652,6 @@ testIsNot msg e0 e1 = do
             atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
                                 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
     pure nothing
-
 
 testRaises :: String -> Expr -> Expr -> Interpreter Value
 testRaises msg e0 e1 = do
