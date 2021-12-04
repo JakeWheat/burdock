@@ -166,7 +166,7 @@ reservedKeywords =
     ,"import", "provide", "provide-types"
     ,"from", "and", "or", "shadow", "as"
     ,"ref", "table", "row"
-    ,"receive", "after"
+    ,"receive", "after", "method"
     ]
 
 identifierX :: Parser String
@@ -245,7 +245,6 @@ all other fixity is disallowed
 
 -}
 
-
 expr :: Parser Expr
 expr = chainl1 exprlev1 (f testPred)
   where
@@ -275,6 +274,9 @@ term = (do
         ,template
         ,assertTypeCompat
         ,receive
+        ,methodExpr
+        -- make sure all syntax that starts with something that looks like
+        -- an identifier appears above here
         ,Iden <$> identifier
         ,numE
         ,stringE
@@ -282,6 +284,7 @@ term = (do
         ,construct
         ,tupleOrRecord
         ]
+    -- todo: put this suffix stuff in the expr thing above
     bchoice [termSuffixes x, pure x]) <?> "expression"
 
 termSuffixes :: Expr -> Parser Expr
@@ -305,7 +308,6 @@ instSuffix = f <$> tyParamList
   where
     f t e = InstExpr e t
 
-
 -- todo: remove the try when implement the whitespace rules
 tyParamList :: Parser [Ann]
 tyParamList = try (symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">")
@@ -320,10 +322,8 @@ dotSuffix = symbol_ "." *>
     bchoice [flip TupleGet <$> (symbol_ "{" *> nonNegativeInteger <* symbol_ "}")
             ,flip DotExpr <$> identifier]
 
-
 unboxSuffix :: Parser (Expr -> Expr)
 unboxSuffix = flip UnboxRef <$> (try (symbol_ "!" *> identifier))
-
 
 leftBinOpSym :: Parser String
 leftBinOpSym = choice ([symbol "+"
@@ -341,9 +341,9 @@ leftBinOpSym = choice ([symbol "+"
                   ["and"
                   ,"or"
                   ])
+
 rightBinOpSym:: Parser String
 rightBinOpSym = choice ([symbol "|>"])
-
 
 testPred :: Parser String
 testPred = choice (map keyword ["is"
@@ -352,7 +352,6 @@ testPred = choice (map keyword ["is"
                                ,"raises-satisfies"
                                ,"satisfies"
                                ])
-
 
 unaryMinus :: Parser Expr
 unaryMinus = UnaryMinus <$> (symbol "-" *> term)
@@ -497,7 +496,6 @@ ask = do
             ]
     endask bs ot = keyword_ "end" *> pure (Ask (reverse bs) ot)     
 
-
 block :: Parser Expr
 block = Block <$>
     (keyword_ "block" *> symbol_ ":" *>
@@ -526,7 +524,6 @@ cases = do
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
                        <*> (symbol_ "=>" *> stmts))]
     endCase t ty cs el = keyword_ "end" *> pure (Cases t ty (reverse cs) el)
-
 
 typeLet :: Parser Expr
 typeLet = TypeLet
@@ -587,6 +584,14 @@ receive = do
     endCase cs aft = keyword_ "end" *> pure (Receive (reverse cs) aft)
     after = keyword_ "after" *> expr
 
+methodExpr :: Parser Expr
+methodExpr = MethodExpr <$> (keyword_ "method" *> method)
+
+method :: Parser Method
+method = Method
+    <$> (funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
+    <*> (stmts <* keyword_ "end")
+
 numE :: Parser Expr
 numE = do
     x <- num
@@ -634,7 +639,15 @@ tupleOrRecord2 mkRecSel mkTupSel pTupEl extractIden = do
             symbol_ "}" *> pure (mkRecSel [])
            ,eitherElement]
   where
-    eitherElement = do
+    methodField = do
+        keyword_ "method"
+        i <- identifier
+        m <- method
+        pure (i,MethodExpr m)
+    firstMethodField = do
+        x <- methodField
+        moreRecord [x]
+    eitherElement = firstMethodField <|> do
         x <- pTupEl
         if | Just i <- extractIden x -> choice
                 [do
@@ -654,6 +667,9 @@ tupleOrRecord2 mkRecSel mkTupSel pTupEl extractIden = do
         [symbol_ "}" *> pure (mkRecSel (reverse fs))
         ,symbol "," *> choice
              [symbol_ "}" *> pure (mkRecSel (reverse fs))
+             ,do
+              f <- methodField
+              moreRecord (f:fs)
              ,do
               f <- fld
               moreRecord (f:fs)]]
@@ -718,18 +734,26 @@ varDecl :: Parser Stmt
 varDecl = uncurry VarDecl <$> (keyword_ "var" *> simpleBindExpr)
 
 dataDecl :: Parser Stmt
-dataDecl = DataDecl
+dataDecl = (DataDecl
     <$> (keyword_ "data" *> identifier)
     <*> option [] tyNameList
-    <*> (symbol_ ":" *> (((:[]) <$> singleVariant) <|> some variant))
-    <*> (boptional whereBlock <* keyword_ "end")
+    <*> (symbol_ ":" *> (((:[]) <$> singleVariant)
+                         <|> some variant))
+    <*> option [] sharing
+    <*> boptional whereBlock)
+    <* keyword_ "end"
   where
     singleVariant = VariantDecl
                     <$> identifier <*> boption [] (parens (commaSep fld))
+                    <*> option [] withMeths
     variant = VariantDecl
               <$> (symbol_ "|" *> identifier)
               <*> boption [] (parens (commaSep fld))
+              <*> option [] withMeths
     fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> simpleBinding False
+    withMeths = keyword_ "with" *> symbol_ ":" *> commaSep withMeth
+    withMeth = (,) <$> (keyword_ "method" *> identifier) <*> method
+    sharing = keyword_ "sharing" *> symbol_ ":" *> commaSep withMeth
 
 -- todo: remove the try when implement the whitespace rules
 tyNameList :: Parser [String]

@@ -20,7 +20,7 @@ data Stmt
     | VarDecl SimpleBinding Expr
     | SetVar String Expr
     | SetRef Expr [(String,Expr)]
-    | DataDecl String [String] [VariantDecl] (Maybe [Stmt])
+    | DataDecl String [String] [VariantDecl] [(String,Method)] (Maybe [Stmt])
     | RecDecl Binding Expr
     | FunDecl
         SimpleBinding -- name
@@ -43,7 +43,7 @@ data FunHeader
     deriving (Eq,Show,Data)
 
 data VariantDecl
-    = VariantDecl String [(Ref,SimpleBinding)]
+    = VariantDecl String [(Ref,SimpleBinding)] [(String,Method)]
     deriving (Eq,Show,Data) 
 
 data Ref
@@ -91,6 +91,11 @@ data Expr
     | UnboxRef Expr String
     | Receive [(Binding, Maybe Expr, [Stmt])] (Maybe (Expr, [Stmt]))
     | For Expr [(Binding, Expr)] (Maybe Ann) [Stmt]
+    | MethodExpr Method
+    deriving (Eq,Show,Data)
+
+data Method
+    = Method FunHeader [Stmt]
     deriving (Eq,Show,Data)
 
 data TypeDecl

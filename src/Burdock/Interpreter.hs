@@ -325,6 +325,7 @@ data Value = NumV Scientific
            | VariantV TypeInfo String [(String,Value)]
            | BoxV TypeInfo (IORef Value)
            | FFIValue Dynamic
+           | MethodV Value
 
 instance Ord Value where
     NumV a <= NumV b = a <= b
@@ -348,6 +349,7 @@ instance Show Value where
   show (BoxV _ _n) = "BoxV XX" -- ++ show n
   show (FFIValue r) | Just (r' :: R.Relation Value) <- fromDynamic r = R.showRel r'
   show (FFIValue v) = "FFIValue " ++ show v
+  show (MethodV {}) = "<method>"
 
 
 -- needs some work
@@ -1184,6 +1186,7 @@ toreprx (NumV n) = pure $ case extractInt n of
                              Nothing ->  P.pretty $ show n
 toreprx (BoolV n) = pure $ P.pretty $ if n then "true" else "false"
 toreprx (FunV {}) = pure $ P.pretty "<Function>" -- todo: print the function value
+toreprx (MethodV {}) = pure $ P.pretty "<Method>"
 toreprx (ForeignFunV f) = pure $ P.pretty $ "<ForeignFunction:" ++ f ++ ">"
 toreprx (TextV s) = pure $ P.pretty $ "\"" ++ s ++ "\""
 -- todo: add the type
@@ -1336,10 +1339,11 @@ fromBList (VariantV tg "link" [("first",f),("rest",r)])
 fromBList _ = Nothing
     
 makeVariant :: [Value] -> Interpreter Value
-makeVariant [FFIValue ftg, TextV nm, as']
+makeVariant [FFIValue ftg, TextV nm, ms', as']
     | Just tg <- fromDynamic ftg
+    , Just ms <- fromBList ms'
     , Just as <- fromBList as' =
-    VariantV tg nm <$> f as
+    VariantV tg nm <$> f (as ++ ms)
   where
     f [] = pure []
     f (BoolV False : TextV fnm : v : asx) =
@@ -1817,7 +1821,10 @@ interp (DotExpr e f) = do
               -- as a distinct variant type, then only doing this behaviour
               -- on that variant type at least
               case fv of
+                  -- the hack for modules bit
                   BoxV _ vr -> liftIO $ readIORef vr
+                  -- regular support for methods
+                  MethodV m -> app m [v]
                   _ -> pure fv
             | otherwise ->
               _errorWithCallStack $ "field not found in dotexpr\nlooking in value:\n" ++ show v
@@ -2010,7 +2017,16 @@ interp (Template sp) =
     localPushCallStack sp $ 
     throwValueWithStacktrace $ TextV "template-not-finished"
 
-    
+interp (MethodExpr m) = makeMethodValue m
+
+-- todo: deal with ts and mty
+makeMethodValue :: Method -> Interpreter Value
+makeMethodValue (Method (FunHeader _ts (a:as) _mty) bdy) =
+    MethodV <$> interp (Lam (FunHeader [] [a] Nothing)
+                        [StmtExpr $ Lam (FunHeader [] as Nothing) bdy])
+makeMethodValue m@(Method (FunHeader _ts [] _mty) _bdy) =
+    error $ "method declaration should accept at least one argument: " ++ show m
+
 makeBList :: [Value] -> Value
 makeBList [] = VariantV (internalsType "List") "empty" []
 makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest", makeBList xs)]
@@ -2337,12 +2353,12 @@ _typeinfo-Pt = simpletypeinfo ["_system","modules",currentModuleName, "Pt"]
 
 -}
 
-interpStatement (DataDecl dnm dpms vs whr) = do
-    let makeIs (VariantDecl vnm _) = 
+interpStatement (DataDecl dnm dpms vs shr whr) = do
+    let makeIs (VariantDecl vnm _ _meth) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
             [StmtExpr $ App appSourcePos (bootstrapRef "is-variant") [Iden typeInfoName, Text vnm, Iden "x"]]
-        callIs (VariantDecl vnm _) = App appSourcePos (Iden $ "is-" ++ vnm) [Iden "x"]
+        callIs (VariantDecl vnm _ _) = App appSourcePos (Iden $ "is-" ++ vnm) [Iden "x"]
         -- use the type tag instead
         makeIsDat =
             letDecl ("is-" ++ dnm)
@@ -2354,19 +2370,22 @@ interpStatement (DataDecl dnm dpms vs whr) = do
         $ SimpleTypeInfo ["_system", "modules", moduleName, dnm]
     -- todo: use either a burdock value or a proper ffi value for the casepattern
     -- instead of a haskell tuple
-    forM_ vs $ \(VariantDecl vnm _) -> letValue ("_casepattern-" ++ vnm)
+    forM_ vs $ \(VariantDecl vnm _ _) -> letValue ("_casepattern-" ++ vnm)
         $ FFIValue $ toDyn (SimpleTypeInfo ["_system", "modules", moduleName, dnm], vnm)
-    let desugared = (map makeV vs ++ map makeIs vs ++ [makeIsDat] ++ chk)
-    -- liftIO $ putStrLn $ prettyScript (Script desugared)
+    makeVs <- mapM makeV vs
+    let desugared = (makeVs ++ map makeIs vs ++ [makeIsDat] ++ chk)
     interpStatements desugared
   where
     typeInfoName = "_typeinfo-" ++ dnm
-    makeV (VariantDecl vnm fs) =
+    me (menm,m) = [Iden "false", Text menm, MethodExpr m]
+    makeV (VariantDecl vnm fs ms) = do
+        --ms <- (++) <$> makeMethodArgs ms <*> sharedMethodsList
         let appMakeV = App appSourcePos (bootstrapRef "make-variant")
                        [Iden typeInfoName
                        ,Text vnm
+                       ,Construct ["list"] $ concatMap me (ms ++ shr)
                        ,Construct ["list"] $ concatMap mvf fs]
-        in letDecl vnm
+        pure $ recDecl vnm
            $ typeLetWrapper dpms
            $ (if null fs then id else \e -> Lam (fh $ map (simpleBindingToBinding . snd) fs) [StmtExpr e])
            $ appMakeV
@@ -2377,6 +2396,7 @@ interpStatement (DataDecl dnm dpms vs whr) = do
                      ,Text nm
                      ,Iden nm])
     letDecl nm v = LetDecl (mnm nm) v
+    recDecl nm v = RecDecl (mnm nm) v
     lam as e = Lam (fh $ map mnm as) e
     fh as = FunHeader [] as Nothing
     orE a b = BinOp a "or" b

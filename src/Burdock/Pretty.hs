@@ -94,7 +94,6 @@ expr (Ask cs el) = prettyBlocklike vsep
                     <+> nest 2 (stmts t)
     pel Nothing = []
     pel (Just e) = [pretty "|" <+> pretty "otherwise:" <+> nest 2 (stmts e)]
-
 expr (DotExpr e i) = expr e <> pretty "." <> pretty i
 expr (Cases e ty mats els) =
     prettyBlocklike vsep
@@ -104,7 +103,6 @@ expr (Cases e ty mats els) =
            [maybe mempty (\x -> pretty "|" <+> pretty "else" <+> pretty "=>" <+> stmts x) els])]
   where
     mf (p, mw, e1) = pretty "|" <+> binding p <+> maybe mempty (\x -> pretty "when" <+> expr x) mw <+> pretty "=>" <+> stmts e1
-
 expr (TupleSel es) = pretty "{" <> nest 2 (xSep ";" (map expr es) <> pretty "}")
 expr (RecordSel flds) = pretty "{" <> nest 2 (commaSep (map fld flds) <> pretty "}")
   where
@@ -114,7 +112,6 @@ expr (TableSel cs rs) = prettyBlocklike sep
     : map rl rs)
   where
     rl (RowSel es) = pretty "row:" <+> commaSep (map expr  es)
-
 expr (For ex args mrty bdy) =
     prettyBlocklike vsep
     [pretty "for" <+> expr ex
@@ -124,25 +121,18 @@ expr (For ex args mrty bdy) =
     ,stmts bdy]
   where
     f (b,e) = binding b <+> pretty "from" <+> expr e
-
 expr (TupleGet e n) = expr e <> pretty ".{" <> pretty (show n) <> pretty "}"
-
 expr (Construct e as) =
     pretty "[" <> xSep "." (map pretty e) <> pretty ":"
     <+> nest 2 (commaSep $ map expr as) <> pretty "]"
-
 expr (AssertTypeCompat e ty) =
     pretty "assert-type-compat(" <> nest 2 (expr e <+> pretty "::" <+> typ ty) <> pretty ")"
-
 expr (TypeLet tds e) =
     prettyBlocklike sep
     [pretty "type-let" <+> commaSep (map typeDecl tds) <> pretty ":"
     ,stmts e]
-
 expr (Template _sp) = pretty "..."
-
 expr (UnboxRef e f) = expr e <> pretty "!" <> pretty f
-
 expr (Receive mats after) =
     prettyBlocklike vsep
     [pretty "receive:"
@@ -155,6 +145,12 @@ expr (Receive mats after) =
         <+> pretty "=>" <+> stmts e1
     aft (a, e) =
         pretty "|" <+> pretty "after" <+> expr a <+> pretty "=>" <+> stmts e
+expr (MethodExpr m) = pretty "method" <+> method m
+
+method :: Method -> Doc a
+method (Method fh bdy) = prettyBlocklike sep
+    [funHeader fh <> pretty ":"
+    ,stmts bdy]
 
 bindExpr :: Binding -> Expr -> Doc a
 bindExpr n e =
@@ -243,23 +239,32 @@ stmt (SetRef e fs) = expr e <> pretty "!{" <> commaSep (map f fs) <> pretty "}"
   where
     f (n,v) = pretty n <> pretty ":" <+> expr v
 
-stmt (DataDecl nm ts vs w) =
+stmt (DataDecl nm ts vs shr w) =
     prettyBlocklike vsep
     [pretty "data" <+> pretty nm <> tnl ts <> pretty ":"
     ,vsep $ map vf vs
+    ,if null shr then mempty else sharing shr
     ,maybe mempty whereBlock w
     ]
   where
-      vf (VariantDecl vnm fs) =
-          pretty "|" <+> pretty vnm <> case fs of
+      vf (VariantDecl vnm fs meth) =
+          pretty "|" <+> pretty vnm <> (case fs of
               [] -> mempty
-              _ -> parens (commaSep $ map f fs)
-      f (m, x) = (case m of
+              _ -> parens (commaSep $ map f fs))
+          <> if null meth then mempty else wth meth
+      f (r, x) = (case r of
                      Ref -> pretty "ref"
                      _ -> mempty)
                  <+> simpleBinding x
       tnl [] = mempty
       tnl xs = pretty "<" <> commaSep (map pretty xs) <> pretty ">"
+      wth ms = pretty "" <+> pretty "with:" <+> nest 2 (commaSep $ map m ms)
+      m (mnm, Method fh bdy) = pretty "method"
+          <+> pretty mnm <> funHeader fh <> pretty ":"
+          <+> prettyBlocklike vsep [(stmts bdy)]
+      sharing s = vsep
+          [pretty "sharing:"
+          ,nest 2 $ commaSep $ map m s]
 
 
 stmt (RecDecl n e) = pretty "rec" <+> bindExpr n e

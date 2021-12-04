@@ -196,6 +196,12 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
                                                ,("c", Iden "x")])
     ,("{}", RecordSel [])
 
+    ,("{ method m(self, x): self.y + x end, y: 22 }"
+     ,RecordSel [("m", MethodExpr $ Method
+                     (FunHeader [] [NameBinding "self", NameBinding "x"] Nothing)
+                     [StmtExpr $ BinOp (DotExpr (Iden "self") "y") "+" (Iden "x")])
+                ,("y", Num 22)])
+    
     ,("[list:]", Construct ["list"] [])
     ,("[list: 1,2,3]", Construct ["list"] [Num 1, Num 2, Num 3])
     ,("[my.list:]", Construct ["my", "list"] [])
@@ -368,6 +374,10 @@ table a,b:
   row: 2, false
 end|], TableSel ["a", "b"] [RowSel [Num 1, Iden "true"]
                            ,RowSel [Num 2, Iden "false"]])
+
+    ,("method(self): self end"
+     ,MethodExpr $ Method (FunHeader [] [NameBinding "self"] Nothing) (sts $ Iden "self"))
+
     ]
   where
     nm x = NameBinding x
@@ -407,39 +417,61 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
     ,("data BTree:\n\
       \  | node(value, left, right)\n\
       \  | leaf(value)\n\
-      \end", DataDecl "BTree" [] [VariantDecl "node" [(Con, snm "value"), (Con, snm "left"), (Con, snm "right")]
-                                 ,VariantDecl "leaf" [(Con, snm "value")]] Nothing)
+      \end", DataDecl "BTree" [] [VariantDecl "node" [(Con, snm "value"), (Con, snm "left"), (Con, snm "right")] []
+                                 ,VariantDecl "leaf" [(Con, snm "value")] []] [] Nothing)
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf\n\
-      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")]
-                    ,VariantDecl "leaf" []] Nothing)
+      \end", DataDecl "MyEnum" []
+             [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")] []
+             ,VariantDecl "leaf" [] []] [] Nothing)
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf()\n\
-      \end", DataDecl "MyEnum" [] [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")]
-                    ,VariantDecl "leaf" []] Nothing)
+      \end", DataDecl "MyEnum" []
+             [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")] []
+             ,VariantDecl "leaf" [] []] [] Nothing)
 
     ,("data Point:\n\
       \  | pt(x, y)\n\
-      \end", DataDecl "Point" [] [VariantDecl "pt" [(Con, snm "x"), (Con, snm "y")]] Nothing)
+      \end", DataDecl "Point" [] [VariantDecl "pt" [(Con, snm "x"), (Con, snm "y")] []] [] Nothing)
 
     ,("data Point: pt(x, y) end"
-     ,DataDecl "Point" [] [VariantDecl "pt" [(Con, snm "x"), (Con, snm "y")]] Nothing)
+     ,DataDecl "Point" [] [VariantDecl "pt" [(Con, snm "x"), (Con, snm "y")] []] [] Nothing)
 
     ,("data Point: pt() end"
-     ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
+     ,DataDecl "Point" [] [VariantDecl "pt" [] []] [] Nothing)
 
     ,("data Point: pt end"
-     ,DataDecl "Point" [] [VariantDecl "pt" []] Nothing)
+     ,DataDecl "Point" [] [VariantDecl "pt" [] []] [] Nothing)
 
     ,("PI :: Number = 3.141592"
      ,LetDecl (TypedBinding (NameBinding "PI") (TName ["Number"])) (Num 3.141592))
 
+    ,([R.r|
+data MyEnum:
+  | node(left, right) with:
+    method size(self): 1 end
+end |], DataDecl "MyEnum" []
+             [VariantDecl "node"
+              [(Con, snm "left"), (Con, snm "right")]
+                  [("size", Method (FunHeader [] [NameBinding "self"] Nothing)
+                            [StmtExpr $ Num 1])]
+             ] [] Nothing)
 
-    
+    ,([R.r|
+data MyEnum:
+  | node(left, right)
+sharing:
+  method values-equal(self, other): 1 end
+end
+  |], DataDecl "MyEnum" []
+             [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")] []]
+         [("values-equal", Method (FunHeader [] [NameBinding "self", NameBinding "other"] Nothing)
+                            [StmtExpr $ Num 1])] Nothing)
+
    ,([R.r|
 data BinTree:
   | leaf
@@ -447,12 +479,11 @@ data BinTree:
 end
   |]
     ,DataDecl "BinTree" []
-      [VariantDecl "leaf" []
+      [VariantDecl "leaf" [] []
       ,VariantDecl "node" [(Con, snmt "value" "Number")
                           ,(Con, snmt "left" "BinTree")
-                          ,(Con, snmt "right" "BinTree")]
-      ]
-      Nothing)
+                          ,(Con, snmt "right" "BinTree")] []]
+      [] Nothing)
 
    ,([R.r|
 data List<A>:
@@ -461,11 +492,11 @@ data List<A>:
 end
   |]
     ,DataDecl "List" ["A"]
-      [VariantDecl "empty" []
+      [VariantDecl "empty" [] []
       ,VariantDecl "link" [(Con, snmt "first" "A")
-                          ,(Con, SimpleBinding NoShadow "rest" (Just $ TParam ["List"] [TName ["A"]]))]
+                          ,(Con, SimpleBinding NoShadow "rest" (Just $ TParam ["List"] [TName ["A"]]))] []
       ]
-      Nothing)
+      [] Nothing)
 
     
     ,("fun f(a): a + 1 end"
@@ -696,6 +727,7 @@ interpreterTests =
      ,"burdock-test-src/curly-lam.bur"
      ,"burdock-test-src/binding.bur"
      ,"burdock-test-src/for.bur"
+     ,"burdock-test-src/methods.bur"
      ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["burdock-test-src/built-in-functions.bur"

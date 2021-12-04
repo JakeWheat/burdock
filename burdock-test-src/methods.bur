@@ -1,0 +1,40 @@
+
+
+check:
+  m = method(self): self end
+  m(5) raises "non function"
+end
+
+check:
+  m = method(self): self.x end
+  o = { a-method-name: m, x: 20 }
+  o2 = { a-method-name: m, x: 30 }
+  o.a-method-name() is 20
+  o2.a-method-name() is 30
+end
+
+check:
+  o = { method m(self, x): self.y + x end, y: 22 }
+  the-m-method-closed-over-o = o.m
+  the-m-method-closed-over-o(5) is 27
+end
+
+data BTree:
+  | node(value :: Number, left :: BTree, right :: BTree) with:
+    method size(self): 1 + self.left.size() + self.right.size() end
+  | leaf(value :: Number) with:
+    method size(self): 1 end,
+    method increment(self): leaf(self.value + 1) end
+sharing:
+  method values-equal(self, other):
+    self.value == other.value
+  end
+where:
+  a-btree = node(1, leaf(2), node(3, leaf(4), leaf(2)))
+  a-btree.values-equal(leaf(1)) is true
+  leaf(1).values-equal(a-btree) is true
+  a-btree.size() is 5
+  leaf(0).size() is 1
+  #leaf(1).increment() is leaf(2)
+  #a-btree.increment() # raises error: field increment not found.
+end
