@@ -1814,7 +1814,6 @@ interp (UnaryMinus e) = do
     v <- interp e
     app opv [v]
 
-
 {-
 Type checking for lam:
 
@@ -1827,7 +1826,6 @@ lam(x):
      [bdy]
    end :: U)
 end
-
 -}
 
 interp (Lam (FunHeader dpms bs rt) e) =

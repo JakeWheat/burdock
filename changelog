@@ -1,0 +1,57 @@
+
+## Provisional up next
+
+- complete work on using methods for system functions/operators
+- ffi type tags, add methods to ffi types
+- simple networking
+- remote repl attach support
+- relational second pass - improve syntax/functions,
+  sqlite/duckdb/postgres backend for storage/transactions
+- command line args access
+- possibly some initial c ffi work
+
+## Week 7 5th Dec
+
+- finish off first pass on in language concurrency:
+  spawn, spawn-monitor, self, send, selective receive, async-exit
+- fix repl regression from concurrency work
+- add for loops
+- add tuple binding
+- extensions to binding: general as, general wildcard, num literals,
+- string literals
+- implement methods (ad hoc polymorphism)
+- progress on updating the system to use methods for system functions
+  such as equal-always
+
+## Week 6 28th Nov
+
+- progress on in language concurrency
+
+## Week 5 21st Nov
+
+- implement most of Haskell concurrency code to support concurrency in
+  language
+
+## Week 4 14th Nov
+
+- complete first pass on runtime tag checking
+- implement more Pyret syntax
+- rough relational algebra demo
+
+## Week 3 7th Nov
+
+- implement a substantial amount of runtime tag checking
+
+## Week 2 31st Oct
+
+- add API, repl, command line runner
+- add modules and first pass on prelude statements
+- rough FFI for haskell functions and opaque values
+- improved test runner
+- call stack on exception demo
+
+## Week 1 ending 24th Oct 2021
+
+- build script
+- simple expression interpreter, roughly: lam, let, closures, vars,
+  agdt, tuples, records, check blocks

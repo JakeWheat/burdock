@@ -20,6 +20,7 @@ data Stmt
     | VarDecl SimpleBinding Expr
     | SetVar String Expr
     | SetRef Expr [(String,Expr)]
+    -- name, ty params, variants, shared methods, where block
     | DataDecl String [String] [VariantDecl] [(String,Method)] (Maybe [Stmt])
     | RecDecl Binding Expr
     | FunDecl
@@ -37,7 +38,7 @@ data Stmt
     | ImportFrom ImportSource [ProvideItem]
     deriving (Eq,Show,Data)
 
--- ty params args return ann
+-- ty params, args, return ann
 data FunHeader
     = FunHeader [String] [Binding] (Maybe Ann)
     deriving (Eq,Show,Data)
@@ -60,7 +61,6 @@ data ImportSource
     = ImportSpecial String [String]
     | ImportName String
     deriving (Eq,Show,Data) 
-----
 
 data Expr
     = Num Scientific

@@ -12,7 +12,21 @@
     -> this is a building block of job control for the repl
        and of an attach feature, where you can start a repl
        in a running burdock process and interact with the process
+
+  there's some serious issues using it, e.g.:
+  a = 5
+  then repeat:
+  a
+  b
+  after a few repeats, it starts to go wrong
+    make sure to kill it because it can use a lot of memory very quickly
+  tail calls?
+  unintended laziness?
+  something to do with the concurrency system?
+  no idea what the issue is
+
 |#
+
 provide:
   create-repl,
   repl-execute,
@@ -36,7 +50,7 @@ data ReplMsg:
   | exiting(ret)
   | exit(ret)
   | repl-down(ret,e)
-  | run-src-ok(ret)
+  | run-src-ok(ret, v)
 end  
 
 #######################################
@@ -51,7 +65,12 @@ end
 fun repl-execute(handle, src):
   send(handle, run-src(self,src))
   receive:
-    | run-src-ok(r) when r == handle => nothing
+    | run-src-ok(r,v) when r == handle =>
+        cases v:
+          | left(e) => print("Error: " + torepr(e))
+          | right(v) when v == nothing => nothing
+          | right(v) => print(tostring(v))
+        end
     | error(r,e) when r == handle => raise(e)
     | repl-down(r,e) when r == handle => raise(e)
   end
@@ -85,8 +104,8 @@ fun repl-monitor():
       | run-src(ret,src) =>
           send(repl,run-src(self,src))
           receive block:
-            | run-src-ok(r) when r == repl =>
-                send(ret, run-src-ok(self))
+            | run-src-ok(r, v) when r == repl =>
+                send(ret, run-src-ok(self, v))
                 repl-monitor-loop()
             | error(r,e) when r == repl =>
                 send(ret, error(self,e))
@@ -107,7 +126,9 @@ fun repl-monitor():
       | monitor-down(_,_et,v,mr) when mr == rf =>
           print("repl-loop unexpectedly exited: " + torepr(v))
           repl-down(v)
-      | _ as e => print("repl-monitor: unexpected message: " + torepr(e))
+      | _ as e =>
+          print("repl-monitor: unexpected message: " + torepr(e))
+          repl-monitor-loop()
     end
   end
   repl-monitor-loop()
@@ -117,12 +138,7 @@ fun repl-loop():
   receive block:
     | run-src(ret,src) =>
         v = run-task(run-script(src))
-        cases v:
-          | left(e) => print("Error: " + torepr(e))
-          | right(v) when v == nothing => nothing
-          | right(v) => print(tostring(v))
-        end
-        send(ret, run-src-ok(self))
+        send(ret, run-src-ok(self, v))
         repl-loop()
     | exit(ret) => "exiting"
     | _ as e =>

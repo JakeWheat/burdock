@@ -1,0 +1,107 @@
+Burdock
+=======
+
+Programming language design and implementation learning project.
+
+Invented motivation
+-------------------
+
+If this was a project to realistically produce a programming language
+that was widely used, this would be the context of why it exists.
+
+Target use cases
+
+* implementing and maintaining non trivial automated test frameworks
+  including reports
+* benchmarking and profiling data reports/analysis tools
+* implementing and maintaining other kinds of automation for complex
+  software product dev and maintenance, and for demos, solutions
+  architecture
+* build scripts
+* most of the things you might also use bash or python for
+
+Not designed to be good at implementing the stuff that existing low
+level languages such as C++/Rust, designed for a only a subset of the
+appropriate use cases of e.g. F#, Ocaml, Haskell, isn't aimed at
+Javascript backends/platforms.
+
+Hypotheses
+
+* it's realistic to ask most devs, devops, qa, sales engineers,
+  solutions architects, etc. to pick up Bash or Python, and write and
+  maintain scripts in them
+
+* it's not realistic to ask them to use any existing functional
+  programming language unless they already know one well - which is
+  approximately 0% of the above groups
+
+* a mythical typed functional programming language which is as
+  accessible and usable as Python would have huge advantages over
+  something like Python or Bash in these scenarios, and it can be
+  fairly conservative as far as typed functional programming languages
+  go and easily achieve these advantages
+
+* a language can be very successful with a culture of using existing
+  code in various languages instead of focusing on rewriting what
+  already exists that's good enough/ not where the biggest ROI
+  is
+
+* compromising on a more beginner oriented syntax based on Pyret is
+  worth it over something based on e.g. Haskell or Ocaml
+
+Plus a provisional principle: not for or against the language evolving
+to support more advanced features in principle (e.g. HKT, effects,
+metaprogramming), but this should never be at the expense of
+beginner/new user experience aspects such as being able to write
+useful programs without type checking.
+
+Target language sketch
+----------------------
+
+Takes a lot of inspiration from Pyret, particularly the
+syntax. Implemented in Haskell.
+
+* functional
+* types + unityped
+* FFI for Haskell, Python, C
+* run exes, "shell FFI"
+* Erlang inspired concurrency features
+* relational theory inspired features
+
+Use
+---
+
+build and test:
+
+install ghc and cabal-install, recommend use ghcup
+see https://www.haskell.org/ghcup/
+
+update cabal-install package list:
+
+> cabal update
+
+get the source from github https://github.com/JakeWheat/burdock/
+
+install deps (haskell packages) and build:
+
+> ./build.sh install-deps
+> ./build.sh all test
+
+run a script after building:
+
+> _build/bin/burdock my-script.bur
+
+you can copy/link the burdock exe somewhere in your path and use
+"#!/usr/bin/env burdock" or similar in your script too
+
+access the repl:
+
+> _build/bin/burdock
+
+Examples
+--------
+
+Tests and the built in modules:
+
+* <https://github.com/JakeWheat/burdock/blob/master/burdock-test-src/>
+* <https://github.com/JakeWheat/burdock/blob/master/built-ins/>
