@@ -144,3 +144,28 @@ check "cases wildcard":
   
       
 end
+
+
+check "internal - default equals for variants":
+
+  equal-by-field = _system.modules._internals.equal-by-field
+
+  a = {a:1,b:2,c:3}
+  b = {a:1,b:2,d:3}
+  equal-by-field([list:'a','b'], a, b) is true
+  equal-by-field([list:'a','b','c'], a, b) is false
+  equal-by-field([list:'a','b','d'], a, b) is false
+  equal-by-field([list:'a','b','e'], a, b) is false
+  equal-by-field([list:'b'], a, b) is true
+
+  a1 = {a:1,b:3,c:3}
+  equal-by-field([list:'a','b'], a1, b) is false
+
+  c = { method m(self, x): self.y + x end, y: 22 }
+  d = { method m(self, x): self.y + x end, y: 22 }
+  e = { method m(self, x): self.y + x end, y: 23 }
+
+  equal-by-field([list:'y'],c,d) is true
+  equal-by-field([list:'y'],c,e) is false
+
+end

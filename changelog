@@ -1,3 +1,15 @@
+## Provisional longer term
+
+- improvements to the FFI/Haskell FFI
+- Python FFI
+- C FFI
+- data adaptor framework
+- static binding checker
+- static type checker
+- error message work
+- testing pass, including anomaly testing
+- whitespace parsing fixes
+- website, documentation
 
 ## Provisional up next
 
@@ -9,6 +21,7 @@
   sqlite/duckdb/postgres backend for storage/transactions
 - command line args access
 - possibly some initial c ffi work
+- tail call optimisation
 
 ## Week 7 5th Dec
 

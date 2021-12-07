@@ -49,6 +49,8 @@ raise = get-ffi-value("raise")
 haskell-error = get-ffi-value("haskell-error")
 haskell-undefined = get-ffi-value("haskell-undefined")
 
+equal-by-field = get-ffi-value("equal-by-field")
+
 get-call-stack = get-ffi-value("get-call-stack")
 format-call-stack = get-ffi-value("format-call-stack")
 

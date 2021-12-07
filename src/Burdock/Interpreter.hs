@@ -1260,6 +1260,8 @@ builtInFF =
     ,("make-variant", makeVariant)
     ,("is-variant", isVariant)
 
+    ,("equal-by-field", equalByField)
+
     ,("load-module", bLoadModule)
     ,("show-handle-state", bShowHandleState)
     ,("haskell-error", haskellError)
@@ -1540,13 +1542,13 @@ hEqualAlways a' b' =
                   fn <- interpDotExpr a' "equal-always"
                   unwrapBool <$> app fn [b']
         -- tuple
-        (VariantV tg "tuple" fs, VariantV tg1 "tuple" fs1)
+        {-(VariantV tg "tuple" fs, VariantV tg1 "tuple" fs1)
             | tg == bootstrapType "Tuple" && tg1 == bootstrapType "Tuple" ->
               fieldsEqual fs fs1
         --variant without equal-always
         (VariantV tg "record" fs, VariantV tg1 "record" fs1)
             | tg == bootstrapType "Record" && tg1 == bootstrapType "Record" ->
-              fieldsEqual fs fs1
+              fieldsEqual fs fs1-}
         (VariantV tg nm fs, VariantV tg1 nm1 fs1)
             -> ((tg == tg1 && nm == nm1) &&)
                 <$> fieldsEqual fs fs1
@@ -1589,6 +1591,29 @@ hEqualAlways a' b' =
         BoolV True -> True
         BoolV False -> False
         x -> error $ "expected boolean from equal always, got  " ++ show x
+
+equalByField :: [Value] -> Interpreter Value
+equalByField [fs', VariantV tga nma a, VariantV tgb nmb b]
+    | Just fs <- mapM unText =<< fromBList fs'
+    = -- check tags and names
+      if not (tga == tgb && nma == nmb)
+      then pure $ BoolV False
+      else do
+          -- check the fields are present in both values
+          let proj k m = (k,) <$> lookup k m
+              vs1 = mapM (flip proj a) fs
+              vs2 = mapM (flip proj b) fs
+          case (vs1, vs2) of
+              -- compare their values
+              (Just vs1', Just vs2') ->
+                  BoolV <$> hEqualAlways (VariantV (bootstrapType "Record") "record" vs1')
+                               (VariantV (bootstrapType "Record") "record" vs2')
+              _ -> pure $ BoolV False
+  where
+    unText (TextV t) = Just t
+    unText _ = Nothing
+equalByField _ = _errorWithCallStack $ "wrong args to equalByField"
+
     
 -------------------
 
