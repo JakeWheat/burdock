@@ -2101,8 +2101,8 @@ interpDotExpr v f =
                   MethodV m -> app m [v]
                   _ -> pure fv
             | otherwise ->
-              _errorWithCallStack $ "field not found in dotexpr\nlooking in value:\n" ++ show v
-              ++ "\n for field " ++ f
+              _errorWithCallStack $ "field not found in dotexpr: " ++ f
+              ++"\nlooking in value:\n" ++ show v
               ++ "\nit's fields are: " ++ show fs
         _ -> _errorWithCallStack $ "dot called on non variant: " ++ show v
 
@@ -2468,10 +2468,19 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
     me (menm,m) = [Iden "false", Text menm, MethodExpr m]
     makeV (VariantDecl vnm fs ms) = do
         --ms <- (++) <$> makeMethodArgs ms <*> sharedMethodsList
+        let cnms = flip map fs $ \(_,SimpleBinding _ nm _) -> nm
+            eqFlds = Construct ["_system", "modules", "_internals", "list"] $ map Text cnms
+            equalsWithoutMethods =
+                if null (ms ++ shr)
+                then []
+                else [("equal-always"
+                      ,Method (FunHeader [] [NameBinding "self", NameBinding "x"] Nothing)
+                          [StmtExpr $ App appSourcePos (internalsRef "equal-by-field")
+                              [eqFlds, Iden "self", Iden "x"]])]
         let appMakeV = App appSourcePos (bootstrapRef "make-variant")
                        [Iden typeInfoName
                        ,Text vnm
-                       ,Construct ["list"] $ concatMap me (ms ++ shr)
+                       ,Construct ["list"] $ concatMap me (ms ++ shr ++ equalsWithoutMethods)
                        ,Construct ["list"] $ concatMap mvf fs]
         pure $ recDecl vnm
            $ typeLetWrapper dpms

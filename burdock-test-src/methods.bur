@@ -19,6 +19,48 @@ check:
   the-m-method-closed-over-o(5) is 27
 end
 
+
+check "internal - default equals for variants":
+
+  equal-by-field = _system.modules._internals.equal-by-field
+
+  a = {a:1,b:2,c:3}
+  b = {a:1,b:2,d:3}
+  equal-by-field([list:'a','b'], a, b) is true
+  equal-by-field([list:'a','b','c'], a, b) is false
+  equal-by-field([list:'a','b','d'], a, b) is false
+  equal-by-field([list:'a','b','e'], a, b) is false
+  equal-by-field([list:'b'], a, b) is true
+
+  a1 = {a:1,b:3,c:3}
+  equal-by-field([list:'a','b'], a1, b) is false
+
+  c = { method m(self, x): self.y + x end, y: 22 }
+  d = { method m(self, x): self.y + x end, y: 22 }
+  e = { method m(self, x): self.y + x end, y: 23 }
+
+  equal-by-field([list:'y'],c,d) is true
+  equal-by-field([list:'y'],c,e) is false
+
+  c == d raises "incomparable"
+
+  myeq = equal-by-field([list:'y'],_,_)
+  myeq(c,d) is true
+  myeq(c,e) is false
+
+  eq = method(self,x): equal-by-field([list:'y'], self, x) end
+
+  c1 = { method m(self, x): self.y + x end, y: 22, equal-always: eq}
+  d1 = { method m(self, x): self.y + x end, y: 22, equal-always: eq}
+  e1 = { method m(self, x): self.y + x end, y: 23, equal-always: eq}
+
+  c1 is d1
+  c1 == d1 is true
+  c1 is-not e1
+
+end
+
+
 data BTree:
   | node(value :: Number, left :: BTree, right :: BTree) with:
     method size(self): 1 + self.left.size() + self.right.size() end
@@ -35,6 +77,6 @@ where:
   leaf(1).values-equal(a-btree) is true
   a-btree.size() is 5
   leaf(0).size() is 1
-  #leaf(1).increment() is leaf(2)
-  #a-btree.increment() # raises error: field increment not found.
+  leaf(1).increment() is leaf(2)
+  a-btree.increment() raises "field not found" # raises error: field increment not found.
 end
