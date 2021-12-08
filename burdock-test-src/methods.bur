@@ -78,5 +78,6 @@ where:
   a-btree.size() is 5
   leaf(0).size() is 1
   leaf(1).increment() is leaf(2)
-  a-btree.increment() raises "field not found" # raises error: field increment not found.
+  a-btree.increment() raises "field not found"
+  # raises error: field increment not found.
 end
