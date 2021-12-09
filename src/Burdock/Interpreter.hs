@@ -1059,10 +1059,10 @@ baseEnv =
     ,("-", ForeignFunV "-")
     ,("*", ForeignFunV "*")
     ,("/", ForeignFunV "/")
-    ,("<", ForeignFunV "<")
-    ,(">", ForeignFunV ">")
-    ,("<=", ForeignFunV "<=")
-    ,(">=", ForeignFunV ">=")
+    ,("<", ForeignFunV "_lessthan")
+    ,(">", ForeignFunV "_greaterthan")
+    ,("<=", ForeignFunV "_lessequal")
+    ,(">=", ForeignFunV "_greaterequal")
     ,("^", ForeignFunV "reverse-app")
     ,("|>", ForeignFunV "chain-app")
 
@@ -1226,9 +1226,16 @@ toreprx (VariantV _ nm fs) = do
     vs <- mapM (toreprx . snd) fs
     pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
 
+-- temp
 toreprx (FFIValue _ffitag r)
     | Just (r' :: R.Relation Value) <- fromDynamic r
     = pure $ P.pretty $ R.showRel r'
+
+{-toreprx x@(FFIValue tg v) = do
+    ti <- askFFTInfo tg
+    maybe (pure $ P.pretty $ show x)
+          (\f' -> TextV <$> f' v)
+          (ffiTypeToRepr =<< ti)-}
 toreprx x@(FFIValue {}) = pure $ P.pretty $ show x -- "<ffi-value>"
 
 xSep :: String -> [P.Doc a] -> P.Doc a
@@ -1241,6 +1248,8 @@ xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 data FFITypeInfo
     = FFITypeInfo
     {ffiTypeEquals :: Maybe (Dynamic -> Dynamic -> Interpreter Bool)
+    ,ffiTypeLT :: Maybe (Dynamic -> Dynamic -> Interpreter Bool)
+    ,ffiTypeToRepr :: Maybe (Dynamic -> Interpreter String)
     }
 
 liftEquals :: Typeable t =>
@@ -1268,6 +1277,17 @@ stringEquals a b =
     e :: String -> String -> Interpreter Bool
     e x y = pure $ (==) x y
 
+stringLT :: Dynamic -> Dynamic -> Interpreter Bool
+stringLT a b =
+    liftEquals "haskell-string" e a b
+  where
+    e :: String -> String -> Interpreter Bool
+    e x y = pure $ (<) x y
+
+stringToRepr :: Dynamic -> Interpreter String
+stringToRepr a = case fromDynamic a of
+    Just x -> pure x
+    Nothing -> error $ "expected string, got " ++ show a
 
 relationFFIEquals :: Dynamic -> Dynamic -> Interpreter Bool
 relationFFIEquals a b =
@@ -1278,17 +1298,17 @@ relationFFIEquals a b =
 
 builtInFFITypes :: [(String,FFITypeInfo)] 
 builtInFFITypes =
-    [("callstack", FFITypeInfo Nothing)
-    ,("addr", FFITypeInfo (Just addrEquals))
-    ,("relation", FFITypeInfo (Just relationFFIEquals))
-    ,("unknown", FFITypeInfo Nothing)
-    ,("burdockast", FFITypeInfo Nothing)
-    ,("typeinfo", FFITypeInfo Nothing)
-    ,("casepattern", FFITypeInfo Nothing)
+    [("callstack", FFITypeInfo Nothing Nothing Nothing)
+    ,("addr", FFITypeInfo (Just addrEquals) Nothing Nothing)
+    ,("relation", FFITypeInfo (Just relationFFIEquals) Nothing Nothing)
+    ,("unknown", FFITypeInfo Nothing Nothing Nothing)
+    ,("burdockast", FFITypeInfo Nothing Nothing Nothing)
+    ,("typeinfo", FFITypeInfo Nothing Nothing Nothing)
+    ,("casepattern", FFITypeInfo Nothing Nothing Nothing)
     -- used to test/demo the ffi system
     -- should find a way to run automated tests better
     -- so this isn't in the core language
-    ,("haskell-string", FFITypeInfo (Just stringEquals))
+    ,("haskell-string", FFITypeInfo (Just stringEquals) (Just stringLT) (Just stringToRepr))
     ]
 
 -- built in functions implemented in haskell:
@@ -1299,10 +1319,10 @@ builtInFF =
     ,("is-specific-ffi-type", isSpecificFFIType)
 
     ,("equal-always", equalAlways)
-    ,("<", bLT)
-    ,(">", bGT)
-    ,("<=", bLTE)
-    ,(">=", bGTE)
+    ,("_lessthan", lessThan)
+    ,("_greaterthan", bGT)
+    ,("_lessequal", bLTE)
+    ,("_greaterequal", bGTE)
 
     ,("+", \case
              [NumV a,NumV b] -> pure $ NumV $ a + b
@@ -1482,22 +1502,38 @@ chainApp :: [Value] -> Interpreter Value
 chainApp [f, a] = app f [a]
 chainApp as = _errorWithCallStack $ "wrong args to |> " ++ show as
 
-bLT :: [Value] -> Interpreter Value
-bLT [NumV a, NumV b] = pure $ BoolV $ a < b
-bLT as = _errorWithCallStack $ "unsupported args to < (todo?) " ++ show as
-
 bGT :: [Value] -> Interpreter Value
-bGT [NumV a, NumV b] = pure $ BoolV $ a > b
+bGT [a,b] = do
+    f0 <- interp (Iden "<")
+    e0 <- app f0 [a,b]
+    case e0 of
+        BoolV x -> pure $ BoolV $ not x
+        _ -> error $ "expected bool from <, got " ++ show e0
 bGT as = _errorWithCallStack $ "unsupported args to > (todo?) " ++ show as
 
 bLTE :: [Value] -> Interpreter Value
-bLTE [NumV a, NumV b] = pure $ BoolV $ a <= b
+bLTE [a,b] = do
+    f0 <- interp (Iden "<")
+    e0 <- app f0 [a,b]
+    f1 <- interp (Iden "==")
+    e1 <- app f1 [a,b]
+    case (e0,e1) of
+        (BoolV True, _) -> pure $ BoolV True
+        (BoolV False, x@(BoolV {})) -> pure x
+        _ -> error $ "unexpected return value to < or ==: " ++ show (e0,e1)
 bLTE as = _errorWithCallStack $ "unsupported args to <= (todo?) " ++ show as
 
 bGTE :: [Value] -> Interpreter Value
-bGTE [NumV a, NumV b] = pure $ BoolV $ a >= b
+bGTE [a,b] = do
+    f0 <- interp (Iden ">")
+    e0 <- app f0 [a,b]
+    f1 <- interp (Iden "==")
+    e1 <- app f1 [a,b]
+    case (e0,e1) of
+        (BoolV True, _) -> pure $ BoolV True
+        (BoolV False, x@(BoolV {})) -> pure x
+        _ -> error $ "unexpected return value to > or ==: " ++ show (e0,e1)
 bGTE as = _errorWithCallStack $ "unsupported args to >= (todo?) " ++ show as
-
 
 bPrint :: [Value] -> Interpreter Value
 bPrint [v] = do
@@ -1679,6 +1715,52 @@ equalByField [fs', VariantV tga nma a, VariantV tgb nmb b]
     unText (TextV t) = Just t
     unText _ = Nothing
 equalByField _ = _errorWithCallStack $ "wrong args to equalByField"
+
+lessThan :: [Value] -> Interpreter Value
+lessThan [a,b] = BoolV <$> hLessThan a b
+lessThan as = error $ "unsupported args to < (todo?) " ++ show as
+
+hLessThan :: Value -> Value -> Interpreter Bool
+hLessThan a' b' =
+    case (a',b') of
+        (BoolV a, BoolV b) -> pure $ a < b
+        (BoolV {}, _) -> error "incompatible args to <"
+        (NumV a, NumV b) -> pure $ a < b
+        (NumV {}, _) -> error "incompatible args to <"
+        (TextV a, TextV b) -> pure $ a < b
+        (TextV {}, _) -> error "incompatible args to <"
+        -- variant with equal method
+        -- this includes records with an equal-always
+        (VariantV _ _ fs, _)
+            | Just _ <- lookup "_lessthan" fs
+              -> do
+                  fn <- interpDotExpr a' "_lessthan"
+                  unwrapBool <$> app fn [b']
+        (VariantV {} , _) -> error "incompatible args to <"
+        (BoxV {}, _) -> error "incompatible args to <"
+        -- ffivalue with equals function
+        (FFIValue tga a, FFIValue tgb b)
+            | tga == tgb -> do
+                  ti <- askFFTInfo tga
+                  maybe (error "incompatible args to <")
+                        (\f' -> f' a b)
+                        (ffiTypeLT =<< ti)
+        (FFIValue {}, _) -> error "incompatible args to <"
+        _ | isFn a' && isFn b' -> incomparable
+        (FunV {}, _) -> error "incompatible args to <"
+        (ForeignFunV {}, _) -> error "incompatible args to <"
+        (MethodV {}, _) -> error "incompatible args to <"
+  where
+    isFn = \case
+        FunV {} -> True
+        ForeignFunV {} -> True
+        MethodV {} -> True
+        _ -> False
+    incomparable = error $ "Attempted to compare two incomparable values:\n" ++ show a' ++ "\n" ++ show b'
+    unwrapBool = \case
+        BoolV True -> True
+        BoolV False -> False
+        x -> error $ "expected boolean from equal always, got  " ++ show x
 
 makeHaskellString :: [Value] -> Interpreter Value
 makeHaskellString [TextV t]

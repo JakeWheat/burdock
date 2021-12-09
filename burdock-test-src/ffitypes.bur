@@ -37,7 +37,7 @@ check "basic methods":
 
   # other comparisons
 
-  #|make-haskell-string("a") < make-haskell-string("b") is true
+  make-haskell-string("a") < make-haskell-string("b") is true
   make-haskell-string("a") < make-haskell-string("a") is false
   make-haskell-string("a") > make-haskell-string("b") is false
   make-haskell-string("b") > make-haskell-string("a") is true
@@ -50,8 +50,9 @@ check "basic methods":
 
   # tostring, torepr
   # not 100% sure what these should produce exactly
-  tostring(make-haskell-string("foo")) is "foo"
-  torepr(make-haskell-string("foo")) is "foo"|#
+  # not sure if should allow a type to implement them as separate functions
+  #tostring(make-haskell-string("foo")) is "foo"
+  #torepr(make-haskell-string("foo")) is "foo"
 
 end
 
