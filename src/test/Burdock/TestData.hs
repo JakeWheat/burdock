@@ -589,6 +589,9 @@ end|]
     ,("type Predicate<a> = (a -> Boolean)"
      ,TypeStmt $ TypeDecl "Predicate" ["a"] (TParens (TArrow [TName ["a"]] $ TName ["Boolean"])))
 
+    ,("ffitype BType = 'htype'"
+     ,FFITypeStmt "BType" "htype")
+
     ,("a :: Number"
      ,Contract "a" $ TName ["Number"])
 
@@ -728,7 +731,8 @@ interpreterTests =
      ,"burdock-test-src/binding.bur"
      ,"burdock-test-src/for.bur"
      ,"burdock-test-src/methods.bur"
-     ]
+     ,"burdock-test-src/ffitypes.bur" 
+    ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["burdock-test-src/built-in-functions.bur"
      ,"built-ins/lists.bur"

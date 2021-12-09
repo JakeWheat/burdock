@@ -1,0 +1,64 @@
+
+# introduce an ffi type into the burdock namespace
+# this gives you the typename to use in annotations
+# and an is-X type tester
+
+# todo: the types tested here are built into the language
+# fix the test framework so they are added via the handle api
+# this will be the demo of how to do this generally too
+
+import from _internals:
+  get-ffi-value
+end
+
+ffitype HaskellString = "haskell-string"
+
+make-haskell-string = get-ffi-value("make-haskell-string")
+unmake-haskell-string = get-ffi-value("unmake-haskell-string")
+
+check "basics":
+
+  unmake-haskell-string(make-haskell-string("roundtrip")) is "roundtrip"
+
+  let x :: HaskellString = 3: x end raises "type not compatible"
+  unmake-haskell-string(let x :: HaskellString = make-haskell-string("test"): x end) is "test"
+
+  is-HaskellString(1) is false
+  is-HaskellString(make-haskell-string("1")) is true
+
+end
+
+check "basic methods":
+
+  # equals
+
+  make-haskell-string("a") == make-haskell-string("a") is true
+  make-haskell-string("a") == make-haskell-string("b") is false
+
+  # other comparisons
+
+  #|make-haskell-string("a") < make-haskell-string("b") is true
+  make-haskell-string("a") < make-haskell-string("a") is false
+  make-haskell-string("a") > make-haskell-string("b") is false
+  make-haskell-string("b") > make-haskell-string("a") is true
+  make-haskell-string("b") >= make-haskell-string("a") is true
+  make-haskell-string("a") >= make-haskell-string("b") is false
+  make-haskell-string("b") <= make-haskell-string("a") is false
+  make-haskell-string("a") <= make-haskell-string("b") is true
+  make-haskell-string("a") >= make-haskell-string("a") is true
+  make-haskell-string("a") <= make-haskell-string("a") is true
+
+  # tostring, torepr
+  # not 100% sure what these should produce exactly
+  tostring(make-haskell-string("foo")) is "foo"
+  torepr(make-haskell-string("foo")) is "foo"|#
+
+end
+
+check "arith methods":
+  # do a haskell-int ffi type
+  # do some sanity checks on the equals, comparions, tostring, torepr
+
+  # check it works with arithmetic
+
+end

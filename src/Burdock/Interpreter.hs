@@ -513,6 +513,7 @@ typeIsCompatibleWith (FunV as _ _) (ArrowTypeInfo ts _) =
 
 typeIsCompatibleWith _ (ParamTypeInfo {}) =
     error $ "todo: typeIsCompatibleWith param type info not supported"
+typeIsCompatibleWith (FFIValue tg _) (SimpleTypeInfo ty) = [tg] == ty
 typeIsCompatibleWith _ _ = False
 
 assertPatternTagMatchesCasesTag :: TypeInfo -> TypeInfo -> Interpreter ()
@@ -1242,17 +1243,38 @@ data FFITypeInfo
     {ffiTypeEquals :: Maybe (Dynamic -> Dynamic -> Interpreter Bool)
     }
 
+liftEquals :: Typeable t =>
+              String
+           -> (t -> t -> Interpreter Bool)
+           -> Dynamic
+           -> Dynamic -> Interpreter Bool
+liftEquals tyname f a b =
+    case (fromDynamic a, fromDynamic b) of
+        (Just a', Just b') -> f a' b'
+        _ -> error $ "expected two " ++ tyname ++ ", got " ++ show (a,b)
+
+-- this is definitely way too much boilerplatex
 addrEquals :: Dynamic -> Dynamic -> Interpreter Bool
 addrEquals a b =
-    case (fromDynamic a, fromDynamic b) of
-        (Just (a' :: Addr), Just b') -> pure $ a' == b'
-        _ -> error $ "expected two addrs, got " ++ show (a,b)
+    liftEquals "addr" e a b
+  where
+    e :: Addr -> Addr -> Interpreter Bool
+    e x y = pure $ (==) x y
+
+stringEquals :: Dynamic -> Dynamic -> Interpreter Bool
+stringEquals a b =
+    liftEquals "haskell-string" e a b
+  where
+    e :: String -> String -> Interpreter Bool
+    e x y = pure $ (==) x y
+
 
 relationFFIEquals :: Dynamic -> Dynamic -> Interpreter Bool
 relationFFIEquals a b =
-    case (fromDynamic a, fromDynamic b) of
-        (Just (a' :: R.Relation Value), Just b') -> either (error . show) pure $ R.relEqual a' b'
-        _ -> error $ "expected two addrs, got " ++ show (a,b)
+    liftEquals "relation" e a b
+  where
+    e :: R.Relation Value -> R.Relation Value -> Interpreter Bool
+    e a' b' = either (error . show) pure $ R.relEqual a' b'
 
 builtInFFITypes :: [(String,FFITypeInfo)] 
 builtInFFITypes =
@@ -1263,6 +1285,10 @@ builtInFFITypes =
     ,("burdockast", FFITypeInfo Nothing)
     ,("typeinfo", FFITypeInfo Nothing)
     ,("casepattern", FFITypeInfo Nothing)
+    -- used to test/demo the ffi system
+    -- should find a way to run automated tests better
+    -- so this isn't in the core language
+    ,("haskell-string", FFITypeInfo (Just stringEquals))
     ]
 
 -- built in functions implemented in haskell:
@@ -1270,6 +1296,7 @@ builtInFFITypes =
 builtInFF :: [(String, [Value] -> Interpreter Value)]
 builtInFF =
     [("get-ffi-value", getFFIValue)
+    ,("is-specific-ffi-type", isSpecificFFIType)
 
     ,("equal-always", equalAlways)
     ,("<", bLT)
@@ -1301,6 +1328,7 @@ builtInFF =
 
     ,("make-variant", makeVariant)
     ,("is-variant", isVariant)
+    ,("is-specific-ffi-type", isSpecificFFIType)
 
     ,("equal-by-field", equalByField)
 
@@ -1360,6 +1388,9 @@ builtInFF =
     ,("sleep", bSleep)
     ,("send", bSend)
     ,("async-exit", bAsyncExit)
+
+    ,("make-haskell-string", makeHaskellString)
+    ,("unmake-haskell-string", unmakeHaskellString)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -1399,6 +1430,12 @@ isVariant [FFIValue _ffitag ftg, TextV nm, VariantV vtg vt _]
     = pure $ BoolV $ tg == vtg && nm == vt
 isVariant [FFIValue {}, TextV _nm, _] = pure $ BoolV False
 isVariant _ = _errorWithCallStack $ "wrong args to is-variant"
+
+isSpecificFFIType :: [Value] -> Interpreter Value
+isSpecificFFIType [TextV nm, FFIValue ffitag _]
+    = pure $ BoolV $ nm == ffitag
+isSpecificFFIType [TextV _, _] = pure $ BoolV False
+isSpecificFFIType _ = _errorWithCallStack $ "wrong args to is specific ffi type"
 
 isNothing :: [Value] -> Interpreter Value
 isNothing [VariantV tg "nothing" _] | tg == bootstrapType "Nothing" = pure $ BoolV True
@@ -1643,7 +1680,17 @@ equalByField [fs', VariantV tga nma a, VariantV tgb nmb b]
     unText _ = Nothing
 equalByField _ = _errorWithCallStack $ "wrong args to equalByField"
 
-    
+makeHaskellString :: [Value] -> Interpreter Value
+makeHaskellString [TextV t]
+    = pure $ FFIValue "haskell-string" $ toDyn t
+makeHaskellString _ = error "bad args to makeHaskellString"
+
+unmakeHaskellString :: [Value] -> Interpreter Value
+unmakeHaskellString [FFIValue "haskell-string" v]
+    | Just v' <- fromDynamic v
+    = pure $ TextV v'
+unmakeHaskellString _ = error "bad args to unmakeHaskellString"
+
 -------------------
 
 relToList :: [Value] -> Interpreter Value
@@ -2530,6 +2577,17 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
     fh as = FunHeader [] as Nothing
     orE a b = BinOp a "or" b
     mnm x = NameBinding x
+
+interpStatement (FFITypeStmt nm ty) = do
+    -- check the name is in registry
+    -- create the _typeinfo value
+    letValue ("_typeinfo-" ++ nm) $ FFIValue "typeinfo" $ toDyn $ SimpleTypeInfo [ty]
+    -- create the is-X type tester function
+    interpStatement
+        (LetDecl (NameBinding ("is-" ++ nm))
+         (Lam (FunHeader [] [NameBinding "x"] Nothing)
+          [StmtExpr $ App appSourcePos (internalsRef "is-specific-ffi-type") [Text ty, Iden "x"]]))
+    --pure nothing is-specific-ffi-type
 
 interpStatement (TypeStmt {}) = _errorWithCallStack $ "TODO: interp typestmt"
 interpStatement c@(Contract {}) = _errorWithCallStack $ "contract without corresponding statement: " ++ show c

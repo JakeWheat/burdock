@@ -274,11 +274,11 @@ stmt (FunDecl pn hdr ds e w) =
      ,maybe mempty (\x -> pretty "doc: " <+> expr (Text x)) ds
      ,stmts e
      ,maybe mempty whereBlock w]
-
 stmt (TypeStmt td) = 
     pretty "type" <+> typeDecl td
+stmt (FFITypeStmt nm ty) = 
+    pretty "ffitype" <+> pretty nm <+> pretty "=" <+> dquotes (pretty ty)
 stmt (Contract nm ty) = pretty nm <+> pretty "::" <+> typ ty
-
 
 stmt (Provide pis) =
     prettyBlocklike vsep

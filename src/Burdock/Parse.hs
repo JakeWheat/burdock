@@ -694,6 +694,7 @@ stmt = choice
     ,dataDecl
     ,checkBlock
     ,typeStmt
+    ,ffiTypeStmt
     ,provide
     ,include
     ,importStmt
@@ -776,6 +777,11 @@ typeDecl allowImplicitTuple = TypeDecl
     <$>  identifier
     <*> option [] tyNameList
     <*> (symbol_ "=" *> typ allowImplicitTuple)
+
+ffiTypeStmt :: Parser Stmt
+ffiTypeStmt = FFITypeStmt
+    <$> (keyword_ "ffitype" *> identifier)
+    <*> (symbol_ "=" *> stringRaw)
 
 provide :: Parser Stmt
 provide = Provide <$> (keyword_ "provide"

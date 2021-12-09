@@ -30,6 +30,7 @@ data Stmt
         [Stmt] -- body
         (Maybe [Stmt]) -- test block
     | TypeStmt TypeDecl
+    | FFITypeStmt String String
     | Contract String Ann
     | Provide [ProvideItem]
     | Import ImportSource String
