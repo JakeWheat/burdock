@@ -326,7 +326,7 @@ data Value = NumV Scientific
            | ForeignFunV String
            | VariantV TypeInfo String [(String,Value)]
            | BoxV TypeInfo (IORef Value)
-           | FFIValue [String] Dynamic
+           | FFIValue String Dynamic
            | MethodV Value
 
 instance Ord Value where
@@ -562,6 +562,7 @@ data BurdockHandleState
     ,hsLoadedModules :: [(FilePath,(String,Value))] -- modulename, module value (as a record)
     ,hsTempBaseEnv :: [(String,Value)]
     ,hsForeignFunctionImpls :: [ForeignFunctionEntry]
+    ,hsForeignTypes :: [(String, FFITypeInfo)]
     ,hsSourceCache :: [(FilePath, String)]
     ,hsUniqueSourceCtr :: Int
     -- temp, to be split by module
@@ -639,7 +640,7 @@ newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
     ch <- openBConcurrency (Just extractValueException)
     rs <- newTVarIO []
-    h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF [] 0 rs
+    h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF builtInFFITypes [] 0 rs
     spawnWaitCast ch $ \th -> runInterp th False (Handle h) initBootstrapModule
     ip <- getBuiltInModulePath "_internals"
     spawnWaitCast ch $ \th -> runInterp th False (Handle h) $ loadAndRunModule False "_internals" ip
@@ -731,6 +732,13 @@ askFF = do
     st <- ask
     liftIO $ atomically
         (hsForeignFunctionImpls <$> readTVar (tlHandleState st))
+
+askFFTInfo :: String -> Interpreter (Maybe FFITypeInfo)
+askFFTInfo nm = do
+    st <- ask
+    mp <- liftIO $ atomically
+        (hsForeignTypes <$> readTVar (tlHandleState st))
+    pure $ lookup nm mp
 
 modifyScriptProvides :: ([ProvideItem] -> [ProvideItem]) -> Interpreter ()
 modifyScriptProvides f = do
@@ -928,15 +936,14 @@ extractValueException e = case fromException e of
     _ -> Nothing
   where
     f v cs = Just $ toDyn $ VariantV (bootstrapType "Tuple") "tuple"
-                  [("0", v), ("1", FFIValue ["callstack"] $ toDyn cs)]
-
+                  [("0", v), ("1", FFIValue "callstack" $ toDyn cs)]
 
 bSpawn :: [Value] -> Interpreter Value
 bSpawn [f] = do
     st <- ask
     x <- liftIO $ spawn (tlThreadHandle st) $ \th ->
         runInterpInherit st th True $ toDyn <$> app f []
-    pure $ FFIValue ["addr"] $ toDyn x
+    pure $ FFIValue "addr" $ toDyn x
 bSpawn x = _errorWithCallStack $ "wrong args to bSpawn: " ++ show x
 
 bSpawnMonitor :: [Value] -> Interpreter Value
@@ -954,7 +961,7 @@ spawnMonitorWrap tag f = do
         runInterpInherit st th True $ do
         toDyn <$> app f []
     pure $ VariantV (bootstrapType "Tuple") "tuple"
-        [("0",FFIValue ["addr"] $ toDyn saddr)
+        [("0",FFIValue "addr" $ toDyn saddr)
         ,("1", convertHsMonitorRef ref)]
 
 bAsyncExit :: [Value] -> Interpreter Value
@@ -975,7 +982,7 @@ convertHsMonitorRef (MonitorRef s i) =
 bSelf :: [Value] -> Interpreter Value
 bSelf [] = do
     x <- askThreadHandle
-    pure $ FFIValue ["addr"] $ toDyn $ addr x
+    pure $ FFIValue "addr" $ toDyn $ addr x
 bSelf x = _errorWithCallStack $ "wrong args to bSelf: " ++ show x
 
 bSleep :: [Value] -> Interpreter Value
@@ -1228,6 +1235,36 @@ xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 
 ------------------------------------------------------------------------------
 
+-- built in ffi types
+
+data FFITypeInfo
+    = FFITypeInfo
+    {ffiTypeEquals :: Maybe (Dynamic -> Dynamic -> Interpreter Bool)
+    }
+
+addrEquals :: Dynamic -> Dynamic -> Interpreter Bool
+addrEquals a b =
+    case (fromDynamic a, fromDynamic b) of
+        (Just (a' :: Addr), Just b') -> pure $ a' == b'
+        _ -> error $ "expected two addrs, got " ++ show (a,b)
+
+relationFFIEquals :: Dynamic -> Dynamic -> Interpreter Bool
+relationFFIEquals a b =
+    case (fromDynamic a, fromDynamic b) of
+        (Just (a' :: R.Relation Value), Just b') -> either (error . show) pure $ R.relEqual a' b'
+        _ -> error $ "expected two addrs, got " ++ show (a,b)
+
+builtInFFITypes :: [(String,FFITypeInfo)] 
+builtInFFITypes =
+    [("callstack", FFITypeInfo Nothing)
+    ,("addr", FFITypeInfo (Just addrEquals))
+    ,("relation", FFITypeInfo (Just relationFFIEquals))
+    ,("unknown", FFITypeInfo Nothing)
+    ,("burdockast", FFITypeInfo Nothing)
+    ,("typeinfo", FFITypeInfo Nothing)
+    ,("casepattern", FFITypeInfo Nothing)
+    ]
+
 -- built in functions implemented in haskell:
 
 builtInFF :: [(String, [Value] -> Interpreter Value)]
@@ -1299,10 +1336,10 @@ builtInFF =
     ,("rel-from-list", relFromList)
     ,("rel-from-table", relFromTable)
     ,("table-dee", \case
-             [] -> pure $ FFIValue ["relation"] $ toDyn (R.tableDee :: R.Relation Value)
+             [] -> pure $ FFIValue "relation" $ toDyn (R.tableDee :: R.Relation Value)
              _ -> error $ "bad args to table-dee maker")
     ,("table-dum", \case
-             [] -> pure $ FFIValue ["relation"] $ toDyn (R.tableDum :: R.Relation Value)
+             [] -> pure $ FFIValue "relation" $ toDyn (R.tableDum :: R.Relation Value)
              _ -> _errorWithCallStack $ "bad args to table-dee maker")
     ,("rel-union", relUnion)
     ,("rel-where", relWhere)
@@ -1492,7 +1529,7 @@ bParseFile :: [Value] -> Interpreter Value
 bParseFile [TextV fn] = do
     src <- liftIO $ readFile fn
     let ast = either error id $ parseScript fn src
-    pure $ FFIValue ["burdockast"] $ toDyn $ ast
+    pure $ FFIValue "burdockast" $ toDyn $ ast
     
 bParseFile _ = _errorWithCallStack $ "wrong args to parse-file"
 
@@ -1504,7 +1541,7 @@ bShowHaskellAst [FFIValue _ffitag v] = do
 bShowHaskellAst _ = _errorWithCallStack $ "wrong args to show-haskell-ast"
     
 getCallStack :: [Value] -> Interpreter Value
-getCallStack [] = (FFIValue ["callstack"] . toDyn) <$> readCallStack
+getCallStack [] = (FFIValue "callstack" . toDyn) <$> readCallStack
 getCallStack _ = _errorWithCallStack $ "wrong args to get-call-stack"
 
 bFormatCallStack :: [Value] -> Interpreter Value
@@ -1546,14 +1583,6 @@ hEqualAlways a' b' =
               -> do
                   fn <- interpDotExpr a' "equal-always"
                   unwrapBool <$> app fn [b']
-        -- tuple
-        {-(VariantV tg "tuple" fs, VariantV tg1 "tuple" fs1)
-            | tg == bootstrapType "Tuple" && tg1 == bootstrapType "Tuple" ->
-              fieldsEqual fs fs1
-        --variant without equal-always
-        (VariantV tg "record" fs, VariantV tg1 "record" fs1)
-            | tg == bootstrapType "Record" && tg1 == bootstrapType "Record" ->
-              fieldsEqual fs fs1-}
         (VariantV tg nm fs, VariantV tg1 nm1 fs1)
             -> ((tg == tg1 && nm == nm1) &&)
                 <$> fieldsEqual fs fs1
@@ -1561,16 +1590,11 @@ hEqualAlways a' b' =
         -- pointer equality on IORef
         (BoxV _ a, BoxV _ b) -> pure $ a == b
         (BoxV {}, _) -> pure False
-        --ffivalue
-        -- temp hacks until .equal-always is added to ffi types
-        (FFIValue _ a, FFIValue _ b)
-            | Just (av :: R.Relation Value) <- fromDynamic a
-            , Just bv <- fromDynamic b
-              -> either (error . show) pure $ R.relEqual av bv
-        (FFIValue _ a, FFIValue _ b)
-            | Just (av :: Addr) <- fromDynamic a
-            , Just bv <- fromDynamic b
-              -> pure $ av == bv
+        -- ffivalue with equals function
+        (FFIValue tga a, FFIValue tgb b)
+            | tga == tgb -> do
+                  ti <- askFFTInfo tga
+                  maybe (pure False) (\f' -> f' a b) (ffiTypeEquals =<< ti)
         (FFIValue {}, _) -> pure False
         _ | isFn a' && isFn b' -> incomparable
         (FunV {}, _) -> pure False
@@ -1635,7 +1659,7 @@ relFromList :: [Value] -> Interpreter Value
 relFromList [l]
     | Just l' <- fromBList l
     , Just l'' <- mapM unr l'
-    = either (error . show) (pure . FFIValue ["relation"] . toDyn) $ R.fromList l''
+    = either (error . show) (pure . FFIValue "relation" . toDyn) $ R.fromList l''
   where
     unr (VariantV tg "record" fs)
         | tg == bootstrapType "Record" = Just fs
@@ -1649,13 +1673,13 @@ relUnion :: [Value] -> Interpreter Value
 relUnion [FFIValue _ffitag a, FFIValue _ffitag2 b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
-    = either (error . show) (pure . FFIValue ["relation"] . toDyn) $ R.relUnion a' b'
+    = either (error . show) (pure . FFIValue "relation" . toDyn) $ R.relUnion a' b'
 relUnion _ = _errorWithCallStack "bad args to relUnion"
 
 relWhere :: [Value] -> Interpreter Value
 relWhere [FFIValue _ffitag a, f]
     | Just (a' :: R.Relation Value) <- fromDynamic a
-    = either (error . show) (FFIValue ["relation"] . toDyn) <$>
+    = either (error . show) (FFIValue "relation" . toDyn) <$>
       R.relWhere a' (wrapBPredicate f)
 
 relWhere _ = _errorWithCallStack "bad args to relWhere"
@@ -1663,7 +1687,7 @@ relWhere _ = _errorWithCallStack "bad args to relWhere"
 relUpdate :: [Value] -> Interpreter Value
 relUpdate [FFIValue _ffitag a, uf, pf]
     | Just (a' :: R.Relation Value) <- fromDynamic a
-    =  either (error . show) (FFIValue ["relation"] . toDyn) <$>
+    =  either (error . show) (FFIValue "relation" . toDyn) <$>
        R.relUpdate a' (wrapBRecFn uf) (wrapBPredicate pf)
 relUpdate _ = _errorWithCallStack "bad args to relUpdate"
 
@@ -1671,7 +1695,7 @@ relProject :: [Value] -> Interpreter Value
 relProject [l, FFIValue _ffitag a]
     | Just cs <- mapM unText =<< fromBList l
     , Just (a' :: R.Relation Value) <- fromDynamic a
-    =  either (error . show) (pure . FFIValue ["relation"] . toDyn) $
+    =  either (error . show) (pure . FFIValue "relation" . toDyn) $
        R.relProject cs a'
   where
     unText (TextV t) = Just t
@@ -1682,7 +1706,7 @@ relRename :: [Value] -> Interpreter Value
 relRename [l, FFIValue _ffitag a]
     | Just cs <- mapM unTextPair =<< fromBList l
     , Just (a' :: R.Relation Value) <- fromDynamic a
-    =  either (error . show) (pure . FFIValue ["relation"] . toDyn) $
+    =  either (error . show) (pure . FFIValue "relation" . toDyn) $
        R.relRename cs a'
   where
     unTextPair (VariantV tg "tuple" [(_, TextV x), (_, TextV y)])
@@ -1694,7 +1718,7 @@ relJoin :: [Value] -> Interpreter Value
 relJoin [FFIValue _ffitag a, FFIValue _ffitag2 b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
-    = either (error . show) (pure . FFIValue ["relation"] . toDyn)
+    = either (error . show) (pure . FFIValue "relation" . toDyn)
       $ R.relJoin a' b'
 relJoin _ = _errorWithCallStack "bad args to relJoin"
 
@@ -1702,7 +1726,7 @@ relNotMatching :: [Value] -> Interpreter Value
 relNotMatching [FFIValue _ffitag a, FFIValue _ffitag2 b]
     | Just (a' :: R.Relation Value) <- fromDynamic a
     , Just b' <- fromDynamic b
-    = either (error . show) (pure . FFIValue ["relation"] . toDyn)
+    = either (error . show) (pure . FFIValue "relation" . toDyn)
       $ R.relNotMatching a' b'
 relNotMatching _ = error "bad args to relNotMatching"
 
@@ -1710,11 +1734,11 @@ relGroup :: [Value] -> Interpreter Value
 relGroup [a, TextV b, FFIValue _ffitag c]
     | Just (c' :: R.Relation Value) <- fromDynamic c
     , Just ks <- mapM unText =<< fromBList a
-    = either (error . show) (pure . FFIValue ["relation"] . toDyn)
+    = either (error . show) (pure . FFIValue "relation" . toDyn)
       $ R.relGroup makeRelVal ks b c'
   where
     makeRelVal :: R.Relation Value -> Value
-    makeRelVal rs = FFIValue ["relation"] . toDyn $ rs
+    makeRelVal rs = FFIValue "relation" . toDyn $ rs
     unText (TextV v) = Just v
     unText _ = Nothing
 relGroup _ = error "bad args to relGroup"
@@ -1722,7 +1746,7 @@ relGroup _ = error "bad args to relGroup"
 relUngroup :: [Value] -> Interpreter Value
 relUngroup [TextV a, FFIValue _ffitag b]
     | Just (b' :: R.Relation Value) <- fromDynamic b
-    = either (error . show) (pure . FFIValue ["relation"] . toDyn)
+    = either (error . show) (pure . FFIValue "relation" . toDyn)
       $ R.relUngroup unmakeRel a b'
   where
     unmakeRel :: Value -> [[(String,Value)]]
@@ -2065,7 +2089,7 @@ interp (Receive cs aft) = do
                       Just vx -> vx
                       _ -> case fromDynamic tg of
                           Just () -> nothing
-                          _ -> FFIValue ["unknown"] tg
+                          _ -> FFIValue "unknown" tg
             et' = case et of
                       ExitValue -> VariantV (internalsType "ExitType") "exit-value" []
                       ExitException -> VariantV (internalsType "ExitType") "exit-exception" []
@@ -2073,7 +2097,7 @@ interp (Receive cs aft) = do
                      Just vx -> vx
                      _ -> case fromDynamic v of
                               Just s -> TextV s
-                              _ -> FFIValue ["unknown"] v
+                              _ -> FFIValue "unknown" v
             r' = convertHsMonitorRef r
         in VariantV (internalsType "MonitorDown") "monitor-down"
                [("tag", tg')
@@ -2172,7 +2196,7 @@ typeLet tds f = do
         newEnv (TypeDecl _ (_:_) _ : _) = _errorWithCallStack $ "todo: parameterized type-let"
         newEnv (TypeDecl n _ t:tds') = do
             ty <- typeOfTypeSyntax t
-            localBindings (extendBindings [("_typeinfo-" ++ n,FFIValue ["typeinfo"] $ toDyn ty)])
+            localBindings (extendBindings [("_typeinfo-" ++ n,FFIValue "typeinfo" $ toDyn ty)])
                  $ newEnv tds'
     newEnv tds
 
@@ -2459,12 +2483,12 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
            [StmtExpr $ foldl1 orE $ map callIs vs]
         chk = maybe [] (\w -> [Check (Just dnm) w]) whr
     moduleName <- readModuleName
-    letValue typeInfoName $ FFIValue ["typeinfo"] $ toDyn
+    letValue typeInfoName $ FFIValue "typeinfo" $ toDyn
         $ SimpleTypeInfo ["_system", "modules", moduleName, dnm]
     -- todo: use either a burdock value or a proper ffi value for the casepattern
     -- instead of a haskell tuple
     forM_ vs $ \(VariantDecl vnm _ _) -> letValue ("_casepattern-" ++ vnm)
-        $ FFIValue ["typeinfo"] $ toDyn (SimpleTypeInfo ["_system", "modules", moduleName, dnm], vnm)
+        $ FFIValue "typeinfo" $ toDyn (SimpleTypeInfo ["_system", "modules", moduleName, dnm], vnm)
     makeVs <- mapM makeV vs
     let desugared = (makeVs ++ map makeIs vs ++ [makeIsDat] ++ chk)
     interpStatements desugared
@@ -2798,24 +2822,24 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
         ,("nothing", VariantV (bootstrapType "Nothing") "nothing" [])
         ,("is-nothing", ForeignFunV "is-nothing")
         ,("is-Nothing", ForeignFunV "is-Nothing")
-        ,("_casepattern-nothing", FFIValue ["casepattern"] $ toDyn (bootstrapType "Nothing", "nothing"))
+        ,("_casepattern-nothing", FFIValue "casepattern" $ toDyn (bootstrapType "Nothing", "nothing"))
         -- todo: complete the boolean (and nothing?) types
         ,("get-ffi-value", ForeignFunV "get-ffi-value")
         ,("make-variant", ForeignFunV "make-variant")
         ,("is-variant", ForeignFunV "is-variant")
-        ,("_typeinfo-Any", FFIValue ["typeinfo"] $ toDyn
+        ,("_typeinfo-Any", FFIValue "typeinfo" $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Any"])
-        ,("_typeinfo-Number", FFIValue ["typeinfo"] $ toDyn
+        ,("_typeinfo-Number", FFIValue "typeinfo" $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Number"])
-        ,("_typeinfo-String", FFIValue ["typeinfo"] $ toDyn
+        ,("_typeinfo-String", FFIValue "typeinfo" $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","String"])
-        ,("_typeinfo-Boolean", FFIValue ["typeinfo"] $ toDyn
+        ,("_typeinfo-Boolean", FFIValue "typeinfo" $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Boolean"])
-        ,("_typeinfo-Tuple", FFIValue ["typeinfo"] $ toDyn
+        ,("_typeinfo-Tuple", FFIValue "typeinfo" $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Tuple"])
-        ,("_typeinfo-Record", FFIValue ["typeinfo"] $ toDyn
+        ,("_typeinfo-Record", FFIValue "typeinfo" $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Record"])
-        ,("_typeinfo-Function", FFIValue ["typeinfo"] $ toDyn
+        ,("_typeinfo-Function", FFIValue "typeinfo" $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Function"])
         ]
 
