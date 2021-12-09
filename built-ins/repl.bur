@@ -1,17 +1,20 @@
 
 #|
-  way overengineered code to run a "repl engine" in a thread
-  despite being overengineered, it still has issues
+
+  repl in a thread
+  maybe a bit overengineered for a simpler repl, but a good starting
+  point for a job control enabled repl
+
   todo: switch to an evaluator object which is similar to a thread
     change run-script to not use app to evaluate, so it doesn't
       create a local bindings, but modifies the top level bindings
     adjust all the weird hacky stuff added to the thread local state
       to support the current not very good approach
-    then can go back to a local thing in the repl in burdockexe
-    can add a demo of one running in a another thread
-    -> this is a building block of job control for the repl
-       and of an attach feature, where you can start a repl
-       in a running burdock process and interact with the process
+    do an attach feature, where you can start a repl
+      in a running burdock process and interact with the process
+      - as long as the process enables listening on a port to
+      support this
+    fix the bug:
 
   there's some serious issues using it, e.g.:
   a = 5
@@ -20,10 +23,13 @@
   b
   after a few repeats, it starts to go wrong
     make sure to kill it because it can use a lot of memory very quickly
-  tail calls?
+  nneds explicit tail call optimisation in the interpreter?
   unintended laziness?
   something to do with the concurrency system?
   no idea what the issue is
+    it seems to only happen if you keep getting exceptions
+    and doesn't happen if you keep running statements that complete
+      without exceptions?
 
 |#
 
@@ -120,13 +126,17 @@ fun repl-monitor():
             | monitor-down(_,et,"exiting",mr) when mr == rf =>
                 send(ret,exiting(self))
             | monitor-down(_,et,v,mr) when mr == rf =>
+                # todo: it's no good to print in this thread,
+                # it should send it to the client thread to print
                 print("repl didn't exit nicely: " + torepr(et,v))            
                 send(ret,exiting(self))
           end
       | monitor-down(_,_et,v,mr) when mr == rf =>
+          # todo: printing in wrong thread, see above
           print("repl-loop unexpectedly exited: " + torepr(v))
           repl-down(v)
       | _ as e =>
+          # todo: printing in wrong thread, see above
           print("repl-monitor: unexpected message: " + torepr(e))
           repl-monitor-loop()
     end
@@ -142,6 +152,7 @@ fun repl-loop():
         repl-loop()
     | exit(ret) => "exiting"
     | _ as e =>
+          # todo: printing in wrong thread, see above
         print("repl-loop: unexpected message: " + torepr(e))
         repl-loop()
   end

@@ -13,17 +13,21 @@ Target use cases
 
 * implementing and maintaining non trivial automated test frameworks
   including reports
+
 * benchmarking and profiling data reports/analysis tools
+
 * implementing and maintaining other kinds of automation for complex
   software product dev and maintenance, and for demos, solutions
   architecture
+
 * build scripts
-* most of the things you might also use bash or python for
+
+* most of the "scripting" things you might also use bash or python for
 
 Not designed to be good at implementing the stuff that existing low
-level languages such as C++/Rust, designed for a only a subset of the
-appropriate use cases of e.g. F#, Ocaml, Haskell, isn't aimed at
-Javascript backends/platforms.
+level languages such as C++/Rust do well, designed for a only a subset
+of the appropriate use cases of e.g. F#, Ocaml, Haskell, isn't aimed
+at Javascript backends/platforms.
 
 Hypotheses
 
@@ -67,6 +71,9 @@ syntax. Implemented in Haskell.
 * run exes, "shell FFI"
 * Erlang inspired concurrency features
 * relational theory inspired features
+* automated testing made very easy
+* strong focus on ergonomics, an analogy - the left-handed oil test:
+  https://www.youtube.com/watch?v=w08XDXjJhsQ&t=127s
 
 Use
 ---

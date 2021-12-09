@@ -8,7 +8,6 @@ import from _internals:
   haskell-undefined
 end
 
-
 # utils for the testing
 # perhaps these should be in the standard lib?
 
@@ -41,10 +40,11 @@ end
 # demonstrate a check block inside a spawned thread
 # needs some design thought?
 
-r = spawn-monitor(lam(): block:
+r = spawn-monitor(lam():
     check "check block in spawn":
       1 is 1
-    end end end)
+    end end)
+
 check "check block in spawn exit":
   wait-ref(r.{1}) satisfies wait-ref-regular-exit
 end
@@ -52,9 +52,9 @@ end
 # spawn inside a check block - straightforward design
 
 check "spawn in check block":
-  r = spawn-monitor(lam(): block:
-      1 is 1
-    end end)
+  r = spawn-monitor(lam():
+        1 is 1
+      end)
   wait-ref(r.{1}) satisfies wait-ref-regular-exit
 end
 
@@ -81,12 +81,12 @@ fun receive-all-inbox():
 end
 
 check "receive-all-inbox":
-  run-tests-in-thread(lam(): block:
+  run-tests-in-thread(lam():
     send(self,1)
     send(self,2)
     receive-all-inbox() is [list: 1,2]
     receive-all-inbox() is [list: ]
-  end end)
+  end)
 end
 
 #######################################
@@ -94,75 +94,68 @@ end
 data Msg: msg(ret,val) end
 
 check "trivial send and receive":
-  run-tests-in-thread(lam(): block:
-    pid = spawn(lam(): block:
+  run-tests-in-thread(lam():
+    pid = spawn(lam():
         x = receive-any()
         send(x.ret, "hello " + x.val)
-        end
       end)
     send(pid, {ret:self, val:"world"})
     receive-any() is "hello world"
-  end end)
+  end)
 end
 
-
 check "receive pattern matching":
-  run-tests-in-thread(lam(): block:
-    pid = spawn(lam(): block:
+  run-tests-in-thread(lam():
+    pid = spawn(lam():
           receive:
             | msg(ret,val) =>
                 send(ret, msg(self,"hello " + val))
           end
-        end
-      end)
+        end)
     send(pid, msg(self,"world"))
     x = receive: | msg(_,a) => a end
     x is "hello world"
-  end end)
+  end)
 end
 
 check "trivial selective receive":
-  run-tests-in-thread(lam(): block:
+  run-tests-in-thread(lam():
     # alias self so can use it from the closure of the spawned thread
     outer-self = self
-    pid = spawn(lam(): block:
-          send(outer-self, left("skip1"))
-          send(outer-self, left("skip2"))
-          send(outer-self, right("got it"))
-        end
-      end)
+    pid = spawn(lam():
+            send(outer-self, left("skip1"))
+            send(outer-self, left("skip2"))
+            send(outer-self, right("got it"))
+          end)
     receive:
       | right(x) => x
     end is "got it"
     receive-all-inbox() is [list: left("skip1"), left("skip2")]
-  end end)
+  end)
 end
 
 check "nested receive":
-  run-tests-in-thread(lam(): block:
+  run-tests-in-thread(lam():
     outer-self = self
-    x = spawn-monitor(lam(): block:
+    x = spawn-monitor(lam():
           send(outer-self, left("skip1"))
           send(outer-self, left("skip2"))
-        end
-      end)
+        end)
     wait-ref(x.{1}) satisfies wait-ref-regular-exit
     receive:
-      | _ as z0 => receive:
+      | _ as z0 =>
+        receive:
           | _ as z1 => [list: z0,z1]
         end
     end is [list: left("skip1") , left("skip2")]
-    x = spawn-monitor(lam(): block:
+    x = spawn-monitor(lam():
           send(outer-self, left("skip1"))
           send(outer-self, left("skip2"))
-        end
-      end)
+        end)
     wait-ref(x.{1}) satisfies wait-ref-regular-exit
     receive-all-inbox() is [list: left("skip1") , left("skip2")]
-  end end)
+  end)
 end
-
-
 
 # test?:
 # spawn 1
@@ -173,14 +166,13 @@ end
 # wait-ref on 2
 
 check "a trivial select receive":
-  run-tests-in-thread(lam(): block:
-    pid = spawn(lam(): block:
-          ret = receive-any()
-          send(ret, msg(self,2))
-          send(ret, msg(self,3))
-          send(ret, msg(self,4))
-        end
-      end)
+  run-tests-in-thread(lam():
+    pid = spawn(lam():
+            ret = receive-any()
+            send(ret, msg(self,2))
+            send(ret, msg(self,3))
+            send(ret, msg(self,4))
+          end)
     send(pid, self)
     receive:
       | msg(ret,v) when v == 3 => 3
@@ -189,12 +181,12 @@ check "a trivial select receive":
     x2 = receive-any()
     x1.val is 2
     x2.val is 4
-  end end)
+  end)
 end
 
 
 check "receive timeout":
-  run-tests-in-thread(lam(): block:
+  run-tests-in-thread(lam():
     # timeout 0 with nothing in the queue
     x = receive:
         | msg(ret,val) => some(val)
@@ -211,7 +203,7 @@ check "receive timeout":
     #todo:
     # timeout 1 with nothing in the queue
     # timeout 1 with something posted to the queue after 0.1
-  end end)
+  end)
 end
 
 
@@ -226,33 +218,31 @@ end
 # spawn-monitor: exit val, exit exception
 
 check "spawn-monitor":
-  run-tests-in-thread(lam(): block:
-  admr = spawn-monitor(lam(): msg(self,"result") end)
-  receive:
-    | monitor-down(tg,et,v,mr) => block:
-        v.val is "result"
-        tg is nothing
-        et is exit-value
-        mr is admr.{1}
-      end
-  end
-  end end)
+  run-tests-in-thread(lam():
+    admr = spawn-monitor(lam(): msg(self,"result") end)
+    receive:
+      | monitor-down(tg,et,v,mr) =>
+          v.val is "result"
+          tg is nothing
+          et is exit-value
+         mr is admr.{1}
+    end
+  end)
 end
 
 
 check "spawn-monitor-exception":
-  run-tests-in-thread(lam(): block:
+  run-tests-in-thread(lam():
     x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
     receive:
-      | monitor-down(tg,et,v,mr) => block:
+      | monitor-down(tg,et,v,mr) =>
           v.{0}.val is "errorthing"
           # v.{1} is a callstack
           tg is nothing
           et is exit-exception
           mr is x.{1}
-        end
     end
-  end end)
+  end)
 end
 
 
@@ -261,65 +251,56 @@ end
 # call stack in detail
 
 check "spawn-monitor-tag":
-  run-tests-in-thread(lam(): block:
+  run-tests-in-thread(lam():
     admr = spawn-monitor-tag({a:1,b:true}, lam(): msg(self,"result") end)
     receive:
-      | monitor-down(tg,et,v,mr) => block:
+      | monitor-down(tg,et,v,mr) =>
           v.val is "result"
           tg is {a:1,b:true}
           et is exit-value
           mr is admr.{1}
-        end
     end
-    x = spawn-monitor-tag({a:2,b:false}, lam(): raise(msg(self,"errorthing")) end)
+    x = spawn-monitor-tag({a:2,b:false},
+                          lam(): raise(msg(self,"errorthing")) end)
     receive:
-      | monitor-down(tg,et,v,mr) => block:
+      | monitor-down(tg,et,v,mr) =>
           v.{0}.val is "errorthing"
           # v.{1} is a callstack
           tg is {a:2,b:false}
           et is exit-exception
           mr is x.{1}
-        end
     end
-  end end)
+  end)
 end
 
 check "spawn-monitor-haskell-stuff":
-  run-tests-in-thread(lam(): block:
-
+  run-tests-in-thread(lam():
     admr = spawn-monitor(lam(): haskell-error("check this message gets through") end)
     receive:
-      | monitor-down(tg,et,v,mr) => block:
+      | monitor-down(tg,et,v,mr) =>
           v satisfies lam(x): string-index-of(x, "check this message gets through") > -1 end
           tg is nothing
           et is exit-exception
           mr is admr.{1}
-        end
     end
-
     admr2 = spawn-monitor(lam(): haskell-undefined() end)
     receive:
-      | monitor-down(tg,et,v,mr) => block:
+      | monitor-down(tg,et,v,mr) =>
           v satisfies lam(x): string-index-of(x, "Prelude.undefined") > -1 end
           tg is nothing
           et is exit-exception
           mr is admr2.{1}
-        end
     end
-
-
-  end end)
+  end)
 end
 
 check "async exit":
-
-  run-tests-in-thread(lam(): block:
-    waiter = spawn-monitor(lam(): block:
+  run-tests-in-thread(lam():
+    waiter = spawn-monitor(lam():
         _ = receive:
               | _ => nothing
             end
-      end end)
-
+      end)
     # todo: bug
     # intermittent test failures, the bug is due to a race condition
     # the async-exit executes before the spawned thread is running
@@ -332,7 +313,7 @@ check "async exit":
     # todo: should the monitor down distinguish between async and
     # non async exceptions?
     receive:
-      | monitor-down(tg,et,v,mr) => block:
+      | monitor-down(tg,et,v,mr) =>
           v is "on yer bike"
           # todo: how to get a callstack for this?
           # need to maintain the callstack differently?
@@ -342,12 +323,8 @@ check "async exit":
           tg is nothing
           et is exit-exception
           mr is waiter.{1}
-        end
     end
-
-  end end)
-  
-
+  end)
 end
 
 # todo: add support for non local exit from a thread
