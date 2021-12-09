@@ -50,9 +50,9 @@ check "internal - default equals for variants":
 
   eq = method(self,x): equal-by-field([list:'y'], self, x) end
 
-  c1 = { method m(self, x): self.y + x end, y: 22, equal-always: eq}
-  d1 = { method m(self, x): self.y + x end, y: 22, equal-always: eq}
-  e1 = { method m(self, x): self.y + x end, y: 23, equal-always: eq}
+  c1 = { method m(self, x): self.y + x end, y: 22, _equals: eq}
+  d1 = { method m(self, x): self.y + x end, y: 22, _equals: eq}
+  e1 = { method m(self, x): self.y + x end, y: 23, _equals: eq}
 
   c1 is d1
   c1 == d1 is true

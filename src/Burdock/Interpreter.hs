@@ -1579,9 +1579,9 @@ hEqualAlways a' b' =
         -- variant with equal method
         -- this includes records with an equal-always
         (VariantV _ _ fs, _)
-            | Just _ <- lookup "equal-always" fs
+            | Just _ <- lookup "_equals" fs
               -> do
-                  fn <- interpDotExpr a' "equal-always"
+                  fn <- interpDotExpr a' "_equals"
                   unwrapBool <$> app fn [b']
         (VariantV tg nm fs, VariantV tg1 nm1 fs1)
             -> ((tg == tg1 && nm == nm1) &&)
@@ -2496,15 +2496,16 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
     typeInfoName = "_typeinfo-" ++ dnm
     me (menm,m) = [Iden "false", Text menm, MethodExpr m]
     makeV (VariantDecl vnm fs ms) = do
-        -- make an equal-always method which compares the non method fields
+        -- make an _equals method which compares the non method fields
         -- if the variant has methods
-        -- todo: don't override if the user supplies an explicit equal-always method
+        -- todo: don't override if the user supplies an explicit _equals method
+        -- todo: update this if start supporting equal-now, to add the equal-rec field
         let cnms = flip map fs $ \(_,SimpleBinding _ nm _) -> nm
             eqFlds = Construct ["_system", "modules", "_internals", "list"] $ map Text cnms
             equalsWithoutMethods =
                 if null (ms ++ shr)
                 then []
-                else [("equal-always"
+                else [("_equals"
                       ,Method (FunHeader [] [NameBinding "self", NameBinding "x"] Nothing)
                           [StmtExpr $ App appSourcePos (internalsRef "equal-by-field")
                               [eqFlds, Iden "self", Iden "x"]])]
