@@ -132,7 +132,7 @@ import Data.Dynamic (Dynamic
 
 import Data.Char (isSpace)
 
-import System.IO.Unsafe (unsafePerformIO)
+--import System.IO.Unsafe (unsafePerformIO)
 
 import Text.Show.Pretty (ppShow)
 
@@ -381,7 +381,7 @@ instance Eq Value where
     --    and try to stick to them
     _ == _ = False
 
-valueToString :: Value -> IO (Maybe String)
+valueToString :: Value -> Interpreter (Maybe String)
 valueToString v = case v of
     VariantV tg "nothing" [] | tg == bootstrapType "Nothing" -> pure $ Nothing
     _ -> Just <$> torepr' v
@@ -624,7 +624,7 @@ data InterpreterException = InterpreterException CallStack String
 instance Show InterpreterException where
     show (InterpreterException _ s) = s
     -- todo: create a pure version of torepr' just to use here
-    show (ValueException _ v) = unsafePerformIO $ torepr' v
+    show (ValueException _ v) = show v -- unsafePerformIO $ torepr' v
 
 instance Exception InterpreterException where
 
@@ -862,7 +862,7 @@ localPushCallStack sp = do
     local (\tl -> tl { tlCallStack = sp : tlCallStack tl})
 
 showState :: InterpreterState -> IO String
-showState s = do
+showState _s = undefined {-do
     p1 <- showTab "local created" =<< readIORef (tlLocallyCreatedBindings s)
     p2 <- showTab "imported"  =<< readIORef (tlIncludedBindings s)
     pure $ unlines [p1,p2]
@@ -876,7 +876,7 @@ showState s = do
   where
     showTab t vs = do
         ps <- mapM (\(n,v) -> ((n ++ " = ") ++) <$> torepr' v) vs
-        pure $ t ++ "\n" ++ unlines ps
+        pure $ t ++ "\n" ++ unlines ps-}
 
 {-
 show the system env
@@ -1116,7 +1116,7 @@ formatExceptionI :: Bool -> InterpreterException -> Interpreter String
 formatExceptionI includeCallstack e = do
     (st,m) <- case e of
             ValueException st (TextV m) -> pure (st,m)
-            ValueException st m -> (st,) <$> liftIO (torepr' m)
+            ValueException st m -> (st,) <$> torepr' m
             InterpreterException st m -> pure (st,m)
     stf <- if includeCallstack
            then ("\ncall stack:\n" ++) <$> formatCallStack st
@@ -1192,10 +1192,10 @@ _errorWithCallStack msg = do
 
 -- converting values to strings
 
-torepr' :: Value -> IO String
+torepr' :: Value -> Interpreter String
 torepr' x = show <$> toreprx x
 
-toreprx :: Value -> IO (P.Doc a)
+toreprx :: Value -> Interpreter (P.Doc a)
 toreprx (NumV n) = pure $ case extractInt n of
                              Just x -> P.pretty $ show x
                              Nothing ->  P.pretty $ show n
@@ -1206,7 +1206,7 @@ toreprx (ForeignFunV f) = pure $ P.pretty $ "<ForeignFunction:" ++ f ++ ">"
 toreprx (TextV s) = pure $ P.pretty $ "\"" ++ s ++ "\""
 -- todo: add the type
 toreprx (BoxV _ b) = do
-    bv <- readIORef b
+    bv <- liftIO $ readIORef b
     v <- toreprx bv
     pure $ P.pretty "<Box:" <> v <> P.pretty ">"
 
@@ -1231,12 +1231,11 @@ toreprx (FFIValue _ffitag r)
     | Just (r' :: R.Relation Value) <- fromDynamic r
     = pure $ P.pretty $ R.showRel r'
 
-{-toreprx x@(FFIValue tg v) = do
+toreprx x@(FFIValue tg v) = do
     ti <- askFFTInfo tg
     maybe (pure $ P.pretty $ show x)
-          (\f' -> TextV <$> f' v)
-          (ffiTypeToRepr =<< ti)-}
-toreprx x@(FFIValue {}) = pure $ P.pretty $ show x -- "<ffi-value>"
+          (\f' -> P.pretty <$> f' v)
+          (ffiTypeToRepr =<< ti)
 
 xSep :: String -> [P.Doc a] -> P.Doc a
 xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
@@ -1539,7 +1538,7 @@ bPrint :: [Value] -> Interpreter Value
 bPrint [v] = do
     v' <- case v of
               TextV s -> pure s
-              _ -> liftIO $ torepr' v
+              _ -> torepr' v
     liftIO $ putStrLn v'
     pure nothing
 
@@ -1561,7 +1560,7 @@ bShowHandleState [] = do
 bShowHandleState _ = _errorWithCallStack $ "wrong args to show-handle-state"
 
 torepr :: [Value] -> Interpreter Value
-torepr [x] = TextV <$> liftIO (torepr' x)
+torepr [x] = TextV <$> torepr' x
 torepr _ = _errorWithCallStack "wrong number of args to torepr"
 
 toString :: [Value] -> Interpreter Value
@@ -2352,7 +2351,7 @@ assertTypeCompat v ti =
     if v `typeIsCompatibleWith` ti
         then pure v
         else do
-            r <- liftIO $ torepr' v
+            r <- torepr' v
             throwValueWithStacktrace
                 $ TextV $ "type not compatible (marker) " ++ r ++ " :: " ++ show v ++ " // " ++ show ti
 
@@ -2808,18 +2807,18 @@ testIs msg e0 e1 = do
             if t
             then atr $ TestPass msg
             else do
-                p0 <- liftIO $ torepr' v0'
-                p1 <- liftIO $ torepr' v1'
+                p0 <- torepr' v0'
+                p1 <- torepr' v1'
                 atr $ TestFail msg (p0 ++ "\n!=\n" ++ p1)
         (Left er0, Right {}) -> do
-            er0' <- liftIO $ torepr' er0
+            er0' <- torepr' er0
             atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
         (Right {}, Left er1) -> do
-            er1' <- liftIO $ torepr' er1
+            er1' <- torepr' er1
             atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
         (Left er0, Left er1) -> do
-            er0' <- liftIO $ torepr' er0
-            er1' <- liftIO $ torepr' er1
+            er0' <- torepr' er0
+            er1' <- torepr' er1
             atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
                                 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
     pure nothing
@@ -2833,18 +2832,18 @@ testIsNot msg e0 e1 = do
             if not t
             then atr $ TestPass msg
             else do
-                p0 <- liftIO $ torepr' v0'
-                p1 <- liftIO $ torepr' v1'
+                p0 <- torepr' v0'
+                p1 <- torepr' v1'
                 atr $ TestFail msg (p0 ++ "\n==\n" ++ p1)
         (Left er0, Right {}) -> do
-            er0' <- liftIO $ torepr' er0
+            er0' <- torepr' er0
             atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
         (Right {}, Left er1) -> do
-            er1' <- liftIO $ torepr' er1
+            er1' <- torepr' er1
             atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
         (Left er0, Left er1) -> do
-            er0' <- liftIO $ torepr' er0
-            er1' <- liftIO $ torepr' er1
+            er0' <- torepr' er0
+            er1' <- torepr' er1
             atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
                                 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
     pure nothing
@@ -2856,10 +2855,10 @@ testRaises msg e0 e1 = do
         (Right _, Right _) ->
             atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
         (_, Left er1) -> do
-            er1' <- liftIO $ torepr' er1
+            er1' <- torepr' er1
             atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
         (Left er0, Right (TextV v)) -> do
-            val <- liftIO $ torepr' er0
+            val <- torepr' er0
             if v `isInfixOf` val
                 then atr $ TestPass msg
                 else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ "\"" ++ v ++ "\"")
@@ -2874,7 +2873,7 @@ testRaisesSatisfies msg e0 f = do
         (Right _, Right _) ->
             atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
         (_, Left er1) -> do
-            er1' <- liftIO $ torepr' er1
+            er1' <- torepr' er1
             atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1')
         (Left er0, Right fvv) -> do
             r <- app fvv [er0]
@@ -2895,14 +2894,14 @@ testSatisfies msg e0 f = do
                 BoolV False -> atr $ TestFail msg ("failed: " ++ show v' ++ ", didn't satisfy predicate " ++ show f)
                 _ -> atr $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
         (Left er0, Right {}) -> do
-            er0' <- liftIO $ torepr' er0
+            er0' <- torepr' er0
             atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
         (Right {}, Left er1) -> do
-            er1' <- liftIO $ torepr' er1
+            er1' <- torepr' er1
             atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1')
         (Left er0, Left er1) -> do
-            er0' <- liftIO $ torepr' er0
-            er1' <- liftIO $ torepr' er1
+            er0' <- torepr' er0
+            er1' <- torepr' er1
             atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
                                 ++ "\n" ++ prettyExpr f ++ " failed: " ++ er1')
     pure nothing
