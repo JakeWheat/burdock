@@ -22,6 +22,7 @@
 - command line args access
 - possibly some initial c ffi work
 - tail call optimisation
+- strictness pass
 
 ## Week 7 5th Dec
 

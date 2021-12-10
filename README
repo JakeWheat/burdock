@@ -108,7 +108,7 @@ access the repl:
 Examples
 --------
 
-Tests and the built in modules:
+TODO: proper examples, for now there are the tests and the built in modules:
 
 * <https://github.com/JakeWheat/burdock/blob/master/burdock-test-src/>
 * <https://github.com/JakeWheat/burdock/blob/master/built-ins/>

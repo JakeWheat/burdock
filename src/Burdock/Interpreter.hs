@@ -1226,11 +1226,6 @@ toreprx (VariantV _ nm fs) = do
     vs <- mapM (toreprx . snd) fs
     pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
 
--- temp
-toreprx (FFIValue _ffitag r)
-    | Just (r' :: R.Relation Value) <- fromDynamic r
-    = pure $ P.pretty $ R.showRel r'
-
 toreprx x@(FFIValue tg v) = do
     ti <- askFFTInfo tg
     maybe (pure $ P.pretty $ show x)
@@ -1295,11 +1290,16 @@ relationFFIEquals a b =
     e :: R.Relation Value -> R.Relation Value -> Interpreter Bool
     e a' b' = either (error . show) pure $ R.relEqual a' b'
 
+relationToRepr :: Dynamic -> Interpreter String
+relationToRepr a = case fromDynamic a of
+    Just (r' :: R.Relation Value) -> pure $ R.showRel r'
+    Nothing -> error $ "expected relation, got " ++ show a
+
 builtInFFITypes :: [(String,FFITypeInfo)] 
 builtInFFITypes =
     [("callstack", FFITypeInfo Nothing Nothing Nothing)
     ,("addr", FFITypeInfo (Just addrEquals) Nothing Nothing)
-    ,("relation", FFITypeInfo (Just relationFFIEquals) Nothing Nothing)
+    ,("relation", FFITypeInfo (Just relationFFIEquals) Nothing (Just relationToRepr))
     ,("unknown", FFITypeInfo Nothing Nothing Nothing)
     ,("burdockast", FFITypeInfo Nothing Nothing Nothing)
     ,("typeinfo", FFITypeInfo Nothing Nothing Nothing)
@@ -1737,6 +1737,9 @@ hLessThan a' b' =
                   unwrapBool <$> app fn [b']
         (VariantV {} , _) -> error "incompatible args to <"
         (BoxV {}, _) -> error "incompatible args to <"
+        -- can you create a new unique id for each box
+        -- so they can have an arbitrary order?
+                --_ a, BoxV _ b) -> pure $ a < b -- error "incompatible args to <"
         -- ffivalue with equals function
         (FFIValue tga a, FFIValue tgb b)
             | tga == tgb -> do
