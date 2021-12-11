@@ -731,7 +731,6 @@ interpreterTests =
      ,"burdock-test-src/binding.bur"
      ,"burdock-test-src/for.bur"
      ,"burdock-test-src/methods.bur"
-     ,"burdock-test-src/ffitypes.bur" 
     ]
     ,TestGroup "built-in modules" $ map InterpreterTestsFile
      ["burdock-test-src/built-in-functions.bur"
@@ -746,5 +745,7 @@ interpreterTests =
      ,"burdock-test-src/relational-demo.bur"
      ,"burdock-test-src/concurrency.bur"
      ]
-    
+    ,TestGroup "packages" $ map InterpreterTestsFile
+     ["packages/ffitypes-test/tests/ffitypes.bur"
+     ]
     ]

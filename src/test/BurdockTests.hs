@@ -21,6 +21,9 @@ import Control.Exception.Safe (bracket)
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
 
+-- todo: how to structure the tests better?
+import qualified FFITypesTest
+
 main :: IO ()
 main = do
     setNumCapabilities =<< getNumProcessors
@@ -62,6 +65,7 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
     pure $ T.testCase fn $ T.assertFailure $ show (ex :: SomeException)
   where
     makeIt = bracket newHandle closeHandle $ \h -> do
+        addPackages h
         src <- readFile fn
         _ <- runScript h Nothing []
              "_system.modules._internals.set-auto-print-test-results(false)\n\
@@ -75,3 +79,6 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
                     TestPass nm -> T.testCase nm $ T.assertBool "" True
                     TestFail nm msg -> T.testCase nm $ T.assertBool msg False
         pure $ T.testGroup fn ts
+    -- todo: a bit better
+    addPackages h = do
+        addFFIPackage h "ffitypes" FFITypesTest.ffiTypesFFIPackage

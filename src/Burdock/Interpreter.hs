@@ -24,6 +24,9 @@ module Burdock.Interpreter
     ,Interpreter
     ,Value(..)
     ,addFFIImpls
+    ,FFIPackage(..)
+    ,FFITypeInfo(..)
+    ,addFFIPackage
 
     ,setNumCapabilities
     ,getNumProcessors
@@ -136,7 +139,6 @@ import Data.Char (isSpace)
 
 import Text.Show.Pretty (ppShow)
 
-import Burdock.HsConcurrency ()
 import Control.Concurrent.STM.TVar
     (TVar
     ,readTVar
@@ -221,6 +223,10 @@ formatException h includeCallstack e =
 addFFIImpls :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
 addFFIImpls h ffis =
     spawnExtWaitHandle h $ \th -> runInterp th True h $ addFFIImpls' ffis
+
+addFFIPackage :: Handle -> String -> FFIPackage -> IO ()
+addFFIPackage h nm ffipkg =
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ addFFIPackage' nm ffipkg
 
 allTestsPassed :: Handle -> IO Bool
 allTestsPassed h = spawnExtWaitHandle h $ \th -> runInterp th True h $ do
@@ -913,6 +919,18 @@ addFFIImpls' fs = do
         modifyTVar (tlHandleState st) $ \x ->
         x {hsForeignFunctionImpls = fs ++ hsForeignFunctionImpls x}
 
+addFFITypes' :: [(String, FFITypeInfo)] -> Interpreter ()
+addFFITypes' ts = do
+    st <- ask
+    liftIO $ atomically $
+        modifyTVar (tlHandleState st) $ \x ->
+        x {hsForeignTypes = ts ++ hsForeignTypes x}
+
+addFFIPackage' :: String -> FFIPackage -> Interpreter ()
+addFFIPackage' nm pkg = do
+    addFFITypes' $ ffiPackageTypes pkg
+    addFFIImpls' $ ffiPackageFunctions pkg 
+
 ---------------------------------------
 
 -- concurrency support
@@ -1237,6 +1255,15 @@ xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
 
 ------------------------------------------------------------------------------
 
+-- ffi
+
+-- package system
+
+data FFIPackage
+    = FFIPackage
+    {ffiPackageTypes :: [(String,FFITypeInfo)] 
+    ,ffiPackageFunctions :: [(String, [Value] -> Interpreter Value)]
+    }
 -- built in ffi types
 
 data FFITypeInfo
@@ -1264,25 +1291,6 @@ addrEquals a b =
     e :: Addr -> Addr -> Interpreter Bool
     e x y = pure $ (==) x y
 
-stringEquals :: Dynamic -> Dynamic -> Interpreter Bool
-stringEquals a b =
-    liftEquals "haskell-string" e a b
-  where
-    e :: String -> String -> Interpreter Bool
-    e x y = pure $ (==) x y
-
-stringLT :: Dynamic -> Dynamic -> Interpreter Bool
-stringLT a b =
-    liftEquals "haskell-string" e a b
-  where
-    e :: String -> String -> Interpreter Bool
-    e x y = pure $ (<) x y
-
-stringToRepr :: Dynamic -> Interpreter String
-stringToRepr a = case fromDynamic a of
-    Just x -> pure x
-    Nothing -> error $ "expected string, got " ++ show a
-
 relationFFIEquals :: Dynamic -> Dynamic -> Interpreter Bool
 relationFFIEquals a b =
     liftEquals "relation" e a b
@@ -1295,7 +1303,7 @@ relationToRepr a = case fromDynamic a of
     Just (r' :: R.Relation Value) -> pure $ R.showRel r'
     Nothing -> error $ "expected relation, got " ++ show a
 
-builtInFFITypes :: [(String,FFITypeInfo)] 
+builtInFFITypes :: [(String,FFITypeInfo)]
 builtInFFITypes =
     [("callstack", FFITypeInfo Nothing Nothing Nothing)
     ,("addr", FFITypeInfo (Just addrEquals) Nothing Nothing)
@@ -1304,10 +1312,6 @@ builtInFFITypes =
     ,("burdockast", FFITypeInfo Nothing Nothing Nothing)
     ,("typeinfo", FFITypeInfo Nothing Nothing Nothing)
     ,("casepattern", FFITypeInfo Nothing Nothing Nothing)
-    -- used to test/demo the ffi system
-    -- should find a way to run automated tests better
-    -- so this isn't in the core language
-    ,("haskell-string", FFITypeInfo (Just stringEquals) (Just stringLT) (Just stringToRepr))
     ]
 
 -- built in functions implemented in haskell:
@@ -1408,8 +1412,6 @@ builtInFF =
     ,("send", bSend)
     ,("async-exit", bAsyncExit)
 
-    ,("make-haskell-string", makeHaskellString)
-    ,("unmake-haskell-string", unmakeHaskellString)
     ]
 
 getFFIValue :: [Value] -> Interpreter Value
@@ -1764,16 +1766,6 @@ hLessThan a' b' =
         BoolV False -> False
         x -> error $ "expected boolean from equal always, got  " ++ show x
 
-makeHaskellString :: [Value] -> Interpreter Value
-makeHaskellString [TextV t]
-    = pure $ FFIValue "haskell-string" $ toDyn t
-makeHaskellString _ = error "bad args to makeHaskellString"
-
-unmakeHaskellString :: [Value] -> Interpreter Value
-unmakeHaskellString [FFIValue "haskell-string" v]
-    | Just v' <- fromDynamic v
-    = pure $ TextV v'
-unmakeHaskellString _ = error "bad args to unmakeHaskellString"
 
 -------------------
 
