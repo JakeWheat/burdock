@@ -7,8 +7,8 @@ provide:
   haskell-string-length
 end
 
-import from _internals:
-  get-ffi-value
+import from ffi:
+  ffi-function
 end
 
 
@@ -18,6 +18,6 @@ end
 # and an is-X type tester
 ffitype HaskellString = "haskell-string"
 
-make-haskell-string = get-ffi-value("make-haskell-string")
-unmake-haskell-string = get-ffi-value("unmake-haskell-string")
-haskell-string-length = get-ffi-value("haskell-string-length")
+make-haskell-string = ffi-function("make-haskell-string")
+unmake-haskell-string = ffi-function("unmake-haskell-string")
+haskell-string-length = ffi-function("haskell-string-length")

@@ -20,8 +20,8 @@ provide:
 
 end
 
-import from _internals:
-  get-ffi-value
+import from ffi:
+  ffi-function
 end
 
 include option
@@ -44,16 +44,16 @@ ffitype ResultHandle = "sqlite-result-handle"
 
 #open :: String -> Handle
 #fun open(a): ... end
-open = get-ffi-value("sqlite-open")
+open = ffi-function("sqlite-open")
 
 create = ...
 
-close = get-ffi-value("sqlite-close")
+close = ffi-function("sqlite-close")
 
-command = get-ffi-value("sqlite-command")
+command = ffi-function("sqlite-command")
 
-next-row = get-ffi-value("sqlite-next-row")(none,some,sql-number,_)
+next-row = ffi-function("sqlite-next-row")(none,some,sql-number,_)
 
-close-result = get-ffi-value("sqlite-close-result")
+close-result = ffi-function("sqlite-close-result")
 
-query = get-ffi-value("sqlite-query")
+query = ffi-function("sqlite-query")

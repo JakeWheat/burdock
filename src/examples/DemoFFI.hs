@@ -58,14 +58,13 @@ main = bracket B.newHandle B.closeHandle $ \h -> do
     
     void $ B.runScript h Nothing [] [R.r|
 
-import _internals as _internals
-include from _internals:
-  get-ffi-value
+import from ffi:
+  ffi-function
 end
 
-demo-make-haskell-int = get-ffi-value("demo-make-haskell-int")
-demo-extract-int = get-ffi-value("demo-extract-int")
-demo-add-to-int = get-ffi-value("demo-add-to-int")
+demo-make-haskell-int = ffi-function("demo-make-haskell-int")
+demo-extract-int = ffi-function("demo-extract-int")
+demo-add-to-int = ffi-function("demo-add-to-int")
 
 
 v0 = demo-make-haskell-int(3)

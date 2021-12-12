@@ -30,7 +30,7 @@ provide:
 
   data Nothing,
 
-  get-ffi-value,
+  ffi-function,
   make-variant,
   is-variant,
 
@@ -51,47 +51,45 @@ end
 # list construct
 list = {make : lam(x): x end}
 
-raise = get-ffi-value("raise")
-haskell-error = get-ffi-value("haskell-error")
-haskell-undefined = get-ffi-value("haskell-undefined")
+raise = ffi-function("raise")
+haskell-error = ffi-function("haskell-error")
+haskell-undefined = ffi-function("haskell-undefined")
 
-is-specific-ffi-type = get-ffi-value("is-specific-ffi-type")
+is-specific-ffi-type = ffi-function("is-specific-ffi-type")
 
-equal-by-field = get-ffi-value("equal-by-field")
+equal-by-field = ffi-function("equal-by-field")
 
-get-call-stack = get-ffi-value("get-call-stack")
-format-call-stack = get-ffi-value("format-call-stack")
+get-call-stack = ffi-function("get-call-stack")
+format-call-stack = ffi-function("format-call-stack")
 
-run-script = get-ffi-value("run-script")
+run-script = ffi-function("run-script")
 
 # debugging and troubleshooting support
 
-load-module = get-ffi-value("load-module")
-show-handle-state = get-ffi-value("show-handle-state")
+load-module = ffi-function("load-module")
+show-handle-state = ffi-function("show-handle-state")
 
 # user stuff that's also used in bootstrapping the system
 
-is-Tuple = get-ffi-value("is-tuple")
-is-Record = get-ffi-value("is-record")
-is-Boolean = get-ffi-value("is-boolean")
-is-String = get-ffi-value("is-string")
-is-Number = get-ffi-value("is-number")
-is-Function = get-ffi-value("is-function")
+is-Tuple = ffi-function("is-tuple")
+is-Record = ffi-function("is-record")
+is-Boolean = ffi-function("is-boolean")
+is-String = ffi-function("is-string")
+is-Number = ffi-function("is-number")
+is-Function = ffi-function("is-function")
 is-Any = lam(x): true end
 
-union-recs = get-ffi-value("union-recs")
+print = ffi-function("print")
 
-print = get-ffi-value("print")
+torepr = ffi-function("torepr")
+tostring = ffi-function("tostring")
 
-torepr = get-ffi-value("torepr")
-tostring = get-ffi-value("tostring")
+string-to-number = ffi-function("string-to-number")
+string-index-of = ffi-function("string-index-of")
 
-string-to-number = get-ffi-value("string-to-number")
-string-index-of = get-ffi-value("string-index-of")
+run-task = ffi-function("run-task")
 
-run-task = get-ffi-value("run-task")
-
-not = get-ffi-value("not")
+not = ffi-function("not")
 
 data Either<a,b>:
   | left(v :: a)
@@ -143,10 +141,10 @@ data MonitorDown<a,b>:
 end
 
 # todo: do these need to be here? or can they just be in the concurrency module
-spawn = get-ffi-value("spawn")
-spawn-monitor = get-ffi-value("spawn-monitor")
-spawn-monitor-tag = get-ffi-value("spawn-monitor-tag")
-self = get-ffi-value("self")
-sleep = get-ffi-value("sleep")
-send = get-ffi-value("send")
-async-exit = get-ffi-value("async-exit")
+spawn = ffi-function("spawn")
+spawn-monitor = ffi-function("spawn-monitor")
+spawn-monitor-tag = ffi-function("spawn-monitor-tag")
+self = ffi-function("self")
+sleep = ffi-function("sleep")
+send = ffi-function("send")
+async-exit = ffi-function("async-exit")

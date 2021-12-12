@@ -1338,7 +1338,7 @@ builtInFFITypes =
 
 builtInFF :: [(String, [Value] -> Interpreter Value)]
 builtInFF =
-    [("get-ffi-value", getFFIValue)
+    [("ffi-function", ffiFunction)
     ,("is-specific-ffi-type", isSpecificFFIType)
 
     ,("equal-always", equalAlways)
@@ -1434,11 +1434,11 @@ builtInFF =
 
     ]
 
-getFFIValue :: [Value] -> Interpreter Value
-getFFIValue [TextV nm] = do
+ffiFunction :: [Value] -> Interpreter Value
+ffiFunction [TextV nm] = do
     -- todo: check the value exists in the ffi catalog
     pure $ ForeignFunV nm
-getFFIValue _ = _errorWithCallStack "wrong args to get-ffi-value"
+ffiFunction _ = _errorWithCallStack "wrong args to ffi-function"
 
 
 fromBList :: Value -> Maybe [Value]
@@ -3048,7 +3048,7 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Nothing"])
         ,("_datainfo-Nothing", FFIValue "datainfo" $ toDyn ["nothing"])
         -- todo: complete the boolean (and nothing?) types
-        ,("get-ffi-value", ForeignFunV "get-ffi-value")
+        ,("ffi-function", ForeignFunV "ffi-function")
         ,("make-variant", ForeignFunV "make-variant")
         ,("is-variant", ForeignFunV "is-variant")
         ,("_typeinfo-Any", FFIValue "typeinfo" $ toDyn

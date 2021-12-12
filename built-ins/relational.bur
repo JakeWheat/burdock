@@ -23,29 +23,32 @@ provide:
   hack-parse-table
 end
 
-include _internals
+include ffi
+
 import lists as lists
 include from lists:
   map
 end
 
-rel-to-list = get-ffi-value("rel-to-list")
-rel-from-list = get-ffi-value("rel-from-list")
-rel-from-table = get-ffi-value("rel-from-table")
+union-recs = ffi-function("union-recs")
 
-table-dee = get-ffi-value("table-dee")()
-table-dum = get-ffi-value("table-dum")()
+rel-to-list = ffi-function("rel-to-list")
+rel-from-list = ffi-function("rel-from-list")
+rel-from-table = ffi-function("rel-from-table")
 
-rel-union = get-ffi-value("rel-union")
-rel-update = get-ffi-value("rel-update")
-rel-project = get-ffi-value("rel-project")
-rel-rename = get-ffi-value("rel-rename")
-rel-where = get-ffi-value("rel-where")
-rel-join = get-ffi-value("rel-join")
-rel-not-matching = get-ffi-value("rel-not-matching")
-rel-group = get-ffi-value("rel-group")
-rel-ungroup = get-ffi-value("rel-ungroup")
-rel-summarize = get-ffi-value("rel-summarize")
+table-dee = ffi-function("table-dee")()
+table-dum = ffi-function("table-dum")()
+
+rel-union = ffi-function("rel-union")
+rel-update = ffi-function("rel-update")
+rel-project = ffi-function("rel-project")
+rel-rename = ffi-function("rel-rename")
+rel-where = ffi-function("rel-where")
+rel-join = ffi-function("rel-join")
+rel-not-matching = ffi-function("rel-not-matching")
+rel-group = ffi-function("rel-group")
+rel-ungroup = ffi-function("rel-ungroup")
+rel-summarize = ffi-function("rel-summarize")
 
 # temp hack
 fun rel-extend(rel, f):
@@ -60,4 +63,4 @@ fun rel-delete(rel,f):
   rel-where(rel,{(r): not(f(r))})
 end
 
-hack-parse-table = get-ffi-value("hack-parse-table")
+hack-parse-table = ffi-function("hack-parse-table")

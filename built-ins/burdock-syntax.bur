@@ -12,7 +12,7 @@ provide:
 end
 
 
-import _internals as i
+import ffi as i
 
-parse-file = i.get-ffi-value("parse-file")
-show-haskell-ast = i.get-ffi-value("show-haskell-ast")
+parse-file = i.ffi-function("parse-file")
+show-haskell-ast = i.ffi-function("show-haskell-ast")
