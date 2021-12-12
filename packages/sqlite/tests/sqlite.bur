@@ -3,6 +3,24 @@ use package "packages/sqlite"
 
 include sqlite.sqlite
 
+fun g():
+ raise("denied")
+end
+
+fun f():
+  g()
+end
+
+check "tmp":
+  1 is f()
+  raise("fail")
+end
+
+
+check "fail":
+  1 is 2
+end
+
 check "trivial":
 
   #|h = open(":memory:")

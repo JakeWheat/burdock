@@ -2361,6 +2361,17 @@ catchAsEither [e] = do
     ca f = catchAny f (pure . Left . TextV . show)
 catchAsEither _ = _errorWithCallStack $ "wrong args to run-task"
 
+catchAll :: Interpreter a -> Interpreter (Either Value a)
+catchAll f =
+    ca $ catchit f
+  where
+    --catchit :: Interpreter Value -> Interpreter (Either Value Value)
+    catchit f' = catch (Right <$> f') iToV
+    iToV = pure . Left . interpreterExceptionToValue
+    -- catch any haskell exception, for dealing with error and undefined
+    -- not sure about this, but definitely wanted for testing
+    ca f' = catchAny f' (pure . Left . TextV . show)
+
 assertTypeCompat :: Value -> TypeInfo -> Interpreter Value
 assertTypeCompat v ti = 
     if v `typeIsCompatibleWith` ti
@@ -2551,7 +2562,13 @@ interpStatement (When t b) = do
 interpStatement (Check cbnm ss) = do
     runTestsEnabled <- interp $ internalsRef "auto-run-tests"
     case runTestsEnabled of
-        BoolV True -> enterCheckBlock cbnm $ interpStatements ss
+        BoolV True -> enterCheckBlock cbnm $ do
+            x <- catchAll $ interpStatements ss
+            case x of
+                Right v -> pure v
+                Left e -> do
+                    addTestResult (TestFail "check block threw an exception, some tests may not have executed" (show e))
+                    pure nothing
         BoolV False -> pure nothing
         x -> _errorWithCallStack $ "auto-run-tests not set right (should be boolv): " ++ show x
     
