@@ -642,6 +642,9 @@ interpreterExceptionToValue :: InterpreterException -> Value
 interpreterExceptionToValue (InterpreterException _ s) = TextV s
 interpreterExceptionToValue (ValueException _ v) = v
 
+interpreterExceptionCallStack :: InterpreterException -> CallStack
+interpreterExceptionCallStack (InterpreterException cs _) = cs
+interpreterExceptionCallStack (ValueException cs _) = cs
 
 ---------------------------------------
 
@@ -1129,10 +1132,10 @@ runInterpInherit parentSh th incG f = do
 
 -- convert a burdock either value to a haskell one
 
-bToHEither :: Value -> Either Value Value
-bToHEither (VariantV tg "left" [(_,e)]) | tg == internalsType "Either" = Left e
-bToHEither (VariantV tg "right" [(_,r)]) | tg == internalsType "Either" = Right r
-bToHEither x = error $ "non either passed to btoheither: " ++ show x
+_bToHEither :: Value -> Either Value Value
+_bToHEither (VariantV tg "left" [(_,e)]) | tg == internalsType "Either" = Left e
+_bToHEither (VariantV tg "right" [(_,r)]) | tg == internalsType "Either" = Right r
+_bToHEither x = error $ "non either passed to btoheither: " ++ show x
 
 formatExceptionI :: Bool -> InterpreterException -> Interpreter String
 formatExceptionI includeCallstack e = do
@@ -2346,31 +2349,32 @@ typeLet tds f = do
 -- pyret spells this run-task
 catchAsEither :: [Expr] -> Interpreter Value
 catchAsEither [e] = do
-    v0 <- ca $ catchit (interp e)
+    (v0 :: Either (Value,a) Value) <- catchAll (interp e)
     let (f,v1) = case v0 of
             Right v -> (internalsRef "right", v)
-            Left er -> (internalsRef "left", er)
+            Left (er,_) -> (internalsRef "left", er)
     fv <- interp f
     app fv [v1]
-  where
-    catchit :: Interpreter Value -> Interpreter (Either Value Value)
-    catchit f = catch (Right <$> f) iToV
-    iToV = pure . Left . interpreterExceptionToValue
-    -- catch any haskell exception, for dealing with error and undefined
-    -- not sure about this, but definitely wanted for testing
-    ca f = catchAny f (pure . Left . TextV . show)
 catchAsEither _ = _errorWithCallStack $ "wrong args to run-task"
 
-catchAll :: Interpreter a -> Interpreter (Either Value a)
+catchAll :: Interpreter a -> Interpreter (Either (Value, Maybe CallStack) a)
 catchAll f =
     ca $ catchit f
   where
-    --catchit :: Interpreter Value -> Interpreter (Either Value Value)
     catchit f' = catch (Right <$> f') iToV
-    iToV = pure . Left . interpreterExceptionToValue
+    iToV e = pure $ Left (interpreterExceptionToValue e
+                         ,Just $ interpreterExceptionCallStack e)
     -- catch any haskell exception, for dealing with error and undefined
     -- not sure about this, but definitely wanted for testing
-    ca f' = catchAny f' (pure . Left . TextV . show)
+    ca f' = catchAny f' (pure . Left . (,Nothing) . TextV . show)
+
+showExceptionCallStackPair :: (Value, Maybe CallStack) -> Interpreter String
+showExceptionCallStackPair (v,cs) = do
+    s1 <- torepr' v
+    s2 <- case cs of
+        Nothing -> pure ""
+        Just cs' -> formatCallStack cs'
+    pure $ s1 ++ s2
 
 assertTypeCompat :: Value -> TypeInfo -> Interpreter Value
 assertTypeCompat v ti = 
@@ -2567,7 +2571,8 @@ interpStatement (Check cbnm ss) = do
             case x of
                 Right v -> pure v
                 Left e -> do
-                    addTestResult (TestFail "check block threw an exception, some tests may not have executed" (show e))
+                    msg <- showExceptionCallStackPair e
+                    addTestResult (TestFail "check block threw an exception, some tests may not have executed" msg)
                     pure nothing
         BoolV False -> pure nothing
         x -> _errorWithCallStack $ "auto-run-tests not set right (should be boolv): " ++ show x
@@ -2856,17 +2861,13 @@ testIs msg e0 e1 = do
                 p0 <- torepr' v0'
                 p1 <- torepr' v1'
                 atr $ TestFail msg (p0 ++ "\n!=\n" ++ p1)
-        (Left er0, Right {}) -> do
-            er0' <- torepr' er0
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
-        (Right {}, Left er1) -> do
-            er1' <- torepr' er1
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
-        (Left er0, Left er1) -> do
-            er0' <- torepr' er0
-            er1' <- torepr' er1
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
-                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
+        (Left (_,er0), Right {}) -> do
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
+        (Right {}, Left (_,er1)) -> do
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
+        (Left (_,er0), Left (_,er1)) -> do
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
+                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1)
     pure nothing
 
 testIsNot :: String -> Expr -> Expr -> Interpreter Value
@@ -2881,17 +2882,13 @@ testIsNot msg e0 e1 = do
                 p0 <- torepr' v0'
                 p1 <- torepr' v1'
                 atr $ TestFail msg (p0 ++ "\n==\n" ++ p1)
-        (Left er0, Right {}) -> do
-            er0' <- torepr' er0
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
-        (Right {}, Left er1) -> do
-            er1' <- torepr' er1
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
-        (Left er0, Left er1) -> do
-            er0' <- torepr' er0
-            er1' <- torepr' er1
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
-                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1')
+        (Left (_,er0), Right {}) -> do
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
+        (Right {}, Left (_,er1)) -> do
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
+        (Left (_,er0), Left (_,er1)) -> do
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
+                                ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1)
     pure nothing
 
 testRaises :: String -> Expr -> Expr -> Interpreter Value
@@ -2900,14 +2897,13 @@ testRaises msg e0 e1 = do
     case (v0,v1) of
         (Right _, Right _) ->
             atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
-        (_, Left er1) -> do
-            er1' <- torepr' er1
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1')
-        (Left er0, Right (TextV v)) -> do
+        (_, Left (_,er1)) -> do
+            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
+        (Left (er0,er0'), Right (TextV v)) -> do
             val <- torepr' er0
             if v `isInfixOf` val
                 then atr $ TestPass msg
-                else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ "\"" ++ v ++ "\"")
+                else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ "\"" ++ v ++ "\"" ++ "\n" ++ er0')
         (Left _, Right v) -> do
             atr $ TestFail msg (prettyExpr e1 ++ " failed, expected String, got: " ++ show v)
     pure nothing
@@ -2918,14 +2914,13 @@ testRaisesSatisfies msg e0 f = do
     case (v0,fv) of
         (Right _, Right _) ->
             atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
-        (_, Left er1) -> do
-            er1' <- torepr' er1
-            atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1')
-        (Left er0, Right fvv) -> do
+        (_, Left (_,er1)) -> do
+            atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1)
+        (Left (er0,er0'), Right fvv) -> do
             r <- app fvv [er0]
             case r of
                 BoolV True -> atr $ TestPass msg
-                BoolV False -> atr $ TestFail msg ("failed: " ++ show er0 ++ ", didn't satisfy predicate " ++ show f)
+                BoolV False -> atr $ TestFail msg ("failed: " ++ show er0 ++ ", didn't satisfy predicate " ++ show f ++ "\n" ++ show er0')
                 _ -> atr $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
     pure nothing
 
@@ -2939,27 +2934,35 @@ testSatisfies msg e0 f = do
                 BoolV True -> atr $ TestPass msg
                 BoolV False -> atr $ TestFail msg ("failed: " ++ show v' ++ ", didn't satisfy predicate " ++ show f)
                 _ -> atr $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
-        (Left er0, Right {}) -> do
-            er0' <- torepr' er0
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0')
-        (Right {}, Left er1) -> do
-            er1' <- torepr' er1
-            atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1')
-        (Left er0, Left er1) -> do
-            er0' <- torepr' er0
-            er1' <- torepr' er1
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0'
-                                ++ "\n" ++ prettyExpr f ++ " failed: " ++ er1')
+        (Left (_,er0), Right {}) -> do
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
+        (Right {}, Left (_,er1)) -> do
+            atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1)
+        (Left (_,er0), Left (_,er1)) -> do
+            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
+                                ++ "\n" ++ prettyExpr f ++ " failed: " ++ er1)
     pure nothing
 
 testPredSupport :: Expr
                 -> Expr
-                -> Interpreter (Either Value Value
-                               ,Either Value Value
+                -> Interpreter (Either (Value,String) Value
+                               ,Either (Value,String) Value
                                ,TestResult -> Interpreter ())
 testPredSupport e0 e1 = do
-    v0 <- bToHEither <$> catchAsEither [e0]
-    v1 <- bToHEither <$> catchAsEither [e1]
+    let w :: Expr -> Interpreter (Either (Value,String) Value)
+        w x = do
+            b0 <- catchAll (interp x)
+            case b0 of
+                Left (v,cs) -> do
+                    vs <- torepr' v
+                    vext <- case cs of
+                            Nothing -> pure ""
+                            Just cs' -> formatCallStack cs'
+                    pure $ Left (v,vs ++ vext)
+                    -- undefined -- Left . TextV <$> showExceptionCallStackPair er
+                Right v -> pure $ Right $ v
+    v0 <- w e0
+    v1 <- w e1
     pure (v0, v1, addTestResult)
 
 ------------------------------------------------------------------------------

@@ -2,7 +2,7 @@
 use package "packages/sqlite"
 
 include sqlite.sqlite
-
+#|
 fun g():
  raise("denied")
 end
@@ -13,6 +13,7 @@ end
 
 check "tmp":
   1 is f()
+  2 is 4
   raise("fail")
 end
 
@@ -20,10 +21,12 @@ end
 check "fail":
   1 is 2
 end
-
+|#
 check "trivial":
-
-  #|h = open(":memory:")
+  #open("1")
+  #1 is 44
+#|
+  h = open(":memory:")
   command(h, "create table t1(a int)", empty)
   fun fi(i):
     command(h, "insert into t1 values (?)", [list: sql-integer(i)])
@@ -42,6 +45,6 @@ check "trivial":
   lst = lp()
   lst is map(sql-integer, [list: 1,2,3,4])
   close-result(rs)
-  close(h)|#
-
+  close(h)
+|#
 end

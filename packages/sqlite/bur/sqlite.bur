@@ -12,8 +12,9 @@ data Handle:
   | handle(h)
 end
 
-open :: String -> Handle
-fun open(a): ... end
+#open :: String -> Handle
+#fun open(a): ... end
+open = ...
 
 create = ...
 
