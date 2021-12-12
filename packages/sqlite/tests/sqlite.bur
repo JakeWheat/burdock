@@ -5,7 +5,7 @@ include sqlite.sqlite
 
 check "trivial":
 
-  h = open(":memory:")
+  #|h = open(":memory:")
   command(h, "create table t1(a int)", empty)
   fun fi(i):
     command(h, "insert into t1 values (?)", [list: sql-integer(i)])
@@ -24,6 +24,6 @@ check "trivial":
   lst = lp()
   lst is map(sql-integer, [list: 1,2,3,4])
   close-result(rs)
-  close(h)
+  close(h)|#
 
 end

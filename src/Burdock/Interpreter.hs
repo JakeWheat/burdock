@@ -335,6 +335,7 @@ data Value = NumV Scientific
            | BoxV TypeInfo (IORef Value)
            | FFIValue String Dynamic
            | MethodV Value
+           | TemplateV SourcePosition
 
 instance Ord Value where
     NumV a <= NumV b = a <= b
@@ -359,6 +360,7 @@ instance Show Value where
   show (FFIValue _ r) | Just (r' :: R.Relation Value) <- fromDynamic r = R.showRel r'
   show (FFIValue _ v) = "FFIValue " ++ show v
   show (MethodV {}) = "<method>"
+  show (TemplateV sp) = "Template at " ++ show sp
 
 
 -- needs some work
@@ -1251,6 +1253,7 @@ toreprx x@(FFIValue tg v) = do
     maybe (pure $ P.pretty $ show x)
           (\f' -> P.pretty <$> f' v)
           (ffiTypeToRepr =<< ti)
+toreprx (TemplateV sp) = evalTemplate [sp]
 
 xSep :: String -> [P.Doc a] -> P.Doc a
 xSep x ds = P.sep $ P.punctuate (P.pretty x) ds
@@ -1646,6 +1649,8 @@ equalAlways _ = _errorWithCallStack $ "wrong args to equal-always"
 hEqualAlways :: Value -> Value -> Interpreter Bool
 hEqualAlways a' b' =
     case (a',b') of
+        (TemplateV sp, _) -> evalTemplate [sp]
+        (_,TemplateV sp) -> evalTemplate [sp]
         (BoolV a, BoolV b) -> pure $ a == b
         (BoolV {}, _) -> pure False
         (NumV a, NumV b) -> pure $ a == b
@@ -1726,6 +1731,8 @@ lessThan as = error $ "unsupported args to < (todo?) " ++ show as
 hLessThan :: Value -> Value -> Interpreter Bool
 hLessThan a' b' =
     case (a',b') of
+        (TemplateV sp, _) -> evalTemplate [sp]
+        (_,TemplateV sp) -> evalTemplate [sp]
         (BoolV a, BoolV b) -> pure $ a < b
         (BoolV {}, _) -> error "incompatible args to <"
         (NumV a, NumV b) -> pure $ a < b
@@ -2229,11 +2236,8 @@ interp (Receive cs aft) = do
                ,("exit-type", et')
                ,("v", v')
                ,("mref", r')]
--- todo: the source position should be part of the error
--- not pushed to the call stack
 interp (Template sp) =
-    localPushCallStack sp $ 
-    throwValueWithStacktrace $ TextV "template-not-finished"
+    pure $ TemplateV sp
 
 interp (MethodExpr m) = makeMethodValue m
 
@@ -2294,6 +2298,11 @@ makeCurriedApp sp f es =
     makeNewEs n (x:es') = (Nothing, x) : makeNewEs n es'
 
 app :: Value -> [Value] -> Interpreter Value
+app _ vs | ts@(_:_) <- catMaybes (map extractTemplate vs) =
+    evalTemplate ts
+  where
+    extractTemplate (TemplateV sp) = Just sp
+    extractTemplate _ = Nothing
 app fv vs =
     case fv of
         FunV ps bdy env -> do
@@ -2310,10 +2319,19 @@ app fv vs =
             case lookup nm ffs of
                 Just f -> f vs
                 Nothing -> error $ "internal error, foreign function not found: " ++ nm
+        TemplateV sp -> evalTemplate [sp]
         _ -> error $ "app called on non function value: " ++ show fv
   where
     safeZip ps xs | length ps == length xs  = pure $ zip ps xs
                   | otherwise = error $ "wrong number of args: " ++ show ps ++ ", " ++ show xs
+
+evalTemplate :: [SourcePosition] -> Interpreter a
+evalTemplate (t:_) =
+    -- todo: the source position should be part of the error
+    -- not pushed to the call stack
+    localPushCallStack t $ 
+    throwValueWithStacktrace $ TextV $ "template-not-finished: " ++ show t
+evalTemplate [] = error $ "eval template on 0 templates"
 
 typeLet :: [TypeDecl] -> Interpreter a -> Interpreter a
 typeLet tds f = do
@@ -2518,7 +2536,11 @@ interpStatement s@(StmtExpr (BinOp e0 "satisfies" e1)) =
 interpStatement s@(StmtExpr (BinOp e0 "raises-satisfies" f)) =
     testRaisesSatisfies (prettyStmt s) e0 f
 
-interpStatement (StmtExpr e) = interp e
+interpStatement (StmtExpr e) = do
+    v <- interp e
+    case v of
+        TemplateV sp -> evalTemplate [sp]
+        _ -> pure v
 interpStatement (When t b) = do
     tv <- interp t
     case tv of

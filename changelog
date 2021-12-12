@@ -64,7 +64,7 @@
 - improved test runner
 - call stack on exception demo
 
-## Week 1 ending 24th Oct 2021
+## Week 1 of the project ending 24th Oct 2021
 
 - build script
 - simple expression interpreter, roughly: lam, let, closures, vars,

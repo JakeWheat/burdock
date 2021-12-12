@@ -12,7 +12,7 @@ data Handle:
   | handle(h)
 end
 
-open :: String -> Handle
+#open :: String -> Handle
 open = ...
 
 create = ...
