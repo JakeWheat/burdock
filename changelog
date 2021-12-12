@@ -3,26 +3,43 @@
 - improvements to the FFI/Haskell FFI
 - Python FFI
 - C FFI
-- data adaptor framework
-- static binding checker
+- run exes
+- static binding plus other static syntax 'well formedness' checker
 - static type checker
 - error message work
-- testing pass, including anomaly testing
+- testing pass - much more tests, test framework improvements and
+  tests, anomaly tests
 - whitespace parsing fixes
-- website, documentation
+- website, documentation, including proper examples
+- relational improvements: better functionality, query syntax sugar,
+  basic relvar updates, transactions (1. multi update rollback,
+  2. durability, 3. concurrency), constraints, catalog
+- data adaptor framework
 
 ## Provisional up next
 
-- complete work on using methods for system functions/operators
-- ffi type tags, add methods to ffi types
+- complete work on using methods for system functions/operators, todo:
+  arithmetic
+- type conversion wrappers for ffi functions
 - simple networking
 - remote repl attach support
-- relational second pass - improve syntax/functions,
-  sqlite/duckdb/postgres backend for storage/transactions
+- sqlite wrapper
+- simple file metadata/directory lib
 - command line args access
 - possibly some initial c ffi work
 - tail call optimisation
 - strictness pass
+
+## Week 8 12th Dec
+
+- mostly working equals and other comparisons, main methods todo now
+  is arithmetic operators
+- improvements to the haskell ffi, support tostring, equals and other
+  comparisons for ffi types
+- simple package system demo, you can sort of "package" burdock code
+  and haskell ffi code
+- start adding sqlite wrapper
+- prelude support for types and data decls improved
 
 ## Week 7 5th Dec
 

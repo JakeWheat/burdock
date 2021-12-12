@@ -74,8 +74,7 @@ print(v1)
 v2 = demo-extract-int(v1)
 
 print(v2)
-# not implemented yet:
-#print(is-number(v2))
+print(is-number(v2))
 
                     |]
 

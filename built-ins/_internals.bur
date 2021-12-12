@@ -22,9 +22,14 @@ include _bootstrap
 
 provide:
   *,
+  
   # todo: add the provide module support
   # these are the contents of the _bootstrap module
   type Boolean,
+  # todo: make boolean at least look exactly like a agdt?
+  # it almost does, but I think is-true and is-false
+  # should be added, and using 'data Boolean' as a provide
+  # item should work
   true,
   false,
 
@@ -40,6 +45,10 @@ provide:
   type Tuple,
   type Record,
   type Function,
+
+  # the pyret code uses these lowercase variations
+  # not sure if want to keep them, could also only have them
+  # for a specific beginner or someone coming from pyret use context
   is-Tuple as is-tuple,
   is-Record as is-record,
   is-Boolean as is-boolean,
@@ -77,7 +86,7 @@ is-Boolean = ffi-function("is-boolean")
 is-String = ffi-function("is-string")
 is-Number = ffi-function("is-number")
 is-Function = ffi-function("is-function")
-is-Any = lam(x): true end
+is-Any = lam(_): true end
 
 print = ffi-function("print")
 

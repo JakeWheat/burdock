@@ -1440,7 +1440,6 @@ ffiFunction [TextV nm] = do
     pure $ ForeignFunV nm
 ffiFunction _ = _errorWithCallStack "wrong args to ffi-function"
 
-
 fromBList :: Value -> Maybe [Value]
 fromBList (VariantV tg "empty" [])
     | tg == internalsType "List" = Just []
@@ -1513,7 +1512,6 @@ isFunction [FunV {}] = pure $ BoolV True
 isFunction [ForeignFunV {}] = pure $ BoolV True
 isFunction [_] = pure $ BoolV False
 isFunction _ = _errorWithCallStack $ "wrong args to is-function"
-
 
 reverseApp :: [Value] -> Interpreter Value
 reverseApp [a, f] = app f [a]
