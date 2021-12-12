@@ -9,7 +9,8 @@ module Burdock.Interpreter
 
 
     --,Value
-    ,valueToString
+    ,valueToStringIO
+    --,valueToString
 
     ,newHandle
     ,closeHandle
@@ -215,6 +216,10 @@ evalFun h fun args =
     ast' <- either error id <$> useSource Nothing "evalFun" src' parseExpr
     forM_ (("fff", f):as) $ \(n,v) -> letValue n v
     interp ast'
+
+valueToStringIO :: Handle -> Value -> IO (Maybe String)
+valueToStringIO h v =
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ valueToString v
 
 formatException :: Handle -> Bool -> InterpreterException -> IO String
 formatException h includeCallstack e =

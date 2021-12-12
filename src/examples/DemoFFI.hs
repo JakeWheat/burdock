@@ -27,6 +27,9 @@ minimal boilerplate, something like:
 
 main = burdockExe additionalFFITypes additionalFFIFunctions
 
+this code is very out of date, it especially needs to do the proper
+ffi type stuff
+
 -}
 
 {-# LANGUAGE QuasiQuotes #-}
@@ -81,21 +84,21 @@ demoMakeHaskellInt :: [B.Value] -> B.Interpreter B.Value
 demoMakeHaskellInt [B.NumV x] = do
     let y :: Int
         Just y = extractInt x
-    pure $ B.FFIValue $ toDyn y
+    pure $ B.FFIValue "my-int" $ toDyn y
 demoMakeHaskellInt _ = error "bad args to demo-make-haskell-int"
 
 
 demoExtractInt :: [B.Value] -> B.Interpreter B.Value
-demoExtractInt [B.FFIValue x] = do
+demoExtractInt [B.FFIValue _ x] = do
     let y :: Int
         Just y = fromDynamic x
     pure $ B.NumV $ fromIntegral y
 demoExtractInt _ = error "bad args to demo-extract-int"
 
 demoAddToInt :: [B.Value] -> B.Interpreter B.Value
-demoAddToInt [B.FFIValue x, B.NumV a] = do
+demoAddToInt [B.FFIValue _ x, B.NumV a] = do
     let y :: Int
         Just y = fromDynamic x
         Just a' = extractInt a
-    pure $ B.FFIValue $ toDyn $ y + a'
+    pure $ B.FFIValue "my-int" $ toDyn $ y + a'
 demoAddToInt _ = error "bad args to demo-add-to-int"

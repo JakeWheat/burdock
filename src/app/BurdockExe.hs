@@ -99,7 +99,7 @@ runSrc fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
     flip catch (handleEx h) $ do
         when rTests $ void $ B.runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
         v <- B.runScript h fnm [] src
-        pv <- B.valueToString v
+        pv <- B.valueToStringIO h v
         case pv of
             Nothing -> pure ()
             Just s -> putStrLn s
