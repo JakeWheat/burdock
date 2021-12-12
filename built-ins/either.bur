@@ -1,12 +1,6 @@
 
 provide:
-  type Either,
-  is-left,
-  is-right,
-  left,
-  right,
-  _casepattern-left,
-  _casepattern-right,
+  data Either,
 
   run-task
 

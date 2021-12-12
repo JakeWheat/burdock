@@ -1,15 +1,9 @@
 
 provide:
-  some,
-  none,
-  type Option,
-  is-some,
-  is-none,
+  data Option,
   and-then,
-  or-else,
+  or-else
 
-  _casepattern-some,
-  _casepattern-none
 end
 
 include _internals

@@ -24,21 +24,10 @@ provide:
 
   not,
   
-  type List,
-  is-empty,
-  is-link,
-  empty,
-  link,
+  data List,
   list,
-  
-  # todo: make this automagical
-  _casepattern-nothing,
-  _casepattern-empty,
-  _casepattern-link,
 
-  is-nothing,
-  is-Nothing,
-  nothing,
+  data Nothing,
 
   is-tuple,
   is-record,

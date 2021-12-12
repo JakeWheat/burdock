@@ -7,28 +7,10 @@ provide:
   send,
   async-exit,
 
-  infinity,
-  _casepattern-infinity,
-  is-infinity,
-  type Infinity,
-
-  exit-value,
-  exit-exception,
-  _casepattern-exit-value,
-  _casepattern-exit-exception,
-  is-exit-value,
-  is-exit-exception,
-  type ExitType,
-
-  monitor-ref,
-  _casepattern-monitor-ref,
-  is-monitor-ref,
-  type MonitorRef,
-
-  monitor-down,
-  _casepattern-monitor-down,
-  is-monitor-down,
-  type MonitorDown
+  data Infinity,
+  data ExitType,
+  data MonitorRef,
+  data MonitorDown
   
 end
 

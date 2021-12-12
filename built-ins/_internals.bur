@@ -28,10 +28,7 @@ provide:
   true,
   false,
 
-  type Nothing,
-  nothing,
-  is-nothing,
-  _casepattern-nothing,
+  data Nothing,
 
   get-ffi-value,
   make-variant,

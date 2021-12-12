@@ -2648,6 +2648,9 @@ a support binding for cases, for each variant x:
 _casepattern-x = ...
 support for the dynamic type tags:
 _typeinfo-Pt = simpletypeinfo ["_system","modules",currentModuleName, "Pt"]
+list the variant names for import support:
+_datainfo-Pt = ["pt"]
+
 
 -}
 
@@ -2666,6 +2669,8 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
     moduleName <- readModuleName
     letValue typeInfoName $ FFIValue "typeinfo" $ toDyn
         $ SimpleTypeInfo ["_system", "modules", moduleName, dnm]
+    letValue dataInfoName $ FFIValue "datainfo" $ toDyn
+        $ map varName vs
     -- todo: use either a burdock value or a proper ffi value for the casepattern
     -- instead of a haskell tuple
     forM_ vs $ \(VariantDecl vnm _ _) -> letValue ("_casepattern-" ++ vnm)
@@ -2675,7 +2680,9 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
     interpStatements desugared
   where
     typeInfoName = "_typeinfo-" ++ dnm
+    dataInfoName = "_datainfo-" ++ dnm
     me (menm,m) = [Iden "false", Text menm, MethodExpr m]
+    varName (VariantDecl vnm _ _) = vnm
     makeV (VariantDecl vnm fs ms) = do
         -- make an _equals method which compares the non method fields
         -- if the variant has methods
@@ -2779,7 +2786,7 @@ interpStatement (IncludeFrom nm pis) = do
     v <- interp (Iden nm)
     case v of
         VariantV tg "record" fs | tg == bootstrapType "Record" -> do
-            let as = aliasSomething fs [] pis
+            as <- aliasSomething fs [] pis
             mapM_ (uncurry letIncludedValue) as
         _ -> _errorWithCallStack $ "trying to alias from something that isn't a record: " ++ show v
     pure nothing
@@ -3039,6 +3046,7 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
         ,("_casepattern-nothing", FFIValue "casepattern" $ toDyn (bootstrapType "Nothing", "nothing"))
         ,("_typeinfo-Nothing", FFIValue "typeinfo" $ toDyn
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Nothing"])
+        ,("_datainfo-Nothing", FFIValue "datainfo" $ toDyn ["nothing"])
         -- todo: complete the boolean (and nothing?) types
         ,("get-ffi-value", ForeignFunV "get-ffi-value")
         ,("make-variant", ForeignFunV "make-variant")
@@ -3068,7 +3076,8 @@ runModule filename moduleName f =
         -- get the pis and make a record from the env using them
         pis <- (\case [] -> [ProvideAll]
                       x -> x) <$> askScriptProvides
-        let moduleRecord = VariantV (bootstrapType "Record") "record" $ aliasSomething localModuleEnv allModuleEnv pis
+        moduleRecord <- VariantV (bootstrapType "Record") "record"
+                        <$> aliasSomething localModuleEnv allModuleEnv pis
         modifyAddModule filename moduleName moduleRecord
 
 -- todo: replace the includeGlobals flag with use context
@@ -3121,7 +3130,7 @@ spawnExtWaitI f = do
 aliasModule :: String -> [ProvideItem] -> Interpreter [(String,Value)]
 aliasModule modName pis = do
     modEnv <- ex <$> lkp
-    pure $ aliasSomething modEnv [] pis
+    aliasSomething modEnv [] pis
     -- pure $ concat $ map (apis modEnv) pis
   where
 
@@ -3129,23 +3138,46 @@ aliasModule modName pis = do
     ex x = error $ "aliasmodule: module value is not a record: " ++ show x
     lkp = interp $ makeDotPathExpr $ modulePath modName
 
-aliasSomething :: [(String,Value)] -> [(String,Value)] -> [ProvideItem] -> [(String,Value)]
-aliasSomething localBds extraBds pis = concat $ map apis pis
+aliasSomething :: [(String,Value)] -> [(String,Value)] -> [ProvideItem]
+               -> Interpreter [(String,Value)]
+aliasSomething localBds extraBds pis = concat <$> mapM apis pis
   where
     allBds = localBds ++ extraBds
-    apis ProvideAll = localBds
+    apis ProvideAll = pure $ localBds
     apis (ProvideAlias k al) = case lookup k allBds of
         Nothing -> error $ "provide alias source not found: " ++ k
-        Just v -> [(al,v)]
+        Just v ->
+            -- todo: check for magic casepattern
+            pure $ [(al,v)]
     apis (ProvideName k) = case lookup k allBds of
         Nothing -> error $ "provide alias source not found: " ++ k
-        Just v -> [(k,v)]
+        Just v -> do
+            -- check for magic casepattern
+            let c = "_casepattern-" ++ k
+            pure $ case lookup c allBds of
+                Nothing ->  [(k,v)]
+                Just v' -> [(k,v),(c,v')]
     apis (ProvideType t) =
         let ti = "_typeinfo-" ++ t
             ist = "is-" ++ t
-        in case (,) <$> lookup ti allBds <*> lookup ist allBds of
+        in pure $ case (,) <$> lookup ti allBds <*> lookup ist allBds of
             Nothing -> error $ "provide type source not found: " ++ t
             Just (tiv, istv) -> [(ti,tiv), (ist, istv)]
+    apis (ProvideData t) = do
+        bs <- askBindings
+        let di = "_datainfo-" ++ t
+            t0 = maybe (error $ "type not found: " ++ t) id $ lookup di bs
+            ti :: [String]
+            ti = case t0 of
+                     FFIValue "datainfo" v
+                         | Just v' <- fromDynamic v -> v'
+                     _ -> error "not datainfo"
+        r0 <- apis (ProvideType t)
+        let r00 = [(di, t0)]
+        r1 <- mapM (apis . ProvideName) ti
+        r2 <- mapM (\x -> apis (ProvideName ("is-" ++ x))) ti
+        pure $ r0 ++ r00 ++ concat r1 ++ concat r2
+
 
 -- says where to find the named module in the system path
 -- _system.modules.[nm]

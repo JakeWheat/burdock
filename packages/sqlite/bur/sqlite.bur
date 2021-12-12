@@ -6,7 +6,7 @@ low level interface to sqlite
 
 
 provide:
-  type Value,
+  data Value,
   type Handle,
   type ResultHandle,
 
@@ -16,17 +16,8 @@ provide:
   command,
   query,
   next-row,
-  close-result,
+  close-result
 
-  is-sql-number,
-  is-sql-text,
-  is-sql-null,
-  sql-number,
-  sql-text,
-  sql-null,
-  _casepattern-sql-number,
-  _casepattern-sql-text,
-  _casepattern-sql-null
 end
 
 import from _internals:
