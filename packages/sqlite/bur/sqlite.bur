@@ -16,7 +16,10 @@ provide:
   command,
   query,
   next-row,
-  close-result
+  close-result,
+  query-for-each,
+  query-map,
+  query-as-list
 
 end
 
@@ -42,8 +45,6 @@ end
 ffitype Handle = "sqlite-handle"
 ffitype ResultHandle = "sqlite-result-handle"
 
-#open :: String -> Handle
-#fun open(a): ... end
 open = ffi-function("sqlite-open")
 
 create = ...
@@ -57,3 +58,37 @@ next-row = ffi-function("sqlite-next-row")(none,some,sql-number,_)
 close-result = ffi-function("sqlite-close-result")
 
 query = ffi-function("sqlite-query")
+
+fun query-for-each(h, qry, ps, f):
+  rs = query(h, qry, ps)
+  fun lp():
+    v = next-row(rs)
+    cases v:
+      | some(r) =>
+          f(r)
+          lp()
+      | none => nothing
+    end
+  end
+  lp()
+  close-result(rs)
+end
+
+fun query-map(h, qry, ps, f):
+  rs = query(h, qry, ps)
+  fun lp():
+    v = next-row(rs)
+    cases v:
+      | some(r) =>
+          link(f(r), lp())
+      | none => empty
+    end
+  end
+  ret = lp()
+  close-result(rs)
+  ret
+end
+
+fun query-as-list(h, qry, ps):
+  query-map(h, qry, ps, {(x): x})
+end

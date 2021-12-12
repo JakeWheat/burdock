@@ -9,50 +9,17 @@ end
 
 include option
 
-#|
-fun g():
- raise("denied")
-end
-
-fun f():
-  g()
-end
-
-check "tmp":
-  1 is f()
-  2 is 4
-  raise("fail")
-end
-
-
-check "fail":
-  1 is 2
-end
-|#
 check "trivial":
-  #open("1")
-  #1 is 44
 
   h = open(":memory:")
   command(h, "create table t1(a int)", empty)
-  fun fi(i):
+
+  for map(i from [list: 1,2,3,4]):
     command(h, "insert into t1 values (?)", [list: sql-number(i)])
   end
-  map(fi, [list: 1,2,3,4])
 
-  rs = query(h, "select * from t1", empty)
-  fun lp():
-    v = next-row(rs)
-    cases v:
-      | some(r) =>
-          link(r, lp())
-      | none => empty
-    end
-  end
-  lst = lp()
-  lst is map(lam(x): [list:sql-number(x)] end,
-             [list: 1,2,3,4])
-  close-result(rs)
+  lst = query-as-list(h, "select * from t1", empty)
+  lst is map({(x): [list:sql-number(x)]}, [list: 1,2,3,4])
   close(h)
 
 end
