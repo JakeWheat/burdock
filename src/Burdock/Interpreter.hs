@@ -20,6 +20,9 @@ module Burdock.Interpreter
     ,evalFun
 
     -- temp for ffi
+    -- will refactor into a proper abstraction layer for ffi code to
+    -- use. want to write ffi code and use it like this to learn
+    -- what the abstraction layer needs to support
     ,InterpreterException
     ,formatException
     ,Interpreter
@@ -28,6 +31,10 @@ module Burdock.Interpreter
     ,FFIPackage(..)
     ,FFITypeInfo(..)
     ,addFFIPackage
+    ,nothing
+    ,fromBList
+    ,makeBList
+    ,app
 
     ,setNumCapabilities
     ,getNumProcessors

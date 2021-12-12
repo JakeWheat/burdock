@@ -4,30 +4,70 @@ low level interface to sqlite
 
 |#
 
-data Value:
-  | value(v)
+
+provide:
+  _typeinfo-Value,
+  is-Value,
+  _typeinfo-Handle,
+  is-Handle,
+  _typeinfo-ResultHandle,
+  is-ResultHandle,
+
+  open,
+  create,
+  close,
+  command,
+  query,
+  next-row,
+  close-result,
+
+  _typeinfo-Value,
+  is-Value,
+  is-sql-number,
+  is-sql-text,
+  is-sql-null,
+  sql-number,
+  sql-text,
+  sql-null,
+  _casepattern-sql-number,
+  _casepattern-sql-text,
+  _casepattern-sql-null
 end
 
-data Handle:
-  | handle(h)
+import from _internals:
+  get-ffi-value
 end
+
+include option
+
+# todo: add ffi types:
+#   Int64
+#   double
+#   (both are 8 bytes)
+#   bytestring - what to call this in burdock?
+#   blob implies an extra thing - the ability to stream a single value
+#   in chunks
+data Value:
+  | sql-number(n::Number)
+  | sql-text(s::String)
+  | sql-null
+end
+
+ffitype Handle = "sqlite-handle"
+ffitype ResultHandle = "sqlite-result-handle"
 
 #open :: String -> Handle
 #fun open(a): ... end
-open = ...
+open = get-ffi-value("sqlite-open")
 
 create = ...
 
-close = ...
+close = get-ffi-value("sqlite-close")
 
-command = ...
+command = get-ffi-value("sqlite-command")
 
-data ResultHandle:
-  | ResultHandle(rh)
-end
+next-row = get-ffi-value("sqlite-next-row")(none,some,sql-number,_)
 
-nextRow = ...
+close-result = get-ffi-value("sqlite-close-result")
 
-closeResult = ...
-
-query = ...
+query = get-ffi-value("sqlite-query")

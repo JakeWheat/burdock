@@ -2,6 +2,13 @@
 use package "packages/sqlite"
 
 include sqlite.sqlite
+
+import from lists:
+  map
+end
+
+include option
+
 #|
 fun g():
  raise("denied")
@@ -25,11 +32,11 @@ end
 check "trivial":
   #open("1")
   #1 is 44
-#|
+
   h = open(":memory:")
   command(h, "create table t1(a int)", empty)
   fun fi(i):
-    command(h, "insert into t1 values (?)", [list: sql-integer(i)])
+    command(h, "insert into t1 values (?)", [list: sql-number(i)])
   end
   map(fi, [list: 1,2,3,4])
 
@@ -43,8 +50,10 @@ check "trivial":
     end
   end
   lst = lp()
-  lst is map(sql-integer, [list: 1,2,3,4])
+  print(lst)
+  lst is map(lam(x): [list:sql-number(x)] end,
+             [list: 1,2,3,4])
   close-result(rs)
   close(h)
-|#
+
 end
