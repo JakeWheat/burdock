@@ -57,6 +57,8 @@ data ProvideItem
     = ProvideAll
     | ProvideAlias String String
     | ProvideName String
+    | ProvideType String
+    | ProvideData String
     deriving (Eq,Show,Data) 
 
 data ImportSource

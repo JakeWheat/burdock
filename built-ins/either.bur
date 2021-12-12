@@ -1,16 +1,15 @@
 
 provide:
-  is-Either,
+  type Either,
   is-left,
   is-right,
   left,
   right,
-
-  run-task,
-
   _casepattern-left,
   _casepattern-right,
-  _typeinfo-Either
+
+  run-task
+
 end
 
 include _internals

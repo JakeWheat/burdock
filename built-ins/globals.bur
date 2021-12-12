@@ -24,7 +24,7 @@ provide:
 
   not,
   
-  is-List,
+  type List,
   is-empty,
   is-link,
   empty,
@@ -35,7 +35,6 @@ provide:
   _casepattern-nothing,
   _casepattern-empty,
   _casepattern-link,
-  _typeinfo-List,
 
   is-nothing,
   is-Nothing,
@@ -54,14 +53,13 @@ provide:
   string-append,
 
   # todo: fix this when implement type provide-spec
-  _typeinfo-Any,
-  _typeinfo-Number,
-  _typeinfo-String,
-  _typeinfo-Boolean,
-
-  _typeinfo-Tuple,
-  _typeinfo-Record,
-  _typeinfo-Function,
+  type Any,
+  type Number,
+  type String,
+  type Boolean,
+  type Tuple,
+  type Record,
+  type Function,
 
   sleep
 

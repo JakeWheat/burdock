@@ -2657,7 +2657,7 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
             $ lam ["x"]
             [StmtExpr $ App appSourcePos (bootstrapRef "is-variant") [Iden typeInfoName, Text vnm, Iden "x"]]
         callIs (VariantDecl vnm _ _) = App appSourcePos (Iden $ "is-" ++ vnm) [Iden "x"]
-        -- use the type tag instead
+        -- todo: use the type tag instead
         makeIsDat =
             letDecl ("is-" ++ dnm)
             $ lam ["x"]
@@ -2837,7 +2837,6 @@ interpStatement (Provide pis) = do
 interpStatement (UsePackage dr) = do
     st <- ask
     let packageName = takeBaseName dr
-    liftIO $ putStrLn $ "package name: " ++ packageName
     liftIO $ atomically $ modifyTVar (tlHandleState st)
         (\r -> r {hsLoadedPackages = (packageName,dr) : hsLoadedPackages r})
     pure nothing
@@ -3038,6 +3037,8 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
         ,("is-nothing", ForeignFunV "is-nothing")
         ,("is-Nothing", ForeignFunV "is-Nothing")
         ,("_casepattern-nothing", FFIValue "casepattern" $ toDyn (bootstrapType "Nothing", "nothing"))
+        ,("_typeinfo-Nothing", FFIValue "typeinfo" $ toDyn
+             $ SimpleTypeInfo ["_system","modules","_bootstrap","Nothing"])
         -- todo: complete the boolean (and nothing?) types
         ,("get-ffi-value", ForeignFunV "get-ffi-value")
         ,("make-variant", ForeignFunV "make-variant")
@@ -3139,6 +3140,12 @@ aliasSomething localBds extraBds pis = concat $ map apis pis
     apis (ProvideName k) = case lookup k allBds of
         Nothing -> error $ "provide alias source not found: " ++ k
         Just v -> [(k,v)]
+    apis (ProvideType t) =
+        let ti = "_typeinfo-" ++ t
+            ist = "is-" ++ t
+        in case (,) <$> lookup ti allBds <*> lookup ist allBds of
+            Nothing -> error $ "provide type source not found: " ++ t
+            Just (tiv, istv) -> [(ti,tiv), (ist, istv)]
 
 -- says where to find the named module in the system path
 -- _system.modules.[nm]

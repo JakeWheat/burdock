@@ -24,22 +24,31 @@ provide:
   *,
   # todo: add the provide module support
   # these are the contents of the _bootstrap module
+  type Boolean,
   true,
   false,
+
+  type Nothing,
   nothing,
   is-nothing,
-  is-Nothing,
   _casepattern-nothing,
+
   get-ffi-value,
   make-variant,
   is-variant,
-  _typeinfo-Any,
-  _typeinfo-Number,
-  _typeinfo-String,
-  _typeinfo-Boolean,
-  _typeinfo-Tuple,
-  _typeinfo-Record,
-  _typeinfo-Function
+
+  type Any,
+  type Number,
+  type String,
+  type Tuple,
+  type Record,
+  type Function,
+  is-Tuple as is-tuple,
+  is-Record as is-record,
+  is-Boolean as is-boolean,
+  is-String as is-string,
+  is-Function as is-function,
+  is-Number as is-number
 end
 
 # list construct
@@ -65,12 +74,13 @@ show-handle-state = get-ffi-value("show-handle-state")
 
 # user stuff that's also used in bootstrapping the system
 
-is-tuple = get-ffi-value("is-tuple")
-is-record = get-ffi-value("is-record")
-is-boolean = get-ffi-value("is-boolean")
-is-string = get-ffi-value("is-string")
-is-number = get-ffi-value("is-number")
-is-function = get-ffi-value("is-function")
+is-Tuple = get-ffi-value("is-tuple")
+is-Record = get-ffi-value("is-record")
+is-Boolean = get-ffi-value("is-boolean")
+is-String = get-ffi-value("is-string")
+is-Number = get-ffi-value("is-number")
+is-Function = get-ffi-value("is-function")
+is-Any = lam(x): true end
 
 union-recs = get-ffi-value("union-recs")
 

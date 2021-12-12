@@ -50,7 +50,6 @@ check "trivial":
     end
   end
   lst = lp()
-  print(lst)
   lst is map(lam(x): [list:sql-number(x)] end,
              [list: 1,2,3,4])
   close-result(rs)

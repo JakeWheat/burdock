@@ -308,6 +308,8 @@ provideItem :: ProvideItem -> Doc a
 provideItem ProvideAll = pretty "*"
 provideItem (ProvideName n) = pretty n
 provideItem (ProvideAlias n a) = pretty n <+> pretty "as" <+> pretty a
+provideItem (ProvideType n) = pretty "type" <+> pretty n
+provideItem (ProvideData n) = pretty "data" <+> pretty n
 
 importSource :: ImportSource -> Doc a
 importSource (ImportSpecial nm as) = pretty nm <> parens (commaSep $ map (dquotes . pretty) as)

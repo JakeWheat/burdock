@@ -1,8 +1,7 @@
 
 
 provide:
-  _typeinfo-HaskellString,
-  is-HaskellString,
+  type HaskellString,
   make-haskell-string,
   unmake-haskell-string,
   haskell-string-length

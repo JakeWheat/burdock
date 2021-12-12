@@ -2,15 +2,14 @@
 provide:
   some,
   none,
-  is-Option,
+  type Option,
   is-some,
   is-none,
   and-then,
   or-else,
 
   _casepattern-some,
-  _casepattern-none,
-  _typeinfo-Option
+  _casepattern-none
 end
 
 include _internals

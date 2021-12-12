@@ -793,6 +793,8 @@ provide = Provide <$> (keyword_ "provide"
 provideItem :: Parser ProvideItem
 provideItem = choice
     [ProvideAll <$ symbol_ "*"
+    ,ProvideType <$> (keyword_ "type" *> identifier)
+    ,ProvideData <$> (keyword_ "data" *> identifier)
     ,do
      a <- identifier
      bchoice [ProvideAlias a <$> (keyword_ "as" *> identifier)

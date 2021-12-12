@@ -611,6 +611,12 @@ end|]
     ,("provide: a as b end"
      ,Provide [ProvideAlias "a" "b"])
 
+    ,("provide: type A end"
+     ,Provide [ProvideType "A"])
+
+    ,("provide: data A end"
+     ,Provide [ProvideData "A"])
+
     ,("include file(\"file.tea\")"
      ,Include (ImportSpecial "file" ["file.tea"]))
 
