@@ -123,6 +123,7 @@ import qualified Prettyprinter as P
 import System.FilePath
     (dropExtension
     ,takeFileName
+    ,takeBaseName
     ,(</>)
     ,(<.>)
     )
@@ -571,6 +572,7 @@ data BurdockHandleState
     ,hsForeignFunctionImpls :: [ForeignFunctionEntry]
     ,hsForeignTypes :: [(String, FFITypeInfo)]
     ,hsSourceCache :: [(FilePath, String)]
+    ,hsLoadedPackages :: [(String,FilePath)]
     ,hsUniqueSourceCtr :: Int
     -- temp, to be split by module
     -- module path, check block name, result
@@ -647,7 +649,7 @@ newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
     ch <- openBConcurrency (Just extractValueException)
     rs <- newTVarIO []
-    h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF builtInFFITypes [] 0 rs
+    h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF builtInFFITypes [] [] 0 rs
     spawnWaitCast ch $ \th -> runInterp th False (Handle h) initBootstrapModule
     ip <- getBuiltInModulePath "_internals"
     spawnWaitCast ch $ \th -> runInterp th False (Handle h) $ loadAndRunModule False "_internals" ip
@@ -927,7 +929,7 @@ addFFITypes' ts = do
         x {hsForeignTypes = ts ++ hsForeignTypes x}
 
 addFFIPackage' :: String -> FFIPackage -> Interpreter ()
-addFFIPackage' nm pkg = do
+addFFIPackage' _nm pkg = do
     addFFITypes' $ ffiPackageTypes pkg
     addFFIImpls' $ ffiPackageFunctions pkg 
 
@@ -2702,7 +2704,7 @@ it's slightly annoying otherwise - maybe not annoying enough?
 -}
 
 interpStatement (Import is al) =  do
-    (modName,fn) <- resolveImportPath [] is
+    (modName,fn) <- resolveImportPath is
     ensureModuleLoaded modName fn
     as <- aliasModule modName [ProvideAll]
     letIncludedValue al $ VariantV (bootstrapType "Record") "record" as
@@ -2733,7 +2735,7 @@ include m == include from m: * end
 -}
 
 interpStatement (Include is) = do
-    (modName,fn) <- resolveImportPath [] is
+    (modName,fn) <- resolveImportPath is
     ensureModuleLoaded modName fn
     ls <- aliasModule modName [ProvideAll]
     mapM_ (uncurry letIncludedValue) ls
@@ -2775,6 +2777,16 @@ interpStatement (Provide pis) = do
     -- todo: turn the provides into burdock values and save as a regular burdock list?
     modifyScriptProvides (++pis)
     pure nothing
+
+interpStatement (UsePackage dr) = do
+    st <- ask
+    let packageName = takeBaseName dr
+    liftIO $ putStrLn $ "package name: " ++ packageName
+    liftIO $ atomically $ modifyTVar (tlHandleState st)
+        (\r -> r {hsLoadedPackages = (packageName,dr) : hsLoadedPackages r})
+    pure nothing
+
+-- hsLoadedPackages :: [(String,FilePath)]
 
 internalsRef :: String -> Expr
 internalsRef nm = makeDotPathExpr ["_system", "modules", "_internals", nm]
@@ -2921,14 +2933,28 @@ getBuiltInModulePath nm =
     -- later will need to use the cabal Paths_ thing and stuff
     pure ("built-ins" </> nm <.> "bur")
 
-resolveImportPath :: [FilePath] -> ImportSource -> Interpreter (String, FilePath)
-resolveImportPath _moduleSearchPath is = do
+-- todo: add importing relative to the current file path
+-- check import sources for ambiguity
+resolveImportPath :: ImportSource -> Interpreter (String, FilePath)
+resolveImportPath is = do
     case is of
         ImportSpecial "file" [fn] ->
             pure (dropExtension $ takeFileName fn, fn)
         ImportSpecial {} -> _errorWithCallStack "unsupported import"
         -- todo: set this path in a sensible and flexible way
-        ImportName nm -> (nm,) <$> liftIO (getBuiltInModulePath nm)
+        ImportName nm -> do
+            let (p,nm') = break (=='.') nm
+            if nm' == ""
+                then (nm,) <$> liftIO (getBuiltInModulePath nm)
+                else do
+                    ps <- getPackages
+                    case lookup p ps of
+                        Nothing -> (nm,) <$> liftIO (getBuiltInModulePath nm)
+                        Just fn -> pure (nm,fn </> "bur" </> drop 1 nm' <.> "bur")
+  where
+    getPackages = do
+        st <- ask
+        hsLoadedPackages <$> (liftIO $ atomically $ readTVar (tlHandleState st))
 
 ensureModuleLoaded :: String -> FilePath -> Interpreter ()
 ensureModuleLoaded moduleName moduleFile = do

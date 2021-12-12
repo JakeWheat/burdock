@@ -638,6 +638,9 @@ end|]
     ,("import from string-dict: a as b end"
      ,ImportFrom (ImportName "string-dict") [ProvideAlias "a" "b"])
 
+    -- todo: add optional alias
+    ,("use package \"dir/my-package\""
+     ,UsePackage "dir/my-package")
     ]
   where
     nm x = NameBinding x
@@ -746,6 +749,6 @@ interpreterTests =
      ,"burdock-test-src/concurrency.bur"
      ]
     ,TestGroup "packages" $ map InterpreterTestsFile
-     ["packages/ffitypes-test/tests/ffitypes.bur"
+     ["packages/ffitypes-test/tests/ffitypes-test.bur"
      ]
     ]

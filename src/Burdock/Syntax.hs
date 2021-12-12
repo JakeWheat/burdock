@@ -37,6 +37,7 @@ data Stmt
     | Include ImportSource
     | IncludeFrom String [ProvideItem]
     | ImportFrom ImportSource [ProvideItem]
+    | UsePackage FilePath
     deriving (Eq,Show,Data)
 
 -- ty params, args, return ann

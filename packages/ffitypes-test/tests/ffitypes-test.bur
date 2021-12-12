@@ -1,20 +1,7 @@
 
-# introduce an ffi type into the burdock namespace
-# this gives you the typename to use in annotations
-# and an is-X type tester
+use package "packages/ffitypes-test"
 
-# todo: the types tested here are built into the language
-# fix the test framework so they are added via the handle api
-# this will be the demo of how to do this generally too
-
-import from _internals:
-  get-ffi-value
-end
-
-ffitype HaskellString = "haskell-string"
-
-make-haskell-string = get-ffi-value("make-haskell-string")
-unmake-haskell-string = get-ffi-value("unmake-haskell-string")
+include ffitypes-test.ffitypes-test
 
 check "basics":
 
@@ -25,6 +12,8 @@ check "basics":
 
   is-HaskellString(1) is false
   is-HaskellString(make-haskell-string("1")) is true
+
+  haskell-string-length(make-haskell-string("something")) is 9
 
 end
 

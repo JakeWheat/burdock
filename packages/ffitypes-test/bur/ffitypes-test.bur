@@ -1,0 +1,24 @@
+
+
+provide:
+  _typeinfo-HaskellString,
+  is-HaskellString,
+  make-haskell-string,
+  unmake-haskell-string,
+  haskell-string-length
+end
+
+import from _internals:
+  get-ffi-value
+end
+
+
+
+# introduce an ffi type into the burdock namespace
+# this gives you the typename to use in annotations
+# and an is-X type tester
+ffitype HaskellString = "haskell-string"
+
+make-haskell-string = get-ffi-value("make-haskell-string")
+unmake-haskell-string = get-ffi-value("unmake-haskell-string")
+haskell-string-length = get-ffi-value("haskell-string-length")

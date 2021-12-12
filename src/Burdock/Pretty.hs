@@ -294,6 +294,7 @@ stmt (ImportFrom is pis) =
     prettyBlocklike vsep
          [pretty "import" <+> pretty "from" <+> importSource is <> pretty ":"
          ,nest 2 $ commaSep $ map provideItem pis]
+stmt (UsePackage d) = pretty "use" <+> pretty "package" <+> dquotes (pretty d)
 
 funHeader :: FunHeader -> Doc a
 funHeader (FunHeader ts as rt) =

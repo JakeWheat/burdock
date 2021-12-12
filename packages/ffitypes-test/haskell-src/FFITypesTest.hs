@@ -22,7 +22,9 @@ ffiTypesFFIPackage = FFIPackage
      [("haskell-string", FFITypeInfo (Just stringEquals) (Just stringLT) (Just stringToRepr))]
     ,ffiPackageFunctions = 
      [("make-haskell-string", makeHaskellString)
-     ,("unmake-haskell-string", unmakeHaskellString)]
+     ,("unmake-haskell-string", unmakeHaskellString)
+     ,("haskell-string-length", haskellStringLength)
+     ]
     }
 
 stringEquals :: Dynamic -> Dynamic -> Interpreter Bool
@@ -58,3 +60,10 @@ unmakeHaskellString [FFIValue "haskell-string" v]
     | Just v' <- fromDynamic v
     = pure $ TextV v'
 unmakeHaskellString _ = error "bad args to unmakeHaskellString"
+
+
+haskellStringLength :: [Value] -> Interpreter Value
+haskellStringLength [FFIValue "haskell-string" v]
+    | Just (v' :: String) <- fromDynamic v
+    = pure $ NumV $ fromIntegral $ length v'
+haskellStringLength _ = error "bad args to haskellStringLength"

@@ -700,6 +700,7 @@ stmt = choice
     ,importStmt
     ,whenStmt
     ,shadowDecl
+    ,usePackage
     ,startsWithExprOrBinding]
 
 stmts :: Parser [Stmt]
@@ -809,8 +810,16 @@ include = do
 importSource :: Parser ImportSource
 importSource = do
     a <- identifier
-    bchoice [ImportSpecial a <$> parens (commaSep stringRaw)
-            ,pure $ ImportName a]
+    a' <- ctu a
+    bchoice [ImportSpecial a' <$> parens (commaSep stringRaw)
+            ,pure $ ImportName a']
+  where
+    ctu a = choice
+        [do
+         symbol_ "."
+         b <- identifier
+         ctu (a ++ "." ++ b)
+        ,pure a]
 
 importStmt :: Parser Stmt
 importStmt = keyword_ "import" *> (importFrom <|> importAs)
@@ -839,6 +848,10 @@ shadowDecl =
                       Nothing -> b
                       Just tyx -> TypedBinding b tyx
                in LetDecl b1 v
+
+usePackage :: Parser Stmt
+usePackage =
+    UsePackage <$> (keyword_ "use" *> keyword_ "package" *> stringRaw)
 
 {-
 starts with expr or binding
