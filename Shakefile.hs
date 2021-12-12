@@ -63,6 +63,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ,"stm"
             ,"async"
             ,"exceptions"
+            ,"sqlite-simple"
             ]
     
     -- todo: separate packages for the tests, the executable and the lib?
@@ -118,8 +119,12 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
     "_build/bin/burdock-tests" %> \out -> do
         needHsFiles "src"
         needHsFiles "packages/ffitypes-test/haskell-src"
+        needHsFiles "packages/sqlite/haskell-src"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src", "packages/ffitypes-test/haskell-src"]})
+                     ,ghcSrcs = ["src"
+                                ,"packages/ffitypes-test/haskell-src"
+                                ,"packages/sqlite/haskell-src"
+                                ]})
             "src/test/BurdockTests.hs"
             out
     

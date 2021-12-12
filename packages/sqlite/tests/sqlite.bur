@@ -1,0 +1,29 @@
+
+use package "packages/sqlite"
+
+include sqlite.sqlite
+
+check "trivial":
+
+  h = open(":memory:")
+  command(h, "create table t1(a int)", empty)
+  fun fi(i):
+    command(h, "insert into t1 values (?)", [list: sql-integer(i)])
+  end
+  map(fi, [list: 1,2,3,4])
+
+  rs = query(h, "select * from t1", empty)
+  fun lp():
+    v = next-row(rs)
+    cases v:
+      | some(r) =>
+          link(r, lp())
+      | none => empty
+    end
+  end
+  lst = lp()
+  lst is map(sql-integer, [list: 1,2,3,4])
+  close-result(rs)
+  close(h)
+
+end

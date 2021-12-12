@@ -1,0 +1,32 @@
+#|
+
+low level interface to sqlite
+
+|#
+
+data Value:
+  | value(v)
+end
+
+data Handle:
+  | handle(h)
+end
+
+open :: String -> Handle
+open = ...
+
+create = ...
+
+close = ...
+
+command = ...
+
+data ResultHandle:
+  | ResultHandle(rh)
+end
+
+nextRow = ...
+
+closeResult = ...
+
+query = ...

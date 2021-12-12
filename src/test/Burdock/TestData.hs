@@ -750,5 +750,6 @@ interpreterTests =
      ]
     ,TestGroup "packages" $ map InterpreterTestsFile
      ["packages/ffitypes-test/tests/ffitypes-test.bur"
+     ,"packages/sqlite/tests/sqlite.bur"
      ]
     ]
