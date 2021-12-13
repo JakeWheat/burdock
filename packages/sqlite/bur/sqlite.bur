@@ -11,7 +11,6 @@ provide:
   type ResultHandle,
 
   open,
-  create,
   close,
   command,
   query,
@@ -47,8 +46,6 @@ ffitype ResultHandle = "sqlite-result-handle"
 
 open = ffi-function("sqlite-open")
 
-create = ...
-
 close = ffi-function("sqlite-close")
 
 command = ffi-function("sqlite-command")
@@ -79,8 +76,7 @@ fun query-map(h, qry, ps, f):
   fun lp():
     v = next-row(rs)
     cases v:
-      | some(r) =>
-          link(f(r), lp())
+      | some(r) => link(f(r), lp())
       | none => empty
     end
   end
