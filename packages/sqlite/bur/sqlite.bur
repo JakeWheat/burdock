@@ -18,7 +18,9 @@ provide:
   close-result,
   query-for-each,
   query-map,
-  query-as-list
+  query-as-list,
+
+  sqlite-testing
 
 end
 
@@ -55,6 +57,9 @@ next-row = ffi-function("sqlite-next-row")(none,some,sql-number,_)
 close-result = ffi-function("sqlite-close-result")
 
 query = ffi-function("sqlite-query")
+
+sqlite-testing = ffi-function("sqlite-testing")
+
 
 fun query-for-each(h, qry, ps, f):
   rs = query(h, qry, ps)

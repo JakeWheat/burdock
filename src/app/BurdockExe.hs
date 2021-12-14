@@ -81,6 +81,10 @@ import System.Exit (exitFailure)
 import Control.Concurrent.Async (withAsync, wait)
 import Control.Exception.Safe (bracket)
 
+-- temp? include all packages in the default interpreter build
+import qualified FFITypesTest
+import qualified Sqlite
+
 ------------------------------------------------------------------------------
 
 
@@ -96,6 +100,7 @@ runHandle fp h rTests = do
 
 runSrc :: Maybe String -> Bool -> String -> IO ()
 runSrc fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
+    addPackages h
     flip catch (handleEx h) $ do
         when rTests $ void $ B.runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
         v <- B.runScript h fnm [] src
@@ -144,6 +149,7 @@ repl h replH = go
 
 doRepl :: IO ()
 doRepl = bracket B.newHandle B.closeHandle $ \h -> do
+    addPackages h
     replH <- B.runScript h Nothing []
         "include repl\n\
         \create-repl()"
@@ -155,6 +161,11 @@ doRepl = bracket B.newHandle B.closeHandle $ \h -> do
     runInputT st (repl h replH)
   where
     st = defaultSettings {historyFile = Just ".burdockreplhistory"}
+
+addPackages :: B.Handle -> IO ()
+addPackages h = do
+    B.addFFIPackage h "packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
+    B.addFFIPackage h "packages/sqlite" Sqlite.sqlitePackage
 
 ------------------------------------------------------------------------------
 

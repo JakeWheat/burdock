@@ -82,9 +82,8 @@ demoMakeHaskellInt :: [B.Value] -> B.Interpreter B.Value
 demoMakeHaskellInt [B.NumV x] = do
     let y :: Int
         Just y = extractInt x
-    pure $ B.FFIValue "my-int" $ toDyn y
+    pure $ B.FFIValue (undefined,"my-int") $ toDyn y
 demoMakeHaskellInt _ = error "bad args to demo-make-haskell-int"
-
 
 demoExtractInt :: [B.Value] -> B.Interpreter B.Value
 demoExtractInt [B.FFIValue _ x] = do
@@ -98,5 +97,5 @@ demoAddToInt [B.FFIValue _ x, B.NumV a] = do
     let y :: Int
         Just y = fromDynamic x
         Just a' = extractInt a
-    pure $ B.FFIValue "my-int" $ toDyn $ y + a'
+    pure $ B.FFIValue (undefined,"my-int") $ toDyn $ y + a'
 demoAddToInt _ = error "bad args to demo-add-to-int"

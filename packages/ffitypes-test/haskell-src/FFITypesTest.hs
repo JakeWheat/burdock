@@ -4,7 +4,6 @@ module FFITypesTest (ffiTypesFFIPackage) where
 
 import Data.Dynamic
     (Dynamic
-    ,toDyn
     ,fromDynamic
     --,Typeable
     )
@@ -14,6 +13,8 @@ import Burdock.Interpreter
     ,Value(..)
     ,FFIPackage(..)
     ,FFITypeInfo(..)
+    ,makeFFIValue
+    ,unmakeFFIValue
     )
 
 ffiTypesFFIPackage :: FFIPackage
@@ -52,18 +53,22 @@ stringToRepr a = case fromDynamic a of
 
 makeHaskellString :: [Value] -> Interpreter Value
 makeHaskellString [TextV t]
-    = pure $ FFIValue "haskell-string" $ toDyn t
+    = makeFFIValue "haskell-string" t
 makeHaskellString _ = error "bad args to makeHaskellString"
 
 unmakeHaskellString :: [Value] -> Interpreter Value
-unmakeHaskellString [FFIValue "haskell-string" v]
-    | Just v' <- fromDynamic v
-    = pure $ TextV v'
+unmakeHaskellString [v] = do
+    v' <- unmakeFFIValue "haskell-string" v
+    case v' of
+        Nothing -> error "bad args to unmakeHaskellString"
+        Just v'' -> pure $ TextV v''
 unmakeHaskellString _ = error "bad args to unmakeHaskellString"
 
 
 haskellStringLength :: [Value] -> Interpreter Value
-haskellStringLength [FFIValue "haskell-string" v]
-    | Just (v' :: String) <- fromDynamic v
-    = pure $ NumV $ fromIntegral $ length v'
+haskellStringLength [v] = do
+    v' <- unmakeFFIValue "haskell-string" v
+    case v' of
+        Nothing -> error "bad args to haskellStringLength"
+        Just (v'' :: String) -> pure $ NumV $ fromIntegral $ length v''
 haskellStringLength _ = error "bad args to haskellStringLength"

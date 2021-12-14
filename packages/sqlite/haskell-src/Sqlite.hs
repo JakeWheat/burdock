@@ -10,10 +10,6 @@ import Data.IORef
     ,writeIORef)
 import Data.String (fromString)
 import Control.Monad.Reader (liftIO)
-import Data.Dynamic
-    (toDyn
-    ,fromDynamic
-    )
 
 -- todo: turn this into a proper api for ffi code to use
 import Burdock.Interpreter
@@ -25,6 +21,8 @@ import Burdock.Interpreter
     ,fromBList
     ,makeBList
     ,app
+    ,makeFFIValue
+    ,unmakeFFIValue
     )
 -- todo: export the functions to work with these with the ffi api
 import Burdock.Scientific as Sc
@@ -42,38 +40,42 @@ sqlitePackage = FFIPackage
      ,("sqlite-next-row", bNextRow)
      ,("sqlite-close-result", bCloseResultHandle)
      ,("sqlite-close", bCloseHandle)
+     ,("sqlite-testing", sqliteTesting)
      ]
     }
 
 bOpen :: [Value] -> Interpreter Value
 bOpen [TextV fn] = do
     h <- liftIO $ S.open fn
-    pure $ FFIValue "sqlite-handle" $ toDyn h
+    makeFFIValue "sqlite-handle" h
 bOpen _ = error "bad args to sqlite open"
 
 bCommand :: [Value] -> Interpreter Value
-bCommand [FFIValue "sqlite-handle" h', TextV cmd, args']
+bCommand [h, TextV cmd, args']
     | Just args <- mapM bSqlValueToSQLData =<< fromBList args'
-    , Just conn <- fromDynamic h'
     = do
+      conn <- maybe (error "bad args to sqlite command") id
+              <$> unmakeFFIValue "sqlite-handle" h
       liftIO $ S.execute conn (fromString cmd) args
       pure nothing
 bCommand _ = error "bad args to sqlite command"
 
 bQuery :: [Value] -> Interpreter Value
-bQuery [FFIValue "sqlite-handle" h', TextV cmd, args']
+bQuery [h, TextV cmd, args']
     | Just args <- mapM bSqlValueToSQLData =<< fromBList args'
-    , Just conn <- fromDynamic h'
     = do
+      conn <- maybe (error "bad args to sqlite query") id
+              <$> unmakeFFIValue "sqlite-handle" h
       r <- liftIO $ S.query conn (fromString cmd) args
       (rs :: ResultHandle) <- liftIO $ newIORef r
-      pure $ FFIValue "sqlite-result-handle" $ toDyn rs
+      makeFFIValue "sqlite-result-handle" rs
 bQuery _ = error "bad args to sqlite query"
 
 bNextRow :: [Value] -> Interpreter Value
-bNextRow [none, somef, mkSqlNumber, FFIValue "sqlite-result-handle" rs']
-    | Just (rs :: ResultHandle) <- fromDynamic rs'
+bNextRow [none, somef, mkSqlNumber, rs']
     = do
+      rs <- maybe (error "bad args to sqlite next-row") id
+              <$> unmakeFFIValue "sqlite-result-handle" rs'
       vr <- liftIO $ readIORef rs
       case vr of
           [] -> pure none
@@ -96,18 +98,28 @@ bSqlValueToSQLData _ = Nothing
 type ResultHandle = (IORef [[S.SQLData]])
 
 bCloseResultHandle :: [Value] -> Interpreter Value
-bCloseResultHandle [FFIValue "sqlite-result-handle" rs']
-    | Just (_ :: ResultHandle) <- fromDynamic rs' =
-          pure nothing
+bCloseResultHandle [rs'] = do
+      (_rs :: ResultHandle) <- maybe (error "bad args to sqlite close-result") id
+              <$> unmakeFFIValue "sqlite-result-handle" rs'
+      pure nothing
 bCloseResultHandle _ = error "bad args to sqlite close-result"
 
 bCloseHandle :: [Value] -> Interpreter Value
-bCloseHandle [FFIValue "sqlite-handle" rs']
-    | Just conn <- fromDynamic rs' = do
-          liftIO $ S.close conn
-          pure nothing
+bCloseHandle [conn'] = do
+    conn <- maybe (error "bad args to sqlite close") id
+            <$> unmakeFFIValue "sqlite-handle" conn'
+    liftIO $ S.close conn
+    pure nothing
 bCloseHandle _ = error "bad args to sqlite close"
 
 sqlDataToBValue :: Value -> S.SQLData -> Interpreter Value
 sqlDataToBValue mkSqlNumber (S.SQLInteger n) =
     app mkSqlNumber [NumV $ fromIntegral n]
+
+sqliteTesting :: [Value] -> Interpreter Value
+sqliteTesting _ = do
+    liftIO $ putStrLn "sqlite testing"
+    conn <- liftIO $ S.open ":memory:"
+    liftIO $ S.execute_ conn (fromString "create table t1(a int, b text, c bool, d date)")
+    _r :: [[S.SQLData]] <- liftIO $ S.query_ conn (fromString "select * from t1")
+    pure nothing

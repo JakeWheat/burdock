@@ -82,6 +82,7 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
         pure $ T.testGroup fn ts
     -- todo: a bit better
     addPackages h = do
-        addFFIPackage h "ffitypes" FFITypesTest.ffiTypesFFIPackage
-        addFFIPackage h "ffitypes" Sqlite.sqlitePackage
+        addFFIPackage h "packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
+        addFFIPackage h "packages/sqlite" Sqlite.sqlitePackage
+
 

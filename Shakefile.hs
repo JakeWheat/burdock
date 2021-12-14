@@ -135,8 +135,13 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
 
     "_build/bin/burdock" %> \out -> do
         needHsFiles "src"
+        needHsFiles "packages/ffitypes-test/haskell-src"
+        needHsFiles "packages/sqlite/haskell-src"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src"]})
+                     ,ghcSrcs = ["src"
+                                ,"packages/ffitypes-test/haskell-src"
+                                ,"packages/sqlite/haskell-src"
+                                ]})
             "src/app/BurdockExe.hs"
             out
 
