@@ -1,4 +1,5 @@
 
+{-# LANGUAGE ScopedTypeVariables #-}
 module Sqlite (sqlitePackage) where
 
 import qualified Database.SQLite.Simple as S

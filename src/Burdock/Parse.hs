@@ -1,6 +1,7 @@
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Parse
     (parseExpr
     ,parseStmt

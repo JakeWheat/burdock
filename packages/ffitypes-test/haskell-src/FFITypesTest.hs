@@ -1,5 +1,5 @@
 
-
+{-# LANGUAGE ScopedTypeVariables #-}
 module FFITypesTest (ffiTypesFFIPackage) where
 
 import Data.Dynamic

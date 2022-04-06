@@ -4,6 +4,7 @@
 -- cause a test to fail when it shouldn't
 
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.HsConcurrencyTests
     (tests) where
 
