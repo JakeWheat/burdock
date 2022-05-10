@@ -26,7 +26,7 @@ This probably won't work unless my_script.bur usually exits promptly
 
 
 {-# LANGUAGE ScopedTypeVariables #-}
-import qualified  Burdock.Interpreter as B
+import qualified Burdock.Interpreter as B
 
 import Control.Monad.Trans
 import Control.Monad (when, void)
@@ -70,6 +70,8 @@ import Options.Applicative (Parser
                            ,argument
                            ,str
                            ,switch
+                           --,some
+                           ,many
                            )
 import System.IO (Handle
                  ,hIsTerminalDevice
@@ -172,7 +174,9 @@ addPackages h = do
 data MyOpts = MyOpts
   { file :: Maybe String
   , script :: Maybe String
-  , runTests :: Bool}
+  , runTests :: Bool
+  , userArgs :: [String]
+  }
   deriving Show
 
 myOpts :: Parser MyOpts
@@ -188,7 +192,7 @@ myOpts = MyOpts
            <> metavar "INT"
            <> help "test-level 0 = skip, 1= one line, 2 = show failures, 3 = show all")-}
       <*> switch (long "run-tests" <> help "Run tests")
-
+      <*> many (argument str (metavar "ARGS..."))
 
 myOptsPlus :: ParserInfo MyOpts
 myOptsPlus = info (myOpts <**> helper)

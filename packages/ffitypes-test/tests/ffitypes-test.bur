@@ -52,3 +52,12 @@ check "arith methods":
   # check it works with arithmetic
 
 end
+
+check "ffi member lookup":
+  make-haskell-string("stuff").field is "stuff.field"
+end
+
+check "ffi value app":
+  make-haskell-string("stuff")() is "app called on stuff"
+  make-haskell-string("stuff")('test') is 'app called on stuff [TextV "test"]'
+end

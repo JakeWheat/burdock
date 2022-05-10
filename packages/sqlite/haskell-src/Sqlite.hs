@@ -31,8 +31,8 @@ import Burdock.Scientific as Sc
 sqlitePackage :: FFIPackage
 sqlitePackage = FFIPackage
     {ffiPackageTypes =
-     [("sqlite-handle", FFITypeInfo Nothing Nothing Nothing)
-     ,("sqlite-result-handle", FFITypeInfo Nothing Nothing Nothing)
+     [("sqlite-handle", FFITypeInfo Nothing)
+     ,("sqlite-result-handle", FFITypeInfo Nothing)
      ]
     ,ffiPackageFunctions =
      [("sqlite-open", bOpen)
@@ -116,6 +116,7 @@ bCloseHandle _ = error "bad args to sqlite close"
 sqlDataToBValue :: Value -> S.SQLData -> Interpreter Value
 sqlDataToBValue mkSqlNumber (S.SQLInteger n) =
     app mkSqlNumber [NumV $ fromIntegral n]
+sqlDataToBValue _ _ = error "bad args to sqlite sqlDataToBValue"
 
 sqliteTesting :: [Value] -> Interpreter Value
 sqliteTesting _ = do

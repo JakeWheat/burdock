@@ -31,9 +31,19 @@ module Burdock.Interpreter
     ,FFIPackage(..)
     ,FFITypeInfo(..)
     ,addFFIPackage
+    ,makeFFIMemberFunction
+    ,ffiSingleArgMethod
+    ,ffiNoArgMethod
+    ,ffiNoArgValue
+    ,FMD(..)
+    ,ffiMemberDispatcher
+    ,liftIO
+
     ,nothing
     ,fromBList
     ,makeBList
+    ,makeBTuple
+    ,fromBTuple
     ,app
     ,makeFFIValue
     ,unmakeFFIValue
@@ -48,6 +58,8 @@ import Control.Concurrent
     ,threadDelay
     --,myThreadId
     )
+
+import qualified System.Environment as E
 
 import GHC.Conc (getNumProcessors)
 
@@ -1273,11 +1285,15 @@ toreprx (VariantV _ nm fs) = do
     vs <- mapM (toreprx . snd) fs
     pure $ P.pretty nm <> P.pretty "(" <> P.nest 2 (xSep "," vs) <> P.pretty ")"
 
-toreprx x@(FFIValue (_pkg,tg) v) = do
-    ti <- askFFTInfo tg
-    maybe (pure $ P.pretty $ show x)
-          (\f' -> P.pretty <$> f' v)
-          (ffiTypeToRepr =<< ti)
+toreprx x@(FFIValue {}) = do
+    fn' <- interpDotExprE x "_torepr"
+    case fn' of
+        Left {} -> pure $ P.pretty $ show x
+        Right fn -> do
+            y <- app fn []
+            case y of
+                TextV t -> pure $ P.pretty t
+                _ -> error $ "_torepr didn't return a text value: " ++ show y
 toreprx (TemplateV sp) = evalTemplate [sp]
 
 xSep :: String -> [P.Doc a] -> P.Doc a
@@ -1298,12 +1314,35 @@ data FFIPackage
 
 data FFITypeInfo
     = FFITypeInfo
-    {ffiTypeEquals :: Maybe (Dynamic -> Dynamic -> Interpreter Bool)
-    ,ffiTypeLT :: Maybe (Dynamic -> Dynamic -> Interpreter Bool)
-    ,ffiTypeToRepr :: Maybe (Dynamic -> Interpreter String)
+    {ffiMember :: Maybe (Interpreter Value)
     }
 
-liftEquals :: Typeable t =>
+makeFFIMemberFunction :: String -> Maybe (Interpreter Value)
+makeFFIMemberFunction f = Just $ pure $ MethodV $ ForeignFunV f
+
+ffiSingleArgMethod :: String -> Value -> Interpreter Value
+ffiSingleArgMethod nm v =
+        pure $ FunV [NameBinding "xx"]
+            (App Nothing (Iden nm) [Iden "yy", Iden "xx"])
+            [("yy", v)
+            ,(nm, ForeignFunV nm)]
+
+ffiNoArgMethod :: String -> Value -> Interpreter Value
+ffiNoArgMethod nm v =
+        pure $ FunV []
+            (App Nothing (Iden nm) [Iden "yy"])
+            [("yy", v)
+            ,(nm, ForeignFunV nm)]
+
+ffiNoArgValue :: String -> String -> Value -> Interpreter Value
+ffiNoArgValue nm fld v = app f []
+  where
+    f = FunV []
+            (App Nothing (Iden nm) [Text fld, Iden "yy"])
+            [("yy", v)
+            ,(nm, ForeignFunV nm)]
+
+{-liftEquals :: Typeable t =>
               String
            -> (t -> t -> Interpreter Bool)
            -> Dynamic
@@ -1311,37 +1350,78 @@ liftEquals :: Typeable t =>
 liftEquals tyname f a b =
     case (fromDynamic a, fromDynamic b) of
         (Just a', Just b') -> f a' b'
-        _ -> error $ "expected two " ++ tyname ++ ", got " ++ show (a,b)
+        _ -> error $ "expected two " ++ tyname ++ ", got " ++ show (a,b)-}
 
--- this is definitely way too much boilerplatex
-addrEquals :: Dynamic -> Dynamic -> Interpreter Bool
+-- this is definitely way too much boilerplate
+addrEquals :: [Value] -> Interpreter Value
+addrEquals [FFIValue _ a, FFIValue _ b] =
+    case (fromDynamic a, fromDynamic b) of
+        (Just a', Just b') -> BoolV <$> e a' b'
+        _ -> error $ "expected two addrs, got " ++ show (a,b)
+  where
+    e :: Addr -> Addr -> Interpreter Bool
+    e x y = pure $ (==) x y
+addrEquals _ = error "bad args to addr equals"
+
+addrToRepr :: [Value] -> Interpreter Value
+addrToRepr [FFIValue _ a] =
+    case fromDynamic a of
+        Just (_ :: Addr) -> pure $ TextV $ show a
+        _ -> error $ "bad arg to addr torepr " ++ show a
+addrToRepr _ = error "bad args to addr torepr"
+
+
+{-addrEquals :: Dynamic -> Dynamic -> Interpreter Bool
 addrEquals a b =
     liftEquals "addr" e a b
   where
     e :: Addr -> Addr -> Interpreter Bool
-    e x y = pure $ (==) x y
+    e x y = pure $ (==) x y-}
 
-relationFFIEquals :: Dynamic -> Dynamic -> Interpreter Bool
-relationFFIEquals a b =
-    liftEquals "relation" e a b
+relationFFIEquals :: [Value] -> Interpreter Value
+relationFFIEquals [FFIValue _ a, FFIValue _ b] =
+    case (fromDynamic a, fromDynamic b) of
+        (Just a', Just b') -> BoolV <$> e a' b'
+        _ -> error $ "expected two relations, got " ++ show (a,b)
   where
     e :: R.Relation Value -> R.Relation Value -> Interpreter Bool
-    e a' b' = either (error . show) pure $ R.relEqual a' b'
+    e x y = either (error . show) pure $ R.relEqual x y
+relationFFIEquals _ = error "bad args to relation equals"
 
-relationToRepr :: Dynamic -> Interpreter String
+{-relationToRepr :: Dynamic -> Interpreter String
 relationToRepr a = case fromDynamic a of
     Just (r' :: R.Relation Value) -> pure $ R.showRel r'
+    Nothing -> error $ "expected relation, got " ++ show a-}
+
+relationToRepr :: [Value] -> Interpreter Value
+relationToRepr [FFIValue _ a] = case fromDynamic a of
+    Just (r' :: R.Relation Value) -> pure $ TextV $ R.showRel r'
     Nothing -> error $ "expected relation, got " ++ show a
+relationToRepr _ = error "bad args to relationToRepr"
+
+data FMD
+    = FMD
+    {fmdLkp :: [(String, Value -> Interpreter Value)]
+    ,fmdFallback :: Maybe (String -> Value -> Interpreter Value)
+    }
+
+ffiMemberDispatcher :: FMD -> [Value] -> Interpreter Value
+ffiMemberDispatcher fmd [TextV fld, v] = do
+    case lookup fld (fmdLkp fmd) of
+        Just f -> f v
+        _ | Just fb <- fmdFallback fmd -> fb fld v
+        _ -> error $ "unsupported method: " ++ show v ++ " " ++ fld
+ffiMemberDispatcher _ _ = error "bad args to ffiMemberDispatcher"
 
 builtInFFITypes :: [(String,FFITypeInfo)]
 builtInFFITypes =
-    [("callstack", FFITypeInfo Nothing Nothing Nothing)
-    ,("addr", FFITypeInfo (Just addrEquals) Nothing Nothing)
-    ,("relation", FFITypeInfo (Just relationFFIEquals) Nothing (Just relationToRepr))
-    ,("unknown", FFITypeInfo Nothing Nothing Nothing)
-    ,("burdockast", FFITypeInfo Nothing Nothing Nothing)
-    ,("typeinfo", FFITypeInfo Nothing Nothing Nothing)
-    ,("casepattern", FFITypeInfo Nothing Nothing Nothing)
+    [("callstack", FFITypeInfo Nothing)
+    ,("addr", FFITypeInfo (makeFFIMemberFunction "_member-addr"))
+    ,("relation", FFITypeInfo (makeFFIMemberFunction "_member-relation"))
+    ,("unknown", FFITypeInfo Nothing)
+    ,("burdockast", FFITypeInfo  Nothing)
+    ,("typeinfo", FFITypeInfo Nothing)
+    ,("casepattern", FFITypeInfo Nothing)
     ]
 
 -- built in functions implemented in haskell:
@@ -1413,6 +1493,12 @@ builtInFF =
     ,("format-call-stack", bFormatCallStack)
     ,("run-script", bRunScript)
 
+    ,("_member-relation", ffiMemberDispatcher $ FMD
+         {fmdLkp = [("_equals", ffiSingleArgMethod "relation-equals")
+                   ,("_torepr", ffiNoArgMethod "relation-to-repr")]
+         ,fmdFallback = Nothing})
+    ,("relation-equals", relationFFIEquals)
+    ,("relation-to-repr", relationToRepr)
     ,("rel-to-list", relToList)
     ,("rel-from-list", relFromList)
     ,("rel-from-table", relFromTable)
@@ -1441,7 +1527,15 @@ builtInFF =
     ,("sleep", bSleep)
     ,("send", bSend)
     ,("async-exit", bAsyncExit)
+    ,("addr-equals", addrEquals)
+    ,("addr-to-repr", addrToRepr)
+    ,("_member-addr", ffiMemberDispatcher $ FMD
+         {fmdLkp = [("_equals", ffiSingleArgMethod "addr-equals")
+                   ,("_torepr", ffiNoArgMethod "addr-to-repr")
+                   ]
+         ,fmdFallback = Nothing})
 
+    ,("get-args", bGetArgs)
     ]
 
 ffiFunction :: [Value] -> Interpreter Value
@@ -1457,6 +1551,12 @@ fromBList (VariantV tg "link" [("first",f),("rest",r)])
     | tg == internalsType "List" =
       (f:) <$> fromBList r
 fromBList _ = Nothing
+
+fromBTuple :: Value -> Maybe [Value]
+fromBTuple (VariantV tg "tuple" fs)
+    | tg == bootstrapType "Tuple" = Just $ map snd fs
+fromBTuple _ = Nothing
+
     
 makeVariant :: [Value] -> Interpreter Value
 makeVariant [FFIValue _ffitag ftg, TextV nm, ms', as']
@@ -1694,12 +1794,17 @@ hEqualAlways a' b' =
         -- pointer equality on IORef
         (BoxV _ a, BoxV _ b) -> pure $ a == b
         (BoxV {}, _) -> pure False
-        -- ffivalue with equals function
-        (FFIValue (_pkga,tga) a, FFIValue (_pkgb,tgb) b)
+        -- ffivalue with equals member
+        (FFIValue {}, _)
+            -> do
+              fn <- interpDotExpr a' "_equals"
+              unwrapBool <$> app fn [b']
+        -- ffivalue with old equals function
+        {-(FFIValue (_pkga,tga) a, FFIValue (_pkgb,tgb) b)
             | tga == tgb -> do
                   ti <- askFFTInfo tga
                   maybe (pure False) (\f' -> f' a b) (ffiTypeEquals =<< ti)
-        (FFIValue {}, _) -> pure False
+        (FFIValue {}, _) -> pure False-}
         _ | isFn a' && isFn b' -> incomparable
         (FunV {}, _) -> pure False
         (ForeignFunV {}, _) -> pure False
@@ -1775,13 +1880,17 @@ hLessThan a' b' =
         -- so they can have an arbitrary order?
                 --_ a, BoxV _ b) -> pure $ a < b -- error "incompatible args to <"
         -- ffivalue with equals function
-        (FFIValue (_pkga,tga) a, FFIValue (_pkgb,tgb) b)
+        (FFIValue {}, _)
+            -> do
+              fn <- interpDotExpr a' "_lessthan"
+              unwrapBool <$> app fn [b']
+        {-(FFIValue (_pkga,tga) a, FFIValue (_pkgb,tgb) b)
             | tga == tgb -> do
                   ti <- askFFTInfo tga
                   maybe (error "incompatible args to <")
                         (\f' -> f' a b)
                         (ffiTypeLT =<< ti)
-        (FFIValue {}, _) -> error "incompatible args to <"
+        (FFIValue {}, _) -> error "incompatible args to <"-}
         _ | isFn a' && isFn b' -> incomparable
         (FunV {}, _) -> error "incompatible args to <"
         (ForeignFunV {}, _) -> error "incompatible args to <"
@@ -1946,6 +2055,11 @@ wrapBPredicate f r = do
     case x of
         BoolV v -> pure v
         _ -> _errorWithCallStack $ "expected bool result from predicate, got " ++ show x
+
+bGetArgs :: [Value] -> Interpreter Value
+bGetArgs _ = do
+    as <- liftIO $ E.getArgs
+    pure $ makeBList $ map TextV as
 
 ------------------------------------------------------------------------------
 
@@ -2265,7 +2379,14 @@ interp (Template sp) =
 interp (MethodExpr m) = makeMethodValue m
 
 interpDotExpr :: Value -> String -> Interpreter Value
-interpDotExpr v f =
+interpDotExpr v f = do
+    x <- interpDotExprE v f
+    case x of
+        Right x' -> pure x'
+        Left e -> error e
+
+interpDotExprE :: Value -> String -> Interpreter (Either String Value)
+interpDotExprE v f =
     case v of
         VariantV _ _ fs
             | Just fv <- lookup f fs ->
@@ -2277,15 +2398,27 @@ interpDotExpr v f =
               -- on that variant type at least
               case fv of
                   -- the hack for modules bit
-                  BoxV _ vr -> liftIO $ readIORef vr
+                  BoxV _ vr -> Right <$> (liftIO $ readIORef vr)
                   -- regular support for methods
-                  MethodV m -> app m [v]
-                  _ -> pure fv
-            | otherwise ->
-              _errorWithCallStack $ "field not found in dotexpr: " ++ f
+                  MethodV m -> Right <$> app m [v]
+                  _ -> pure $ Right fv
+            | otherwise -> pure $ Left $ "field not found in dotexpr: " ++ f
               ++"\nlooking in value:\n" ++ show v
               ++ "\nit's fields are: " ++ show fs
-        _ -> _errorWithCallStack $ "dot called on non variant: " ++ show v
+        FFIValue (_,tg) _ -> do
+            (ti :: Maybe FFITypeInfo) <- askFFTInfo tg
+            let vv :: Maybe (Interpreter Value)
+                vv = do
+                    x <- ffiMember =<< ti
+                    pure x -- $ x f
+            case vv of
+                Nothing -> pure $ Left $ "dot called on ffi value which doesn't support dot " ++ show tg ++ ":" ++ show  v
+                Just x -> do
+                    x' <- x
+                    case x' of
+                        MethodV m -> Right <$> app m [TextV f, v]
+                        nm -> pure $ Right nm
+        _ -> pure $ Left $ "dot called on non variant: " ++ show v
 
 
 -- todo: deal with ts and mty
@@ -2299,6 +2432,11 @@ makeMethodValue m@(Method (FunHeader _ts [] _mty) _bdy) =
 makeBList :: [Value] -> Value
 makeBList [] = VariantV (internalsType "List") "empty" []
 makeBList (x:xs) = VariantV (internalsType "List") "link" [("first", x),("rest", makeBList xs)]
+
+makeBTuple :: [Value] -> Value
+makeBTuple vs =
+    VariantV (bootstrapType "Tuple") "tuple" $ zipWith (\n v -> (show n, v)) [(0::Int)..] vs
+
 
 sbindingName :: SimpleBinding -> String
 sbindingName (SimpleBinding _ nm _) = nm
@@ -2342,6 +2480,9 @@ app fv vs =
             case lookup nm ffs of
                 Just f -> f vs
                 Nothing -> error $ "internal error, foreign function not found: " ++ nm
+        FFIValue {} -> do
+            fn <- interpDotExpr fv "_app"
+            app fn [makeBList vs]
         TemplateV sp -> evalTemplate [sp]
         _ -> error $ "app called on non function value: " ++ show fv
   where
