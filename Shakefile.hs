@@ -117,11 +117,12 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             need hs'
 
     "_build/bin/burdock-tests" %> \out -> do
-        needHsFiles "src"
+        needHsFiles "src/lib"
+        needHsFiles "src/test"
         needHsFiles "packages/ffitypes-test/haskell-src"
         needHsFiles "packages/sqlite/haskell-src"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src"
+                     ,ghcSrcs = ["src/lib"
                                 ,"packages/ffitypes-test/haskell-src"
                                 ,"packages/sqlite/haskell-src"
                                 ]})
@@ -134,11 +135,11 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             (maybe "" (\x -> "-p " ++ x) testPattern)
 
     "_build/bin/burdock" %> \out -> do
-        needHsFiles "src"
+        needHsFiles "src/lib"
         needHsFiles "packages/ffitypes-test/haskell-src"
         needHsFiles "packages/sqlite/haskell-src"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src"
+                     ,ghcSrcs = ["src/lib"
                                 ,"packages/ffitypes-test/haskell-src"
                                 ,"packages/sqlite/haskell-src"
                                 ]})
@@ -146,9 +147,9 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             out
 
     "_build/bin/DemoFFI" %> \out -> do
-        needHsFiles "src"
+        needHsFiles "src/lib"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src"]})
+                     ,ghcSrcs = ["src/lib"]})
             "src/examples/DemoFFI.hs"
             out
 

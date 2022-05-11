@@ -45,7 +45,7 @@ library
   other-modules:
         Burdock.Scientific
         Burdock.Relational
-  hs-source-dirs:      src
+  hs-source-dirs:      src/lib
 
 executable burdock
     import:              shared-properties
