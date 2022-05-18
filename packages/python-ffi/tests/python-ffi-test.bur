@@ -1,0 +1,236 @@
+
+#|
+
+
+
+|#
+
+use package "packages/python-ffi"
+
+include python-ffi.python
+
+check "simple block and py-app demo":
+  py-block_(```
+def add(a,b):
+    return a + b```)
+
+  py-app("add", [list: 3,4]) is 7
+
+end
+
+check "auto convert data types":
+
+  type-name = py-block(```
+def type_name(v):
+    return type(v).__name__
+type_name
+```)
+
+  type-name(true) is 'bool'
+  type-name(false) is 'bool'
+  type-name('test') is 'str'
+  type-name(3) is 'int'
+  type-name(3.3) is 'float'
+  type-name(nothing) is 'NoneType'
+
+  py-block("True") is true
+  py-block("False") is false
+  py-block("'test'") is 'test'
+  py-block("3") is 3
+  py-block("3.0") is 3.0
+  py-block("None") is nothing
+  py-block("z = 3") is nothing
+
+  py-block("(1,'a')") is {1;'a'}
+  # todo: record in other direction
+
+  py-app("type_name", [list: [list:true]]) is 'list'
+  py-app("type_name", [list: {true;false}]) is 'tuple'
+
+  py-block("[1,True]") is [list: 1,true]
+
+
+end
+
+check "basic operators":
+  # equals, lessthan, torepr
+  py-block_(```
+class Animal:
+    def __init__(self, name, species):
+        self.name = name
+        self.species = species
+
+    def __str__(self):
+        return f'Animal({self.name},{self.species})'
+    
+    def __eq__(self, other):
+        if isinstance(other, Animal):
+            return self.name == other.name and self.species == other.species
+        return False
+
+    def __lt__(self, other):
+        if isinstance(other, Animal):
+            return self.name < other.name
+        raise Exception(f"comparison not supported: {self} < {other}")
+```)
+
+  x = py-block('Animal("John", "cat")')
+  y = py-block('Animal("Paul", "dog")')
+  z = py-block('Animal("John", "cat")')
+
+  to-repr(x) is "Animal(John,cat)"
+  x == y is false
+  x == z is true
+
+  x < y is true
+  x < z is false
+
+end
+
+check "app":
+  py-block_(```
+def add_3(x):
+   return x + 3
+def add_em(x,y):
+   return x + y
+```)
+
+  add-3 = py-block("add_3")
+  add-em = py-block("add_em")
+
+  add-3(5) is 8
+  add-em(2,5) is 7
+
+
+end
+
+
+check "getattr":
+  py-block_(```
+class Animal:
+    def __init__(self, name, species):
+        self.name = name
+        self.species = species```)
+
+  x = py-block('Animal("John", "cat")')
+
+  x.name is "John"
+  x.species is "cat"
+  
+end
+
+
+
+check "bigger test":
+  py-block_(```
+class Animal:
+    def __init__(self, name, species):
+        self.name = name
+        self.species = species
+    def is_cat(self):
+        return self.species == "cat"
+```)
+
+  Animal = py-block("Animal")
+
+  x = Animal('John', 'cat')
+  y = Animal("Paul", "dog")
+
+  x.is_cat() is true
+  y.is_cat() is false
+  y.species is 'dog'
+  
+end
+
+
+check "py-for":
+
+  # a bit of a hack, only supports one iterable
+  # would be nice to support multiple, and to mix and match
+  # with burdock lists too
+  # the proper solution probably means defining a proper iterable
+  # concept for burdock, which is a big task, and a big change
+  # but possibly very useful
+
+  py-for(lam(x): x + 1 end, py-block("iter([1, 2, 3, 4])"))
+    is [list: 2,3,4,5]
+
+  py-for(lam(x): x + 1 end, py-block("[1, 2, 3, 4]"))
+    is [list: 2,3,4,5]
+
+
+  for py-for(a from py-block("[1, 2, 3, 4]")):
+    a * 2
+  end is [list: 2,4,6,8]
+
+  data Stuff: | stuffc(a,b) end
+
+  for py-for(a from py-block("[1, 2]")):
+     stuffc(a,a)
+  end is [list: stuffc(1,1), stuffc(2,2)]
+
+  for py-for(a from py-block("[1, 2]")):
+     stuffc(a,a)
+  end is [list: stuffc(1,1), stuffc(2,2)]
+
+end
+
+
+check "block-with-binds":
+  py-block(```
+def fn(x):
+    return x + 3```)
+  b = 4
+  py-block-with-binds([list:{'b';b}], "fn(b)") is 7
+  py-block-with-binds([list:{'b';b}], "b + 2") is 6
+  py-block-with-binds([list:{'c';2},{'d';3}], "d * c") is 6
+  py-block-with-binds([list:], "3") is 3
+end
+
+check "member assignment demo":
+  py-block(```
+class Class1:
+    def __init__(self,v):
+        self.v = v```)
+  c = py-block("Class1(3)")
+  c.v is 3
+  py-block-with-binds([list:{'c';c},{'nv';5}], "c.v = nv")
+  c.v is 5
+  fun py-member-assign(o,m,v):
+     py-block-with-binds([list:{'o';o},{'v';v}], "o." + m + " = v")
+  end
+  py-member-assign(c, 'v', 7)
+  c.v is 7
+  # want to write
+  # py-member-assign(c.v, 7) or py-member-assign('c.v', 7)
+end
+
+
+check 'anomalies':
+  py-block("( somethin") raises "SyntaxError"
+  py-block("4 + sdlkflkdsg") raises "NameError"
+  py-block_("( somethin") raises "SyntaxError"
+  py-block_("4 + sdlkflkdsg") raises "NameError"
+  py-block-with-binds([list:{'a';3}], "( somethin") raises "SyntaxError"
+  py-block-with-binds([list:{'a';3}], "4 + sdlkflkdsg") raises "NameError"
+  py-block-with-binds(true, "4") raises "bad args"
+
+  py-block_(```
+def add1(a,b):
+    return a + b```)
+
+  py-app(true, [list: 3,4]) raises "bad args"
+  py-app("add1", {3;4}) raises "bad args"
+  py-app("add1", [list: true,'stuff']) raises "TypeError"
+
+  for py-for(a from py-block("[1, 2]")):
+     raise("let's not")
+  end raises "let's not"
+
+  for py-for(a from true):
+     a
+  end raises "bad args"
+
+  # todo: use non iterable, go through the pywrap pyfor anomalies?
+
+end

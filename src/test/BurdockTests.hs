@@ -6,6 +6,9 @@ import Burdock.Parse
 import Burdock.Pretty
 import Burdock.Interpreter
 import qualified Burdock.HsConcurrencyTests as HsConcurrencyTests
+
+import qualified PyWrapTests
+
 import Burdock.Syntax (SourcePosition)
 import Data.Generics.Uniplate.Data (transformBi)
 import Data.Data (Data)
@@ -14,7 +17,7 @@ import Data.Data (Data)
 import Control.Exception.Safe (catch
                               ,SomeException)
 
-import Control.Concurrent.Async (withAsync, wait)
+--import Control.Concurrent.Async (withAsync, wait)
 import Control.Exception.Safe (bracket)
 
 
@@ -24,16 +27,23 @@ import qualified Test.Tasty.HUnit as T
 -- todo: how to structure the tests better?
 import qualified FFITypesTest
 import qualified Sqlite
+import qualified PythonFFI
+
+{-
+
+-}
 
 main :: IO ()
 main = do
-    setNumCapabilities =<< getNumProcessors
+    --setNumCapabilities =<< getNumProcessors
     -- avoid bound thread, possible that it makes a performance difference
-    withAsync (do
-        at <- makeTests testdata
-        T.defaultMain $ T.testGroup "group" [at
-                                            ,HsConcurrencyTests.tests])
-        wait
+    pts <- PyWrapTests.tests
+   -- withAsync (do
+    at <- makeTests testdata
+    T.defaultMain $ T.testGroup "group" [at
+                                        ,HsConcurrencyTests.tests
+                                        ,pts]
+  --      wait
                   
 
 
@@ -84,5 +94,4 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
     addPackages h = do
         addFFIPackage h "packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
         addFFIPackage h "packages/sqlite" Sqlite.sqlitePackage
-
-
+        addFFIPackage h "packages/python" PythonFFI.pythonFFIPackage

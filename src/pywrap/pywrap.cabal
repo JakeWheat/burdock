@@ -1,0 +1,32 @@
+cabal-version:      2.4
+name:               pywrap
+version:            0.1
+
+common shared-properties
+  default-language:    Haskell2010
+  build-depends:       base >=4 && <6,
+                       text,
+                       raw-strings-qq
+  ghc-options:         -Wall
+
+library
+  import:              shared-properties
+  exposed-modules:     PyWrap
+  pkgconfig-depends:   python3
+  extra-libraries:     python3.9
+  hs-source-dirs:      .
+  C-sources:           pywrap.c
+  build-depends:       mtl
+            
+Test-Suite Tests
+  import:              shared-properties
+  type:                exitcode-stdio-1.0
+  main-is:             Tests.hs
+  hs-source-dirs:      .
+  other-modules:       PyWrap,
+                       PyWrapTests
+  build-depends:       pywrap,
+                       tasty,
+                       tasty-hunit,
+                       async,
+                       mtl

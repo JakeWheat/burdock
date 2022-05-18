@@ -361,7 +361,7 @@ data Value = NumV Scientific
            | BoxV TypeInfo (IORef Value)
            | FFIValue (String,String) Dynamic
            | MethodV Value
-           | TemplateV SourcePosition
+           | TemplateV SourcePosition -- todo: this is a hack before source positions become better integrated
 
 instance Ord Value where
     NumV a <= NumV b = a <= b
@@ -1557,7 +1557,7 @@ fromBTuple (VariantV tg "tuple" fs)
     | tg == bootstrapType "Tuple" = Just $ map snd fs
 fromBTuple _ = Nothing
 
-    
+
 makeVariant :: [Value] -> Interpreter Value
 makeVariant [FFIValue _ffitag ftg, TextV nm, ms', as']
     | Just tg <- fromDynamic ftg

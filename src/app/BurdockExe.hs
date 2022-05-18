@@ -80,12 +80,13 @@ import System.IO (Handle
 
 import System.Exit (exitFailure)
 
-import Control.Concurrent.Async (withAsync, wait)
+--import Control.Concurrent.Async (withAsync, wait)
 import Control.Exception.Safe (bracket)
 
 -- temp? include all packages in the default interpreter build
 import qualified FFITypesTest
 import qualified Sqlite
+import qualified PythonFFI
 
 ------------------------------------------------------------------------------
 
@@ -168,6 +169,7 @@ addPackages :: B.Handle -> IO ()
 addPackages h = do
     B.addFFIPackage h "packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
     B.addFFIPackage h "packages/sqlite" Sqlite.sqlitePackage
+    B.addFFIPackage h "packages/python-ffi" PythonFFI.pythonFFIPackage
 
 ------------------------------------------------------------------------------
 
@@ -204,9 +206,10 @@ myOptsPlus = info (myOpts <**> helper)
 
 main :: IO ()
 main = do
-    B.setNumCapabilities =<< B.getNumProcessors
+    --B.setNumCapabilities =<< B.getNumProcessors
     -- avoid bound thread, possible that it makes a performance difference
-    withAsync doit wait
+    --withAsync doit wait
+    doit
   where
     doit = do
         os <- execParser myOptsPlus

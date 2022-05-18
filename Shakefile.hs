@@ -23,13 +23,13 @@ data GhcOptions
     = GhcOptions
     { ghcPackages :: Maybe FilePath
     , ghcSrcs :: [FilePath]
-    }
+    , ghcExtras :: String}
 
 ghcOptimize :: String
 ghcOptimize = ""
 
 ghcOpts :: GhcOptions
-ghcOpts = GhcOptions Nothing []
+ghcOpts = GhcOptions Nothing [] ""
 
 testPattern :: Maybe String
 testPattern = Nothing -- Just "fact"
@@ -45,6 +45,8 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             cmd_ "rm -Rf" dir
             cmd_ "cabal -j install --lib " pkgs "--package-env" dir
 
+    let pythonFlags = "src/pywrap/pywrap.c -lpython3.9 -I/usr/include/python3.9 -I/usr/include/x86_64-linux-gnu/python3.9 -fPIC"
+    
     let directPackages =
             ["tasty"
             ,"tasty-hunit"
@@ -74,7 +76,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             let blddir = output ++ "-build"
             cmd_ "mkdir -p" blddir
             let srcpath = "-i" ++ takeDirectory src
-            cmd_ "ghc -threaded -Wall -j --make" src "-outputdir=" blddir
+            cmd_ "ghc -Wall -j --make" src "-outputdir=" blddir -- -threaded 
                  "-o" output
                  (maybe [] (\x -> ["-package-env",x]) (ghcPackages opts))
                  (case ghcSrcs opts of
@@ -82,6 +84,7 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
                       x -> ["-i" ++ intercalate ":" x])
                  srcpath
                  ghcOptimize
+                 (ghcExtras opts)
                  -- "-fprof-auto -fprof-cafs"
 
     -- clean everything including package databases
@@ -121,11 +124,15 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
         needHsFiles "src/test"
         needHsFiles "packages/ffitypes-test/haskell-src"
         needHsFiles "packages/sqlite/haskell-src"
+        needHsFiles "packages/python-ffi/haskell-src"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
                      ,ghcSrcs = ["src/lib"
                                 ,"packages/ffitypes-test/haskell-src"
                                 ,"packages/sqlite/haskell-src"
-                                ]})
+                                ,"packages/python-ffi/haskell-src"
+                                ]
+                     ,ghcExtras = pythonFlags
+                     })
             "src/test/BurdockTests.hs"
             out
     
@@ -138,18 +145,23 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
         needHsFiles "src/lib"
         needHsFiles "packages/ffitypes-test/haskell-src"
         needHsFiles "packages/sqlite/haskell-src"
+        needHsFiles "packages/python-ffi/haskell-src"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
                      ,ghcSrcs = ["src/lib"
                                 ,"packages/ffitypes-test/haskell-src"
                                 ,"packages/sqlite/haskell-src"
-                                ]})
+                                ,"packages/python-ffi/haskell-src"
+                                ]
+                     ,ghcExtras = pythonFlags
+                     })
             "src/app/BurdockExe.hs"
             out
 
     "_build/bin/DemoFFI" %> \out -> do
         needHsFiles "src/lib"
         ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src/lib"]})
+                     ,ghcSrcs = ["src/lib"]
+                     ,ghcExtras = pythonFlags})
             "src/examples/DemoFFI.hs"
             out
 

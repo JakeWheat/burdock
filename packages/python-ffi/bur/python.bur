@@ -1,0 +1,31 @@
+
+
+provide:
+  py-block_,
+  py-block,
+  py-block-with-binds,
+  py-app,
+  py-for,
+  safe-python-initialize
+end
+
+import from ffi:
+  ffi-function
+end
+
+# todo: play nice with bound threads
+safe-python-initialize = ffi-function("safe-python-initialize")
+safe-python-initialize()
+
+py-block = ffi-function("py-block")
+
+fun py-block_(x):
+   py-block(x)
+   nothing
+end
+
+py-block-with-binds = ffi-function("py-block-with-binds")
+py-app = ffi-function("py-app")
+
+py-for = ffi-function("py-for")
+

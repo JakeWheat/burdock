@@ -1,0 +1,56 @@
+
+#|
+
+Demo the python ffi
+
+use a python csv parsing lib to load a csv
+then use the python sqlite lib to insert it into sql
+
+|#
+
+use package "packages/python-ffi"
+
+include python-ffi.python
+
+import from lists:
+  map
+end
+
+# todo: python import handler
+fun py-import(s):
+  py-block("import " + s + "\n" + s)
+end
+  
+sqlite3 = py-import("sqlite3")
+csv = py-import("csv")
+io = py-import("io")
+
+check:
+
+  csvdat = ```1,stuff1
+2,element2
+3,line3
+4,record4```
+
+  ddl = ```
+create table dat (
+  k int,
+  v text
+);```
+
+  conn = sqlite3.connect(':memory:')
+  conn.execute(ddl)
+
+  for py-for(r from csv.reader(io.StringIO(csvdat))):
+    conn.execute("insert into dat values(?,?)", r)
+  end
+
+  conn.execute("select * from dat").fetchall() is
+    [list: {1;'stuff1'},
+        {2;'element2'},
+        {3;'line3'},
+        {4;'record4'}]
+
+  conn.close()
+
+end
