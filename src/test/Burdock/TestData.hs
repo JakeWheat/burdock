@@ -704,7 +704,18 @@ end
 interpreterTests :: TestTree
 interpreterTests =
     TestGroup "interpreterTests"
-    [TestGroup "language" $ map InterpreterTestsFile
+    [InterpreterTestsDir "burdock-test-src/"
+    ,InterpreterTestsDir "built-ins/"
+    ,InterpreterTestsDir "docs/"
+    ,InterpreterTestsDir "examples/"
+    ,InterpreterTestsDir "packages/ffitypes-test"
+    ,InterpreterTestsDir "packages/python-ffi"
+    ,InterpreterTestsOptionalDir "website2/"
+    {-
+     packages/ffitypes-test/tests/ffitypes-test.bur"
+     ,"packages/python-ffi/tests
+
+        TestGroup "language" $ map InterpreterTestsFile
      ["burdock-test-src/basics.bur"
      ,"burdock-test-src/letrec.bur"
      ,"burdock-test-src/fun.bur"
@@ -760,6 +771,6 @@ interpreterTests =
      ["docs/index.rst"
      ]
     ,TestGroup "docs" $ map InterpreterTestsOptionalDir
-     ["website2/"]
+     ["website2/"]-}
     ]
 

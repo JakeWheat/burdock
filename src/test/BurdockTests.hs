@@ -32,6 +32,13 @@ import System.Directory (doesDirectoryExist, listDirectory)
 import Data.Maybe (catMaybes)
 import System.FilePath ((</>))
 
+import System.FilePath.Glob
+    (CompOptions(..)
+    ,globDir1
+    ,compileWith
+    ,compDefault
+    )
+
 {-
 
 -}
@@ -56,6 +63,17 @@ makeTests (StmtParseTest src ex) = pure $ makeParseTest parseStmt prettyStmt src
 makeTests (ScriptParseTest src ex) = pure $ makeParseTest parseScript prettyScript src ex
 makeTests (LiterateParseTest src ex) = pure $ makeRtParseTest parseLiterateScript parseScript src ex
 makeTests (InterpreterTestsFile fn) = makeInterpreterFileTest fn
+
+makeTests (InterpreterTestsDir dir) = do
+   fs1 <- globDir1 (compileWith compDefault {recursiveWildcards = True} "**/*.bur") dir 
+   fs2 <- globDir1 (compileWith compDefault {recursiveWildcards = True} "**/*.rst") dir
+   let fs = fs1 ++ fs2
+   --putStrLn $ dir ++ ": " ++ show fs
+   T.testGroup dir . catMaybes <$> (forM fs $ \f -> 
+       if ".bur" `isSuffixOf` f || ".rst" `isSuffixOf` f
+       then Just <$> makeInterpreterFileTest f
+       else pure Nothing)
+
 makeTests (InterpreterTestsOptionalDir dir) = do
     x <- doesDirectoryExist dir
     if x

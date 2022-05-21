@@ -9,5 +9,6 @@ data TestTree = TestGroup String [TestTree]
               | ScriptParseTest String Script
               | LiterateParseTest String String
               | InterpreterTestsFile FilePath
+              | InterpreterTestsDir FilePath
               | InterpreterTestsOptionalDir FilePath
 

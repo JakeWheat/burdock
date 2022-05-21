@@ -117,6 +117,7 @@ main = do
             ,"stm"
             ,"async"
             ,"exceptions"
+            ,"Glob"
             ]
     
     -- todo: separate packages for the tests, the executable and the lib?
