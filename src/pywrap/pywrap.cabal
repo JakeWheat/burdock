@@ -15,7 +15,7 @@ library
   pkgconfig-depends:   python3
   extra-libraries:     python3.9
   hs-source-dirs:      .
-  C-sources:           pywrap.c
+  C-sources:           pywrap-c.c
   build-depends:       mtl
             
 Test-Suite Tests

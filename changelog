@@ -1,36 +1,20 @@
-## Provisional longer term
+## Week 20 22nd May
 
-- improvements to the FFI/Haskell FFI
-- Python FFI
-- C FFI
-- run exes
-- static binding plus other static syntax 'well formedness' checker
-- static type checker
-- error message work
-- testing pass - much more tests, test framework improvements and
-  tests, anomaly tests
-- whitespace parsing fixes
-- website, documentation, including proper examples
-- relational improvements: better functionality, query syntax sugar,
-  basic relvar updates, transactions (1. multi update rollback,
-  2. durability, 3. concurrency), constraints, catalog
-- data adaptor framework
+- demo Python FFI
+- remove sqlite ffi, can use it via Python FFI
+- overhaul build system
 
-## Provisional up next
+## Week 19 15th May
 
-- complete work on using methods for system functions/operators, todo:
-  arithmetic
-- type conversion wrappers for ffi functions
-- simple networking
-- remote repl attach support
-- sqlite wrapper
-- simple file metadata/directory lib
-- command line args access
-- possibly some initial c ffi work
-- tail call optimisation
-- strictness pass
+- new FFI supporting members, app on FFI values
+- torepr, equals, lt now mostly regular member functions
 
-## Week 8 12th Dec
+## Week 14 2022 ending 10th April
+
+- update to work with GHC 8.10.7 (as of at least week 20 2022, works
+  with GHC 9.2.2 also)
+
+## Week 8 (since starting project) 12th Dec
 
 - mostly working equals and other comparisons, main methods todo now
   is arithmetic operators

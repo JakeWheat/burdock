@@ -1,42 +1,94 @@
 
--- use the build.sh to run this easily
--- todo: nice way to pass args to running the tasty test exes
--- todo: a way to keep cabal files in sync (used to distribute the
--- language)
+{-
 
--- todo: add some CI testing for the cabal file and for various
--- versions of ghc, etc.
+use the build.sh to run this easily
 
+todo list:
+
+the package database handling is not good
+  -> if there are multiple versions of a package, it can get stuck,
+  I had to zap the ~/.cabal dir to unstick it
+  -> it's not limiting the cabal packages correctly still
+
+make it rebuild when:
+  when the ghc version changes
+  when the flags for a compile or link step change,
+    including the pkg-config python3 stuff
+  when the packages are updated
+
+nice way to pass args to running the tasty test exes
+
+a way to keep cabal files in sync (used to distribute the
+language)
+
+if you clean, then build, then rebuild, then rebuild, the
+second rebuild is really fast, but why does it try to rebuild
+everything on the first rebuild?
+
+add some CI testing for the cabal file and for various
+versions of ghc, etc.
+
+-}
+
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 import Development.Shake
---import Development.Shake.Command
 import Development.Shake.FilePath
---import Development.Shake.Util
+    ((</>)
+    ,dropExtension
+    ,makeRelative
+    ,(<.>)
+    ,takeDirectory)
 import Data.List (isPrefixOf
                  ,isSuffixOf
-                 ,intercalate)
+                 ,intercalate
+                 ,nub
+                 ,sort)
 
-import Control.Concurrent (setNumCapabilities)
-import GHC.Conc (getNumProcessors)
-
-
-data GhcOptions
-    = GhcOptions
-    { ghcPackages :: Maybe FilePath
-    , ghcSrcs :: [FilePath]
-    , ghcExtras :: String}
-
-ghcOptimize :: String
-ghcOptimize = ""
-
-ghcOpts :: GhcOptions
-ghcOpts = GhcOptions Nothing [] ""
+import Control.Monad (when)
+import Development.Shake.Util
+    (needMakefileDependencies
+    )
 
 testPattern :: Maybe String
 testPattern = Nothing -- Just "fact"
 
 main :: IO ()
-main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
-    liftIO (setNumCapabilities =<< getNumProcessors)
+main = do
+  shakeArgs shakeOptions{shakeFiles="_build"} $ do
+    
+    -- clean targets
+    
+    -- clean everything including package databases
+    phony "clean-all" $ do
+        need ["clean"]
+        removeFilesAfter "_build" ["//*"]
+
+    -- clean everything except the package databases, despite
+    -- not recompiling anything to rebuild, it still takes cabal
+    -- a relatively long time to rebuild just the package dbs
+    phony "clean" $ do
+        bldFiles <- getDirectoryContents "_build"
+        let filesToClean1 = map ("_build" </>) $ filter (/="packages") bldFiles
+        cmd_ "rm -Rf" filesToClean1
+        cmd_ "rm -Rf dist-newstyle"
+        cmd_ "rm -Rf src/pywrap/dist-newstyle"
+
+    ---------------------------------------
+
+    phony "all" $ do
+        need ["_build/burdock-tests"
+             ,"_build/burdock"
+             ,"_build/DemoFFI"]
+
+    phony "test" $ do
+        need ["_build/burdock-tests"]
+        cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
+            (maybe "" (\x -> "-p " ++ x) testPattern)
+
+    ---------------------------------------
+    -- dodgy handling of the packagedb
+    -- to be fixed
 
     let installPackageDB :: FilePath -> [String] -> Action ()
         installPackageDB dir pkgs = do
@@ -45,8 +97,6 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             cmd_ "rm -Rf" dir
             cmd_ "cabal -j install --lib " pkgs "--package-env" dir
 
-    let pythonFlags = "src/pywrap/pywrap.c -lpython3.9 -I/usr/include/python3.9 -I/usr/include/x86_64-linux-gnu/python3.9 -fPIC"
-    
     let directPackages =
             ["tasty"
             ,"tasty-hunit"
@@ -68,95 +118,113 @@ main = shakeArgs shakeOptions{shakeFiles="_build"} $ do
             ]
     
     -- todo: separate packages for the tests, the executable and the lib?
-    phony "install-deps" $ installPackageDB "_build/burdock-packages" directPackages
+    phony "install-deps" $ need ["_build/packages/burdock-packages"]
 
-    let ghc :: GhcOptions -> FilePath -> FilePath -> Action ()
-        ghc opts src output = do
-            let blddir = output ++ "-build"
-            cmd_ "mkdir -p" blddir
-            let srcpath = "-i" ++ takeDirectory src
-            cmd_ "ghc -Wall -j --make" src "-outputdir=" blddir -- -threaded 
-                 "-o" output
-                 (maybe [] (\x -> ["-package-env",x]) (ghcPackages opts))
-                 (case ghcSrcs opts of
-                      [] -> []
-                      x -> ["-i" ++ intercalate ":" x])
-                 srcpath
-                 ghcOptimize
-                 (ghcExtras opts)
-                 -- "-fprof-auto -fprof-cafs"
+    "_build/packages/burdock-packages" %> \out ->
+        installPackageDB out directPackages
 
-    -- clean everything including package databases
-    phony "clean-all" $ do
-        removeFilesAfter "_build" ["//*"]
-        cmd_ "rm -Rf dist-newstyle"
+    ---------------------------------------
+    -- helpers for building haskell
+
+    let parseMakefileDeps :: String -> [(String,String)]
+        parseMakefileDeps str =
+            let ls = lines str
+            in p [] ls
+              where
+                p acc [] = reverse acc
+                p acc (x:xs)
+                    | "#" `isPrefixOf` x = p acc xs
+                    | otherwise = case words x of
+                          [ofile,":",hsfile] -> p ((ofile,hsfile):acc) xs
+                          _ -> error $ "didn't understand makefile line: " ++ show x
+
+    ---------------------------------------
+
+    -- build the exes
+
+    -- todo: figure out how to parameterize these into the build rules
+    let objsDir = "_build/objs"
+        userGhcOpts = "-package-env _build/packages/burdock-packages"
+        srcDirs = ["src/lib"
+                  ,"src/pywrap"
+                  ,"packages/python-ffi/haskell-src"
+                  ,"packages/ffitypes-test/haskell-src"
+                  ,"packages/sqlite/haskell-src"
+                  ,"src/test/"]
+        userCCompileOptsLoad = "pkg-config python3 --cflags"
+        userLinkOptsLoad = "pkg-config --libs python3-embed"
+
+    let compileHaskellExe exeName mainSource cfiles = do
+            need ["_build/packages/burdock-packages"]
+            -- use the deps file to find out which haskell .o files
+            -- are needed to link this exe
+            let depsFile = objsDir </> mainSource <.> "deps"
+            need [depsFile]
+            makefileDeps <- liftIO (readFile depsFile)
+            -- parse the deps list into pairs - object file, file it depends on
+            let deps = parseMakefileDeps makefileDeps
+            let hsobjs = nub $ sort $ map fst deps
+            let cobjs = flip map cfiles $ \cfile -> objsDir </> cfile <.> "o"
+            let allObjs = hsobjs ++ cobjs
+            need allObjs
+            Stdout (userLinkOpts :: String) <- cmd userLinkOptsLoad
+            --link it
+            cmd_ "ghc -o" exeName allObjs userGhcOpts userLinkOpts
+   
+    -- the three exes
+    "_build/burdock" %> \out -> compileHaskellExe out "src/app/BurdockExe.hs" ["src/pywrap/pywrap-c.c"]
+    "_build/DemoFFI" %> \out -> compileHaskellExe out "src/examples/DemoFFI.hs" []
+    "_build/burdock-tests" %> \out -> compileHaskellExe out "src/test/BurdockTests.hs" ["src/pywrap/pywrap-c.c"]
+
+    let srcDirOption = "-i" ++ intercalate ":" (srcDirs ++ map (objsDir </>) srcDirs)
 
 
-    -- clean everything except the package databases, despite
-    -- not recompiling anything to rebuild, it still takes cabal
-    -- a relatively long time to rebuild just the package dbs
-    phony "clean" $ do
-        bldFiles <- getDirectoryContents "_build/"
-        let filesToClean1 = map ("_build" </>)
-                           --  $ filter (/= "bin")
-                           $ filter (not . ("-packages" `isSuffixOf`))
-                           $ filter (not . ("." `isPrefixOf`)) bldFiles
-        cmd_ "rm -Rf" filesToClean1
-        cmd_ "rm -Rf dist-newstyle"
 
-    phony "all" $ do
-        need ["_build/bin/burdock-tests"
-             ,"_build/bin/burdock"
-             ,"_build/bin/DemoFFI"]
-
-    phony "build-using-cabal" $
-        cmd_ "cabal -j build"
-
-    -- todo: use ghc -M to do this better
-    let needHsFiles dir = do
-            hs <- getDirectoryFiles dir ["//*.hs"]
-            let hs' = map (dir </>) hs
-            need hs'
-
-    "_build/bin/burdock-tests" %> \out -> do
-        needHsFiles "src/lib"
-        needHsFiles "src/test"
-        needHsFiles "packages/ffitypes-test/haskell-src"
-        needHsFiles "packages/python-ffi/haskell-src"
-        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src/lib"
-                                ,"packages/ffitypes-test/haskell-src"
-                                ,"packages/python-ffi/haskell-src"
-                                ]
-                     ,ghcExtras = pythonFlags
-                     })
-            "src/test/BurdockTests.hs"
-            out
     
-    phony "test" $ do
-        need ["_build/bin/burdock-tests"]
-        cmd_ "_build/bin/burdock-tests  --color never --ansi-tricks false --hide-successes"
-            (maybe "" (\x -> "-p " ++ x) testPattern)
+    ---------------------------------------
+    -- build rules for haskell and c files
 
-    "_build/bin/burdock" %> \out -> do
-        needHsFiles "src/lib"
-        needHsFiles "packages/ffitypes-test/haskell-src"
-        needHsFiles "packages/python-ffi/haskell-src"
-        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src/lib"
-                                ,"packages/ffitypes-test/haskell-src"
-                                ,"packages/python-ffi/haskell-src"
-                                ]
-                     ,ghcExtras = pythonFlags
-                     })
-            "src/app/BurdockExe.hs"
-            out
+    "_build//*.hs.deps" %> \out -> do
+        need ["_build/packages/burdock-packages"]
+        -- the dep file needs rebuilding if any of the .hs files it
+        -- references have changed
+        -- what's the right idiom for this?
+        e <- doesFileExist out
+        when e $ do
+            makefileDeps <- liftIO (readFile out)
+            let hsFileDeps = filter (".hs" `isSuffixOf`) $ map snd $ parseMakefileDeps makefileDeps
+            need hsFileDeps
 
-    "_build/bin/DemoFFI" %> \out -> do
-        needHsFiles "src/lib"
-        ghc (ghcOpts {ghcPackages = Just "_build/burdock-packages"
-                     ,ghcSrcs = ["src/lib"]
-                     ,ghcExtras = pythonFlags})
-            "src/examples/DemoFFI.hs"
-            out
+        -- generate the deps file from ghc
+        let hsFile = makeRelative objsDir (dropExtension out)
+            ghcdepsfile = out <.> "tmp"
+        cmd_ "mkdir -p" (takeDirectory out)
+        cmd_ "ghc -M" hsFile "-dep-makefile" ghcdepsfile "-dep-suffix=hs." userGhcOpts srcDirOption
+        makefileDeps <- liftIO (readFile ghcdepsfile)
+        let deps = parseMakefileDeps makefileDeps
+        let g fn = if ".hs" `isSuffixOf` fn
+                   then fn
+                   else objsDir </> fn
+            deps' = flip map deps $ \(o,f) -> (g o, g f)
+            newdeps = unlines $ flip map deps' $ \(a,b) -> unwords [a,":", b]
+        -- liftIO $ putStrLn $ "new deps:\n" ++ newdeps
+        liftIO $ writeFile out newdeps
+                
+    ["_build//*.hs.o","_build//*.hs.hi"] &%> \[out,_] -> do
+        need ["_build/packages/burdock-packages"]
+        let hsfile = (dropExtension $ dropExtension $ makeRelative objsDir out) <.> "hs"
+            depsfile = dropExtension out <.> "deps"
+        need [depsfile]
+        needMakefileDependencies depsfile
+        
+        let hifile = (dropExtension out) <.> "hi"
+        let d = takeDirectory out
+        cmd_ "mkdir -p" d
+        cmd_ "ghc -hisuf .hs.hi -c" hsfile "-o" out "-ohi" hifile userGhcOpts srcDirOption
+        
+    "_build//*.c.o" %> \out -> do
+        Stdout (userCCompileOpts :: String) <- cmd userCCompileOptsLoad
+        let cfile = (dropExtension $ dropExtension $ makeRelative objsDir out) <.> "c"
+        cmd_ "mkdir -p " (takeDirectory out)
+        cmd_ "gcc" cfile "-c -o" out userCCompileOpts
 
