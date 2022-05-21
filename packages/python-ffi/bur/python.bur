@@ -5,8 +5,7 @@ provide:
   py-block,
   py-block-with-binds,
   py-app,
-  py-for,
-  safe-python-initialize
+  py-for
 end
 
 import from ffi:

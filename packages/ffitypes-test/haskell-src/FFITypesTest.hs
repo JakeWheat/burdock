@@ -115,7 +115,7 @@ haskellStringApp :: [Value] -> Interpreter Value
 haskellStringApp [FFIValue _ a, b] =
     case fromDynamic a of
         Just (a' :: String) -> do
-            let Just bs = fromBList b
+            let bs = maybe (error $ "haskell string app didn't get list as second arg: " ++ show b) id $ fromBList b
             pure $ TextV $ "app called on " ++ a' ++ (if null bs then "" else (" " ++ show bs))
         _ -> error $ "expected haskell-string, got " ++ show a
 haskellStringApp _ = error "bad args to haskellStringApp"

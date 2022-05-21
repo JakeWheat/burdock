@@ -186,7 +186,7 @@ pyObjectToRepr _ = error "bad args to pyObjectToRepr"
 pyObjectApp :: [Value] -> Interpreter Value
 pyObjectApp [f,args] = do
     f' <- maybe (error "bad args to pyObjectApp") id <$> unmakeFFIValue "pyobject" f
-    let Just args' = fromBList args
+    let args' = maybe (error "bad args to pyObjectApp") id $ fromBList args
     aso <- mapM autoConvBurdockValue args'
     o <- liftIO $ P.app f' aso
     autoConvPyObject $ either (error . show) id o

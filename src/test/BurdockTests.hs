@@ -26,7 +26,6 @@ import qualified Test.Tasty.HUnit as T
 
 -- todo: how to structure the tests better?
 import qualified FFITypesTest
-import qualified Sqlite
 import qualified PythonFFI
 
 {-
@@ -93,5 +92,4 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
     -- todo: a bit better
     addPackages h = do
         addFFIPackage h "packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
-        addFFIPackage h "packages/sqlite" Sqlite.sqlitePackage
         addFFIPackage h "packages/python" PythonFFI.pythonFFIPackage

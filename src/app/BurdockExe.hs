@@ -85,7 +85,6 @@ import Control.Exception.Safe (bracket)
 
 -- temp? include all packages in the default interpreter build
 import qualified FFITypesTest
-import qualified Sqlite
 import qualified PythonFFI
 
 ------------------------------------------------------------------------------
@@ -168,7 +167,6 @@ doRepl = bracket B.newHandle B.closeHandle $ \h -> do
 addPackages :: B.Handle -> IO ()
 addPackages h = do
     B.addFFIPackage h "packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
-    B.addFFIPackage h "packages/sqlite" Sqlite.sqlitePackage
     B.addFFIPackage h "packages/python-ffi" PythonFFI.pythonFFIPackage
 
 ------------------------------------------------------------------------------

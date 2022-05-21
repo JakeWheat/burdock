@@ -81,21 +81,21 @@ print(is-number(v2))
 demoMakeHaskellInt :: [B.Value] -> B.Interpreter B.Value
 demoMakeHaskellInt [B.NumV x] = do
     let y :: Int
-        Just y = extractInt x
+        y = maybe (error "not int") id $  extractInt x
     pure $ B.FFIValue (undefined,"my-int") $ toDyn y
 demoMakeHaskellInt _ = error "bad args to demo-make-haskell-int"
 
 demoExtractInt :: [B.Value] -> B.Interpreter B.Value
 demoExtractInt [B.FFIValue _ x] = do
     let y :: Int
-        Just y = fromDynamic x
+        y = maybe (error "not int") id $ fromDynamic x
     pure $ B.NumV $ fromIntegral y
 demoExtractInt _ = error "bad args to demo-extract-int"
 
 demoAddToInt :: [B.Value] -> B.Interpreter B.Value
 demoAddToInt [B.FFIValue _ x, B.NumV a] = do
     let y :: Int
-        Just y = fromDynamic x
-        Just a' = extractInt a
+        y = maybe (error "not int") id $ fromDynamic x
+        a' = maybe (error "not int") id $ extractInt a
     pure $ B.FFIValue (undefined,"my-int") $ toDyn $ y + a'
 demoAddToInt _ = error "bad args to demo-add-to-int"
