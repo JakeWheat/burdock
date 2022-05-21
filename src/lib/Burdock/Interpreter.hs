@@ -1499,6 +1499,7 @@ builtInFF =
     ,("is-function", isFunction)
     ,("string-to-number", stringToNumber)
     ,("string-index-of", stringIndexOf)
+    ,("num-abs", numAbs)
 
     ,("print", bPrint)
     ,("torepr", torepr)
@@ -1730,6 +1731,10 @@ stringIndexOf [TextV t, TextV s] =
         Just i -> pure $ NumV $ fromIntegral i
         Nothing -> pure $ NumV (-1)
 stringIndexOf _ = _errorWithCallStack "wrong args to string-index-of"
+
+numAbs :: [Value] -> Interpreter Value
+numAbs [NumV v] = pure $ NumV $ abs v
+numAbs _ = _errorWithCallStack $ "wrong args to num-abs"
 
 raise :: [Value] -> Interpreter Value
 raise [v] = do

@@ -80,7 +80,8 @@ provide:
   map,
   fold,
   foldl,
-  foldr
+  foldr,
+  filter
 end
 
 
@@ -203,3 +204,26 @@ check:
   foldr(combine, "END", [list: 3, 2, 1]) is "3 - 2 - 1 - END"
   foldr(combine, "END", empty) is "END"
 end
+
+
+#filter :: (f :: (a -> Boolean), lst :: List<a>) -> List<a>
+fun filter(f, lst):
+  cases lst:
+    | empty => empty
+    | link(h,t) =>
+      if f(h):
+        link(h,filter(f,t))
+      else:
+        filter(f,t)
+      end
+  end
+end
+
+check:
+  #fun length-is-one(s :: String) -> Boolean:
+  #  string-length(s) == 1
+  #end
+  #xfilter(length-is-one, [list: "ab", "a", "", "c"]) is [list: "a", "c"]
+  filter(is-link, [list: empty, link(1, empty), empty]) is [list: link(1, empty)]
+end
+

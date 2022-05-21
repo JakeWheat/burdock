@@ -745,6 +745,7 @@ interpreterTests =
      ,"built-ins/either.bur"
      ,"built-ins/option.bur"
      ,"built-ins/relational.bur"
+     ,"built-ins/numbers.bur"
      ]
     ,TestGroup "additional tests" $ map InterpreterTestsFile
      ["burdock-test-src/lists.bur"
