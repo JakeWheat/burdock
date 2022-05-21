@@ -93,19 +93,19 @@ import qualified PythonFFI
 runFile :: FilePath -> Bool -> IO ()
 runFile fp rTests = do
     src <- readFile fp
-    runSrc (Just fp) rTests src
+    runSrc False (Just fp) rTests src
 
 runHandle :: FilePath -> Handle -> Bool -> IO ()
 runHandle fp h rTests = do
     src <- hGetContents h
-    runSrc (Just fp) rTests src
+    runSrc False (Just fp) rTests src
 
-runSrc :: Maybe String -> Bool -> String -> IO ()
-runSrc fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
+runSrc :: Bool -> Maybe String -> Bool -> String -> IO ()
+runSrc lit fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
     addPackages h
     flip catch (handleEx h) $ do
         when rTests $ void $ B.runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
-        v <- B.runScript h fnm [] src
+        v <- (if lit then B.runLiterateScript else B.runScript) h fnm [] src
         pv <- B.valueToStringIO h v
         case pv of
             Nothing -> pure ()
@@ -119,6 +119,12 @@ runSrc fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
         x <- B.formatException h True ex
         putStrLn $ "Error: " ++ x
         exitFailure
+
+runLiterateFile :: FilePath -> Bool -> IO ()
+runLiterateFile fp rTests = do
+    src <- readFile fp
+    runSrc True (Just fp) rTests src
+
 
 -- repl
 
@@ -175,6 +181,7 @@ data MyOpts = MyOpts
   { file :: Maybe String
   , script :: Maybe String
   , runTests :: Bool
+  , literateMode :: Bool
   , userArgs :: [String]
   }
   deriving Show
@@ -192,6 +199,7 @@ myOpts = MyOpts
            <> metavar "INT"
            <> help "test-level 0 = skip, 1= one line, 2 = show failures, 3 = show all")-}
       <*> switch (long "run-tests" <> help "Run tests")
+      <*> switch (long "literate-mode" <> help "Parse literate source")
       <*> many (argument str (metavar "ARGS..."))
 
 myOptsPlus :: ParserInfo MyOpts
@@ -214,8 +222,9 @@ main = do
         isTTY <- hIsTerminalDevice stdin
         case os of
             MyOpts {file = Just {}, script = Just {}} -> error "please pass either a file or code to run, not both"
+            MyOpts {file = Just f, runTests = rt, literateMode = True} -> runLiterateFile f rt
             MyOpts {file = Just f, runTests = rt} -> runFile f rt
-            MyOpts {script = Just c, runTests = rt} -> runSrc Nothing rt c
+            MyOpts {script = Just c, runTests = rt} -> runSrc False Nothing rt c
             MyOpts {script = Nothing, file = Nothing, runTests = rt}
                 | not isTTY -> runHandle "stdin" stdin rt
                 | otherwise -> doRepl

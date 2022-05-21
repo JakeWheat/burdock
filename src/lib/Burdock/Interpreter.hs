@@ -16,6 +16,7 @@ module Burdock.Interpreter
     ,closeHandle
     ,Handle
     ,runScript
+    ,runLiterateScript
     ,evalExpr
     ,evalFun
 
@@ -97,7 +98,7 @@ import Text.Read (readMaybe)
 import Burdock.Scientific
 import Burdock.Syntax
 import Burdock.Pretty
-import Burdock.Parse (parseScript, parseExpr)
+import Burdock.Parse (parseScript, parseLiterateScript, parseExpr)
 import qualified Burdock.Relational as R
 
 import Burdock.HsConcurrency
@@ -196,9 +197,26 @@ runScript :: Handle
           -> [(String,Value)]
           -> String
           -> IO Value
-runScript h mfn lenv src =
+runScript = runScript' False
+
+runLiterateScript :: Handle
+          -> Maybe FilePath
+          -> [(String,Value)]
+          -> String
+          -> IO Value
+runLiterateScript = runScript' True
+
+runScript' :: Bool
+          -> Handle
+          -> Maybe FilePath
+          -> [(String,Value)]
+          -> String
+          -> IO Value
+runScript' lit h mfn lenv src =
     spawnExtWaitHandle h $ \th -> runInterp th True h $ do
-        Script ast <- either error id <$> useSource mfn (maybe "runScript" id mfn) src parseScript
+        Script ast <- either error id
+            <$> useSource mfn (maybe "runScript" id mfn) src
+            (if lit then parseLiterateScript else parseScript)
         -- todo: how to make this local to this call only
         forM_ lenv $ \(n,v) -> letValue n v
         ret <- interpStatements ast

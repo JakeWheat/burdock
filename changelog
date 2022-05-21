@@ -3,6 +3,7 @@
 - demo Python FFI
 - remove sqlite ffi, can use it via Python FFI
 - overhaul build system
+- literate mode, for testing the website pages
 
 ## Week 19 15th May
 

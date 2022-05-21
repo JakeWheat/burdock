@@ -35,7 +35,9 @@ versions of ghc, etc.
 import Development.Shake
 import Development.Shake.FilePath
     ((</>)
+    ,dropDirectory1
     ,dropExtension
+    ,(-<.>)
     ,makeRelative
     ,(<.>)
     ,takeDirectory)
@@ -122,6 +124,27 @@ main = do
 
     "_build/packages/burdock-packages" %> \out ->
         installPackageDB out directPackages
+
+    ---------------------------------------
+    -- website
+
+    phony "clean_website" $ do
+        cmd_ "rm -Rf _build/website"
+
+    phony "website" $ do
+        cmd_ "mkdir -p _build/website"
+        docs <- getDirectoryFiles "" ["docs//*.rst"]
+        let htmls = ["_build/website" </> dropDirectory1 (dropExtension doc) -<.> "html" | doc <- docs]
+        need ("_build/website/style.css":htmls)
+
+    "_build/website/style.css" %> \out -> do
+        need ["docs/style.css"]
+        cmd_ "cp docs/style.css " out
+
+    "_build/website/*.html" %> \out -> do
+        let rst = "docs" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
+        need [rst, "docs/header.html"]
+        cmd_ "pandoc -s -t html -H docs/header.html --toc " rst "-o"  out "--css=style.css"
 
     ---------------------------------------
     -- helpers for building haskell

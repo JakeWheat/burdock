@@ -6,6 +6,7 @@ module Burdock.Parse
     (parseExpr
     ,parseStmt
     ,parseScript
+    ,parseLiterateScript
     ) where
 
 
@@ -56,6 +57,8 @@ import Data.Maybe (catMaybes)
 import Data.Void (Void)
 
 import Burdock.Syntax
+import Data.List (isPrefixOf)
+
 
 ------------------------------------------------------------------------------
 
@@ -69,6 +72,9 @@ parseStmt fn src = parseHelper stmt fn src
 
 parseScript :: FilePath -> String -> Either String Script
 parseScript fn src = parseHelper script fn src
+
+parseLiterateScript :: FilePath -> String -> Either String Script
+parseLiterateScript fn src = parseHelper script fn $ extractSource src
 
 ---------------------------------------
 
@@ -994,3 +1000,22 @@ typ allowImplicitTuple =
                  i1 <- noarrowctu i
                  ts <- option [] $ symbol_ ";" *> xSep1 ';' noarrow
                  pure $ TTuple (i1:ts)]
+
+
+extractSource :: String -> String
+extractSource src =
+    let ls = lines src
+    in unlines $ process [] ls
+  where
+    process acc [] = reverse acc
+    process acc (x:xs)
+        | ".. code-block:: burdock" `isPrefixOf` x =
+          skipBlankLines acc xs
+        | otherwise = process acc xs
+    skipBlankLines acc ("":xs) = skipBlankLines acc xs
+    skipBlankLines acc xs = processAdd acc xs
+    processAdd acc (x:xs)
+        | "  " `isPrefixOf` x =
+          processAdd (x:acc) xs
+        | otherwise = process acc xs
+    processAdd acc [] = process acc []

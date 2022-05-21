@@ -9,15 +9,11 @@ module Burdock.TestData
 
 import Burdock.Syntax
 
+import Burdock.TestTypes
+import qualified Burdock.LiterateTests as LiterateTests
+
 import qualified Text.RawString.QQ as R
 
-
-
-data TestTree = TestGroup String [TestTree]
-              | ExprParseTest String Expr
-              | StmtParseTest String Stmt
-              | ScriptParseTest String Script
-              | InterpreterTestsFile FilePath
 
 testdata :: TestTree
 testdata = TestGroup "allTests"
@@ -25,6 +21,7 @@ testdata = TestGroup "allTests"
     ,statementParseTests
     ,scriptParseTests
     ,interpreterTests
+    ,LiterateTests.testData
     ]
 
 
@@ -757,5 +754,8 @@ interpreterTests =
     ,TestGroup "packages" $ map InterpreterTestsFile
      ["packages/ffitypes-test/tests/ffitypes-test.bur"
      ,"packages/python-ffi/tests/python-ffi-test.bur"
+     ]
+    ,TestGroup "docs" $ map InterpreterTestsFile
+     ["docs/index.rst"
      ]
     ]

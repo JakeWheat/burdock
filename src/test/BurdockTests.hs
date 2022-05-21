@@ -20,6 +20,7 @@ import Control.Exception.Safe (catch
 --import Control.Concurrent.Async (withAsync, wait)
 import Control.Exception.Safe (bracket)
 
+import Data.List (isSuffixOf)
 
 import qualified Test.Tasty as T
 import qualified Test.Tasty.HUnit as T
@@ -34,15 +35,13 @@ import qualified PythonFFI
 
 main :: IO ()
 main = do
-    --setNumCapabilities =<< getNumProcessors
+    setNumCapabilities =<< getNumProcessors
     -- avoid bound thread, possible that it makes a performance difference
     pts <- PyWrapTests.tests
-   -- withAsync (do
     at <- makeTests testdata
     T.defaultMain $ T.testGroup "group" [at
                                         ,HsConcurrencyTests.tests
                                         ,pts]
-  --      wait
                   
 
 
@@ -52,6 +51,7 @@ makeTests (TestGroup nm ts) = T.testGroup nm <$> mapM makeTests ts
 makeTests (ExprParseTest src ex) = pure $ makeParseTest parseExpr prettyExpr src ex
 makeTests (StmtParseTest src ex) = pure $ makeParseTest parseStmt prettyStmt src ex
 makeTests (ScriptParseTest src ex) = pure $ makeParseTest parseScript prettyScript src ex
+makeTests (LiterateParseTest src ex) = pure $ makeRtParseTest parseLiterateScript parseScript src ex
 makeTests (InterpreterTestsFile fn) = makeInterpreterFileTest fn
 
 ------------------------------------------------------------------------------
@@ -70,6 +70,19 @@ makeParseTest parse pretty src expected = T.testCase src $ do
     let roundtrip = either error rmsp $ parse "" printed
     T.assertEqual "parse pretty roundtrip" expected roundtrip
 
+makeRtParseTest :: (Eq a, Show a, Data a) =>
+                 (FilePath -> String -> Either String a)
+              -> (FilePath -> String -> Either String a)
+              -> String
+              -> String
+              -> T.TestTree
+makeRtParseTest parse parseEx src expected = T.testCase src $ do
+    let rmsp = transformBi (\(_ :: SourcePosition) -> Nothing)
+    let got = either error rmsp $ parse "" src
+        expected' = either error rmsp $ parseEx "" expected
+    T.assertEqual "parse" expected' got
+
+
 makeInterpreterFileTest :: FilePath -> IO T.TestTree
 makeInterpreterFileTest fn = catch makeIt $ \ex -> do
     pure $ T.testCase fn $ T.assertFailure $ show (ex :: SomeException)
@@ -80,7 +93,7 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
         _ <- runScript h Nothing []
              "_system.modules._internals.set-auto-print-test-results(false)\n\
              \_system.modules._internals.set-auto-run-tests(true)"
-        _ <- runScript h (Just fn) [] src
+        _ <- (if "rst" `isSuffixOf` fn then runLiterateScript else runScript) h (Just fn) [] src
         trs <- getTestResults h
         
         let ts = flip map trs $ \(modName, cbs) ->
