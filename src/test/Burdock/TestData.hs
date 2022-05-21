@@ -758,4 +758,7 @@ interpreterTests =
     ,TestGroup "docs" $ map InterpreterTestsFile
      ["docs/index.rst"
      ]
+    ,TestGroup "docs" $ map InterpreterTestsOptionalDir
+     ["website2/"]
     ]
+

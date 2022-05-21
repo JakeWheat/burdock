@@ -147,6 +147,28 @@ main = do
         cmd_ "pandoc -s -t html -H docs/header.html --toc " rst "-o"  out "--css=style.css"
 
     ---------------------------------------
+    -- testing website
+
+    phony "clean_website2" $ do
+        cmd_ "rm -Rf _build/website2"
+
+    phony "website2" $ do
+        cmd_ "mkdir -p _build/website2"
+        docs <- getDirectoryFiles "" ["website2//*.rst"]
+        let htmls = ["_build/website2" </> dropDirectory1 (dropExtension doc) -<.> "html" | doc <- docs]
+        need ("_build/website2/style.css":htmls)
+
+    "_build/website2/style.css" %> \out -> do
+        need ["website2/style.css"]
+        cmd_ "cp website2/style.css " out
+
+    "_build/website2/*.html" %> \out -> do
+        let rst = "website2" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
+        need [rst, "website2/header.html"]
+        cmd_ "pandoc -s -t html -H website2/header.html --toc " rst "-o"  out "--css=style.css"
+
+
+    ---------------------------------------
     -- helpers for building haskell
 
     let parseMakefileDeps :: String -> [(String,String)]

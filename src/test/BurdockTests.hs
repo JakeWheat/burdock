@@ -13,7 +13,7 @@ import Burdock.Syntax (SourcePosition)
 import Data.Generics.Uniplate.Data (transformBi)
 import Data.Data (Data)
 
---import Control.Monad (forM_, forM)
+import Control.Monad (forM)
 import Control.Exception.Safe (catch
                               ,SomeException)
 
@@ -28,6 +28,9 @@ import qualified Test.Tasty.HUnit as T
 -- todo: how to structure the tests better?
 import qualified FFITypesTest
 import qualified PythonFFI
+import System.Directory (doesDirectoryExist, listDirectory)
+import Data.Maybe (catMaybes)
+import System.FilePath ((</>))
 
 {-
 
@@ -53,6 +56,16 @@ makeTests (StmtParseTest src ex) = pure $ makeParseTest parseStmt prettyStmt src
 makeTests (ScriptParseTest src ex) = pure $ makeParseTest parseScript prettyScript src ex
 makeTests (LiterateParseTest src ex) = pure $ makeRtParseTest parseLiterateScript parseScript src ex
 makeTests (InterpreterTestsFile fn) = makeInterpreterFileTest fn
+makeTests (InterpreterTestsOptionalDir dir) = do
+    x <- doesDirectoryExist dir
+    if x
+       then do
+           fs <- listDirectory dir
+           T.testGroup dir . catMaybes <$> (forM fs $ \f -> 
+               if ".rst" `isSuffixOf` f
+               then Just <$> makeInterpreterFileTest (dir </> f)
+               else pure Nothing)
+        else pure $ T.testGroup "" []
 
 ------------------------------------------------------------------------------
 
