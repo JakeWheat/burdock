@@ -223,8 +223,9 @@ main = do
         cmd_ "ghc -hisuf .hs.hi -c" hsfile "-o" out "-ohi" hifile userGhcOpts srcDirOption
         
     "_build//*.c.o" %> \out -> do
-        Stdout (userCCompileOpts :: String) <- cmd userCCompileOptsLoad
         let cfile = (dropExtension $ dropExtension $ makeRelative objsDir out) <.> "c"
+        need [cfile]
+        Stdout (userCCompileOpts :: String) <- cmd userCCompileOptsLoad
         cmd_ "mkdir -p " (takeDirectory out)
         cmd_ "gcc" cfile "-c -o" out userCCompileOpts
 

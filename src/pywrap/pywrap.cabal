@@ -16,7 +16,9 @@ library
   extra-libraries:     python3.9
   hs-source-dirs:      .
   C-sources:           pywrap-c.c
-  build-depends:       mtl
+  build-depends:       mtl,
+                       exceptions,
+                       async
             
 Test-Suite Tests
   import:              shared-properties
@@ -29,4 +31,8 @@ Test-Suite Tests
                        tasty,
                        tasty-hunit,
                        async,
-                       mtl
+                       mtl,
+                       exceptions,
+                       async
+
+  ghc-options:         -threaded

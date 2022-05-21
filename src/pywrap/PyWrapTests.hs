@@ -13,13 +13,14 @@ import qualified Data.Text as T
 import qualified Text.RawString.QQ as R
 
 import qualified PyWrap as Py
+--import Control.Concurrent.Async (withAsyncBound, wait)
+--import Control.Concurrent (rtsSupportsBoundThreads)
 
 --import Control.Monad (void)
 
 import Control.Monad.Except
 
 import Control.Exception (Exception, catch, ErrorCall, throw)
-
 
 tests :: IO H.TestTree
 tests = do
@@ -34,8 +35,8 @@ data TestDesc
     | Direct H.TestTree
 
 makeTest :: TestDesc -> H.TestTree
-makeTest (SplitStatementsTest nm src ex) = H.testCase (T.unpack nm) $ do
-    res <- Py._splitStatements src
+makeTest (SplitStatementsTest nm src ex) = H.testCase (T.unpack nm) $ Py.useBoundThreadIf $ do
+    res <- Py._xsplitStatements src
     H.assertEqual "" ex res
 makeTest (Direct t) = t
          
@@ -143,28 +144,28 @@ takeError :: Show a => Either Py.PythonError a -> IO Py.PythonError
 takeError = either pure (error . show)
 
 testPyScript :: H.TestTree
-testPyScript = H.testCase "testPyScript" $ do
+testPyScript = H.testCase "testPyScriptSimple" $ Py.useBoundThreadIf $ do
     x <- takeValue =<< Py.script "1 + 2"
     (d :: Int) <- takeValue =<< Py.fromPyObject x
     H.assertEqual "" 3 d
 
 testPyScriptRuntimeErrorRet :: H.TestTree
-testPyScriptRuntimeErrorRet = H.testCase "testPyScriptRuntimeErrorRet" $ do
+testPyScriptRuntimeErrorRet = H.testCase "testPyScriptRuntimeErrorRet" $ Py.useBoundThreadIf $ do
     x <- takeError =<< Py.script "1 + sfdsdfa"
     H.assertEqual "" (Py.PythonError "NameError" "name 'sfdsdfa' is not defined") x
 
 testPyScriptRuntimeErrorBody :: H.TestTree
-testPyScriptRuntimeErrorBody = H.testCase "testPyScriptRuntimeErrorBody" $ do
+testPyScriptRuntimeErrorBody = H.testCase "testPyScriptRuntimeErrorBody" $ Py.useBoundThreadIf $ do
     x <- takeError =<< Py.script "print(1 + sfdsdfa)\n2"
     H.assertEqual "" (Py.PythonError "NameError" "name 'sfdsdfa' is not defined") x
 
 testPyScriptSyntaxError :: H.TestTree
-testPyScriptSyntaxError = H.testCase "testPyScriptSyntaxError" $ do
+testPyScriptSyntaxError = H.testCase "testPyScriptSyntaxError" $ Py.useBoundThreadIf $ do
     x <- takeError =<< Py.script ")1 + a"
     H.assertEqual "" (Py.PythonError "SyntaxError" "(\"unmatched ')'\", ('<unknown>', 1, 1, ')1 + a'))") x
 
 testPyScript2 :: H.TestTree
-testPyScript2 = H.testCase "testPyScript" $ do
+testPyScript2 = H.testCase "testPyScript" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script "a = 2"
     x <- takeValue =<< Py.script "a"
     (d :: Int) <- takeValue =<< Py.fromPyObject x
@@ -172,18 +173,18 @@ testPyScript2 = H.testCase "testPyScript" $ do
 
 
 testPyEval :: H.TestTree
-testPyEval = H.testCase "testPyEval" $ do
+testPyEval = H.testCase "testPyEvalSimple" $ Py.useBoundThreadIf $ do
     x <- takeValue =<< Py.eval "1 + 2"
     (d :: Int) <- takeValue =<< Py.fromPyObject x
     H.assertEqual "" 3 d
 
 testPyEvalSyntaxError :: H.TestTree
-testPyEvalSyntaxError = H.testCase "testPyEvalSyntaxError" $ do
+testPyEvalSyntaxError = H.testCase "testPyEvalSyntaxError" $ Py.useBoundThreadIf $ do
     x <- takeError =<< Py.eval ")1 + 2"
     H.assertEqual "" (Py.PythonError "SyntaxError" "(\"unmatched ')'\", ('', 1, 1, ')1 + 2'))") x
 
 testPyEvalRuntimeError :: H.TestTree
-testPyEvalRuntimeError = H.testCase "testPyEvalSyntaxError" $ do
+testPyEvalRuntimeError = H.testCase "testPyEvalSyntaxError" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 def raiseit():
     raise Exception('stuff')|]
@@ -191,17 +192,17 @@ def raiseit():
     H.assertEqual "" (Py.PythonError "Exception" "stuff") x
 
 testPyEvalNotExpression :: H.TestTree
-testPyEvalNotExpression = H.testCase "testPyEvalNotExpression" $ do
+testPyEvalNotExpression = H.testCase "testPyEvalNotExpression" $ Py.useBoundThreadIf $ do
     x <- takeError =<< Py.eval "1 == 2\n3 == 4"
     H.assertEqual "" (Py.PythonError "SyntaxError" "('invalid syntax', ('', 2, 1, '3 == 4'))") x
 
 testPyEvalEmpty :: H.TestTree
-testPyEvalEmpty = H.testCase "testPyEvalEmpty" $ do
+testPyEvalEmpty = H.testCase "testPyEvalEmpty" $ Py.useBoundThreadIf $ do
     x <- takeError =<< Py.eval ""
     H.assertEqual "" (Py.PythonError "SyntaxError" "('unexpected EOF while parsing', ('', 0, 0, ''))") x
 
 testPyNone :: H.TestTree
-testPyNone = H.testCase "testPyNone" $ do
+testPyNone = H.testCase "testPyNone" $ Py.useBoundThreadIf $ do
     x <- takeValue =<< Py.eval "1"
     t <- Py.isPyNone x
     H.assertBool "" $ not t
@@ -210,25 +211,25 @@ testPyNone = H.testCase "testPyNone" $ do
     H.assertBool "" t1
 
 testScriptStmt :: H.TestTree
-testScriptStmt = H.testCase "testScriptStmt" $ do
+testScriptStmt = H.testCase "testScriptStmt" $ Py.useBoundThreadIf $ do
     x <- takeValue =<< Py.script "x = 3"
     t <- Py.isPyNone x
     H.assertBool "" t
 
 testScriptEmpty :: H.TestTree
-testScriptEmpty = H.testCase "testScriptEmpty" $ do
+testScriptEmpty = H.testCase "testScriptEmpty" $ Py.useBoundThreadIf $ do
     x <- takeValue =<< Py.script ""
     t <- Py.isPyNone x
     H.assertBool "" t
 
 testScriptStmtExpr :: H.TestTree
-testScriptStmtExpr = H.testCase "testScriptStmtExpr" $ do
+testScriptStmtExpr = H.testCase "testScriptStmtExpr" $ Py.useBoundThreadIf $ do
     x <- takeValue =<< Py.script "x = 4\nx + 2"
     (d :: Int) <- takeValue =<< Py.fromPyObject x
     H.assertEqual "" 6 d
 
 testScriptFunExpr :: H.TestTree
-testScriptFunExpr = H.testCase "testScriptFunExpr" $ do
+testScriptFunExpr = H.testCase "testScriptFunExpr" $ Py.useBoundThreadIf $ do
     x <- takeValue =<< Py.script [R.r|
 def add(a,b):
     return a + b
@@ -237,7 +238,7 @@ add(3,4)|]
     H.assertEqual "" 7 d
 
 testScriptFunExprSep :: H.TestTree
-testScriptFunExprSep = H.testCase "testScriptFunExprSep" $ do
+testScriptFunExprSep = H.testCase "testScriptFunExprSep" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 def add(a,b):
     return a + b|]
@@ -246,7 +247,7 @@ def add(a,b):
     H.assertEqual "" 8 d
 
 testPyApp :: H.TestTree
-testPyApp = H.testCase "testPyApp" $ do
+testPyApp = H.testCase "testPyAppSimple" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 def add(a,b):
     return a + b|]
@@ -260,7 +261,7 @@ def add(a,b):
 
 
 testPyAppText :: H.TestTree
-testPyAppText = H.testCase "testPyAppText" $ do
+testPyAppText = H.testCase "testPyAppText" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 def add(a,b):
     return a + b|]
@@ -276,13 +277,13 @@ pyApp2 fn args = takeValue =<< runExceptT (do
     ExceptT $ Py.fromPyObject v)
 
 testPyAppSyntaxError :: H.TestTree
-testPyAppSyntaxError = H.testCase "testPyAppSyntaxError" $ do
+testPyAppSyntaxError = H.testCase "testPyAppSyntaxError" $ Py.useBoundThreadIf $ do
     args <- sequence [Py.toPyObject (3 :: Int), Py.toPyObject (33 :: Int)]
     x <- takeError =<< Py.appText ")add" args
     H.assertEqual "" (Py.PythonError "SyntaxError" "(\"unmatched ')'\", ('', 1, 1, ')add'))") x
 
 testPyAppRuntimeError :: H.TestTree
-testPyAppRuntimeError = H.testCase "testPyAppRuntimeError" $ do
+testPyAppRuntimeError = H.testCase "testPyAppRuntimeError" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 def add(a,b):
     return a + b|]
@@ -298,7 +299,7 @@ def add(a,b):
 
 
 testPyGetAttr :: H.TestTree
-testPyGetAttr = H.testCase "testPyGetAttr" $ do
+testPyGetAttr = H.testCase "testPyGetAttr" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 class MyClass:
     def __init__(self, a):
@@ -311,7 +312,7 @@ class MyClass:
 
 
 testPyGetAttrSyntaxError :: H.TestTree
-testPyGetAttrSyntaxError = H.testCase "testPyGetAttrSyntaxError" $ do
+testPyGetAttrSyntaxError = H.testCase "testPyGetAttrSyntaxError" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 class MyClass:
     def __init__(self, a):
@@ -322,7 +323,7 @@ class MyClass:
     H.assertEqual "" (Py.PythonError "AttributeError" "'MyClass' object has no attribute ') a'") x
 
 testPyGetAttrRuntimeError :: H.TestTree
-testPyGetAttrRuntimeError = H.testCase "testPyGetAttrRuntimeError" $ do
+testPyGetAttrRuntimeError = H.testCase "testPyGetAttrRuntimeError" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 class MyClass1:
     def __init__(self, a):
@@ -334,7 +335,7 @@ class MyClass1:
 
 
 testPyApp2 :: H.TestTree
-testPyApp2 = H.testCase "testPyApp2" $ do
+testPyApp2 = H.testCase "testPyApp2" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 def add(a,b):
     return a + b
@@ -360,7 +361,7 @@ class MyClass:
     H.assertEqual "" 13 f
 
 testImportedFun :: H.TestTree
-testImportedFun = H.testCase "testImportedFun" $ do
+testImportedFun = H.testCase "testImportedFun" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script "import math"
     v <- takeValue =<< Py.script "math.factorial(3)"
     (d :: Int) <- takeValue =<< Py.fromPyObject v
@@ -375,7 +376,7 @@ testImportedFun = H.testCase "testImportedFun" $ do
 
 
 testPyScriptBinds :: H.TestTree
-testPyScriptBinds = H.testCase "testPyScriptBinds" $ do
+testPyScriptBinds = H.testCase "testPyScriptBinds" $ Py.useBoundThreadIf $ do
 
     void $ takeValue =<< Py.script [R.r|
 def f(x):
@@ -390,7 +391,7 @@ def f(x):
 
 
 testStopIteration :: H.TestTree
-testStopIteration = H.testCase "testStopIteration" $ do
+testStopIteration = H.testCase "testStopIteration" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script "x = []\ni = x.__iter__()\n"
     --void $ takeValue =<< Py.script "i.__next__()"
     it <- takeError =<< Py.eval "i.__next__()"
@@ -401,7 +402,7 @@ testStopIteration = H.testCase "testStopIteration" $ do
     --undefined
 
 testPyForString :: H.TestTree
-testPyForString = H.testCase "testPyForString" $ do
+testPyForString = H.testCase "testPyForString" $ Py.useBoundThreadIf $ do
     b <- Py.toPyObject ("banana" :: T.Text)
     r <- takeValue =<< (Py.for b $ \c -> do
         u <- takeValue =<< Py.getAttr c "upper"
@@ -415,7 +416,7 @@ testPyForString = H.testCase "testPyForString" $ do
     H.assertEqual "" ("BANANA" :: T.Text) r'
 
 testPyForList :: H.TestTree
-testPyForList = H.testCase "testPyForList" $ do
+testPyForList = H.testCase "testPyForList" $ Py.useBoundThreadIf $ do
     b <- takeValue =<< Py.eval "[1,2,3]"
     pnms <- takeValue =<< (Py.for b $ \c -> do
         (n :: Int) <- takeValue =<< Py.fromPyObject c
@@ -424,7 +425,7 @@ testPyForList = H.testCase "testPyForList" $ do
     H.assertEqual "" [2,4,6] x3
 
 testPyForEmptyList :: H.TestTree
-testPyForEmptyList = H.testCase "testPyForEmptyList" $ do
+testPyForEmptyList = H.testCase "testPyForEmptyList" $ Py.useBoundThreadIf $ do
     b <- takeValue =<< Py.eval "[]"
     pnms <- takeValue =<< Py.for b pure
     x3 :: [Int] <- either (error . show) id . sequence <$> mapM Py.fromPyObject pnms
@@ -466,13 +467,13 @@ output:
 -}
 
 testPyForNoIterMethod :: H.TestTree
-testPyForNoIterMethod = H.testCase "testPyForNoIterMethod" $ do
+testPyForNoIterMethod = H.testCase "testPyForNoIterMethod" $ Py.useBoundThreadIf $ do
     b <- takeValue =<< Py.eval "123"
     e <- takeError =<< Py.for b pure
     H.assertEqual "" (Py.PythonError "AttributeError" "'int' object has no attribute '__iter__'") e
 
 testPyForIterMethodRaises :: H.TestTree
-testPyForIterMethodRaises = H.testCase "testPyForIterMethodRaises" $ do
+testPyForIterMethodRaises = H.testCase "testPyForIterMethodRaises" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 class Count1:
     def __init__(self, end=0):
@@ -493,7 +494,7 @@ class Count1:
     H.assertEqual "" (Py.PythonError "Exception" "denied1") e
 
 testPyForIterMethodNotExecutable :: H.TestTree
-testPyForIterMethodNotExecutable = H.testCase "testPyForIterMethodNotExecutable" $ do
+testPyForIterMethodNotExecutable = H.testCase "testPyForIterMethodNotExecutable" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 class Count2:
     def __init__(self, end=0):
@@ -513,7 +514,7 @@ class Count2:
     H.assertEqual "" (Py.PythonError "AttributeError" "'str' object has no attribute '__next__'") e
 
 testPyForNoNextMethod :: H.TestTree
-testPyForNoNextMethod = H.testCase "testPyForNoNextMethod" $ do
+testPyForNoNextMethod = H.testCase "testPyForNoNextMethod" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 class Count3:
     def __init__(self, end=0):
@@ -533,7 +534,7 @@ class Count3:
     H.assertEqual "" (Py.PythonError "AttributeError" "'Count3' object has no attribute '__next__'") e
 
 testPyForNextMethodRaisesNonStop :: H.TestTree
-testPyForNextMethodRaisesNonStop = H.testCase "testPyForNextMethodRaisesNonStop" $ do
+testPyForNextMethodRaisesNonStop = H.testCase "testPyForNextMethodRaisesNonStop" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 class Count4:
     def __init__(self, end=0):
@@ -554,7 +555,7 @@ class Count4:
     H.assertEqual "" (Py.PythonError "Exception" "denied2") e
 
 testPyForNextMethodNotExecutable :: H.TestTree
-testPyForNextMethodNotExecutable = H.testCase "testPyForNextMethodNotExecutable" $ do
+testPyForNextMethodNotExecutable = H.testCase "testPyForNextMethodNotExecutable" $ Py.useBoundThreadIf $ do
     void $ takeValue =<< Py.script [R.r|
 class Count5:
     def __init__(self, end=0):
@@ -581,7 +582,7 @@ data MyException = ThisException
 instance Exception MyException
 
 testPyForCallbackRegException :: H.TestTree
-testPyForCallbackRegException = H.testCase "testPyForCallbackRegException" $ do
+testPyForCallbackRegException = H.testCase "testPyForCallbackRegException" $ Py.useBoundThreadIf $ do
     b <- takeValue =<< Py.eval "[1]"
     r <- catch (do
                 void $ takeValue =<< Py.for b (throw ThisException)
@@ -592,7 +593,7 @@ testPyForCallbackRegException = H.testCase "testPyForCallbackRegException" $ do
 
 
 testPyForCallbackHaskellErrorCall :: H.TestTree
-testPyForCallbackHaskellErrorCall = H.testCase "testPyForCallbackHaskellErrorCall" $ do
+testPyForCallbackHaskellErrorCall = H.testCase "testPyForCallbackHaskellErrorCall" $ Py.useBoundThreadIf $ do
     b <- takeValue =<< Py.eval "[1]"
     r <- catch (do
                 void $ takeValue =<< Py.for b (error "hello")
@@ -602,7 +603,7 @@ testPyForCallbackHaskellErrorCall = H.testCase "testPyForCallbackHaskellErrorCal
     H.assertEqual "" r True
 
 testPyForCallbackHaskellExceptT :: H.TestTree
-testPyForCallbackHaskellExceptT = H.testCase "testPyForCallbackHaskellExceptT" $ do
+testPyForCallbackHaskellExceptT = H.testCase "testPyForCallbackHaskellExceptT" $ Py.useBoundThreadIf $ do
     b <- takeValue =<< Py.eval "[1]"
     (r :: Either MyException ()) <- runExceptT (do
                 _ <- either (error . show) id <$> Py.for b (const $ throwError ThisException)
@@ -610,7 +611,7 @@ testPyForCallbackHaskellExceptT = H.testCase "testPyForCallbackHaskellExceptT" $
     H.assertEqual "" r (Left ThisException)
 
 testTextIn :: H.TestTree
-testTextIn = H.testCase "testTextIn" $ do
+testTextIn = H.testCase "testTextIn" $ Py.useBoundThreadIf $ do
     let a :: T.Text = "asdf"
     a' <- Py.toPyObject a
     v <- takeValue =<< Py.scriptWithBinds [("aa", a')] "str(type(aa))"
@@ -618,19 +619,19 @@ testTextIn = H.testCase "testTextIn" $ do
     H.assertEqual "" v1 "<class 'str'>"
 
 testTextOut :: H.TestTree
-testTextOut = H.testCase "testTextOut" $ do
+testTextOut = H.testCase "testTextOut" $ Py.useBoundThreadIf $ do
     v <- takeValue =<< Py.eval "'sdfg'"
     (v1 :: T.Text) <- takeValue =<< Py.fromPyObject v
     H.assertEqual "" v1 "sdfg"
 
 testTextOutError :: H.TestTree
-testTextOutError = H.testCase "testTextOutError" $ do
+testTextOutError = H.testCase "testTextOutError" $ Py.useBoundThreadIf $ do
     v <- takeValue =<< Py.eval "1"
     e <- takeError =<< (Py.fromPyObject v :: IO (Either Py.PythonError T.Text))
     H.assertEqual "" (Py.PythonError "TypeMismatch" "Expected str, got int") e
 
 testIntIn :: H.TestTree
-testIntIn = H.testCase "testIntIn" $ do
+testIntIn = H.testCase "testIntIn" $ Py.useBoundThreadIf $ do
     let a :: Int = 2323
     a' <- Py.toPyObject a
     v <- takeValue =<< Py.scriptWithBinds [("aa", a')] "str(type(aa))"
@@ -638,13 +639,13 @@ testIntIn = H.testCase "testIntIn" $ do
     H.assertEqual "" v1 "<class 'int'>"
 
 testIntOut :: H.TestTree
-testIntOut = H.testCase "testIntOut" $ do
+testIntOut = H.testCase "testIntOut" $ Py.useBoundThreadIf $ do
     n <- takeValue =<< Py.eval "2324"
     (n1 :: Int) <- takeValue =<< Py.fromPyObject n
     H.assertEqual "" n1 2324
 
 testIntOutError :: H.TestTree
-testIntOutError = H.testCase "testIntOutError" $ do
+testIntOutError = H.testCase "testIntOutError" $ Py.useBoundThreadIf $ do
     v <- takeValue =<< Py.eval "True"
     e <- takeError =<< (Py.fromPyObject v :: IO (Either Py.PythonError Int))
     H.assertEqual "" (Py.PythonError "TypeMismatch" "Expected int, got bool") e
@@ -656,7 +657,7 @@ testIntOutError = H.testCase "testIntOutError" $ do
 
 
 testDoubleIn :: H.TestTree
-testDoubleIn = H.testCase "testDoubleIn" $ do
+testDoubleIn = H.testCase "testDoubleIn" $ Py.useBoundThreadIf $ do
     let a :: Double = 2323.1
     a' <- Py.toPyObject a
     v <- takeValue =<< Py.scriptWithBinds [("aa", a')] "str(type(aa))"
@@ -664,7 +665,7 @@ testDoubleIn = H.testCase "testDoubleIn" $ do
     H.assertEqual "" v1 "<class 'float'>"
 
 testDoubleOut :: H.TestTree
-testDoubleOut = H.testCase "testDoubleOut" $ do
+testDoubleOut = H.testCase "testDoubleOut" $ Py.useBoundThreadIf $ do
     n <- takeValue =<< Py.eval "2324.1"
     (n1 :: Double) <- takeValue =<< Py.fromPyObject n
     H.assertEqual "" n1 2324.1
@@ -675,7 +676,7 @@ testDoubleOut = H.testCase "testDoubleOut" $ do
 
 
 testDoubleOutError :: H.TestTree
-testDoubleOutError = H.testCase "testDoubleOutError" $ do
+testDoubleOutError = H.testCase "testDoubleOutError" $ Py.useBoundThreadIf $ do
     v <- takeValue =<< Py.eval "True"
     e <- takeError =<< (Py.fromPyObject v :: IO (Either Py.PythonError Double))
     H.assertEqual "" (Py.PythonError "TypeMismatch" "Expected float, got bool") e
@@ -686,7 +687,7 @@ testDoubleOutError = H.testCase "testDoubleOutError" $ do
 
 
 testBoolIn :: H.TestTree
-testBoolIn = H.testCase "testBoolIn" $ do
+testBoolIn = H.testCase "testBoolIn" $ Py.useBoundThreadIf $ do
     let a = True
     a' <- Py.toPyObject a
     v <- takeValue =<< Py.scriptWithBinds [("aa", a')] "str(type(aa))"
@@ -694,7 +695,7 @@ testBoolIn = H.testCase "testBoolIn" $ do
     H.assertEqual "" v1 "<class 'bool'>"
 
 testBoolOut :: H.TestTree
-testBoolOut = H.testCase "testBoolOut" $ do
+testBoolOut = H.testCase "testBoolOut" $ Py.useBoundThreadIf $ do
     n <- takeValue =<< Py.eval "True"
     (n1 :: Bool) <- takeValue =<< Py.fromPyObject n
     H.assertEqual "" n1 True
@@ -704,14 +705,14 @@ testBoolOut = H.testCase "testBoolOut" $ do
     H.assertEqual "" m1 False
 
 testBoolOutError :: H.TestTree
-testBoolOutError = H.testCase "testBoolOutError" $ do
+testBoolOutError = H.testCase "testBoolOutError" $ Py.useBoundThreadIf $ do
     v <- takeValue =<< Py.eval "1"
     e <- takeError =<< (Py.fromPyObject v :: IO (Either Py.PythonError Bool))
     H.assertEqual "" (Py.PythonError "TypeMismatch" "Expected bool, got int") e
 
 
 testMakePyList :: H.TestTree
-testMakePyList = H.testCase "testMakePyList" $ do
+testMakePyList = H.testCase "testMakePyList" $ Py.useBoundThreadIf $ do
     mtlst <- takeValue =<< Py.makePyList []
     _x <- takeValue =<< Py.scriptWithBinds [("lst", mtlst)] [R.r|
 if lst != []:
@@ -734,7 +735,7 @@ if lst != [1,2]:
         
     
 testMakePyTuple :: H.TestTree
-testMakePyTuple = H.testCase "testMakePyTuple" $ do
+testMakePyTuple = H.testCase "testMakePyTuple" $ Py.useBoundThreadIf $ do
     mtlst <- takeValue =<< Py.makePyTuple []
     _x <- takeValue =<< Py.scriptWithBinds [("lst", mtlst)] [R.r|
 if lst != ():
@@ -755,7 +756,7 @@ if lst != (1,2):
     pure ()
 
 testPyTupleToList :: H.TestTree
-testPyTupleToList = H.testCase "testPyTupleToList" $ do
+testPyTupleToList = H.testCase "testPyTupleToList" $ Py.useBoundThreadIf $ do
     v1 <- takeValue =<< Py.eval "()"
     lst <- takeValue =<< Py.pyTupleToList v1
     H.assertBool "" (null lst)
@@ -783,7 +784,7 @@ testPyTupleToList = H.testCase "testPyTupleToList" $ do
     H.assertEqual "" (Py.PythonError "TypeMismatch" "Expected tuple, got list") e
 
 testPyListToList :: H.TestTree
-testPyListToList = H.testCase "testPyListToList" $ do
+testPyListToList = H.testCase "testPyListToList" $ Py.useBoundThreadIf $ do
     v1 <- takeValue =<< Py.eval "[]"
     lst <- takeValue =<< Py.pyListToList v1
     H.assertBool "" (null lst)

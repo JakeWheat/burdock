@@ -84,31 +84,6 @@ void cPy_INCREF(PyObject *o) {
     Py_INCREF(o);
 }
 
-
-
-// wrap py none, so can access it from haskell
-
-// wrap incref, decref because these are macros
-
-// check for null?
-/*int cPyFloat_Check(PyObject *o) {
-    return PyFloat_Check(o);
-}
-
-// check for null?
-int cPyLong_Check(PyObject *o) {
-    return PyLong_Check(o);
-}
-
-int cPyTuple_CheckExact(PyObject *o) {
-    return PyTuple_CheckExact(o);
-    }*/
-
-// check for null?
-//int is_StopIteration(PyObject *o) {
-//    return PyErr_GivenExceptionMatches(o, PyExc_StopIteration);
-//}
-
 int is_py_true(PyObject *o) {
     return o == Py_True;
 }
@@ -117,16 +92,16 @@ int is_py_false(PyObject *o) {
     return o == Py_False;
 }
 
-PyObject *py_type(PyObject *o) {
+PyObject *cPy_type(PyObject *o) {
     // is this ok?
     return (PyObject*) Py_TYPE(o);
 }
 
-PyObject *py_false(){
+PyObject *cPy_false(){
     Py_RETURN_FALSE;
 }
 
-PyObject *py_true(){
+PyObject *cPy_true(){
     Py_RETURN_TRUE;
 }
 

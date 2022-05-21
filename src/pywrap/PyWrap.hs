@@ -1,4 +1,10 @@
+{-
 
+todo: see if can refactor out excessive runExceptT and ExceptTs
+figure out how to refactor the pyFor code
+  -> need an ExceptT around a MonadIO m => m? is this possible?
+
+-}
 
 {-# LANGUAGE ForeignFunctionInterface #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -31,9 +37,9 @@ module PyWrap
     ,fromPyObject
 
     ,isPyNone
-    ,pyNone
-    ,pyTrue
-    ,pyFalse
+    --,pyNone
+    --,pyTrue
+    --,pyFalse
 
     ,makePyList
     ,makePyTuple
@@ -42,23 +48,57 @@ module PyWrap
     ,pyListToList
 
      -- internals for testing
-    ,_splitStatements
+    ,_xsplitStatements
+
+    ,useBoundThreadIf
     
     ) where
 
 import Foreign.C.Types
+    (CInt(..)
+    ,CChar
+    ,CLong(..)
+    ,CDouble(..)
+    ,CSize(..)
+    )
 import Foreign.C.String
+    (CString
+    ,withCString
+    ,peekCString)
 import Foreign.Storable
+    (peek)
 import Foreign.Marshal.Alloc
+    (alloca)
 import qualified Data.Text as T
 import Foreign.Ptr
+    (Ptr
+    --,FunPtr
+    ,nullPtr)
 --import Control.Monad (void, when) --, when, forM_, forM)
 -- --import Data.Char (isSpace)
 import qualified Text.RawString.QQ as R
 import Foreign.ForeignPtr
+    (ForeignPtr
+    ,touchForeignPtr
+    --,newForeignPtr_
+    ,withForeignPtr)
+import Foreign.Concurrent (newForeignPtr)
 import Control.Monad.Except
-
+    (ExceptT(..)
+    ,MonadIO
+    ,runExceptT
+    ,void
+    ,liftIO
+    ,when
+    ,throwError
+    ,forM_
+    ,forM
+    )
+import Control.Concurrent (isCurrentThreadBound)
+import Control.Monad.Catch (bracket, MonadMask)
 -- import Control.Monad.IO.Class (MonadIO, liftIO)
+import Control.Concurrent.Async (withAsyncBound, wait)
+import Control.Concurrent (rtsSupportsBoundThreads)
 
 ------------------------------------------------------------------------------
 
@@ -68,19 +108,33 @@ import Control.Monad.Except
 -- and all the subsequent calls to this api should be in this thread
 
 foreign import ccall "Py_Initialize" pyInitialize :: IO ()
---foreign import ccall "init_helper_functions" cinitHelperFunctions :: IO CInt
--- int PyRun_SimpleString(const char *command)
---foreign import ccall "PyRun_SimpleString" pyRunSimpleString :: CString -> IO CInt
+foreign import ccall "PyEval_SaveThread" pyEvalSaveThread :: IO (Ptr CChar)
 
 initialize :: IO ()
-initialize = do
+initialize = useBoundThreadIf $ do
+    {-b <- isCurrentThreadBound
+    when (not b) $ do
+        error "Thread initializing python is not bound"-}
     pyInitialize
     x <- runExceptT (pyEvalEvalCodeWrap Nothing pyFileInput pythonHelpersSource)
     -- todo: change this into an either like the rest of the code
     case x of
         Left e -> error $ "python ffi: initializing helper functions failed " ++ show e
         Right {} -> pure ()
-    --void cinitHelperFunctions
+    -- release the GIL
+    when rtsSupportsBoundThreads $ void $ pyEvalSaveThread
+
+useBoundThreadIf :: IO a -> IO a
+useBoundThreadIf f =
+    if rtsSupportsBoundThreads
+    then withAsyncBound f wait
+    else f
+
+
+{-
+TODO?
+assert that sizeof(PyGILState_STATE) == sizeof(int) in the initialize function
+-}
 
 pythonHelpersSource :: T.Text
 pythonHelpersSource = [R.r|
@@ -121,6 +175,10 @@ foreign import ccall "split_statements"
                  -> Ptr CString
                  -> (Ptr (Ptr CPyObject))
                  -> IO CString
+
+
+_xsplitStatements :: T.Text -> IO (Either PythonError (T.Text, Maybe T.Text))
+_xsplitStatements = runWithGILState . _splitStatements
 
 _splitStatements :: T.Text -> IO (Either PythonError (T.Text, Maybe T.Text))
 _splitStatements src =
@@ -164,26 +222,26 @@ checkPythonError = runExceptT $ do
             (throwError $ PythonError "PyWrapError" "expected pyErrFetch to return a type but it returned null")
             pure
             mptype
-        ptypeName <- ExceptT $ getAttr ptype "__name__"
-        nm <- ExceptT $ fromPyObject ptypeName
+        ptypeName <- ExceptT $ getAttrInternal ptype "__name__"
+        nm <- ExceptT $ fromPyObjectInternal ptypeName
         vl <- maybe (pure "") appStr mpvalue
         throwError (PythonError nm vl)
   where
     appStr :: PyObject -> PyWrap T.Text
     appStr o = do
         fn <- pyEvalEvalCodeWrap Nothing pyEvalInput "str"
-        v <- ExceptT $ app fn [o]
-        ExceptT $ fromPyObject v
+        v <- ExceptT $ appInternal fn [o]
+        ExceptT $ fromPyObjectInternal v
 
 ------------------------------------------------------------------------------
 
 -- basic api
 
 script :: MonadIO m => T.Text -> m (Either PythonError PyObject)
-script src = liftIO $ runExceptT $ pyScript' Nothing src
+script src = liftIO $ runWithGILState $ runExceptT $ pyScript' Nothing src
 
 scriptWithBinds :: MonadIO m => [(T.Text, PyObject)] -> T.Text -> m (Either PythonError PyObject)
-scriptWithBinds bs src = liftIO $ runExceptT $ do
+scriptWithBinds bs src = liftIO $ runWithGILState $ runExceptT $ do
     lo <- makeDict bs
     pyScript' (Just lo) src
   where
@@ -194,11 +252,20 @@ scriptWithBinds bs src = liftIO $ runExceptT $ do
         pure d
 
 getAttr :: MonadIO m => PyObject -> T.Text -> m (Either PythonError PyObject)
-getAttr o f = liftIO $ runExceptT $ pyObjectGetAttrString o f
+getAttr o f = liftIO $ runWithGILState $ runExceptT $ pyObjectGetAttrString o f
+
+getAttrInternal :: MonadIO m => PyObject -> T.Text -> m (Either PythonError PyObject)
+getAttrInternal o f = liftIO $ runExceptT $ pyObjectGetAttrString o f
+
 
 app :: MonadIO m => PyObject -> [PyObject] -> m (Either PythonError PyObject)
-app func args = liftIO $ runExceptT $ do
-    args' <- ExceptT $ makePyTuple args
+app func args = liftIO $ runWithGILState $ runExceptT $ do
+    args' <- ExceptT $ makePyTupleInternal args
+    pyObjectCall func args'
+
+appInternal :: MonadIO m => PyObject -> [PyObject] -> m (Either PythonError PyObject)
+appInternal func args = liftIO $ runExceptT $ do
+    args' <- ExceptT $ makePyTupleInternal args
     pyObjectCall func args'
 
 -- can't work out how to re-enter the 'm' monad from regular exceptT wrapper
@@ -220,14 +287,14 @@ for it cb = do
                 case ctu of
                     Left e -> pure $ Left e
                     Right vs -> pure $ Right (v:vs)
-    meth o f = runExceptT $ do
-        v <- ExceptT $ getAttr o f
-        ExceptT $ app v []
+    meth o f = liftIO $ runWithGILState $ runExceptT $ do
+        v <- ExceptT $ getAttrInternal o f
+        ExceptT $ appInternal v []
 
 appText :: T.Text -> [PyObject] -> IO (Either PythonError PyObject)
-appText funcnm args = runExceptT $ do
+appText funcnm args = runWithGILState $ runExceptT $ do
     func <- pyEvalEvalCodeWrap Nothing pyEvalInput funcnm
-    ExceptT $ app func args
+    ExceptT $ appInternal func args
 
 ------------------------------------------------------------------------------
 
@@ -264,7 +331,7 @@ pyEvalEvalCodeWrap lo start src = do
     pyEvalEvalCode co gd ld
 
 eval :: T.Text -> IO (Either PythonError PyObject)
-eval ex = runExceptT $ pyEvalEvalCodeWrap Nothing pyEvalInput ex
+eval ex = runWithGILState $ runExceptT $ pyEvalEvalCodeWrap Nothing pyEvalInput ex
 
 ------------------------------------------------------------------------------
 
@@ -285,8 +352,14 @@ safePeekPyObject :: Ptr CPyObject -> IO (Maybe PyObject)
 safePeekPyObject ptr =
     if ptr == nullPtr
     then pure Nothing
-    else Just . PyObject <$> newForeignPtr cPyDecrefFP ptr
-
+    --else Just . PyObject <$> newForeignPtr cPyDecrefFP ptr
+    --else Just . PyObject <$> newForeignPtr_ ptr
+    else Just . PyObject <$> newForeignPtr ptr release
+  where
+    -- todo: can this deadlock?
+    -- is it worth using a single queue? since this code will
+    -- launch a new pthread every time a pyobject is garbage collected ...
+    release = useBoundThreadIf $ runWithGILState $ cPyDecref ptr
 
 objFromMaybe :: T.Text -> Maybe PyObject -> IO (Either PythonError PyObject)
 objFromMaybe fn mobj = runExceptT $
@@ -297,7 +370,7 @@ withCPO' (PyObject p) f =
     ExceptT $ liftIO $ withForeignPtr p $ \o' -> runExceptT $ f o'
 
 foreign import ccall "cPy_DECREF" cPyDecref :: Ptr CPyObject -> IO ()
-foreign import ccall "&cPy_DECREF" cPyDecrefFP :: FunPtr (Ptr CPyObject -> IO ())
+--foreign import ccall "&cPy_DECREF" cPyDecrefFP :: FunPtr (Ptr CPyObject -> IO ())
 
 foreign import ccall "cPy_INCREF" cPyIncref :: Ptr CPyObject -> IO ()
 
@@ -306,6 +379,9 @@ withCPO (PyObject p) f = withForeignPtr p f
 
 class FromPyObject a where
     fromPyObject :: PyObject -> IO (Either PythonError a)
+    fromPyObject = runWithGILState . fromPyObjectInternal
+    fromPyObjectInternal :: PyObject -> IO (Either PythonError a)
+
 
 class ToPyObject a where
     toPyObject :: a -> IO PyObject
@@ -327,7 +403,7 @@ wrapWithError f = do
 checkObjectType :: T.Text -> PyObject -> PyWrap ()
 checkObjectType nm obj = do
     ty <- pyType obj
-    nm' <- ExceptT $ getAttr ty "__name__"
+    nm' <- ExceptT $ getAttrInternal ty "__name__"
     nm'' <- pyUnicodeAsUTF8String nm'
     nm''' <- pyBytesAsString nm''
     if nm == nm'''
@@ -335,39 +411,39 @@ checkObjectType nm obj = do
       else throwError $ PythonError "TypeMismatch" (T.concat ["Expected ", nm, ", got ", nm'''])
 
 instance FromPyObject T.Text where
-    fromPyObject a = runExceptT $ do
+    fromPyObjectInternal a = runExceptT $ do
         checkObjectType "str" a
         ut <- pyUnicodeAsUTF8String a
         pyBytesAsString ut
 
 instance ToPyObject T.Text where
-    toPyObject a = pyUnicodeFromString a
+    toPyObject a = runWithGILState $ pyUnicodeFromString a
 
 ---------------------------------------
 
 instance FromPyObject Int where
-    fromPyObject a = runExceptT $ do
+    fromPyObjectInternal a = runExceptT $ do
         checkObjectType "int" a
         pyLongAsLong a
 
 instance ToPyObject Int where
-    toPyObject a = pyLongFromLong a
+    toPyObject a = runWithGILState $ pyLongFromLong a
 
 instance FromPyObject Double where
-    fromPyObject a = runExceptT $ do
+    fromPyObjectInternal a = runExceptT $ do
         checkObjectType "float" a
         pyFloatAsDouble a
 
 instance ToPyObject Double where
-    toPyObject a = pyFloatFromDouble a
+    toPyObject a = runWithGILState $ pyFloatFromDouble a
 
 instance FromPyObject Bool where
-    fromPyObject a = runExceptT $ do
+    fromPyObjectInternal a = runExceptT $ do
         checkObjectType "bool" a
         isPyTrue a
 
 instance ToPyObject Bool where
-    toPyObject a = if a
+    toPyObject a = runWithGILState $ if a
                    then wrapWithError pyTrue
                    else wrapWithError pyFalse
 
@@ -375,10 +451,14 @@ instance ToPyObject Bool where
 ---------------------------------------
 
 makePyList :: [PyObject] -> IO (Either PythonError PyObject)
-makePyList lst = makeNThing pyListNew pyListSetItem lst
+makePyList lst = runWithGILState $ makeNThing pyListNew pyListSetItem lst
 
 makePyTuple :: [PyObject] -> IO (Either PythonError PyObject)
-makePyTuple lst = makeNThing pyTupleNew pyTupleSetItem lst
+makePyTuple = runWithGILState . makePyTupleInternal
+
+makePyTupleInternal :: [PyObject] -> IO (Either PythonError PyObject)
+makePyTupleInternal lst = runWithGILState $ makeNThing pyTupleNew pyTupleSetItem lst
+
 
 makeNThing :: (Int -> PyWrap PyObject)
            -> (PyObject -> Int -> PyObject -> PyWrap ())
@@ -394,7 +474,7 @@ makeNThing new si lst = runExceptT $ do
     pure ret
 
 pyTupleToList :: PyObject -> IO (Either PythonError [PyObject])
-pyTupleToList tup = runExceptT $ do
+pyTupleToList tup = runWithGILState $ runExceptT $ do
     checkObjectType "tuple" tup
     sz <- pyTupleSize tup
     if sz == 0
@@ -402,12 +482,61 @@ pyTupleToList tup = runExceptT $ do
       else forM [0..sz - 1] $ \i -> pyTupleGetItem tup i
 
 pyListToList :: PyObject -> IO (Either PythonError [PyObject])
-pyListToList tup = runExceptT $ do
+pyListToList tup = runWithGILState $ runExceptT $ do
     checkObjectType "list" tup
     sz <- pyListSize tup
     if sz == 0
       then pure []
       else forM [0..sz - 1] $ \i -> pyListGetItem tup i
+
+
+------------------------------------------------------------------------------
+
+
+{-
+
+check each call to this api from outside
+
+if it needs the GIL/the pthread to be python initialized, use the new
+wrapper, which will do
+
+runInBoundThread $ do
+
+  PyGILState_STATE gstate;
+  gstate = PyGILState_Ensure();
+
+  call the haskell code which accesses python
+
+  PyGILState_Release(gstate);
+
+make sure there is some bracket protection
+  check the bracket covers asynchronous haskell exceptions
+
+PyGILState_STATE PyGILState_Ensure()
+void PyGILState_Release(PyGILState_STATE)
+-}
+
+foreign import ccall "PyGILState_Ensure" pyGILStateEnsure :: IO CInt
+foreign import ccall "PyGILState_Release" pyGILStateRelease :: CInt -> IO ()
+
+
+runWithGILState :: (MonadMask m, MonadIO m) => m a -> m a
+runWithGILState f | rtsSupportsBoundThreads = do
+    b <- liftIO $ isCurrentThreadBound
+    -- todo: this does nothing when error is called in a finalizer
+    -- for pyobject reference count decrement
+    when (not b) $ error $ "thread for runWithGILState init is not bound"
+    bracket
+      (liftIO pyGILStateEnsure)
+      (liftIO . myf')
+      (const f)
+  where
+    myf' x = do
+        b <- isCurrentThreadBound
+        when (not b) $ error $ "thread for runWithGILState leave is not bound (how does that even happen?)"
+        pyGILStateRelease x
+
+runWithGILState f | otherwise = f
 
 ------------------------------------------------------------------------------
 
@@ -575,7 +704,7 @@ pyUnicodeFromString str = wrapWithError $
     textWithCString' str $ \str' -> do
     checkAndReturn "PyUnicode_FromString" $ pyUnicodeFromStringRaw str'
 
-foreign import ccall "py_type" pyTypeRaw :: Ptr CPyObject -> IO (Ptr CPyObject)
+foreign import ccall "cPy_type" pyTypeRaw :: Ptr CPyObject -> IO (Ptr CPyObject)
 
 pyType :: PyObject -> PyWrap PyObject
 pyType o =
@@ -634,8 +763,8 @@ _isPyFalse o = withCPO' o $ \o' -> do
     x <- liftIO $ isPyFalseRaw o'
     pure (x /= 0)
 
-foreign import ccall "py_false" pyFalseRaw :: IO (Ptr CPyObject)
-foreign import ccall "py_true" pyTrueRaw :: IO (Ptr CPyObject)
+foreign import ccall "cPy_false" pyFalseRaw :: IO (Ptr CPyObject)
+foreign import ccall "cPy_true" pyTrueRaw :: IO (Ptr CPyObject)
 
 pyFalse :: PyWrap PyObject
 pyFalse = checkAndReturn "Py_RETURN_FALSE" pyFalseRaw
@@ -651,7 +780,7 @@ pyNone' = checkAndReturn "Py_RETURN_NONE" pyNoneRaw-}
 foreign import ccall "cPy_None" pyNoneRaw :: IO (Ptr CPyObject)
 
 isPyNone :: MonadIO m => PyObject -> m Bool
-isPyNone p = liftIO $ withCPO p $ \p' -> do
+isPyNone p = liftIO $ runWithGILState $ withCPO p $ \p' -> do
     pn <- pyNoneRaw
     let x = p' == pn
     cPyDecref pn
@@ -661,7 +790,6 @@ pyNone :: PyWrap PyObject
 pyNone = checkAndReturn "Py_RETURN_NONE" pyNoneRaw
 
 foreign import ccall "PyList_New" pyListNewRaw :: CSize -> IO (Ptr CPyObject)
-
 
 pyListNew :: Int -> PyWrap PyObject
 pyListNew n = checkAndReturn "PyList_New" $ pyListNewRaw (fromIntegral n)
