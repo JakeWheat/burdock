@@ -5,14 +5,9 @@ use the ./build script to run this easily
 
 todo list:
 
-the package database handling is not good
-  -> if there are multiple versions of a package, it can get stuck,
-  I had to zap the ~/.cabal dir to unstick it
-  -> it's not limiting the cabal packages correctly still
-
 make it rebuild when:
   when the ghc version changes
-    -> it gets stuck at the moment
+    -> it gets stuck at the moment, better than silently failing
   when the flags for a compile or link step change,
     including the pkg-config python3 stuff
   when the packages are updated
@@ -22,11 +17,9 @@ make it rebuild when:
 
 nice way to pass args to running the tasty test exes
 
-a way to keep cabal files in sync (used to distribute the
-language?)
-
-add some CI testing for the cabal file and for various
-versions of ghc, etc.
+add some CI testing for various versions of ghc, etc.
+write some tests to test this specific build script to catch
+  some regressions more easily and promptly
 
 -}
 
@@ -85,7 +78,8 @@ main = do
     -- clean targets
     
     -- clean everything including package databases
-    phony "clean-all" $ do
+    withTargetDocs "clean everything including package databases"
+      $ phony "clean-all" $ do
         need ["clean"]
         removeFilesAfter "_build" ["//*"]
 
@@ -119,7 +113,7 @@ main = do
             -- blast anything already there away to keep the deps accurate
             -- it's not painfully slow to rebuild because cabal v2 has cached the builds
             liftIO $ removeFiles "." [dir]
-            cmd_ "cabal -j install --lib " pkgs "--package-env" dir
+            cmd_ "cabal -v0 -j install --lib " pkgs "--package-env" dir
 
     let directPackages =
             ["tasty"
@@ -141,11 +135,11 @@ main = do
             ,"exceptions"
             ,"Glob"
             ]
-    -- todo: separate packages for the tests, the executable and the lib?
-    phony "install-deps" $ installPackageDB "_build/packages/burdock-packages" directPackages
+    let mainPackageDB = "_build/packages/burdock-packages"
+    phony "install-deps" $ installPackageDB mainPackageDB directPackages
     void $ addOracle $ \(Packages _) -> pure (unlines directPackages) :: Action String
 
-    "_build/packages/burdock-packages" %> \out -> do
+    mainPackageDB %> \out -> do
         void $ askOracle (Packages ())
         void $ askOracle (GhcVersion ())
         installPackageDB out directPackages
@@ -214,7 +208,7 @@ main = do
 
     -- todo: figure out how to parameterize these into the build rules
     let objsDir = "_build/objs"
-        userGhcOpts = "-package-env _build/packages/burdock-packages"
+        userGhcOpts = "-v0 -hide-all-packages -package-env " ++ mainPackageDB
         srcDirs = ["src/lib"
                   ,"src/pywrap"
                   ,"packages/python-ffi/haskell-src"
@@ -225,7 +219,7 @@ main = do
         userLinkOptsLoad = "pkg-config --libs python3-embed"
 
     let compileHaskellExe exeName mainSource cfiles = do
-            need ["_build/packages/burdock-packages"]
+            need [mainPackageDB]
             -- use the deps file to find out which haskell .o files
             -- are needed to link this exe
             let depsFile = objsDir </> mainSource <.> "deps"
@@ -255,7 +249,7 @@ main = do
     -- build rules for haskell and c files
 
     "_build//*.hs.deps" %> \out -> do
-        need ["_build/packages/burdock-packages"]
+        need [mainPackageDB]
         -- the dep file needs rebuilding if any of the .hs files it
         -- references have changed
         -- what's the right idiom for this?
@@ -281,8 +275,9 @@ main = do
         -- liftIO $ putStrLn $ "new deps:\n" ++ newdeps
         liftIO $ writeFile out newdeps
                 
-    ["_build//*.hs.o","_build//*.hs.hi"] &%> \[out,_] -> do
-        need ["_build/packages/burdock-packages"]
+    ["_build//*.hs.o","_build//*.hs.hi"] &%> \case
+      [out,_] -> do
+        need [mainPackageDB]
         let hsfile = (dropExtension $ dropExtension $ makeRelative objsDir out) <.> "hs"
             depsfile = dropExtension out <.> "deps"
         need [depsfile]
@@ -293,6 +288,7 @@ main = do
         mkdirP d
         void $ askOracle (GhcVersion ())
         cmd_ "ghc -hisuf .hs.hi -c" hsfile "-o" out "-ohi" hifile userGhcOpts srcDirOption
+      _ -> error "impossible build failure: matched two items in rule but didn't get two items to build"
         
     "_build//*.c.o" %> \out -> do
         let cfile = (dropExtension $ dropExtension $ makeRelative objsDir out) <.> "c"

@@ -10,10 +10,10 @@ mkdir -p _build/packages
 # optimisation, because cabal is really slow if the package is
 # already installed
 if [ ! -f _build/packages/shakefile-packages ]; then
-    echo installing shake lib for bootstrapping build exe
-    cabal -j install --lib shake --package-env _build/packages/shakefile-packages
+    #echo installing shake lib for bootstrapping build exe
+    cabal -v0 -j install --lib shake --package-env _build/packages/shakefile-packages
 fi
 
-ghc -Wall --make Shakefile.hs -rtsopts -threaded -with-rtsopts="-I0" -outputdir=_build/objs/shakefile-build -o _build/shakefile -package-env _build/packages/shakefile-packages -package hashable
+ghc -v0 -Wall --make Shakefile.hs -rtsopts -threaded -with-rtsopts="-I0" -outputdir=_build/objs/shakefile-build -o _build/shakefile -package-env _build/packages/shakefile-packages -package hashable
 
-_build/shakefile +RTS -N -RTS -j "$@"
+_build/shakefile +RTS -N -RTS -k -j "$@"
