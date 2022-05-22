@@ -68,42 +68,9 @@ main = do
 
     want ["_build/burdock"]
 
-    ---------------------------------------
+    ------------------------------------------------------------------------------
 
-    void $ addOracle $ \(GhcVersion _) -> fromStdout <$> cmd "ghc --numeric-version" :: Action String
-
-    ---------------------------------------
-      
-    -- clean targets
-    
-    -- clean everything including package databases
-    phony "clean" $ do
-        removeFilesAfter "_build" ["//*"]
-        liftIO $ removeFiles "." ["dist-newstyle", "src/pywrap/dist-newstyle"]
-
-    ---------------------------------------
-
-    phony "all" $ need ["_build/burdock-tests"
-                       ,"_build/burdock"
-                       ,"_build/DemoFFI"]
-
-    phony "really-all" $ need ["all", "website", "test"]
-
-    phony "test" $ do
-        need ["_build/burdock-tests"]
-        cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
-            (maybe "" (\x -> "-p " ++ x) testPattern)
-
-    ---------------------------------------
-    -- dodgy handling of the packagedb
-    -- to be fixed
-
-    let installPackageDB :: FilePath -> [String] -> Action ()
-        installPackageDB dir pkgs = do
-            -- blast anything already there away to keep the deps accurate
-            -- it's not painfully slow to rebuild because cabal v2 has cached the builds
-            liftIO $ removeFiles "." [dir]
-            cmd_ "cabal -v0 -j install --lib " pkgs "--package-env" dir
+    -- main tweakables
 
     let directPackages =
             ["tasty"
@@ -126,56 +93,37 @@ main = do
             ,"Glob"
             ]
     let mainPackageDB = "_build/packages/burdock-packages"
-    void $ addOracle $ \(Packages _) -> pure (unlines directPackages) :: Action String
 
-    mainPackageDB %> \out -> do
-        void $ askOracle (Packages ())
-        void $ askOracle (GhcVersion ())
-        installPackageDB out directPackages
+        -- todo: figure out how to parameterize these into the build rules
+    let objsDir = "_build/objs"
+        userGhcOpts = "-v0 -hide-all-packages -package-env " ++ mainPackageDB
+        srcDirs = ["src/lib"
+                  ,"src/pywrap"
+                  ,"packages/python-ffi/haskell-src"
+                  ,"packages/ffitypes-test/haskell-src"
+                  ,"packages/sqlite/haskell-src"
+                  ,"src/test/"]
+        userCCompileOptsLoad = "pkg-config python3-embed --cflags"
+        userLinkOptsLoad = "pkg-config --libs python3-embed"
 
-    ---------------------------------------
-    -- website
+
+    ------------------------------------------------------------------------------
+
+    -- support functions
+
+    let srcDirOption = "-i" ++ intercalate ":" (srcDirs ++ map (objsDir </>) srcDirs)
 
     let mkdirP = liftIO . D.createDirectoryIfMissing True
 
-    phony "website" $ do
-        mkdirP "_build/website"
-        docs <- getDirectoryFiles "" ["docs//*.rst"]
-        let htmls = ["_build/website" </> dropDirectory1 (dropExtension doc) -<.> "html"
-                    | doc <- docs]
-            websiteFiles = "_build/website/style.css" : htmls
-        -- testing website
-        mkdirP "_build/website2"
-        docs2 <- getDirectoryFiles "" ["website2//*.rst"]
-        let htmls2 = ["_build/website2" </> dropDirectory1 (dropExtension doc) -<.> "html"
-                     | doc <- docs2]
-            website2Files = if null htmls2
-                            then []
-                            else ("_build/website2/style.css" : htmls2)
-        liftIO $ putStrLn $ show websiteFiles
-        need (websiteFiles ++ website2Files)
-
-    "_build/website/style.css" %> \out -> do
-        copyFile' "docs/style.css" out
+    let installPackageDB :: FilePath -> [String] -> Action ()
+        installPackageDB dir pkgs = do
+            -- blast anything already there away to keep the deps accurate
+            -- it's not painfully slow to rebuild because cabal v2 has cached the builds
+            liftIO $ removeFiles "." [dir]
+            cmd_ "cabal -v0 -j install --lib " pkgs "--package-env" dir
 
     let doPandoc header rst out =
             cmd_ "pandoc -s -t html -H" header "--toc" rst "-o" out "--css=style.css"
-
-    "_build/website/*.html" %> \out -> do
-        let rst = "docs" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
-        need [rst, "docs/header.html"]
-        doPandoc "docs/header.html" rst out
-
-    "_build/website2/style.css" %> \out -> do
-        copyFile' "website2/style.css" out
-
-    "_build/website2/*.html" %> \out -> do
-        let rst = "website2" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
-        need [rst, "website2/header.html"]
-        doPandoc "website2/header.html" rst out
-
-    ---------------------------------------
-    -- helpers for building haskell
 
     let parseMakefileDeps :: String -> [(String,String)]
         parseMakefileDeps str =
@@ -188,22 +136,6 @@ main = do
                     | otherwise = case words x of
                           [ofile,":",hsfile] -> p ((ofile,hsfile):acc) xs
                           _ -> error $ "didn't understand makefile line: " ++ show x
-
-    ---------------------------------------
-
-    -- build the exes
-
-    -- todo: figure out how to parameterize these into the build rules
-    let objsDir = "_build/objs"
-        userGhcOpts = "-v0 -hide-all-packages -package-env " ++ mainPackageDB
-        srcDirs = ["src/lib"
-                  ,"src/pywrap"
-                  ,"packages/python-ffi/haskell-src"
-                  ,"packages/ffitypes-test/haskell-src"
-                  ,"packages/sqlite/haskell-src"
-                  ,"src/test/"]
-        userCCompileOptsLoad = "pkg-config python3-embed --cflags"
-        userLinkOptsLoad = "pkg-config --libs python3-embed"
 
     let compileHaskellExe exeName mainSource cfiles = do
             need [mainPackageDB]
@@ -221,19 +153,52 @@ main = do
             Stdout (userLinkOpts :: String) <- cmd userLinkOptsLoad
             --link it
             cmd_ "ghc -o" exeName allObjs userGhcOpts userLinkOpts
-   
-    -- the three exes
-    "_build/burdock" %> \out -> compileHaskellExe out "src/app/BurdockExe.hs" ["src/pywrap/pywrap-c.c"]
+
+    ------------------------------------------------------------------------------
+
+    -- build rules
+
+    "_build/burdock" %> \out ->
+        compileHaskellExe out "src/app/BurdockExe.hs" ["src/pywrap/pywrap-c.c"]
+    "_build/burdock-tests" %> \out ->
+        compileHaskellExe out "src/test/BurdockTests.hs" ["src/pywrap/pywrap-c.c"]
     "_build/DemoFFI" %> \out -> compileHaskellExe out "src/examples/DemoFFI.hs" []
-    "_build/burdock-tests" %> \out -> compileHaskellExe out "src/test/BurdockTests.hs" ["src/pywrap/pywrap-c.c"]
 
-    let srcDirOption = "-i" ++ intercalate ":" (srcDirs ++ map (objsDir </>) srcDirs)
+    phony "all" $ need ["_build/burdock-tests"
+                       ,"_build/burdock"
+                       ,"_build/DemoFFI"]
 
+    phony "test" $ do
+        need ["_build/burdock-tests"]
+        cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
+            (maybe "" (\x -> "-p " ++ x) testPattern)
 
+    phony "website" $ do
+        mkdirP "_build/website"
+        docs <- getDirectoryFiles "" ["docs//*.rst"]
+        let htmls = ["_build/website" </> dropDirectory1 (dropExtension doc) -<.> "html"
+                    | doc <- docs]
+            websiteFiles = "_build/website/style.css" : htmls
+        -- testing website
+        mkdirP "_build/website2"
+        docs2 <- getDirectoryFiles "" ["website2//*.rst"]
+        let htmls2 = ["_build/website2" </> dropDirectory1 (dropExtension doc) -<.> "html"
+                     | doc <- docs2]
+            website2Files = if null htmls2
+                            then []
+                            else ("_build/website2/style.css" : htmls2)
+        need (websiteFiles ++ website2Files)
 
-    
-    ---------------------------------------
-    -- build rules for haskell and c files
+    phony "really-all" $ need ["all", "website", "test"]
+
+    phony "clean" $ do
+        removeFilesAfter "_build" ["//*"]
+        liftIO $ removeFiles "." ["dist-newstyle", "src/pywrap/dist-newstyle"]
+
+    mainPackageDB %> \out -> do
+        void $ askOracle (Packages ())
+        void $ askOracle (GhcVersion ())
+        installPackageDB out directPackages
 
     "_build//*.hs.deps" %> \out -> do
         need [mainPackageDB]
@@ -276,7 +241,7 @@ main = do
         void $ askOracle (GhcVersion ())
         cmd_ "ghc -hisuf .hs.hi -c" hsfile "-o" out "-ohi" hifile userGhcOpts srcDirOption
       _ -> error "impossible build failure: matched two items in rule but didn't get two items to build"
-        
+
     "_build//*.c.o" %> \out -> do
         let cfile = (dropExtension $ dropExtension $ makeRelative objsDir out) <.> "c"
         need [cfile]
@@ -284,3 +249,21 @@ main = do
         mkdirP (takeDirectory out)
         cmd_ "gcc" cfile "-c -o" out userCCompileOpts
 
+    "_build/website/style.css" %> \out -> do
+        copyFile' "docs/style.css" out
+
+    "_build/website/*.html" %> \out -> do
+        let rst = "docs" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
+        need [rst, "docs/header.html"]
+        doPandoc "docs/header.html" rst out
+
+    "_build/website2/style.css" %> \out -> do
+        copyFile' "website2/style.css" out
+
+    "_build/website2/*.html" %> \out -> do
+        let rst = "website2" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
+        need [rst, "website2/header.html"]
+        doPandoc "website2/header.html" rst out
+
+    void $ addOracle $ \(GhcVersion _) -> fromStdout <$> cmd "ghc --numeric-version" :: Action String
+    void $ addOracle $ \(Packages _) -> pure (unlines directPackages) :: Action String
