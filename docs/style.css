@@ -6,3 +6,85 @@ body {
   max-width: max-content;
   margin: auto;
 }
+
+/* formatting code blocks */
+
+.burdock, .skip-burdock, .bad-burdock {
+    margin-left: 5%;
+    white-space: pre;
+    font-family: monospace;
+    display: inline-block;
+    padding: 9.5px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width:90%;
+}
+
+.burdock, .skip-burdock {
+    background-color: #f5f5f5;
+}
+
+.bad-burdock {
+    background-color: #ffeeee;
+}
+
+.hidden {
+    display: none;
+}
+
+/* formatting the dodgy header link bar - it's not in the body atm */
+
+.page-header {
+    float:right;
+}
+.page-header a {
+    color: inherit;
+    text-decoration: inherit;
+    background-color: #f5f5f5;
+    padding: 2px;
+    border: 1px solid #ccc;
+ }
+
+/* formatting the dodgy toc side bar - it should be outside the body */
+
+#TOC {
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    float: right;
+    padding: 20px;
+    background-color: #f5f5f5;
+}
+
+#TOC ul {
+    list-style-type: none;
+    padding: 0;
+    margin: 0;
+}
+
+#TOC ul ul {
+    padding-left: 2em;
+}
+
+/* header formatting */
+
+h1 {
+    font-size: 30px;
+}
+h2 {
+    font-size: 28px;
+}
+h3 {
+    font-size: 26px;
+}
+h4 {
+    font-size: 24px;
+}
+h1,h2,h3,h4 {
+    font-family: "Helvetica Neue",Helvetica,Arial,sans-serif;
+    font-weight: 500;
+    color: #333;
+    width: 100%;
+    padding-top: 5px;
+    border-top: 1px solid #ccc;
+}
+
