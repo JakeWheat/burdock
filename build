@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/bin/sh
 
 set -e
 
@@ -14,6 +14,6 @@ if [ ! -f _build/packages/shakefile-packages ]; then
     cabal -j install --lib shake --package-env _build/packages/shakefile-packages
 fi
 
-ghc -Wall --make Shakefile.hs -rtsopts -threaded -with-rtsopts=-I0 -outputdir=_build/objs/shakefile-build -o _build/shakefile -package-env _build/packages/shakefile-packages
+ghc -Wall --make Shakefile.hs -rtsopts -threaded -with-rtsopts="-I0" -outputdir=_build/objs/shakefile-build -o _build/shakefile -package-env _build/packages/shakefile-packages -package hashable
 
 _build/shakefile +RTS -N -RTS -j "$@"

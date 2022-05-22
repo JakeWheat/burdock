@@ -1,7 +1,7 @@
 
 {-
 
-use the build.sh to run this easily
+use the ./build script to run this easily
 
 todo list:
 
@@ -12,9 +12,13 @@ the package database handling is not good
 
 make it rebuild when:
   when the ghc version changes
+    -> it gets stuck at the moment
   when the flags for a compile or link step change,
     including the pkg-config python3 stuff
   when the packages are updated
+  can use oracles for this
+  create a nice command line interface to change the build settings,
+    e.g. debug, profile, release, custom ghc flags
 
 nice way to pass args to running the tasty test exes
 
@@ -28,6 +32,8 @@ versions of ghc, etc.
 
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 import Development.Shake
 import Development.Shake.FilePath
     ((</>)
@@ -43,7 +49,12 @@ import Data.List (isPrefixOf
                  ,nub
                  ,sort)
 
-import Control.Monad (when)
+import Data.Typeable (Typeable)
+import Data.Hashable (Hashable)
+import Data.Binary (Binary)
+import Control.DeepSeq (NFData)
+
+import Control.Monad (when, void)
 import Development.Shake.Util
     (needMakefileDependencies
     )
@@ -53,10 +64,24 @@ import qualified System.Directory as D
 testPattern :: Maybe String
 testPattern = Nothing -- Just "fact"
 
+newtype Packages = Packages () deriving (Show,Typeable,Eq,Hashable,Binary,NFData)
+type instance RuleResult Packages = String
+
+newtype GhcVersion = GhcVersion () deriving (Show,Typeable,Eq,Hashable,Binary,NFData)
+type instance RuleResult GhcVersion = String
+
 main :: IO ()
 main = do
   shakeArgs shakeOptions{shakeFiles="_build"} $ do
-    
+
+    want ["_build/burdock"]
+
+    ---------------------------------------
+
+    void $ addOracle $ \(GhcVersion _) -> fromStdout <$> cmd "ghc --numeric-version" :: Action String
+
+    ---------------------------------------
+      
     -- clean targets
     
     -- clean everything including package databases
@@ -69,10 +94,9 @@ main = do
     -- a relatively long time to rebuild just the package dbs
     phony "clean" $ do
         bldFiles <- getDirectoryContents "_build"
-        let filesToClean1 = map ("_build" </>) $ filter (/="packages") bldFiles
-        cmd_ "rm -Rf" filesToClean1
-        cmd_ "rm -Rf dist-newstyle"
-        cmd_ "rm -Rf src/pywrap/dist-newstyle"
+        let filesToClean1 = filter (/="packages") bldFiles
+        liftIO $ removeFiles "_build" filesToClean1
+        liftIO $ removeFiles "." ["dist-newstyle", "src/pywrap/dist-newstyle"]
 
     ---------------------------------------
 
@@ -94,7 +118,7 @@ main = do
         installPackageDB dir pkgs = do
             -- blast anything already there away to keep the deps accurate
             -- it's not painfully slow to rebuild because cabal v2 has cached the builds
-            cmd_ "rm -Rf" dir
+            liftIO $ removeFiles "." [dir]
             cmd_ "cabal -j install --lib " pkgs "--package-env" dir
 
     let directPackages =
@@ -117,28 +141,31 @@ main = do
             ,"exceptions"
             ,"Glob"
             ]
-    
     -- todo: separate packages for the tests, the executable and the lib?
-    phony "install-deps" $ need ["_build/packages/burdock-packages"]
+    phony "install-deps" $ installPackageDB "_build/packages/burdock-packages" directPackages
+    void $ addOracle $ \(Packages _) -> pure (unlines directPackages) :: Action String
 
-    "_build/packages/burdock-packages" %> \out ->
+    "_build/packages/burdock-packages" %> \out -> do
+        void $ askOracle (Packages ())
+        void $ askOracle (GhcVersion ())
         installPackageDB out directPackages
 
     ---------------------------------------
     -- website
 
     phony "clean_website" $ do
-        cmd_ "rm -Rf _build/website"
+        liftIO $ removeFiles "_build" ["website"]
+
+    let mkdirP = liftIO . D.createDirectoryIfMissing True
 
     phony "website" $ do
-        cmd_ "mkdir -p _build/website"
+        mkdirP "_build/website"
         docs <- getDirectoryFiles "" ["docs//*.rst"]
         let htmls = ["_build/website" </> dropDirectory1 (dropExtension doc) -<.> "html" | doc <- docs]
         need ("_build/website/style.css":htmls)
 
     "_build/website/style.css" %> \out -> do
-        need ["docs/style.css"]
-        cmd_ "cp docs/style.css " out
+        copyFile' "docs/style.css" out
 
     "_build/website/*.html" %> \out -> do
         let rst = "docs" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
@@ -149,17 +176,16 @@ main = do
     -- testing website
 
     phony "clean_website2" $ do
-        cmd_ "rm -Rf _build/website2"
+        liftIO $ removeFiles "_build" ["website2"]
 
     phony "website2" $ do
-        cmd_ "mkdir -p _build/website2"
+        mkdirP "_build/website2"
         docs <- getDirectoryFiles "" ["website2//*.rst"]
         let htmls = ["_build/website2" </> dropDirectory1 (dropExtension doc) -<.> "html" | doc <- docs]
         need ("_build/website2/style.css":htmls)
 
     "_build/website2/style.css" %> \out -> do
-        need ["website2/style.css"]
-        cmd_ "cp website2/style.css " out
+        copyFile' "website2/style.css" out
 
     "_build/website2/*.html" %> \out -> do
         let rst = "website2" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
@@ -242,7 +268,8 @@ main = do
         -- generate the deps file from ghc
         let hsFile = makeRelative objsDir (dropExtension out)
             ghcdepsfile = out <.> "tmp"
-        cmd_ "mkdir -p" (takeDirectory out)
+        mkdirP (takeDirectory out)
+        void $ askOracle (GhcVersion ())
         cmd_ "ghc -M" hsFile "-dep-makefile" ghcdepsfile "-dep-suffix=hs." userGhcOpts srcDirOption
         makefileDeps <- liftIO (readFile ghcdepsfile)
         let deps = parseMakefileDeps makefileDeps
@@ -263,13 +290,14 @@ main = do
         
         let hifile = (dropExtension out) <.> "hi"
         let d = takeDirectory out
-        cmd_ "mkdir -p" d
+        mkdirP d
+        void $ askOracle (GhcVersion ())
         cmd_ "ghc -hisuf .hs.hi -c" hsfile "-o" out "-ohi" hifile userGhcOpts srcDirOption
         
     "_build//*.c.o" %> \out -> do
         let cfile = (dropExtension $ dropExtension $ makeRelative objsDir out) <.> "c"
         need [cfile]
         Stdout (userCCompileOpts :: String) <- cmd userCCompileOptsLoad
-        cmd_ "mkdir -p " (takeDirectory out)
+        mkdirP (takeDirectory out)
         cmd_ "gcc" cfile "-c -o" out userCCompileOpts
 
