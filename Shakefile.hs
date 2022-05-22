@@ -19,11 +19,7 @@ make it rebuild when:
 nice way to pass args to running the tasty test exes
 
 a way to keep cabal files in sync (used to distribute the
-language)
-
-if you clean, then build, then rebuild, then rebuild, the
-second rebuild is really fast, but why does it try to rebuild
-everything on the first rebuild?
+language?)
 
 add some CI testing for the cabal file and for various
 versions of ghc, etc.
@@ -51,6 +47,8 @@ import Control.Monad (when)
 import Development.Shake.Util
     (needMakefileDependencies
     )
+
+import qualified System.Directory as D
 
 testPattern :: Maybe String
 testPattern = Nothing -- Just "fact"
@@ -197,7 +195,7 @@ main = do
                   ,"packages/ffitypes-test/haskell-src"
                   ,"packages/sqlite/haskell-src"
                   ,"src/test/"]
-        userCCompileOptsLoad = "pkg-config python3 --cflags"
+        userCCompileOptsLoad = "pkg-config python3-embed --cflags"
         userLinkOptsLoad = "pkg-config --libs python3-embed"
 
     let compileHaskellExe exeName mainSource cfiles = do
@@ -235,7 +233,7 @@ main = do
         -- the dep file needs rebuilding if any of the .hs files it
         -- references have changed
         -- what's the right idiom for this?
-        e <- doesFileExist out
+        e <- liftIO $ D.doesFileExist out
         when e $ do
             makefileDeps <- liftIO (readFile out)
             let hsFileDeps = filter (".hs" `isSuffixOf`) $ map snd $ parseMakefileDeps makefileDeps
