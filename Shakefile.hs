@@ -10,10 +10,9 @@ make it rebuild when:
     -> it gets stuck at the moment, better than silently failing
   when the flags for a compile or link step change,
     including the pkg-config python3 stuff
-  when the packages are updated
-  can use oracles for this
-  create a nice command line interface to change the build settings,
-    e.g. debug, profile, release, custom ghc flags
+
+create a nice command line interface to change the build settings,
+  e.g. debug, profile, release, custom ghc flags
 
 nice way to pass args to running the tasty test exes
 
@@ -78,26 +77,17 @@ main = do
     -- clean targets
     
     -- clean everything including package databases
-    withTargetDocs "clean everything including package databases"
-      $ phony "clean-all" $ do
-        need ["clean"]
-        removeFilesAfter "_build" ["//*"]
-
-    -- clean everything except the package databases, despite
-    -- not recompiling anything to rebuild, it still takes cabal
-    -- a relatively long time to rebuild just the package dbs
     phony "clean" $ do
-        bldFiles <- getDirectoryContents "_build"
-        let filesToClean1 = filter (/="packages") bldFiles
-        liftIO $ removeFiles "_build" filesToClean1
+        removeFilesAfter "_build" ["//*"]
         liftIO $ removeFiles "." ["dist-newstyle", "src/pywrap/dist-newstyle"]
 
     ---------------------------------------
 
-    phony "all" $ do
-        need ["_build/burdock-tests"
-             ,"_build/burdock"
-             ,"_build/DemoFFI"]
+    phony "all" $ need ["_build/burdock-tests"
+                       ,"_build/burdock"
+                       ,"_build/DemoFFI"]
+
+    phony "really-all" $ need ["all", "website", "test"]
 
     phony "test" $ do
         need ["_build/burdock-tests"]
@@ -136,7 +126,6 @@ main = do
             ,"Glob"
             ]
     let mainPackageDB = "_build/packages/burdock-packages"
-    phony "install-deps" $ installPackageDB mainPackageDB directPackages
     void $ addOracle $ \(Packages _) -> pure (unlines directPackages) :: Action String
 
     mainPackageDB %> \out -> do
@@ -147,36 +136,35 @@ main = do
     ---------------------------------------
     -- website
 
-    phony "clean_website" $ do
-        liftIO $ removeFiles "_build" ["website"]
-
     let mkdirP = liftIO . D.createDirectoryIfMissing True
 
     phony "website" $ do
         mkdirP "_build/website"
         docs <- getDirectoryFiles "" ["docs//*.rst"]
-        let htmls = ["_build/website" </> dropDirectory1 (dropExtension doc) -<.> "html" | doc <- docs]
-        need ("_build/website/style.css":htmls)
+        let htmls = ["_build/website" </> dropDirectory1 (dropExtension doc) -<.> "html"
+                    | doc <- docs]
+            websiteFiles = "_build/website/style.css" : htmls
+        -- testing website
+        mkdirP "_build/website2"
+        docs2 <- getDirectoryFiles "" ["website2//*.rst"]
+        let htmls2 = ["_build/website2" </> dropDirectory1 (dropExtension doc) -<.> "html"
+                     | doc <- docs2]
+            website2Files = if null htmls2
+                            then []
+                            else ("_build/website2/style.css" : htmls2)
+        liftIO $ putStrLn $ show websiteFiles
+        need (websiteFiles ++ website2Files)
 
     "_build/website/style.css" %> \out -> do
         copyFile' "docs/style.css" out
 
+    let doPandoc header rst out =
+            cmd_ "pandoc -s -t html -H" header "--toc" rst "-o" out "--css=style.css"
+
     "_build/website/*.html" %> \out -> do
         let rst = "docs" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
         need [rst, "docs/header.html"]
-        cmd_ "pandoc -s -t html -H docs/header.html --toc " rst "-o"  out "--css=style.css"
-
-    ---------------------------------------
-    -- testing website
-
-    phony "clean_website2" $ do
-        liftIO $ removeFiles "_build" ["website2"]
-
-    phony "website2" $ do
-        mkdirP "_build/website2"
-        docs <- getDirectoryFiles "" ["website2//*.rst"]
-        let htmls = ["_build/website2" </> dropDirectory1 (dropExtension doc) -<.> "html" | doc <- docs]
-        need ("_build/website2/style.css":htmls)
+        doPandoc "docs/header.html" rst out
 
     "_build/website2/style.css" %> \out -> do
         copyFile' "website2/style.css" out
@@ -184,8 +172,7 @@ main = do
     "_build/website2/*.html" %> \out -> do
         let rst = "website2" </> dropDirectory1 (dropDirectory1 $ dropExtension out -<.> "rst")
         need [rst, "website2/header.html"]
-        cmd_ "pandoc -s -t html -H website2/header.html --toc " rst "-o"  out "--css=style.css"
-
+        doPandoc "website2/header.html" rst out
 
     ---------------------------------------
     -- helpers for building haskell
