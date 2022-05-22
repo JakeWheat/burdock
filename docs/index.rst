@@ -27,3 +27,4 @@ Bugtracker: https://github.com/JakeWheat/burdock/issues
 Changelog: https://github.com/JakeWheat/burdock/blob/main/changelog
 
 Contact: jakewheat@tutanota.com
+

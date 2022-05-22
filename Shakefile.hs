@@ -54,7 +54,7 @@ main = do
 
     ------------------------------------------------------------------------------
 
-    -- main declarative part, making it more declaritive is a WIP
+    -- main declarative part, making it more declarative is a WIP
 
     let directPackages =
             ["tasty"
@@ -277,3 +277,4 @@ main = do
         doPandoc "website2/header.html" rst out
 
     void $ addOracle $ \(Packages _) -> pure (unlines directPackages) :: Action String
+

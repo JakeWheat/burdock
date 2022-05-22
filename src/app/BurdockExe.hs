@@ -192,21 +192,21 @@ myOpts = MyOpts
       <*> optional (strOption
           (short 'c'
            <> metavar "SOURCE"
-           <> help "code to run"))
+           <> help "inline code to run"))
       {-<*> option auto
           (long "test-level"
            <> value 1
            <> metavar "INT"
            <> help "test-level 0 = skip, 1= one line, 2 = show failures, 3 = show all")-}
-      <*> switch (long "run-tests" <> help "Run tests")
-      <*> switch (long "literate-mode" <> help "Parse literate source")
-      <*> many (argument str (metavar "ARGS..."))
+      <*> switch (long "run-tests" <> help "run tests")
+      <*> switch (long "literate-mode" <> help "parse from literate source")
+      <*> many (argument str (metavar "ARGS..." <> help "args to pass to Burdock script"))
 
 myOptsPlus :: ParserInfo MyOpts
 myOptsPlus = info (myOpts <**> helper)
       ( fullDesc
-     <> progDesc "Burdock script runner and repl"
-     <> header "Burdock" )
+     <> progDesc "Burdock script runner and repl, docs at http://jakewheat.github.io/burdock/latest/"
+     <> header "Burdock interpreter" )
 
 ------------------------------------------------------------------------------
 
@@ -228,3 +228,4 @@ main = do
             MyOpts {script = Nothing, file = Nothing, runTests = rt}
                 | not isTTY -> runHandle "stdin" stdin rt
                 | otherwise -> doRepl
+
