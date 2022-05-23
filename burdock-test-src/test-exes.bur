@@ -1,0 +1,76 @@
+
+include filesystem
+
+include process
+
+check:
+  read-process("_build/burdock", [list: "-c", "1+2"], "") is "3\n"
+end
+
+#|
+# reenable when implement the improved test runner
+check "test use_burdock temp [slow]":
+  call-process("rm", [list: "-Rf", "_build/use_burdock_tests/"])
+  call-process("mkdir", [list: "-p", "_build/use_burdock_tests/"])
+  call-process("git", [list: "clone", ".", "_build/use_burdock_tests/burdock"])
+  call-process("bash", [list:"-c", "(cd _build/use_burdock_tests;cd burdock;./build _build/burdock)"])
+  read-process("_build/use_burdock_tests/burdock/_build/burdock",
+               [list: "examples/ahoy.bur"], "")
+    is "Ahoy world!\n"
+end
+|#
+
+
+#|
+
+> _build/burdock -c "1+2"
+==> 3
+
+testing the use_burdock doc:
+run:
+rm -Rf _build/use_burdock_tests/
+mkdir -p _build/use_burdock_tests/
+cd _build/use_burdock_tests/
+git clone ../../ burdock
+  -> this will be set to the same branch as the main repo
+cd burdock
+./build _build/burdock
+_build/burdock examples/ahoy.bur
+==> Ahoy world!
+
+run a process
+check the exit code
+
+run a process
+check the exit code
+capture the stdout in a string
+check it matches
+
+readProcess :: FilePath	 -> [String] -> String -> IO String	
+readProcess(filename, args, stdinput) -> String
+ (standard output)
+will raise an error if the exit code isn't 0
+
+callProcess :: FilePath -> [String] -> IO () 
+same, but no stdin, and stdout is not returned
+
+ > readProcess "date" [] []
+ "Thu Feb  7 10:03:39 PST 2008\n"
+
+testing the interpreter:
+
+child = expect.spawn("_build/burdock")
+child.expect("b > ")
+child.sendline("1 + 2")
+child.expect("3")
+child.expect("b > ")
+child.sendcontrol("d")
+child.wait() # maybe add timeout?
+
+
+|#
+
+check:
+
+
+end
