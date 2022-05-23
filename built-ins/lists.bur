@@ -81,7 +81,8 @@ provide:
   fold,
   foldl,
   foldr,
-  filter
+  filter,
+  intercalate
 end
 
 
@@ -227,3 +228,15 @@ check:
   filter(is-link, [list: empty, link(1, empty), empty]) is [list: link(1, empty)]
 end
 
+fun intercalate(sep,lst):
+  cases lst:
+    | empty => ""
+    | link(x,link(_,_)) => x + sep + intercalate(sep,lst.rest)
+    | link(x,empty) => x
+  end
+where:
+  intercalate("x",empty) is ""
+  intercalate(",",[list: 'a']) is "a"
+  intercalate(",",[list: 'a', 'b']) is "a,b"
+  intercalate(",",[list: 'a', 'b', 'c', 'd']) is "a,b,c,d"
+end

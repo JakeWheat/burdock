@@ -3,6 +3,11 @@ include filesystem
 
 include process
 
+import from lists:
+  map,
+  intercalate
+end
+
 check:
   read-process("_build/burdock", [list: "-c", "1+2"], "") is "3\n"
 end
@@ -20,57 +25,21 @@ check "test use_burdock temp [slow]":
 end
 |#
 
+# import a built in and use it
+# import a regular .bur file and use it
+# do some anomaly tests?
 
-#|
-
-> _build/burdock -c "1+2"
-==> 3
-
-testing the use_burdock doc:
-run:
-rm -Rf _build/use_burdock_tests/
-mkdir -p _build/use_burdock_tests/
-cd _build/use_burdock_tests/
-git clone ../../ burdock
-  -> this will be set to the same branch as the main repo
-cd burdock
-./build _build/burdock
-_build/burdock examples/ahoy.bur
-==> Ahoy world!
-
-run a process
-check the exit code
-
-run a process
-check the exit code
-capture the stdout in a string
-check it matches
-
-readProcess :: FilePath	 -> [String] -> String -> IO String	
-readProcess(filename, args, stdinput) -> String
- (standard output)
-will raise an error if the exit code isn't 0
-
-callProcess :: FilePath -> [String] -> IO () 
-same, but no stdin, and stdout is not returned
-
- > readProcess "date" [] []
- "Thu Feb  7 10:03:39 PST 2008\n"
-
-testing the interpreter:
-
-child = expect.spawn("_build/burdock")
-child.expect("b > ")
-child.sendline("1 + 2")
-child.expect("3")
-child.expect("b > ")
-child.sendcontrol("d")
-child.wait() # maybe add timeout?
-
-
-|#
 
 check:
 
+  fun do-repl-test(ls):
+    ls1 = map(lam(x): '("' + x.{0} + '","' + x.{1} + '")' end, ls)
+    ls2 = "[" + intercalate(",", ls1) + "]"
+    call-process("test-support/test-repl.py", [list:ls2])
+  end
+  # todo: definitely need a dsl syntax
+  do-repl-test([list:{"1 + 2"; "3"}]) is nothing
+  do-repl-test([list:{"a = 5"; ""}
+                    ,{"a + 3"; "8"}]) is nothing
 
 end
