@@ -188,13 +188,18 @@ main = do
     forM_ simplePhonies $ \(doc, nm, needage) ->
         withTargetDocs doc $ phony nm $ need needage
 
-    withTargetDocs "run the tests" $ phony "test" $ do
+    withTargetDocs "run the tests" $ phony "test-all" $ do
         need ["_build/burdock-tests"
              -- temporary hack while python is incompatible threads
              ,"_build/burdock-unthreaded"]
         cmd_ "_build/burdock-unthreaded --run-tests packages/python-ffi/tests/python-ffi-test.bur"
         cmd_ "_build/burdock-unthreaded --run-tests examples/load-csv-python.bur"
         cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
+
+    withTargetDocs "run the tests" $ phony "test" $ do
+        need ["_build/burdock-tests"]
+        cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
+
 
     withTargetDocs "build the website" $ phony "website" $ do
         mkdirP "_build/website"
