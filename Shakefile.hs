@@ -40,9 +40,6 @@ import Development.Shake.Util
 
 import qualified System.Directory as D
 
-testPattern :: Maybe String
-testPattern = Nothing -- Just "fact"
-
 newtype Packages = Packages () deriving (Show,Typeable,Eq,Hashable,Binary,NFData)
 type instance RuleResult Packages = String
 
@@ -93,17 +90,25 @@ main = do
         exes = [("build the Burdock interpreter"
                 ,"_build/burdock"
                 ,"src/app/BurdockExe.hs"
-                ,pythonCFiles)
+                ,pythonCFiles
+                ,"-threaded")
+               ,("build the Burdock interpreter without threading (temporary for Python issues)"
+                ,"_build/burdock-unthreaded"
+                ,"src/app/BurdockExe.hs"
+                ,pythonCFiles
+                ,"")                
                ,("build the Burdock tests"
                 ,"_build/burdock-tests"
                 ,"src/test/BurdockTests.hs"
-                ,pythonCFiles)
+                ,pythonCFiles
+                ,"-threaded")
                ,("build the Demo user FFI interpreter"
                 ,"_build/DemoFFI"
                 ,"src/examples/DemoFFI.hs"
-                ,[])
+                ,[]
+                ,"-threaded")
                ]
-        allTargetExes = map (\(_,e,_,_) -> e) exes
+        allTargetExes = map (\(_,e,_,_,_) -> e) exes
         simplePhonies =
             [("build all the exes", "all", allTargetExes)
             ,("build all the exes, build the website, run the tests"
@@ -155,7 +160,7 @@ main = do
     let getAllObjsFromGhcDeps makefileDepsString =
             let deps = parseMakefileDeps makefileDepsString
             in nub $ sort $ map fst deps
-    let compileHaskellExe exeName mainSource cfiles = do
+    let compileHaskellExe exeName mainSource cfiles additionalLinkOpts = do
             need [mainPackageDB]
             -- get all the haskell files needed for linking using the deps
             let depsFile = objsDir </> mainSource <.> "deps"
@@ -166,7 +171,7 @@ main = do
                 allObjs = hsobjs ++ cobjs
             need allObjs
             userLinkOpts <- cacheOptionsLoad userLinkOptsLoad
-            cmd_ "ghc -o" exeName allObjs userGhcOpts userLinkOpts
+            cmd_ "ghc -o" exeName allObjs userGhcOpts userLinkOpts additionalLinkOpts
 
     -- if the file exists, read it and pass to the function
     let doIfFileExists fn f = do
@@ -177,16 +182,19 @@ main = do
 
     -- build rules
 
-    forM_ exes $ \(doc,outnm,hsmain,cfiles) ->
-        withTargetDocs doc $ outnm %> \out -> compileHaskellExe out hsmain cfiles
+    forM_ exes $ \(doc,outnm,hsmain,cfiles, linkOpts) ->
+        withTargetDocs doc $ outnm %> \out -> compileHaskellExe out hsmain cfiles linkOpts
 
     forM_ simplePhonies $ \(doc, nm, needage) ->
         withTargetDocs doc $ phony nm $ need needage
 
     withTargetDocs "run the tests" $ phony "test" $ do
-        need ["_build/burdock-tests"]
+        need ["_build/burdock-tests"
+             -- temporary hack while python is incompatible threads
+             ,"_build/burdock-unthreaded"]
+        cmd_ "_build/burdock-unthreaded --run-tests packages/python-ffi/tests/python-ffi-test.bur"
+        cmd_ "_build/burdock-unthreaded --run-tests examples/load-csv-python.bur"
         cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
-            (maybe "" (\x -> "-p " ++ x) testPattern)
 
     withTargetDocs "build the website" $ phony "website" $ do
         mkdirP "_build/website"

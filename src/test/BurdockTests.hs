@@ -27,7 +27,7 @@ import qualified Test.Tasty.HUnit as T
 
 -- todo: how to structure the tests better?
 import qualified FFITypesTest
-import qualified PythonFFI
+--import qualified PythonFFI
 import System.Directory (doesDirectoryExist, listDirectory)
 import Data.Maybe (catMaybes)
 import System.FilePath ((</>))
@@ -39,9 +39,6 @@ import System.FilePath.Glob
     ,compDefault
     )
 
-{-
-
--}
 
 main :: IO ()
 main = do
@@ -136,4 +133,4 @@ makeInterpreterFileTest fn = catch makeIt $ \ex -> do
     -- todo: a bit better
     addPackages h = do
         addFFIPackage h "packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
-        addFFIPackage h "packages/python" PythonFFI.pythonFFIPackage
+        --addFFIPackage h "packages/python" PythonFFI.pythonFFIPackage

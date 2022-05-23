@@ -707,9 +707,13 @@ interpreterTests =
     [InterpreterTestsDir "burdock-test-src/"
     ,InterpreterTestsDir "built-ins/"
     ,InterpreterTestsDir "docs/"
-    ,InterpreterTestsDir "examples/"
+    ,TestGroup "examples" $ map InterpreterTestsFile
+     [
+     ]
+
+    --,InterpreterTestsDir "examples/"
     ,InterpreterTestsDir "packages/ffitypes-test"
-    ,InterpreterTestsDir "packages/python-ffi"
+    --,InterpreterTestsDir "packages/python-ffi"
     ,InterpreterTestsOptionalDir "website2/"
     {-
      packages/ffitypes-test/tests/ffitypes-test.bur"
