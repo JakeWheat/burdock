@@ -1,0 +1,13 @@
+
+include process
+include filesystem
+
+check:
+  td = "_build/temp-directory-test"
+  call-process("rm", [list: "-Rf", td])
+  call-process("mkdir", [list: "-p", td])
+  call-process("touch", [list: td + "/aa"])
+  call-process("touch", [list: td + "/bbb"])
+  # todo: sort the lists to make it stable
+  list-directory(td) is [list: "bbb", "aa"]
+end

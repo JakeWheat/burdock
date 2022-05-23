@@ -174,6 +174,9 @@ import Control.Concurrent.STM.TVar
 import Control.Concurrent.STM
     (atomically)
 
+import System.Process (callProcess, readProcess)
+
+import System.Directory as D
 --import Control.Monad.IO.Class
 --    (MonadIO)
 
@@ -1555,6 +1558,11 @@ builtInFF =
          ,fmdFallback = Nothing})
 
     ,("get-args", bGetArgs)
+
+    ,("read-process", bReadProcess)
+    ,("call-process", bCallProcess)
+    ,("list-directory", bListDirectory)
+     
     ]
 
 ffiFunction :: [Value] -> Interpreter Value
@@ -2083,6 +2091,34 @@ bGetArgs :: [Value] -> Interpreter Value
 bGetArgs _ = do
     as <- liftIO $ E.getArgs
     pure $ makeBList $ map TextV as
+
+bReadProcess :: [Value] -> Interpreter Value
+bReadProcess [TextV pn, l, TextV stdin]
+    | Just as <- mapM getText =<< fromBList l = do
+          x <- liftIO $ readProcess pn as stdin
+          pure $ TextV x
+  where
+    getText (TextV t) = Just t
+    getText _ = Nothing
+bReadProcess x = error $ "bad args to read-process" ++ show x
+
+bCallProcess :: [Value] -> Interpreter Value
+bCallProcess [TextV pn, l]
+    | Just as <- mapM getText =<< fromBList l = do
+          liftIO $ callProcess pn as
+          pure $ nothing
+  where
+    getText (TextV t) = Just t
+    getText _ = Nothing
+bCallProcess x = error $ "bad args to call-process" ++ show x
+
+bListDirectory :: [Value] -> Interpreter Value
+bListDirectory [TextV pn] = do
+    is <- liftIO $ D.listDirectory pn
+    pure $ makeBList $ map TextV is
+bListDirectory x = error $ "bad args to list-directory" ++ show x
+
+
 
 ------------------------------------------------------------------------------
 

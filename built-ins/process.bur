@@ -1,0 +1,11 @@
+
+provide:
+  read-process,
+  call-process
+
+end
+
+include _internals
+
+read-process = ffi-function("read-process")
+call-process = ffi-function("call-process")
