@@ -190,6 +190,7 @@ main = do
 
     withTargetDocs "run the tests" $ phony "test-all" $ do
         need ["_build/burdock-tests"
+             ,"_build/burdock"
              -- temporary hack while python is incompatible threads
              ,"_build/burdock-unthreaded"]
         cmd_ "_build/burdock-unthreaded --run-tests packages/python-ffi/tests/python-ffi-test.bur"
@@ -197,7 +198,7 @@ main = do
         cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
 
     withTargetDocs "run the tests" $ phony "test" $ do
-        need ["_build/burdock-tests"]
+        need ["_build/burdock-tests", "_build/burdock"]
         cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
 
 
