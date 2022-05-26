@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
 
+"""x
+
+definitely want to try to do an expect in burdock
+
+looked at the documentation for pexpect, and it looks very difficult
+to do something general
+
+it's probably fairly easy to write a numpty expect that works well
+enough for burdock's automated testing needs, which might be better
+
+this also serves as an example of how to do pexpect using burdock,
+which is really useful even if it's not needed for the burdock testing
+itself
+
+"""
+
 import pexpect
 
 import sys

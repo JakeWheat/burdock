@@ -23,7 +23,7 @@
   b
   after a few repeats, it starts to go wrong
     make sure to kill it because it can use a lot of memory very quickly
-  nneds explicit tail call optimisation in the interpreter?
+  needs explicit tail call optimisation in the interpreter?
   unintended laziness?
   something to do with the concurrency system?
   no idea what the issue is
