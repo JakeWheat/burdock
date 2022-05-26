@@ -171,7 +171,7 @@ main = do
                 allObjs = hsobjs ++ cobjs
             need allObjs
             userLinkOpts <- cacheOptionsLoad userLinkOptsLoad
-            cmd_ "ghc -o" exeName allObjs userGhcOpts userLinkOpts additionalLinkOpts
+            cmd_ "ghc -Wall -o" exeName allObjs userGhcOpts userLinkOpts additionalLinkOpts
 
     -- if the file exists, read it and pass to the function
     let doIfFileExists fn f = do
@@ -263,7 +263,7 @@ main = do
             let hifile = (dropExtension out) <.> "hi"
                 d = takeDirectory out
             mkdirP d
-            cmd_ "ghc -hisuf .hs.hi -c" hsfile "-o" out "-ohi" hifile userGhcOpts srcDirOption
+            cmd_ "ghc -Wall -hisuf .hs.hi -c" hsfile "-o" out "-ohi" hifile userGhcOpts srcDirOption
         _ -> error "impossible build failure: matched two items in rule but didn't get two items to build"
 
     withTargetDocs "compile c file" $ "_build//*.c.o" %> \out -> do
