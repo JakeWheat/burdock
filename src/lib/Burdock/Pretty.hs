@@ -234,7 +234,7 @@ stmt (Check nm s) = prettyBlocklike vsep
                 Just nm' -> pretty "check" <+> (expr $ Text nm') <> pretty ":"
         ,stmts s]
 stmt (VarDecl pn e) = pretty "var" <+> simpleBinding pn <+> pretty "=" <+> expr e
-stmt (SetVar n e) = pretty n <+> pretty ":=" <+> nest 2 (expr e)
+stmt (SetVar n e) = expr n <+> pretty ":=" <+> nest 2 (expr e)
 stmt (SetRef e fs) = expr e <> pretty "!{" <> commaSep (map f fs) <> pretty "}"
   where
     f (n,v) = pretty n <> pretty ":" <+> expr v

@@ -18,7 +18,7 @@ data Stmt
     | LetDecl Binding Expr
     | Check (Maybe String) [Stmt]
     | VarDecl SimpleBinding Expr
-    | SetVar String Expr
+    | SetVar Expr Expr
     | SetRef Expr [(String,Expr)]
     -- name, ty params, variants, shared methods, where block
     | DataDecl String [String] [VariantDecl] [(String,Method)] (Maybe [Stmt])

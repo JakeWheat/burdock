@@ -920,27 +920,23 @@ parsing stuff which will then get a static check on it before converting
 to the user's/interpreter/desugarer syntax
 
         -}
-        let makeSetVar i e = pure $ SetVar i e
-            makeContract b t = pure $ pure $ Contract b t
+        let makeContract b t = pure $ pure $ Contract b t
         (ctu :: Parser Stmt) <- try $ do
             p <- limitedBinding True
                 -- todo: hack to stop it matching ==
                 -- fix this when do the whitespace fix pass
             let myLetDecl = symbol_ "= " *> (pure $ (LetDecl p <$> expr))
-                mySetVar = case p of
-                        NameBinding i -> symbol_ ":=" *> (pure $ (makeSetVar i =<< expr))
-                        _ -> symbol_ ":=" *> (pure $ fail "cannot assign to non simple binding")
-                                    
                 myContract = case p of
                     TypedBinding (NameBinding b) t -> Just $ makeContract b t
                     _ -> Nothing
-            choice $ (myLetDecl : mySetVar : maybe [] (:[]) myContract)
+            choice $ (myLetDecl : maybe [] (:[]) myContract)
         ctu
     startsWithExpr = do
         ex <- expr
         let rf = (,) <$> identifier <*> (symbol_ ":" *> expr)
         choice
             [SetRef ex <$> ((symbol_ "!{" <?> "") *> commaSep1 rf <* symbol "}")
+            ,SetVar ex <$> ((symbol_ ":=" <?> "") *> expr)
             ,pure $ StmtExpr ex]
 
 typ :: Bool -> Parser Ann

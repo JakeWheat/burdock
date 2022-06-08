@@ -2817,16 +2817,30 @@ interpStatement (VarDecl b e) = do
     letValue (sbindingName b) (BoxV ty vr)
     pure nothing
 
-interpStatement (SetVar nm e) = do
+interpStatement (SetVar (Iden nm) e) = do
     mv <- lookupBinding nm
     let (ty,vr) = case mv of
                  Just (BoxV vty b) -> (vty,b)
                  Just x -> error $ "attempt to assign to something which isn't a var: " ++ show x
-                 Nothing -> error $ "identifier not found: " ++ nm
+                 Nothing -> error $ "identifier not found: " ++ show nm
     v <- interp e
     void $ assertTypeCompat v ty
     liftIO $ writeIORef vr v
     pure nothing
+
+interpStatement (SetVar (DotExpr r@(Iden _) nm) e) = do
+    r1 <- interp r
+    case r1 of
+        VariantV _ _ fs | Just mv <- lookup nm fs -> do
+            let (ty,vr) = case mv of
+                         BoxV vty b -> (vty,b)
+                         x -> error $ "attempt to assign to something which isn't a var: " ++ show x
+            v <- interp e
+            void $ assertTypeCompat v ty
+            liftIO $ writeIORef vr v
+            pure nothing
+        _ -> error $ "field not found in dot expr: " ++ nm
+interpStatement (SetVar x _) = error $ ":= not supported for " ++ show x
 
 interpStatement (SetRef e fs) = do
     vs <- mapM (secondM interp) fs
@@ -3486,7 +3500,7 @@ doLetRec bs =
     makeAssign (TypedBinding (ShadowBinding nm) ty, v) = makeAssign1 (nm,Just ty,v)
     makeAssign x = error $ "unsupported binding in recursive let: " ++ show x
     makeAssign1 (nm,ty,v)=
-        SetVar nm $ (case ty of
+        SetVar (Iden nm) $ (case ty of
                          Nothing -> id
                          Just ta -> flip AssertTypeCompat ta) v
 

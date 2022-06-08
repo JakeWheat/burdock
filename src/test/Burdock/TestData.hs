@@ -399,7 +399,10 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
     ,("var a = 5"
      ,VarDecl (snm "a") (Num 5))
     ,("a := 6"
-     ,SetVar "a" (Num 6))
+     ,SetVar (Iden "a") (Num 6))
+
+    ,("B.a := 6"
+     ,SetVar (DotExpr (Iden "B") "a") (Num 6))
 
     ,("ex1!{x: 42}"
      ,SetRef (Iden "ex1") [("x", Num 42)])
