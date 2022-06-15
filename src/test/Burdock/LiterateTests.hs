@@ -14,7 +14,7 @@ testData = TestGroup "literate-parse-tests"
 
 some stuff before
 
-.. code-block:: burdock
+.. code:: burdock
                
   data BinTree:
     | leaf
@@ -33,7 +33,7 @@ some stuff after
 
 some stuff before
 
-.. code-block:: burdock
+.. code:: burdock
   
   data BinTree:
     | leaf
@@ -42,7 +42,7 @@ some stuff before
 
 some stuff after
 
-.. code-block:: burdock
+.. code:: burdock
   
   data BinTree:
     | leaf

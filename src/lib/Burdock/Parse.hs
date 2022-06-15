@@ -1009,7 +1009,7 @@ extractSource src =
   where
     process acc [] = reverse acc
     process acc (x:xs)
-        | ".. code-block:: burdock" `isPrefixOf` x =
+        | ".. code:: burdock" `isPrefixOf` x =
           skipBlankLines acc xs
         | otherwise = process acc xs
     skipBlankLines acc ("":xs) = skipBlankLines acc xs
