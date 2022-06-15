@@ -14,6 +14,15 @@ end
 
 
 check:
+  t = {"xx"}
+  is-tuple(t) is true
+  u = {}
+  is-tuple(u) is false
+  is-record(u) is true
+
+end
+
+check:
   {x; y} = {1; 2}
   x is 1
   y is 2

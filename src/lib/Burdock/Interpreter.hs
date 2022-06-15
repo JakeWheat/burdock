@@ -221,7 +221,7 @@ runScript' lit h mfn lenv src =
             <$> useSource mfn (maybe "runScript" id mfn) src
             (if lit then parseLiterateScript else parseScript)
         -- todo: how to make this local to this call only
-        forM_ lenv $ \(n,v) -> letValue n v
+        forM_ lenv $ \(n,v) -> letValue' Shadow n v
         ret <- interpStatements ast
         printTestResults <- interp $ internalsRef "auto-print-test-results"
         case printTestResults of
@@ -242,7 +242,7 @@ evalExpr h mfn lenv src =
     spawnExtWaitHandle h $ \th -> runInterp th True h $ do
     ast <- either error id <$> useSource mfn (maybe "evalExpr" id mfn) src parseExpr
     -- todo: how to make this local to this call only
-    forM_ lenv $ \(n,v) -> letValue n v
+    forM_ lenv $ \(n,v) -> letValue' Shadow n v
     interp ast
 
 evalFun :: Handle
@@ -256,7 +256,7 @@ evalFun h fun args =
     let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
         src' = "fff(" ++ intercalate "," (map fst as) ++ ")"
     ast' <- either error id <$> useSource Nothing "evalFun" src' parseExpr
-    forM_ (("fff", f):as) $ \(n,v) -> letValue n v
+    forM_ (("fff", f):as) $ \(n,v) -> letValue' Shadow n v
     interp ast'
 
 valueToStringIO :: Handle -> Value -> IO (Maybe String)
@@ -819,20 +819,26 @@ askScriptProvides = do
     st <- ask
     liftIO $ readIORef (tlProvides st)
 
-modifyBindings :: (Env -> Env) -> Interpreter ()
+modifyBindings :: (Env -> Interpreter Env) -> Interpreter ()
 modifyBindings f = do
     st <- ask
-    liftIO $ modifyIORef (tlLocallyCreatedBindings st) f
+    v <- liftIO $ readIORef (tlLocallyCreatedBindings st)
+    v' <- f v
+    liftIO $ writeIORef (tlLocallyCreatedBindings st) v'
 
-modifyIncludedBindings :: (Env -> Env) -> Interpreter ()
+modifyIncludedBindings :: (Env -> Interpreter Env) -> Interpreter ()
 modifyIncludedBindings f = do
     st <- ask
-    liftIO $ modifyIORef (tlIncludedBindings st) f
+    v <- liftIO $ readIORef (tlIncludedBindings st)
+    v' <- f v
+    liftIO $ writeIORef (tlIncludedBindings st) v'
 
-modifyReplCreatedBindings :: (Env -> Env) -> Interpreter ()
+modifyReplCreatedBindings :: (Env -> Interpreter Env) -> Interpreter ()
 modifyReplCreatedBindings f = do
     st <- ask
-    liftIO $ modifyIORef (tlReplCreatedBindings st) f
+    v <- liftIO $ readIORef (tlReplCreatedBindings st)
+    v' <- f v
+    liftIO $ writeIORef (tlReplCreatedBindings st) v'
 
 
 putModule :: ModuleState -> Interpreter ()
@@ -871,20 +877,41 @@ askReplCreatedBindings = liftIO . readIORef =<< (tlReplCreatedBindings <$> ask)
 askIncludedBindings :: Interpreter [(String,Value)]
 askIncludedBindings = liftIO . readIORef =<< (tlIncludedBindings <$> ask)
 
-localBindings :: (Env -> Env) -> Interpreter a -> Interpreter a
+localBindings :: (Env -> Interpreter Env) -> Interpreter a -> Interpreter a
 localBindings m f = do
     st <- ask
-    e' <- liftIO $ m <$> readIORef (tlLocallyCreatedBindings st)
+    e' <- m =<< liftIO (readIORef (tlLocallyCreatedBindings st))
     e1 <- liftIO $ newIORef e'
-    eo <- liftIO $ m <$> readIORef (tlIncludedBindings st)
+    eo <- m =<< liftIO (readIORef (tlIncludedBindings st))
     eo1 <- liftIO $ newIORef eo
     p <- liftIO $ newIORef []
     local (const $ st {tlLocallyCreatedBindings = e1
                       ,tlIncludedBindings = eo1
                       ,tlProvides = p}) f
 
-extendBindings :: [(String,Value)] -> Env -> Env
-extendBindings bs env = bs ++ env
+extendBindings :: [(String,Value)] -> Env -> Interpreter Env
+extendBindings bs env = pure $ bs ++ env
+
+extendBindings' :: [(Shadow,String,Value)] -> Env -> Interpreter Env
+extendBindings' bs env = do
+    -- get the list of no shadow
+    let gn (_,n,_) = n
+        isNoShad (Shadow, _ ,_ ) = False
+        isNoShad (NoShadow, _ ,_ ) = True
+        nsh = map gn $ filter isNoShad bs
+    -- check if any already resolve
+    -- this is an incredibly slow way to do this if there are many
+    -- bindings
+    -- todo, get the list of binding names then do a head
+    -- of the set intersection
+    forM_ nsh $ \nm -> do
+         msv <- lookupBinding nm
+         case msv of
+             Just {} -> error $ "declaration of name " ++ nm ++ " conflicts with earlier declaration"
+             Nothing -> pure ()
+    -- return the new env
+    pure (map (\(_,n,v) -> (n,v)) bs ++ env)
+
     
 {-
 throw an error if already in a check block
@@ -905,7 +932,7 @@ enterCheckBlock mcbnm f = do
             liftIO $ writeIORef (tlNextAnonCheckblockNum st) (i + 1)
             pure $ "check-block-" ++ show i
     local (\st' -> st' {tlCurrentCheckblock = Just cbnm}) $
-        localBindings id f
+        localBindings pure f
     
 -- get the check block name, error if there isn't one
 -- update the test results tvar
@@ -1158,7 +1185,7 @@ runInterp th incG (Handle h) f = do
         when incG $ void $ interpStatement (Include (ImportName "globals"))
         f
 
--- used for a local thread - one that isn't for a new api call or
+-- used for a local thread - one that isn't for a new haskell api call or
 -- new module/source file - it preserves the right part of the
 -- enclosing state
 runInterpInherit :: ThreadLocalState -> ThreadHandle -> Bool -> Interpreter a -> IO a
@@ -2227,10 +2254,10 @@ interp (Let bs e) = do
         newEnv ((b,ex):bs') = do
             v <- interp ex
             lbs <- matchBindingOrError b v
-            localBindings (extendBindings lbs) $ newEnv bs'
+            localBindings (extendBindings' lbs) $ newEnv bs'
     newEnv bs
 
-interp (Block ss) = localBindings id $ interpStatements ss
+interp (Block ss) = localBindings pure $ interpStatements ss
 
 interp (If bs e) = do
     let f ((c,t):bs') = do
@@ -2279,7 +2306,7 @@ interp (Cases e ty cs els) = do
     bindingMatchesType t (VariantBinding nm _) = checkVariantType t nm
     bindingMatchesType t (NameBinding nm) = checkVariantType t [nm]
     bindingMatchesType _ WildcardBinding = pure ()
-    bindingMatchesType t (AsBinding b _) = bindingMatchesType t b
+    bindingMatchesType t (AsBinding b _ _) = bindingMatchesType t b
     bindingMatchesType _t (TupleBinding {}) = error $ "todo: implement tuple binding type check"
     bindingMatchesType _t (NumberLitBinding {}) = error $ "todo: implement numberlit binding type check"
     bindingMatchesType _t (StringLitBinding {}) = error $ "todo: implement numberlit binding type check"
@@ -2299,7 +2326,7 @@ interp (Cases e ty cs els) = do
         case r of
             Nothing -> matchb v cs'
             Just bbs -> do
-                let rbbs = localBindings (extendBindings bbs)
+                let rbbs = localBindings (extendBindings' bbs)
                 tstv <- case tst of
                     Nothing -> pure $ BoolV True
                     Just tste -> rbbs $ interp tste
@@ -2371,11 +2398,11 @@ interp (Receive cs aft) = do
     -- the branches are wrapped in a lambda, so that the bodies
     -- are run after the hsconcurrency receive is finished,
     -- so that nested receives work correctly
-    let rv = "receiveval"
+    let rv = "receivevalx123"
         some = internalsRef "some"
         none = internalsRef "none"
         cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, [StmtExpr $ App Nothing some [lam0 $ Block e]])
-        prdf = Lam (FunHeader [] [NameBinding rv] Nothing)
+        prdf = Lam (FunHeader [] [ShadowBinding rv] Nothing)
                [StmtExpr $ Cases (Iden rv) Nothing cs' (Just [StmtExpr none])]
     prdfv <- interp prdf
     let prd :: Dynamic -> Interpreter (Maybe Dynamic)
@@ -2462,8 +2489,7 @@ interpDotExprE v f =
                   MethodV m -> Right <$> app m [v]
                   _ -> pure $ Right fv
             | otherwise -> pure $ Left $ "field not found in dotexpr: " ++ f
-              ++"\nlooking in value:\n" ++ show v
-              ++ "\nit's fields are: " ++ show fs
+              ++"\nlooking in value with fields: " ++ show (map fst fs)
         FFIValue (_,tg) _ -> do
             (ti :: Maybe FFITypeInfo) <- askFFTInfo tg
             let vv :: Maybe (Interpreter Value)
@@ -2529,11 +2555,11 @@ app fv vs =
             as <- safeZip ps vs
             let fbas acc [] = do
                     let got = concat $ reverse acc
-                    localBindings (extendBindings got) $ interp bdy
+                    localBindings (extendBindings' got) $ interp bdy
                 fbas acc ((b,v):as') = do
                     lbs <- matchBindingOrError b v
                     fbas (lbs:acc) as'
-            localBindings (const env) $ fbas [] as
+            localBindings (\_ -> pure env) $ fbas [] as
         ForeignFunV nm -> do
             ffs <- askFF
             case lookup nm ffs of
@@ -2800,7 +2826,7 @@ interpStatement (Check cbnm ss) = do
 interpStatement (LetDecl b e) = do
     v <- interp e
     bs <- matchBindingOrError b v
-    mapM_ (uncurry letValue) bs
+    mapM_ (\(x0,x1,x2) -> letValue' x0 x1 x2) bs
     pure nothing
 
 interpStatement (VarDecl b e) = do
@@ -2808,13 +2834,15 @@ interpStatement (VarDecl b e) = do
     -- todo: it should only preserve the type of the var itself
     -- if the user used a contract, and not if they used a type
     -- annotation on the value the var is initialized with?
-    (v',ty) <- case b of
-              SimpleBinding _ _ (Just ta) -> do
-                  (,) <$> assertTypeAnnCompat v ta
+    (sh, v',ty) <- case b of
+              SimpleBinding sh _ (Just ta) -> do
+                  (sh,,) <$> assertTypeAnnCompat v ta
                   <*> typeOfTypeSyntax ta
-              _ -> pure (v, bootstrapType "Any")
+              SimpleBinding sh _ _ -> pure (sh, v, bootstrapType "Any")
+              --_ -> pure (Shadow, v, bootstrapType "Any")
     vr <- liftIO $ newIORef v'
-    letValue (sbindingName b) (BoxV ty vr)
+    
+    letValue' sh (sbindingName b) (BoxV ty vr)
     pure nothing
 
 interpStatement (SetVar (Iden nm) e) = do
@@ -2889,13 +2917,13 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
            [StmtExpr $ foldl1 orE $ map callIs vs]
         chk = maybe [] (\w -> [Check (Just dnm) w]) whr
     moduleName <- readModuleName
-    letValue typeInfoName $ FFIValue ("_system","typeinfo") $ toDyn
+    letValue' NoShadow typeInfoName $ FFIValue ("_system","typeinfo") $ toDyn
         $ SimpleTypeInfo ["_system", "modules", moduleName, dnm]
-    letValue dataInfoName $ FFIValue ("_system","datainfo") $ toDyn
+    letValue' NoShadow dataInfoName $ FFIValue ("_system","datainfo") $ toDyn
         $ map varName vs
     -- todo: use either a burdock value or a proper ffi value for the casepattern
     -- instead of a haskell tuple
-    forM_ vs $ \(VariantDecl vnm _ _) -> letValue ("_casepattern-" ++ vnm)
+    forM_ vs $ \(VariantDecl vnm _ _) -> letValue' NoShadow ("_casepattern-" ++ vnm)
         $ FFIValue ("_system","typeinfo") $ toDyn (SimpleTypeInfo ["_system", "modules", moduleName, dnm], vnm)
     makeVs <- mapM makeV vs
     let desugared = (makeVs ++ map makeIs vs ++ [makeIsDat] ++ chk)
@@ -2944,7 +2972,7 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
 interpStatement (FFITypeStmt nm ty) = do
     -- check the name is in registry
     -- create the _typeinfo value
-    letValue ("_typeinfo-" ++ nm) $ FFIValue ("_system","typeinfo") $ toDyn $ SimpleTypeInfo [ty]
+    letValue' NoShadow ("_typeinfo-" ++ nm) $ FFIValue ("_system","typeinfo") $ toDyn $ SimpleTypeInfo [ty]
     -- create the is-X type tester function
     interpStatement
         (LetDecl (NameBinding ("is-" ++ nm))
@@ -3183,6 +3211,11 @@ testSatisfies msg e0 f = do
                                 ++ "\n" ++ prettyExpr f ++ " failed: " ++ er1)
     pure nothing
 
+
+-- takes the two expressions, evaluates them with catch
+-- return the value or the error if they raise
+-- returns addtestresult function too, maybe this doesn't need to
+-- be here any more
 testPredSupport :: Expr
                 -> Expr
                 -> Interpreter (Either (Value,String) Value
@@ -3215,7 +3248,6 @@ getBuiltInModulePath nm =
     -- later will need to use the cabal Paths_ thing and stuff
     pure ("built-ins" </> nm <.> "bur")
 
--- todo: add importing relative to the current file path
 -- check import sources for ambiguity
 resolveImportPath :: ImportSource -> Interpreter (String, FilePath)
 resolveImportPath is = do
@@ -3259,7 +3291,7 @@ ensureModuleLoaded moduleName moduleFile = do
 
 initBootstrapModule :: Interpreter ()
 initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
-    mapM_ (uncurry letValue)
+    mapM_ (uncurry (letValue' NoShadow))
         [("true", BoolV True)
         ,("false", BoolV False)
         ,("nothing", VariantV (bootstrapType "Nothing") "nothing" [])
@@ -3291,7 +3323,7 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
 
 runModule :: String -> String -> Interpreter () -> Interpreter ()        
 runModule filename moduleName f =
-    localBindings (const []) $ do
+    localBindings (\_ -> pure []) $ do
         f
         localModuleEnv <- askLocallyCreatedBindings
         allModuleEnv <- askIncludedBindings
@@ -3409,11 +3441,12 @@ modulePath nm = ["_system", "modules", nm]
 ---------------------------------------
 
 
-letValue :: String -> Value -> Interpreter ()
---letValue "_" _ = pure ()
-letValue nm v = modifyBindings (extendBindings [(nm,v)])
+letValue' :: Shadow -> String -> Value -> Interpreter ()
+letValue' s nm v = modifyBindings (extendBindings' [(s,nm,v)])
 
 -- used for prelude statement support
+-- so the system can tell what was declared locally, and what was
+-- imported
 letIncludedValue :: String -> Value -> Interpreter ()
 --letIncludedValue "_" _ = pure ()
 letIncludedValue nm v = modifyIncludedBindings (extendBindings [(nm,v)])
@@ -3515,7 +3548,7 @@ appSourcePos = Nothing
 
 -- when bindings can fail, this will throw an error
 -- the other version is for cases and similar, it will return a maybe
-matchBindingOrError :: Binding -> Value -> Interpreter [(String,Value)]
+matchBindingOrError :: Binding -> Value -> Interpreter [(Shadow,String,Value)]
 matchBindingOrError b v = do
     x <- matchBindingMaybe False b v
     case x of
@@ -3524,8 +3557,8 @@ matchBindingOrError b v = do
 
 -- bool is if this is a variant context, so treat a namebinding
 -- as a unqualified zero arg variant match
-matchBindingMaybe :: Bool -> Binding -> Value -> Interpreter (Maybe [(String,Value)])
-
+-- needs some design work
+matchBindingMaybe :: Bool -> Binding -> Value -> Interpreter (Maybe [(Shadow,String,Value)])
 -- todo: will turn it to wildcard in the parser
 matchBindingMaybe _ (WildcardBinding) _ = pure $ Just []
 
@@ -3537,21 +3570,47 @@ matchBindingMaybe _ (NameBinding "false") (BoolV False) = pure $ Just []
 matchBindingMaybe _ (NameBinding "false") _ = pure Nothing
 
 matchBindingMaybe _ (ShadowBinding nm) v = do
-    pure $ Just [(nm,v)]
+    pure $ Just [(Shadow,nm,v)]
 
-matchBindingMaybe True (NameBinding nm) v = matchBindingMaybe False (VariantBinding [nm] []) v
+matchBindingMaybe True n@(NameBinding nm) v = do
+    -- try to match a 0 arg variant
+    x <- matchBindingMaybe False (VariantBinding [nm] []) v
+    case x of
+        Just {} -> pure x
+        -- no matching 0 arg variant, match it as a binding
+        -- as long as the name doesn't match a 0 arg variant in scope
+        -- how will this interact with shadowing? does shadowing cover it?
+        -- is it mainly about what error message you get - shadowing, or
+        -- wrong number of args to ctor
+        
+        Nothing -> do
+            vn <- isVariantName
+            if vn
+                then pure Nothing
+                else matchBindingMaybe False n v
+  where
+    isVariantName = do
+        mv <- lookupBinding $ "_casepattern-" ++ nm
+        case mv of
+            Just {} -> pure True
+            _ -> pure False
+        
+        
 matchBindingMaybe False (NameBinding nm) v = do
-    pure $ Just [(nm,v)]
+    pure $ Just [(NoShadow, nm,v)]
 
 matchBindingMaybe _ (VariantBinding cnm bs) (VariantV tg vnm fs) = do
     let s = prefixLast "_casepattern-" cnm
-    caseName <- interp $ makeDotPathExpr s
+    caseName <- catchAll $ interp $ makeDotPathExpr s
     case caseName of
-            FFIValue _ffitag fgt | Just (ptg, pnm) <- fromDynamic fgt ->
+            -- hack because there's an ambiguity in the ast over zero arg
+            -- variants and new names
+            Left {} -> pure Nothing
+            Right (FFIValue _ffitag fgt) | Just (ptg, pnm) <- fromDynamic fgt -> do
                 if ptg == tg && pnm == vnm
                 then if length bs == length fs
                      then do
-                         newbs <- zipWithM (matchBindingMaybe False) bs $ map snd fs
+                         newbs <- zipWithM (matchBindingMaybe True) bs $ map snd fs
                          case sequence newbs of
                              Nothing -> pure Nothing
                              Just nbs -> pure $ Just $ concat nbs
@@ -3569,17 +3628,16 @@ matchBindingMaybe c (TypedBinding b ty) v = do
             pure r
         Nothing -> pure Nothing
 
-matchBindingMaybe c (AsBinding b nm) v = do
+matchBindingMaybe c (AsBinding b s nm) v = do
     r <- matchBindingMaybe c b v
     pure $ case r of
         Nothing -> Nothing
-        Just cs -> Just ((nm,v) : cs)
+        Just cs -> Just ((s,nm,v) : cs)
 
-matchBindingMaybe c (TupleBinding bs) (VariantV tg "tuple" fs)
-    | tg == bootstrapType "Tuple" = do
-          when (length bs /= length fs) $
-              error $ "mismatched tuple sizes: " ++ show bs ++ " " ++ show fs
-          xs <- zipWithM (matchBindingMaybe c) bs $ map snd fs
+matchBindingMaybe _ (TupleBinding bs) (VariantV tg "tuple" fs)
+    | tg == bootstrapType "Tuple"
+    , length bs == length fs = {-trace "got here" $-} do
+          xs <- zipWithM (matchBindingMaybe True) bs $ map snd fs
           pure (concat <$> sequence xs)
           
 matchBindingMaybe _ (TupleBinding {}) _ = pure Nothing
@@ -3590,7 +3648,6 @@ matchBindingMaybe _ (NumberLitBinding {}) _ = pure Nothing
 matchBindingMaybe _ (StringLitBinding t) (TextV s) | t == s = pure $ Just []
 matchBindingMaybe _ (StringLitBinding {}) _ = pure Nothing
 
-          
 simpleBindingToBinding :: SimpleBinding -> Binding
 simpleBindingToBinding = \case
     SimpleBinding Shadow nm ty -> wrapTy ty (ShadowBinding nm)

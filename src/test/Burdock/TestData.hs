@@ -65,8 +65,12 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
          (sts $ BinOp (Iden "x") "+" (Num 4)))
 
     ,("let _ as b = 3: b end"
-     ,Let [(AsBinding WildcardBinding "b", Num 3)] $ sts $ Iden "b")
+     ,Let [(AsBinding WildcardBinding NoShadow "b", Num 3)] $ sts $ Iden "b")
 
+    ,("let _ as shadow b = 3: b end"
+     ,Let [(AsBinding WildcardBinding Shadow "b", Num 3)] $ sts $ Iden "b")
+
+    
     ,("let {a;b} = {1;2}: a end"
      ,Let [(TupleBinding [NameBinding "a", NameBinding "b"]
            ,(TupleSel [Num 1, Num 2]))] $ sts $ Iden "a")

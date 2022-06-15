@@ -54,8 +54,8 @@ end
 check:
   x = E.left(1)
   y = E.right(2)
-  f = lam(x):
-    cases x :: E.Either:
+  f = lam(xx):
+    cases xx :: E.Either:
       | E.left(s) => "left" + num-to-string(s)
       | E.right(p) => "right" + num-to-string(p)
     end

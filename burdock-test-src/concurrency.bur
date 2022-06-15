@@ -40,22 +40,22 @@ end
 # demonstrate a check block inside a spawned thread
 # needs some design thought?
 
-r = spawn-monitor(lam():
+r11 = spawn-monitor(lam():
     check "check block in spawn":
       1 is 1
     end end)
 
 check "check block in spawn exit":
-  wait-ref(r.{1}) satisfies wait-ref-regular-exit
+  wait-ref(r11.{1}) satisfies wait-ref-regular-exit
 end
 
 # spawn inside a check block - straightforward design
 
 check "spawn in check block":
-  r = spawn-monitor(lam():
+  r22 = spawn-monitor(lam():
         1 is 1
       end)
-  wait-ref(r.{1}) satisfies wait-ref-regular-exit
+  wait-ref(r22.{1}) satisfies wait-ref-regular-exit
 end
 
 # the check block in spawn and spawn in check block need better
@@ -124,22 +124,22 @@ check "trivial selective receive":
     outer-self = self
     pid = spawn(lam():
             send(outer-self, left("skip1"))
-            send(outer-self, left("skip2"))
+            send(outer-self, left("skip2a"))
             send(outer-self, right("got it"))
           end)
     receive:
       | right(x) => x
     end is "got it"
-    receive-all-inbox() is [list: left("skip1"), left("skip2")]
+    receive-all-inbox() is [list: left("skip1"), left("skip2a")]
   end)
 end
 
 check "nested receive":
   run-tests-in-thread(lam():
     outer-self = self
-    x = spawn-monitor(lam():
+    shadow x = spawn-monitor(lam():
           send(outer-self, left("skip1"))
-          send(outer-self, left("skip2"))
+          send(outer-self, left("skip2b"))
         end)
     wait-ref(x.{1}) satisfies wait-ref-regular-exit
     receive:
@@ -147,13 +147,13 @@ check "nested receive":
         receive:
           | _ as z1 => [list: z0,z1]
         end
-    end is [list: left("skip1") , left("skip2")]
-    x = spawn-monitor(lam():
-          send(outer-self, left("skip1"))
-          send(outer-self, left("skip2"))
+    end is [list: left("skip1") , left("skip2b")]
+    shadow x = spawn-monitor(lam():
+          send(outer-self, left("skip1x"))
+          send(outer-self, left("skip2c"))
         end)
     wait-ref(x.{1}) satisfies wait-ref-regular-exit
-    receive-all-inbox() is [list: left("skip1") , left("skip2")]
+    receive-all-inbox() is [list: left("skip1x") , left("skip2c")]
   end)
 end
 
@@ -188,14 +188,14 @@ end
 check "receive timeout":
   run-tests-in-thread(lam():
     # timeout 0 with nothing in the queue
-    x = receive:
+    shadow x = receive:
         | msg(ret,val) => some(val)
         | after 0 => none
       end
     x is none
     # timeout 0 with something in the queue
     send(self, msg(self,"stuff"))
-    x = receive:
+    shadow x = receive:
         | msg(ret,val) => some(val)
         | after 0 => none
       end

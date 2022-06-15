@@ -112,7 +112,7 @@ data Binding
     | TypedBinding Binding Ann
     | ShadowBinding String
     | WildcardBinding
-    | AsBinding Binding String
+    | AsBinding Binding Shadow String
     | TupleBinding [Binding]
     | NumberLitBinding Scientific
     | StringLitBinding String

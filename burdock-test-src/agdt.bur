@@ -61,7 +61,8 @@ data MyOption:
 end
 
 check:
-  fun f(a): cases a:
+  fun f(a):
+    cases a:
       | my-none => "none"
       | my-some(b) => "some" + tostring(b)
     end

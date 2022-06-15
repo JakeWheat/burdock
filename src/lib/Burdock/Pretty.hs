@@ -15,6 +15,7 @@ import Prettyprinter (pretty
                      ,comma
                      ,dquotes
                      ,vsep
+                     ,hsep
                      )
 import Data.Maybe (catMaybes)
 
@@ -164,7 +165,14 @@ binding (VariantBinding nms bs) =
     xSep "." (map pretty nms) <> parens (commaSep $ map binding bs)
 binding (TypedBinding b t) = binding b <+> pretty "::" <+> typ t
 binding (ShadowBinding s) = pretty "shadow" <+> pretty s
-binding (AsBinding b as) = binding b <+> pretty "as" <+> pretty as
+binding (AsBinding b s as) =
+    hsep $ catMaybes
+    [Just $ binding b
+    ,Just $ pretty "as"
+    ,case s of
+         Shadow -> Just $ pretty "shadow"
+         NoShadow -> Nothing
+    ,Just $ pretty as]
 binding (TupleBinding bs) =
     pretty "{"
     <> nest 2 (xSep ";" $ map binding bs)
@@ -177,8 +185,9 @@ simpleBinding (SimpleBinding s nm ty) =
     sep $ catMaybes [case s of
                         Shadow -> Just $ pretty "shadow"
                         NoShadow -> Nothing
-                   ,Just $ pretty nm
-                   ,fmap (\t -> pretty "::" <+> typ t) ty]
+                    ,Just $ pretty nm
+                    ,fmap (\t -> pretty "::" <+> typ t) ty]
+
 
 whereBlock :: [Stmt] -> Doc a
 whereBlock ts = vsep

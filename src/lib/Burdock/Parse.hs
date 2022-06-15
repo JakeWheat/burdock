@@ -406,7 +406,11 @@ bindingSuffixes allowImplicitTypeTuple e = option e $ do
                     ]
         bindingSuffixes allowImplicitTypeTuple $ s e
   where
-    asSuffix = flip AsBinding <$> (keyword "as" *> identifier)
+    asSuffix = asb 
+               <$> (keyword "as" *> boption NoShadow (Shadow <$ keyword_ "shadow"))
+               <*> identifier
+      where
+        asb s i b = AsBinding b s i
     typedSuffix =
         flip TypedBinding <$> (symbol_ "::" *> typ allowImplicitTypeTuple)
 

@@ -115,7 +115,11 @@ makeInterpreterFileTest :: FilePath -> IO T.TestTree
 makeInterpreterFileTest fn = catch makeIt $ \ex -> do
     pure $ T.testCase fn $ T.assertFailure $ show (ex :: SomeException)
   where
-    makeIt = bracket newHandle closeHandle $ \h -> do
+    -- hack to skip loading _internals and globals directly - they
+    -- are already loaded
+    makeIt | fn `elem` ["built-ins/_internals.bur"
+                       ,"built-ins/globals.bur"] = pure $ T.testGroup fn []
+           | otherwise = bracket newHandle closeHandle $ \h -> do
         addPackages h
         src <- readFile fn
         _ <- runScript h Nothing []

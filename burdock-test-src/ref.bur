@@ -47,8 +47,8 @@ check:
   fun adder(a):
     a!{x: a!x + 1}
   end
-  ex1 = mut-x(1, 2)
-  ex1!x is 1
-  adder(ex1)
-  ex1!x is 2
+  ex1b = mut-x(1, 2)
+  ex1b!x is 1
+  adder(ex1b)
+  ex1b!x is 2
 end

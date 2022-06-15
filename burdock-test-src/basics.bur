@@ -16,8 +16,7 @@ check:
   block:
     a = 1
     block:
-      #shadow
-      a = 2
+      shadow a = 2
       a
     end
     a
