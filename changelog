@@ -1,3 +1,18 @@
+## Week 23 19th June
+
+- fix bug with multiline string parsing
+- implement shadow checks
+- fix many issues with binding tuples, nested variants, etc.
+- repl temporarily disabled
+
+## Week 23 12th June
+
+- support M.x := v syntax, for variables in modules
+
+## Week 21 29th May
+
+- simple process lib
+
 ## Week 20 22nd May
 
 - demo Python FFI

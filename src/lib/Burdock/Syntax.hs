@@ -86,6 +86,7 @@ data Expr
     | Cases Expr (Maybe Ann) [(Binding, Maybe Expr, [Stmt])] (Maybe [Stmt])
     | TupleSel [Expr]
     | RecordSel [(String,Expr)]
+    | Extend Expr [(String,Expr)]
     | TableSel [String] [RowSel]
     | TupleGet Expr Int
     | Construct [String] [Expr]

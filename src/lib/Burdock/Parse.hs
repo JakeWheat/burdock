@@ -326,8 +326,12 @@ sourcePos = do
 
 dotSuffix :: Parser (Expr -> Expr)
 dotSuffix = symbol_ "." *>
-    bchoice [flip TupleGet <$> (symbol_ "{" *> nonNegativeInteger <* symbol_ "}")
+    bchoice [symbol_ "{" *>
+             choice [flip TupleGet <$> (nonNegativeInteger <* symbol_ "}")
+                    ,flip Extend <$> (commaSep1 fld <* symbol_ "}")]
             ,flip DotExpr <$> identifier]
+  where
+    fld = (,) <$> identifier <*> (symbol_ ":" *> expr)
 
 unboxSuffix :: Parser (Expr -> Expr)
 unboxSuffix = flip UnboxRef <$> (try (symbol_ "!" *> identifier))

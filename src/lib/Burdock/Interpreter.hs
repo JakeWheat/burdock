@@ -2346,6 +2346,17 @@ interp (RecordSel fs) = do
     vs <- mapM (\(n,e) -> (n,) <$> interp e) fs
     pure $ VariantV (bootstrapType "Record") "record" vs
 
+interp (Extend ev fs) = do
+    v <- interp ev
+    case v of
+        -- todo: if the fields being updated aren't already in the variant,
+        -- then convert the variant to a record?
+        VariantV tg vr vs -> do
+            vs' <- mapM (\(n,e) -> (n,) <$> interp e) fs
+            let vs'' = filter ((`notElem` map fst vs') . fst) vs ++ vs'
+            pure $ VariantV tg vr vs''
+        _ -> error $ "extend only supported for variants, got " ++ show v
+
 interp (TableSel cs rs) = do
     -- todo: check each row has the right number of fields
     rs' <- mapM (\(RowSel es) -> mapM interp es) rs

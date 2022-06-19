@@ -108,6 +108,9 @@ expr (TupleSel es) = pretty "{" <> nest 2 (xSep ";" (map expr es) <> pretty "}")
 expr (RecordSel flds) = pretty "{" <> nest 2 (commaSep (map fld flds) <> pretty "}")
   where
     fld (n,e) = pretty n <> pretty ":" <+> expr e
+expr (Extend v flds) = expr v <> pretty ".{" <> nest 2 (commaSep (map fld flds) <> pretty "}")
+  where
+    fld (n,e) = pretty n <> pretty ":" <+> expr e
 expr (TableSel cs rs) = prettyBlocklike sep
     (pretty "table" <+> commaSep (map pretty cs) <> pretty ":"
     : map rl rs)
