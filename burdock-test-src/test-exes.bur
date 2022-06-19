@@ -12,6 +12,19 @@ check:
   read-process("_build/burdock", [list: "-c", "1+2"], "") is "3\n"
 end
 
+# todo: quick tests for
+# the progress log
+# hiding it
+# showing only the failures
+
+# the results
+# show only failures
+# hide results completely
+
+# exit code 0 when pass, non zero when fail
+
+
+
 #|
 # reenable when implement the improved test runner
 check "test use_burdock temp [slow]":

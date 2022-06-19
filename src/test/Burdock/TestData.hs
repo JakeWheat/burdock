@@ -20,7 +20,6 @@ testdata = TestGroup "allTests"
     [exprParseTests
     ,statementParseTests
     ,scriptParseTests
-    ,interpreterTests
     ,LiterateTests.testData
     ]
 
@@ -202,6 +201,10 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
                      (FunHeader [] [NameBinding "self", NameBinding "x"] Nothing)
                      [StmtExpr $ BinOp (DotExpr (Iden "self") "y") "+" (Iden "x")])
                 ,("y", Num 22)])
+
+    ,("v.{a:1}", Extend (Iden "v") [("a", Num 1)])
+    ,("v.{a:1, b:2}", Extend (Iden "v") [("a", Num 1)
+                                        ,("b", Num 2)])
     
     ,("[list:]", Construct ["list"] [])
     ,("[list: 1,2,3]", Construct ["list"] [Num 1, Num 2, Num 3])
@@ -707,81 +710,4 @@ end
     ]
   where
     nm x = NameBinding x
-
-interpreterTests :: TestTree
-interpreterTests =
-    TestGroup "interpreterTests"
-    [InterpreterTestsDir "burdock-test-src/"
-    ,InterpreterTestsDir "built-ins/"
-    ,InterpreterTestsDir "docs/"
-    ,TestGroup "examples" $ map InterpreterTestsFile
-     [
-     ]
-
-    --,InterpreterTestsDir "examples/"
-    ,InterpreterTestsDir "packages/ffitypes-test"
-    --,InterpreterTestsDir "packages/python-ffi"
-    ,InterpreterTestsOptionalDir "website2/"
-    {-
-     packages/ffitypes-test/tests/ffitypes-test.bur"
-     ,"packages/python-ffi/tests
-
-        TestGroup "language" $ map InterpreterTestsFile
-     ["burdock-test-src/basics.bur"
-     ,"burdock-test-src/letrec.bur"
-     ,"burdock-test-src/fun.bur"
-     ,"burdock-test-src/agdt.bur"
-     ,"burdock-test-src/tuples.bur"
-     ,"burdock-test-src/records.bur"
-     ,"burdock-test-src/list-basics.bur"
-     ,"burdock-test-src/modules-import-simple.bur"
-     ,"burdock-test-src/modules-import-simple-2.bur"
-     ,"burdock-test-src/modules-import-simple-3.bur"
-     ,"burdock-test-src/include-from-simple.bur"
-     ,"burdock-test-src/include-from-simple-2.bur"
-     ,"burdock-test-src/include-from-simple-3.bur"
-     ,"burdock-test-src/include-simple.bur"
-     ,"burdock-test-src/raise.bur"
-     ,"burdock-test-src/dynamic-types.bur"
-     ,"burdock-test-src/when.bur"
-     ,"burdock-test-src/arithmetic.bur"
-     ,"burdock-test-src/boolean.bur"
-     ,"burdock-test-src/comparisons.bur"
-     ,"burdock-test-src/if_ask.bur"
-     ,"burdock-test-src/either.bur"
-     ,"burdock-test-src/option.bur"
-     ,"burdock-test-src/curried.bur"
-     ,"burdock-test-src/construct.bur"
-     ,"burdock-test-src/functions.bur"
-     ,"burdock-test-src/ref.bur"
-     ,"burdock-test-src/template.bur"
-     ,"burdock-test-src/curly-lam.bur"
-     ,"burdock-test-src/binding.bur"
-     ,"burdock-test-src/for.bur"
-     ,"burdock-test-src/methods.bur"
-    ]
-    ,TestGroup "built-in modules" $ map InterpreterTestsFile
-     ["burdock-test-src/built-in-functions.bur"
-     ,"built-ins/lists.bur"
-     ,"built-ins/globals.bur"
-     ,"built-ins/either.bur"
-     ,"built-ins/option.bur"
-     ,"built-ins/relational.bur"
-     ,"built-ins/numbers.bur"
-     ]
-    ,TestGroup "additional tests" $ map InterpreterTestsFile
-     ["burdock-test-src/lists.bur"
-     ,"burdock-test-src/relational-demo.bur"
-     ,"burdock-test-src/concurrency.bur"
-     ]
-    ,TestGroup "packages" $ map InterpreterTestsFile
-     ["packages/ffitypes-test/tests/ffitypes-test.bur"
-     ,"packages/python-ffi/tests/python-ffi-test.bur"
-     ]
-    ,TestGroup "docs" $ map InterpreterTestsFile
-     ["docs/index.rst"
-     ]
-    ,TestGroup "docs" $ map InterpreterTestsOptionalDir
-     ["website2/"]-}
-    ]
 

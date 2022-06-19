@@ -82,7 +82,6 @@ main = do
                   ,"src/pywrap"
                   ,"packages/python-ffi/haskell-src"
                   ,"packages/ffitypes-test/haskell-src"
-                  ,"packages/sqlite/haskell-src"
                   ,"src/test/"]
         userCCompileOptsLoad = "pkg-config python3-embed --cflags"
         userLinkOptsLoad = "pkg-config --libs python3-embed"
@@ -113,7 +112,7 @@ main = do
             [("build all the exes", "all", allTargetExes)
             ,("build all the exes, build the website, run the tests"
              ,"really-all"
-             ,["all", "website", "test"])
+             ,["all", "website", "test-all"])
             ]
 
     ------------------------------------------------------------------------------
@@ -193,14 +192,13 @@ main = do
              ,"_build/burdock"
              -- temporary hack while python is incompatible threads
              ,"_build/burdock-unthreaded"]
-        cmd_ "_build/burdock-unthreaded --run-tests packages/python-ffi/tests/python-ffi-test.bur"
-        cmd_ "_build/burdock-unthreaded --run-tests examples/load-csv-python.bur"
-        cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
+        cmd_ "_build/burdock-tests --color never --ansi-tricks false --hide-successes"
+        cmd_  "_build/burdock-unthreaded burdock-test-src/run-all-tests-additional.bur"
+        cmd_  "_build/burdock burdock-test-src/run-all-tests.bur"
 
     withTargetDocs "run the tests" $ phony "test" $ do
-        need ["_build/burdock-tests", "_build/burdock"]
-        cmd_ "_build/burdock-tests  --color never --ansi-tricks false --hide-successes"
-
+        need ["_build/burdock"]
+        cmd_  "_build/burdock burdock-test-src/run-all-tests.bur"
 
     withTargetDocs "build the website" $ phony "website" $ do
         mkdirP "_build/website"

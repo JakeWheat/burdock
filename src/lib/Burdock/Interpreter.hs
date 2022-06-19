@@ -4,7 +4,7 @@
 module Burdock.Interpreter
     (TestResult(..)
     ,CheckBlockResult(..)
-    ,getTestResults
+    ,takeTestResults
     ,allTestsPassed
 
 
@@ -75,6 +75,7 @@ import Control.Monad (forM_
                      ,void
                      ,when
                      ,zipWithM
+                     ,forM
                      )
 
 import Data.List (intercalate
@@ -147,6 +148,7 @@ import System.FilePath
     (dropExtension
     ,takeFileName
     ,takeBaseName
+    ,takeExtension
     ,(</>)
     ,(<.>)
     )
@@ -157,7 +159,7 @@ import Data.Dynamic (Dynamic
                     ,Typeable
                     )
 
-import Data.Char (isSpace)
+import Data.Char (isSpace, toLower)
 
 --import System.IO.Unsafe (unsafePerformIO)
 
@@ -168,7 +170,7 @@ import Control.Concurrent.STM.TVar
     ,readTVar
     ,modifyTVar
     ,newTVarIO
-    --,writeTVar
+    ,writeTVar
     )
 
 import Control.Concurrent.STM
@@ -177,6 +179,12 @@ import Control.Concurrent.STM
 import System.Process (callProcess, readProcess)
 
 import System.Directory as D
+
+import qualified System.FilePath.Glob as Glob
+
+import System.Exit (exitSuccess, exitWith, ExitCode(ExitFailure))
+
+
 --import Control.Monad.IO.Class
 --    (MonadIO)
 
@@ -223,14 +231,6 @@ runScript' lit h mfn lenv src =
         -- todo: how to make this local to this call only
         forM_ lenv $ \(n,v) -> letValue' Shadow n v
         ret <- interpStatements ast
-        printTestResults <- interp $ internalsRef "auto-print-test-results"
-        case printTestResults of
-            BoolV True -> do
-                trs <- getTestResultsI
-                when (not $ null trs) $
-                    liftIO $ putStrLn $ formatTestResults trs
-            BoolV False -> pure ()
-            x -> _errorWithCallStack $ "bad value in auto-print-test-results (should be boolv): " ++ show x
         pure ret
     
 evalExpr :: Handle
@@ -239,7 +239,17 @@ evalExpr :: Handle
          -> String
          -> IO Value
 evalExpr h mfn lenv src =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ do
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ evalI mfn lenv src
+    {-ast <- either error id <$> useSource mfn (maybe "evalExpr" id mfn) src parseExpr
+    -- todo: how to make this local to this call only
+    forM_ lenv $ \(n,v) -> letValue' Shadow n v
+    interp ast-}
+
+evalI :: Maybe FilePath
+      -> [(String,Value)]
+      -> String
+      -> Interpreter Value
+evalI mfn lenv src = do
     ast <- either error id <$> useSource mfn (maybe "evalExpr" id mfn) src parseExpr
     -- todo: how to make this local to this call only
     forM_ lenv $ \(n,v) -> letValue' Shadow n v
@@ -250,7 +260,17 @@ evalFun :: Handle
         -> [Value]
         -> IO Value
 evalFun h fun args =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ do
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ evalFunI fun args
+    {-ast <- either error id <$> useSource Nothing "evalFun" fun parseExpr
+    f <- interpStatements [StmtExpr ast]
+    let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
+        src' = "fff(" ++ intercalate "," (map fst as) ++ ")"
+    ast' <- either error id <$> useSource Nothing "evalFun" src' parseExpr
+    forM_ (("fff", f):as) $ \(n,v) -> letValue' Shadow n v
+    interp ast'-}
+
+evalFunI :: String -> [Value] -> Interpreter Value
+evalFunI fun args = do
     ast <- either error id <$> useSource Nothing "evalFun" fun parseExpr
     f <- interpStatements [StmtExpr ast]
     let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
@@ -274,7 +294,13 @@ addFFIImpls h ffis =
 
 addFFIPackage :: Handle -> String -> FFIPackage -> IO ()
 addFFIPackage h nm ffipkg =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ addFFIPackage' nm ffipkg
+    spawnExtWaitHandle h $ \th -> runInterp th True h $ do
+        addFFIPackage' nm ffipkg
+        st <- ask
+        liftIO $ atomically $ do
+            modifyTVar (tlHandleState st) $ \x ->
+                x {hsPackages =
+                   ((nm,ffipkg) : hsPackages x)}
 
 allTestsPassed :: Handle -> IO Bool
 allTestsPassed h = spawnExtWaitHandle h $ \th -> runInterp th True h $ do
@@ -297,9 +323,19 @@ data TestResult = TestPass String
 data CheckBlockResult = CheckBlockResult String [TestResult]
                       deriving Show
 
-getTestResults :: Handle -> IO [(String, [CheckBlockResult])]
-getTestResults h =
-    spawnExtWaitHandle h $ \th -> runInterp th True h getTestResultsI
+takeTestResults :: Handle -> IO [(String, [CheckBlockResult])]
+takeTestResults h =
+    spawnExtWaitHandle h $ \th -> runInterp th True h takeTestResultsI
+
+takeTestResultsI :: Interpreter [(String, [CheckBlockResult])]
+takeTestResultsI = do
+    st <- ask
+    v <- liftIO $ atomically $ do
+        a <- readTVar $ tlHandleState st
+        r <- readTVar $ hsTestResults a
+        writeTVar (hsTestResults a) []
+        pure r
+    pure $ convertTestLog v
 
 getTestResultsI :: Interpreter [(String, [CheckBlockResult])]
 getTestResultsI = do
@@ -307,11 +343,17 @@ getTestResultsI = do
     v <- liftIO $ atomically $ do
         a <- readTVar $ tlHandleState st
         readTVar $ hsTestResults a
+    pure $ convertTestLog v
+
+
+convertTestLog :: [(String, String, TestResult)]
+               -> [(String, [CheckBlockResult])]
+convertTestLog v = 
     let perModules :: [(String, [(String,TestResult)])]
-        perModules = partitionN $ map (\(m,cb,tr) -> (m,(cb,tr))) v
+        perModules = partitionN $ map (\(m,cb,tr) -> (m,(cb,tr))) $ reverse v
         collectCBs :: [(String, [(String,[TestResult])])]
         collectCBs = map (\(mb,cbs) -> (mb,partitionN cbs)) perModules
-    pure $ map (\(a,b) -> (a, map (uncurry CheckBlockResult) b)) collectCBs
+    in map (\(a,b) -> (a, map (uncurry CheckBlockResult) b)) collectCBs
 
 partitionN :: Eq a => [(a,b)] -> [(a,[b])]
 partitionN [] = []
@@ -319,47 +361,56 @@ partitionN vs@((k,_):_) =
     let (x,y) = partition ((==k) . fst) vs
     in (k,map snd x) : partitionN y
 
--- todo: this function is a complete mess
-formatTestResults :: [(String, [CheckBlockResult])] -> String
-formatTestResults ms =
-    intercalate "\n\n" (map (uncurry showModuleTests) ms)
-    ++ "\n" ++ summarizeAll (concatMap snd ms)
+formatTestResults :: [(String, [CheckBlockResult])] -> Bool -> String
+formatTestResults ms hideSucc =
+    intercalate "\n" [intercalate "\n\n" (filter (/="") $ map formatModule ms)
+                     ,summarizeAll (concatMap snd ms)]
   where
-    showModuleTests mnm cbs =
-        heading ("Module: " ++ mnm) ++ "\n"
-        ++ intercalate "\n\n" (map showCheckBlockResult cbs)
-        ++ "\n" ++ summarizeCheckBlocks mnm cbs
+    formatTestResult tr =
+        case tr of
+            TestPass nm | hideSucc -> ""
+                        | otherwise -> "  test (" ++ nest 8 nm ++ "): OK"
+            TestFail nm msg -> "  test (" ++ nest 8 nm ++ "): failed, reason:\n" ++ indent 4 msg
+    formatCheckBlock (CheckBlockResult nm trs) =
+        let rs = intercalate "\n" $ filter (/= "") $ map formatTestResult trs
+        in if hideSucc && rs == ""
+           then ""
+           else let (passed, total) = getCheckBlockTotals trs
+                in "Check block: " ++ nm ++ "\n"
+                   ++ rs
+                   ++ "\n  " ++ showOutOf passed total ++ " in check block: " ++ nm
+    formatModule (mnm, cbs) =
+        let cbsf = intercalate "\n\n" $ filter (/= "") $ map formatCheckBlock cbs
+        in if hideSucc && cbsf == ""
+           then ""
+           else heading ("Module: " ++ mnm) ++ "\n"
+                ++ cbsf
+                ++ summarizeCheckBlocks mnm cbs 
+
+    summarizeAll rs =
+        let (passed,total) = getCheckBlocksTotals rs
+        in showOutOf passed total ++ " in all modules"
+
+    showOutOf passed total =
+        show passed ++ "/" ++ show total ++ " tests passed"
     heading s = s ++ "\n" ++ replicate (length s) '-'
+    -- queries
     getCheckBlockTotals ts = 
         let f p t [] = (p,t)
             f p t (TestPass {} : s) = f (p + 1) (t + 1) s
             f p t (TestFail {} : s) = f p (t + 1) s
         in f (0 :: Int) (0 :: Int) ts
-    summarizeAll rs =
-        let (passed,total) = getCheckBlocksTotals rs
-        in showOutOf passed total ++ " in all modules"
-    showOutOf passed total =
-        show passed ++ "/" ++ show total ++ " tests passed"
+    summarizeCheckBlocks mnm cbs =
+        let (passed, total) = getCheckBlocksTotals cbs
+        in "\n" ++ showOutOf passed total ++ " in module: " ++ mnm
+
+    getCheckBlocksTotals cbs = 
+        sumPairs $ map (\(CheckBlockResult _ ts) -> getCheckBlockTotals ts) cbs
     sumPairs ps = 
         let f t1 t2 [] = (t1,t2)
             f t1 t2 ((a,b):rs) = f (t1 + a) (t2 + b) rs
         in f (0 :: Int) (0 :: Int) ps
-    getCheckBlocksTotals cbs = 
-        sumPairs $ map (\(CheckBlockResult _ ts) -> getCheckBlockTotals ts) cbs
-    summarizeCheckBlocks mnm cbs =
-        let (passed, total) = getCheckBlocksTotals cbs
-        in showOutOf passed total ++ " in module: " ++ mnm
-    summarizeCheckBlock nm ts =
-        let (passed, total) = getCheckBlockTotals ts
-        in "  " ++ showOutOf passed total ++ " in check block: " ++ nm
-    showCheckBlockResult (CheckBlockResult nm ts) =
-        "Check block: " ++ nm ++ "\n"
-        ++ unlines (map showTestResult ts)
-        ++ summarizeCheckBlock nm ts
-    showTestResult (TestPass nm) =
-        "  test (" ++ nest 8 nm ++ "): OK"
-    showTestResult (TestFail nm msg) =
-        "  test (" ++ nest 8 nm ++ "): failed, reason:\n" ++ indent 4 msg
+    -- formatting
     indent n txt = unlines $ map (replicate n ' ' ++) $ lines txt
     nest n txt =
         case lines $ txt of
@@ -631,6 +682,7 @@ data BurdockHandleState
     ,hsSourceCache :: [(FilePath, String)]
     ,hsLoadedPackages :: [(String,FilePath)]
     ,hsUniqueSourceCtr :: Int
+    ,hsPackages :: [(String,FFIPackage)] -- todo: combine with loadedpackages?
     -- temp, to be split by module
     -- module path, check block name, result
     ,hsTestResults :: TVar [(String,String,TestResult)]
@@ -639,7 +691,7 @@ data BurdockHandleState
 data ModuleState
     = ModuleState
     {msModuleName :: String
-    ,_msModuleSourcePath :: FilePath
+    ,msModuleSourcePath :: FilePath
     }
 
 data ThreadLocalState
@@ -709,7 +761,7 @@ newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
     ch <- openBConcurrency (Just extractValueException)
     rs <- newTVarIO []
-    h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF builtInFFITypes [] [] 0 rs
+    h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs
     spawnWaitCast ch $ \th -> runInterp th False (Handle h) initBootstrapModule
     ip <- getBuiltInModulePath "_internals"
     spawnWaitCast ch $ \th -> runInterp th False (Handle h) $ loadAndRunModule False "_internals" ip
@@ -950,7 +1002,7 @@ addTestResult tr = do
         v <- readTVar (tlHandleState st)
         -- nested tvar will be removed when test results per module
         -- is implemented
-        modifyTVar (hsTestResults v) ((msModuleName ms, cbnm, tr):)
+        modifyTVar (hsTestResults v) ((msModuleSourcePath ms, cbnm, tr):)
 
 localPushCallStack :: SourcePosition -> Interpreter a -> Interpreter a
 localPushCallStack sp = do
@@ -1520,6 +1572,8 @@ builtInFF =
     ,("show-handle-state", bShowHandleState)
     ,("haskell-error", haskellError)
     ,("haskell-undefined", haskellUndefined)
+    ,("haskell-show", haskellShow)
+    ,("sysexit", sysExit)
 
     ,("is-nothing", isNothing)
     ,("is-Nothing", isNothing)
@@ -1592,7 +1646,11 @@ builtInFF =
     ,("read-process", bReadProcess)
     ,("call-process", bCallProcess)
     ,("list-directory", bListDirectory)
-     
+    ,("glob", bGlob)
+    
+    ,("run-tests-with-opts", bRunTestsWithOpts)
+    ,("take-test-results", bTakeTestResults)
+    ,("format-test-results", bFormatTestResults)
     ]
 
 ffiFunction :: [Value] -> Interpreter Value
@@ -1787,6 +1845,17 @@ haskellError _ = _errorWithCallStack $ "wrong args to haskell-error"
 haskellUndefined :: [Value] -> Interpreter Value
 haskellUndefined [] = undefined
 haskellUndefined _ = _errorWithCallStack $ "wrong args to haskell-undefined"
+
+haskellShow :: [Value] -> Interpreter Value
+haskellShow args = pure $ TextV $ show args
+
+-- todo: work out how this should work with threads
+sysExit :: [Value] -> Interpreter Value
+sysExit [NumV n'] | Just n <- extractInt n' =
+    liftIO $ if n == 0
+             then exitSuccess
+             else exitWith (ExitFailure n)
+sysExit _ = error "wrong args tosysExit"
 
 bParseFile :: [Value] -> Interpreter Value
 bParseFile [TextV fn] = do
@@ -2148,7 +2217,135 @@ bListDirectory [TextV pn] = do
     pure $ makeBList $ map TextV is
 bListDirectory x = error $ "bad args to list-directory" ++ show x
 
+bGlob :: [Value] -> Interpreter Value
+bGlob [TextV pn] = do
+    is <- liftIO $ Glob.globDir1 (Glob.compile pn) "."
+    pure $ makeBList $ map TextV is
+bGlob x = error $ "bad args to glob" ++ show x
 
+
+bRunTestsWithOpts :: [Value] -> Interpreter Value
+bRunTestsWithOpts [opts] = do
+    testSrcs :: [Either FilePath (FilePath,String)] <- do
+        tsrcs' <- getAttr opts "test-sources"
+        let tsrcs = maybe (error $ "bad args to run-tests-with-opts" ++ show opts) id
+                    $ fromBList tsrcs'
+        forM tsrcs $ \tsrc -> do
+            TextV nm <- getAttr tsrc "file-name"
+            if isV tsrc "file-test"
+                then pure $ Left nm
+                else do
+                    TextV s <- getAttr tsrc "source"
+                    pure $ Right (nm, s)
+    BoolV showProgressLog <- getAttr opts "show-progress-log"
+    _testRunPredicate :: Maybe Value <- do
+        v <- getAttr opts "test-run-predicate"
+        case v of
+            VariantV _ "none" [] -> pure Nothing
+            _ -> error $ "test run predicate not supported"
+    BoolV hideSuccesses <- getAttr opts "hide-successes"
+    BoolV autoPrintResults <- getAttr opts "auto-print-results"
+
+    cbs <- concat <$>
+        (forM testSrcs $ \testSrc -> runIsolated showProgressLog hideSuccesses $ do
+            case testSrc of
+                Left fn -> loadAndRunModule True fn fn
+                Right (fn, src) -> loadAndRunModuleSource True fn fn src
+            takeTestResultsI)
+    rs <- testResultsToB cbs
+    when autoPrintResults $ void $
+        evalI Nothing [("rs1234", rs)
+                      ,("hs1234", BoolV hideSuccesses)
+                      ]
+            "print(format-test-results(rs1234, hs1234))"
+    pure rs
+  where
+    runIsolated showProgressLog hideSuccesses f = do
+{-
+hack: create a new state as if it's a new handle
+run loadandrunmodule with this new state, nested in a new monad context
+then extract the hstestresults from it
+-}
+        subH <- liftIO $ newBurdockHandle
+        let h = Handle subH
+        -- add the loaded packages to the new handle
+        pkgs <- do
+            st <- ask
+            hs <- liftIO $ atomically $ readTVar $ tlHandleState st
+            pure $ reverse $ hsPackages hs
+        forM_ pkgs $ \(nm,p) -> liftIO $ addFFIPackage h nm p
+
+        liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
+        if showProgressLog
+            then liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-show-test-progress-log(true)"
+            else liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-show-test-progress-log(false)"
+        if hideSuccesses
+            then liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-hide-test-successes(true)"
+            else liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-hide-test-successes(false)"
+        liftIO $ spawnExtWaitHandle h $ \th -> runInterp th True h f
+    isV v nm = case v of
+        VariantV _ nm' _ -> nm == nm'
+        _ -> False
+    getAttr v nm = evalI Nothing [("v", v)] ("v." ++ nm)
+
+bRunTestsWithOpts x = error $ "bad args to run-tests-with-opts" ++ show x
+
+bTakeTestResults :: [Value] -> Interpreter Value
+bTakeTestResults [] = do
+    st <- ask
+    cbs <- liftIO $ atomically $ do
+        a <- readTVar $ tlHandleState st
+        r <- readTVar $ hsTestResults a
+        writeTVar (hsTestResults a) []
+        pure r
+    testResultsToB $ convertTestLog cbs
+bTakeTestResults x = error $ "bad args to take-test-results" ++ show x
+
+testResultsToB :: [(String, [CheckBlockResult])] -> Interpreter Value
+testResultsToB cbs = do
+    mkModuleCheckResults <- interp (Iden "module-check-results")
+    mkCheckResults <- interp (Iden "check-results")
+    mkTestPass <- interp (Iden "test-pass")
+    mkTestFail <- interp (Iden "test-fail")
+    let makeMcr nm cbsx = do
+            cs <- mapM makeCbr cbsx
+            app mkModuleCheckResults [TextV nm, makeBList cs]
+        makeCbr (CheckBlockResult nm trs) = do
+            trs' <- forM trs $ \case
+                        TestPass tnm -> app mkTestPass [TextV tnm]
+                        TestFail tnm msg -> app mkTestFail [TextV tnm, TextV msg]
+            app mkCheckResults [TextV nm, makeBList trs']
+            
+    x <- mapM (uncurry makeMcr) cbs
+    pure $ makeBList x
+    
+
+bFormatTestResults :: [Value] -> Interpreter Value
+bFormatTestResults as@[lst', BoolV hs] | Just lst <- fromBList lst' = do
+    let extractMod v = do
+            TextV mn <- getAttr v "module-name"
+            cbs <- getAttr v "mcheck-results"
+            let cbs' = maybe (error $ "bad args to format-test-results" ++ show as) id $ fromBList cbs
+            (mn,) <$> mapM extractCB cbs'
+        extractCB v = do
+            TextV cbn <- getAttr v "block-name"
+            trs <- getAttr v "results"
+            let trs' = maybe (error $ "bad args to format-test-results" ++ show as) id $ fromBList trs
+            CheckBlockResult cbn <$> mapM extractTr trs'
+        extractTr v = do
+            TextV nm <- getAttr v "name"
+            case v of
+                VariantV _ "test-fail" _ -> do
+                    TextV msg <- getAttr v "msg"
+                    pure $ TestFail nm msg
+                _ -> pure $ TestPass nm
+    v <- mapM extractMod lst
+    let res = formatTestResults v hs
+    pure $ TextV res
+  where
+    getAttr v nm = evalI Nothing [("v", v)] ("v." ++ nm)
+bFormatTestResults x = error $ "bad args to format-test-results" ++ show x
+    
 
 ------------------------------------------------------------------------------
 
@@ -2548,7 +2745,7 @@ makeCurriedApp sp f es =
         (newf,nms2) = case f of
                         Iden "_" -> (Iden "_p0", ("_p0":nms))
                         _ -> (f, nms)
-        bs = flip map nms2 $ \n -> NameBinding n
+        bs = flip map nms2 $ \n -> ShadowBinding n
     in Lam (FunHeader [] bs Nothing) [StmtExpr $ App sp newf newEs]
   where
     makeNewEs _ [] = []
@@ -3132,110 +3329,108 @@ makeDotPathExpr (n':nms') = f (Iden n') nms'
 
 -- test predicates
 testIs :: String -> Expr -> Expr -> Interpreter Value
-testIs msg e0 e1 = do
-    (v0,v1,atr) <- testPredSupport e0 e1
+testIs msg e0 e1 =
+    testPredSupport msg e0 e1 $ \v0 v1 -> do
     case (v0,v1) of
         (Right v0', Right v1') -> do
             t <- hEqualAlways v0' v1'
             if t
-            then atr $ TestPass msg
+            then pure $ TestPass msg
             else do
                 p0 <- torepr' v0'
                 p1 <- torepr' v1'
-                atr $ TestFail msg (p0 ++ "\n!=\n" ++ p1)
+                pure $ TestFail msg (p0 ++ "\n!=\n" ++ p1)
         (Left (_,er0), Right {}) -> do
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
+            pure $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
         (Right {}, Left (_,er1)) -> do
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
+            pure $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
         (Left (_,er0), Left (_,er1)) -> do
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
+            pure $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
                                 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1)
-    pure nothing
 
 testIsNot :: String -> Expr -> Expr -> Interpreter Value
-testIsNot msg e0 e1 = do
-    (v0,v1,atr) <- testPredSupport e0 e1
+testIsNot msg e0 e1 =
+    testPredSupport msg e0 e1 $ \v0 v1 -> do
     case (v0,v1) of
         (Right v0', Right v1') -> do
             t <- hEqualAlways v0' v1'
             if not t
-            then atr $ TestPass msg
+            then pure $ TestPass msg
             else do
                 p0 <- torepr' v0'
                 p1 <- torepr' v1'
-                atr $ TestFail msg (p0 ++ "\n==\n" ++ p1)
+                pure $ TestFail msg (p0 ++ "\n==\n" ++ p1)
         (Left (_,er0), Right {}) -> do
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
+            pure $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
         (Right {}, Left (_,er1)) -> do
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
+            pure $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
         (Left (_,er0), Left (_,er1)) -> do
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
+            pure $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
                                 ++ "\n" ++ prettyExpr e1 ++ " failed: " ++ er1)
-    pure nothing
 
 testRaises :: String -> Expr -> Expr -> Interpreter Value
-testRaises msg e0 e1 = do
-    (v0,v1,atr) <- testPredSupport e0 e1
+testRaises msg e0 e1 =
+    testPredSupport msg e0 e1 $ \v0 v1 -> do
     case (v0,v1) of
         (Right _, Right _) ->
-            atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
+            pure $ TestFail msg (prettyExpr e0 ++ " didn't raise")
         (_, Left (_,er1)) -> do
-            atr $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
+            pure $ TestFail msg (prettyExpr e1 ++ " failed: " ++ er1)
         (Left (er0,er0'), Right (TextV v)) -> do
             val <- torepr' er0
             if v `isInfixOf` val
-                then atr $ TestPass msg
-                else atr $ TestFail msg ("failed: " ++ val ++ ", expected " ++ "\"" ++ v ++ "\"" ++ "\n" ++ er0')
+                then pure $ TestPass msg
+                else pure $ TestFail msg ("failed: " ++ val ++ ", expected " ++ "\"" ++ v ++ "\"" ++ "\n" ++ er0')
         (Left _, Right v) -> do
-            atr $ TestFail msg (prettyExpr e1 ++ " failed, expected String, got: " ++ show v)
-    pure nothing
+            pure $ TestFail msg (prettyExpr e1 ++ " failed, expected String, got: " ++ show v)
 
 testRaisesSatisfies :: String -> Expr -> Expr -> Interpreter Value
-testRaisesSatisfies msg e0 f = do
-    (v0,fv,atr) <- testPredSupport e0 f
+testRaisesSatisfies msg e0 f =
+    testPredSupport msg e0 f $ \v0 fv -> do
     case (v0,fv) of
         (Right _, Right _) ->
-            atr $ TestFail msg (prettyExpr e0 ++ " didn't raise")
+            pure $ TestFail msg (prettyExpr e0 ++ " didn't raise")
         (_, Left (_,er1)) -> do
-            atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1)
+            pure $ TestFail msg (prettyExpr f ++ " failed: " ++ er1)
         (Left (er0,er0'), Right fvv) -> do
             r <- app fvv [er0]
             case r of
-                BoolV True -> atr $ TestPass msg
-                BoolV False -> atr $ TestFail msg ("failed: " ++ show er0 ++ ", didn't satisfy predicate " ++ show f ++ "\n" ++ show er0')
-                _ -> atr $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
-    pure nothing
+                BoolV True -> pure $ TestPass msg
+                BoolV False -> pure $ TestFail msg ("failed: " ++ show er0 ++ ", didn't satisfy predicate " ++ show f ++ "\n" ++ show er0')
+                _ -> pure $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
 
 testSatisfies :: String -> Expr -> Expr -> Interpreter Value
-testSatisfies msg e0 f = do
-    (v0,fv,atr) <- testPredSupport e0 f
+testSatisfies msg e0 f =
+    testPredSupport msg e0 f $ \v0 fv -> do
     case (v0,fv) of
         (Right v', Right f') -> do
             r <- app f' [v']
             case r of
-                BoolV True -> atr $ TestPass msg
-                BoolV False -> atr $ TestFail msg ("failed: " ++ show v' ++ ", didn't satisfy predicate " ++ show f)
-                _ -> atr $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
+                BoolV True -> pure $ TestPass msg
+                BoolV False -> pure $ TestFail msg ("failed: " ++ show v' ++ ", didn't satisfy predicate " ++ show f)
+                _ -> pure $ TestFail msg ("failed: predicted didn't return a bool: " ++ show f ++ " - " ++ show r)
         (Left (_,er0), Right {}) -> do
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
+            pure $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0)
         (Right {}, Left (_,er1)) -> do
-            atr $ TestFail msg (prettyExpr f ++ " failed: " ++ er1)
+            pure $ TestFail msg (prettyExpr f ++ " failed: " ++ er1)
         (Left (_,er0), Left (_,er1)) -> do
-            atr $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
+            pure $ TestFail msg (prettyExpr e0 ++ " failed: " ++ er0
                                 ++ "\n" ++ prettyExpr f ++ " failed: " ++ er1)
-    pure nothing
 
-
--- takes the two expressions, evaluates them with catch
--- return the value or the error if they raise
--- returns addtestresult function too, maybe this doesn't need to
--- be here any more
-testPredSupport :: Expr
+testPredSupport :: String
                 -> Expr
-                -> Interpreter (Either (Value,String) Value
-                               ,Either (Value,String) Value
-                               ,TestResult -> Interpreter ())
-testPredSupport e0 e1 = do
+                -> Expr
+                -> (Either (Value,String) Value
+                    -> Either (Value,String) Value
+                    -> Interpreter TestResult)
+                -> Interpreter Value
+testPredSupport testPredName e0 e1 testPredCheck = do
+    -- todo 1: check the test-run-p predicate to see if this test should run
+    -- todo 2: check the progress log to see if should output a log message
+    -- todo 3: if progress log enabled, output OK or FAIL + the message
+    le <- isProgressLogEnabled
+    hideSucc <- isHideSuccesses
+    when (le && not hideSucc) logit
     let w :: Expr -> Interpreter (Either (Value,String) Value)
         w x = do
             b0 <- catchAll (interp x)
@@ -3246,11 +3441,40 @@ testPredSupport e0 e1 = do
                             Nothing -> pure ""
                             Just cs' -> formatCallStack cs'
                     pure $ Left (v,vs ++ vext)
-                    -- undefined -- Left . TextV <$> showExceptionCallStackPair er
                 Right v -> pure $ Right $ v
     v0 <- w e0
     v1 <- w e1
-    pure (v0, v1, addTestResult)
+    res <- testPredCheck v0 v1
+    when le $ case res of
+        TestPass {} ->
+            if hideSucc
+            then pure ()
+            else liftIO $ putStrLn $ " OK"
+        TestFail _ msg -> do
+            when hideSucc logit
+            liftIO $ putStrLn $ " FAIL\n" ++ msg
+    addTestResult res
+    pure nothing
+  where
+    logit = do
+        st <- ask
+        ms <- msModuleSourcePath <$> (liftIO $ readIORef $ tlModuleState st)
+        cbnm <- case tlCurrentCheckblock st of
+            Just n -> pure n
+            Nothing -> _errorWithCallStack $ "test predicate not in check block: " ++ testPredName
+        liftIO $ putStr $ "test " ++ ms ++ "/" ++ cbnm ++ "/" ++ testPredName
+    isProgressLogEnabled = do
+        e <- interp $ internalsRef "show-test-progress-log"
+        case e of
+            BoolV True -> pure True
+            _ -> pure False
+    isHideSuccesses = do
+        e <- interp $ internalsRef "hide-test-successes"
+        case e of
+            BoolV True -> pure True
+            _ -> pure False
+
+
 
 ------------------------------------------------------------------------------
 
@@ -3356,10 +3580,25 @@ loadAndRunModule includeGlobals moduleName fn = spawnExtWaitI $ \_ -> do
     let incG = if includeGlobals && moduleName /= "globals"
                then (Include (ImportName "globals") :)
                else id
+    let p = if map toLower (takeExtension fn) == ".rst"
+            then parseLiterateScript
+            else parseScript
+    Script ast' <- either error id <$> useSource (Just fn) moduleName src p
+    let ast = incG ast'
+    -- todo: track generated unique names better?
+    runModule fn moduleName $ void $ interpStatements ast
+
+loadAndRunModuleSource :: Bool -> String -> FilePath -> String -> Interpreter ()
+loadAndRunModuleSource includeGlobals moduleName fn src = spawnExtWaitI $ \_ -> do
+    -- auto include globals, revisit when use context added
+    let incG = if includeGlobals && moduleName /= "globals"
+               then (Include (ImportName "globals") :)
+               else id
     Script ast' <- either error id <$> useSource (Just fn) moduleName src parseScript
     let ast = incG ast'
     -- todo: track generated unique names better?
     runModule fn moduleName $ void $ interpStatements ast
+
 
 -- todo: refactor all these spawn thread and runreadert wrapper variations
 -- this resets the interpreter state for a fresh thread

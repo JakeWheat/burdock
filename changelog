@@ -4,6 +4,7 @@
 - implement shadow checks
 - fix many issues with binding tuples, nested variants, etc.
 - repl temporarily disabled
+- new test framework
 
 ## Week 23 12th June
 

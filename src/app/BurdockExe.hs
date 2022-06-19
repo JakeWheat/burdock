@@ -19,8 +19,7 @@ run a script's tests:
 
 burdock my_script.bur --run-tests
 
-This probably won't work unless my_script.bur usually exits promptly
-
+This will work better if my_script.bur exits promptly
 
 -}
 
@@ -29,7 +28,7 @@ This probably won't work unless my_script.bur usually exits promptly
 import qualified Burdock.Interpreter as B
 
 import Control.Monad.Trans
-import Control.Monad (when, void)
+import Control.Monad (void)
 import System.Console.Haskeline (InputT
                                 ,Interrupt
                                 ,historyFile
@@ -90,29 +89,47 @@ import qualified PythonFFI
 ------------------------------------------------------------------------------
 
 
-runFile :: FilePath -> Bool -> IO ()
+runFile :: FilePath -> TestOptions -> IO ()
 runFile fp rTests = do
     src <- readFile fp
     runSrc False (Just fp) rTests src
 
-runHandle :: FilePath -> Handle -> Bool -> IO ()
+runHandle :: FilePath -> Handle -> TestOptions -> IO ()
 runHandle fp h rTests = do
     src <- hGetContents h
     runSrc False (Just fp) rTests src
 
-runSrc :: Bool -> Maybe String -> Bool -> String -> IO ()
-runSrc lit fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
+runSrc :: Bool -> Maybe String -> TestOptions -> String -> IO ()
+runSrc lit fnm (rTests,rallTests,hideSuccesses,hideProgress,hideTestResults) src =
+    bracket B.newHandle B.closeHandle $ \h -> do
     addPackages h
     flip catch (handleEx h) $ do
-        when rTests $ void $ B.runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
-        v <- (if lit then B.runLiterateScript else B.runScript) h fnm [] src
-        pv <- B.valueToStringIO h v
-        case pv of
-            Nothing -> pure ()
-            Just s -> putStrLn s
-        when rTests $ do
-            p <- B.allTestsPassed h
-            when (not p) exitFailure
+        if rTests || rallTests
+            then do
+                x <- B.runScript h Nothing [("fn", B.TextV $ maybe "" id fnm)
+                                           ,("src", B.TextV src)
+                                           ,("spl", B.BoolV $ not hideProgress)
+                                           ,("hs", B.BoolV hideSuccesses)
+                                           ,("apr", B.BoolV $ not hideTestResults)]
+                    "include testing\n\
+                    \rs = run-tests-with-opts(\n\
+                    \         default-test-opts.{\n\
+                    \             test-source:source-test(fn, src),\n\
+                    \             show-progress-log:spl,\n\
+                    \             hide-successes:hs,\n\
+                    \             auto-print-results:apr\n\
+                    \             })\n\
+                    \has-test-failures(rs)"
+                case x of
+                    B.BoolV False -> pure ()
+                    B.BoolV True -> exitFailure
+                    _ -> error $ "expected has-test-failures to return bool, got " ++ show x
+            else do
+                v <- (if lit then B.runLiterateScript else B.runScript) h fnm [] src
+                pv <- B.valueToStringIO h v
+                case pv of
+                    Nothing -> pure ()
+                    Just s -> putStrLn s
   where
     handleEx :: B.Handle -> B.InterpreterException -> IO ()
     handleEx h ex = do
@@ -120,11 +137,10 @@ runSrc lit fnm rTests src = bracket B.newHandle B.closeHandle $ \h -> do
         putStrLn $ "Error: " ++ x
         exitFailure
 
-runLiterateFile :: FilePath -> Bool -> IO ()
+runLiterateFile :: FilePath -> TestOptions -> IO ()
 runLiterateFile fp rTests = do
     src <- readFile fp
     runSrc True (Just fp) rTests src
-
 
 -- repl
 
@@ -181,6 +197,10 @@ data MyOpts = MyOpts
   { file :: Maybe String
   , script :: Maybe String
   , runTests :: Bool
+  , runAllTests :: Bool
+  , hideTestSuccesses :: Bool
+  , hideTestProgress :: Bool
+  , hideTestResults :: Bool
   , literateMode :: Bool
   , userArgs :: [String]
   }
@@ -199,6 +219,10 @@ myOpts = MyOpts
            <> metavar "INT"
            <> help "test-level 0 = skip, 1= one line, 2 = show failures, 3 = show all")-}
       <*> switch (long "run-tests" <> help "run tests")
+      <*> switch (long "run-all-tests" <> help "run all tests (including included modules)")
+      <*> switch (long "hide-tests-successes" <> help "only show test failures")
+      <*> switch (long "hide-tests-progress" <> help "don't show tests as they are run")
+      <*> switch (long "hide-test-results" <> help "don't show any test results, only set non zero exit code if there were any failures")
       <*> switch (long "literate-mode" <> help "parse from literate source")
       <*> many (argument str (metavar "ARGS..." <> help "args to pass to Burdock script"))
 
@@ -222,10 +246,17 @@ main = do
         isTTY <- hIsTerminalDevice stdin
         case os of
             MyOpts {file = Just {}, script = Just {}} -> error "please pass either a file or code to run, not both"
-            MyOpts {file = Just f, runTests = rt, literateMode = True} -> runLiterateFile f rt
-            MyOpts {file = Just f, runTests = rt} -> runFile f rt
-            MyOpts {script = Just c, runTests = rt} -> runSrc False Nothing rt c
-            MyOpts {script = Nothing, file = Nothing, runTests = rt}
-                | not isTTY -> runHandle "stdin" stdin rt
+            MyOpts {file = Just f, literateMode = True} -> runLiterateFile f (extractTestOptions os)
+            MyOpts {file = Just f} -> runFile f (extractTestOptions os)
+            MyOpts {script = Just c} -> runSrc False Nothing (extractTestOptions os) c
+            MyOpts {script = Nothing, file = Nothing}
+                | not isTTY -> runHandle "stdin" stdin (extractTestOptions os)
                 | otherwise -> doRepl
+    extractTestOptions os =
+        (runTests os
+        ,runAllTests os
+        ,hideTestSuccesses os
+        ,hideTestProgress os
+        ,hideTestResults os)
 
+type TestOptions = (Bool, Bool, Bool, Bool, Bool)

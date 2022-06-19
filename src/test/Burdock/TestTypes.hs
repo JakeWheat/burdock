@@ -8,7 +8,4 @@ data TestTree = TestGroup String [TestTree]
               | StmtParseTest String Stmt
               | ScriptParseTest String Script
               | LiterateParseTest String String
-              | InterpreterTestsFile FilePath
-              | InterpreterTestsDir FilePath
-              | InterpreterTestsOptionalDir FilePath
 

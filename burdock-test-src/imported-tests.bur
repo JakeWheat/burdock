@@ -1,0 +1,8 @@
+
+import file("burdock-test-src/four-tests.bur") as a
+
+check:
+
+  1 + 2 is 3
+
+end

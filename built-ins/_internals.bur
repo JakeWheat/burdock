@@ -63,6 +63,7 @@ list = {make : lam(x): x end}
 raise = ffi-function("raise")
 haskell-error = ffi-function("haskell-error")
 haskell-undefined = ffi-function("haskell-undefined")
+haskell-show = ffi-function("haskell-show")
 
 is-specific-ffi-type = ffi-function("is-specific-ffi-type")
 
@@ -72,6 +73,8 @@ get-call-stack = ffi-function("get-call-stack")
 format-call-stack = ffi-function("format-call-stack")
 
 run-script = ffi-function("run-script")
+
+sysexit = ffi-function("sysexit")
 
 # debugging and troubleshooting support
 
@@ -125,9 +128,16 @@ end
 # results out and printing them or using them differently yourself
 # it's used by the tasty testing adaptor
 var auto-print-test-results = true
-# the 'api' is to use the function, don't read or write the var directly
 fun set-auto-print-test-results(b):
   auto-print-test-results := b
+end
+var show-test-progress-log = true
+fun set-show-test-progress-log(b):
+  show-test-progress-log := b
+end
+var hide-test-successes = false
+fun set-hide-test-successes(b):
+  hide-test-successes := b
 end
 # set whether tests should be run or ignored
 var auto-run-tests = false

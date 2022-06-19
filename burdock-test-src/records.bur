@@ -44,4 +44,3 @@ check "extend":
   # what should happen when you do "pt1(1,2).{c:3}"?
 
 end
-

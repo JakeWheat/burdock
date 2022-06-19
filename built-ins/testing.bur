@@ -1,0 +1,96 @@
+provide:
+  run-tests,
+  run-tests-string,
+  run-tests-with-opts,
+  format-test-results,
+  has-test-failures,
+  default-test-opts,
+  data Test-result,
+  data Check-results,
+  data Module-check-results,
+  data Test-Source,
+  data Run-test-opts
+end
+
+include _internals
+include option
+
+run-tests-with-opts = ffi-function("run-tests-with-opts")
+
+format-test-results = ffi-function("format-test-results")
+
+data Test-result:
+  | test-pass(name)
+  | test-fail(name,msg)
+end
+
+data Check-results:
+  | check-results(block-name, results)
+end
+
+data Module-check-results:
+  | module-check-results(module-name, mcheck-results)
+end
+
+data Test-Source:
+  | file-test(file-name)
+  | source-test(file-name, source)
+end
+
+data Run-test-opts:
+  | run-test-opts(test-sources, # :: Test-Source
+                  show-progress-log, # :: Boolean,
+                  test-run-predicate, # :: Option<(module-name :: String,
+                                      #       check-block-name :: Option<String>,
+                                      #       test-predicate-name :: Option<String>)
+                                      #       -> Boolean>,
+                  hide-successes, # :: Boolean,
+                  auto-print-results) # :: Boolean)
+end
+
+default-test-opts = run-test-opts([list:], false, none, false, false)
+
+fun has-test-failures(lst):
+  fun check-trs(trs):
+    cases trs:
+      | empty => false
+      | link(test-pass(_), tl) => check-trs(tl)
+      | link(test-fail(_,_),_) => true
+    end
+  end
+
+  fun check-cbs(cbs):
+    cases cbs:
+      | empty => false
+      | link(h,tl) =>
+        if check-trs(h.results):
+          true
+        else:
+          check-cbs(tl)
+        end
+    end
+  end
+
+  fun check-mcrs(mcrs):
+    cases mcrs:
+      | empty => false
+      | link(h, tl) =>
+        if check-cbs(h.mcheck-results):
+          true
+        else:
+          check-mcrs(tl)
+        end
+     end
+  end
+
+  check-mcrs(lst)
+end
+
+fun run-tests(fn):
+  run-tests-with-opts(default-test-opts.{test-sources:[list: file-test(fn)]})
+end
+
+fun run-tests-string(fn,src):
+  run-tests-with-opts(default-test-opts.{test-sources:[list: source-test(fn, src)]})
+end
+
