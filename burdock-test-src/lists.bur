@@ -17,3 +17,8 @@ check:
   L.set([list: 1, 2, 3], 2, 5) is [list: 1, 2, 5]
   L.set([list: ], 0, 5) raises "too large"
 end
+
+check:
+
+  [list: 1,2] + [list:3,4] is [list: 1,2,3,4]
+end

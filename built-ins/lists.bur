@@ -82,7 +82,8 @@ provide:
   foldl,
   foldr,
   filter,
-  intercalate
+  intercalate,
+  not-elem
 end
 
 
@@ -239,4 +240,24 @@ where:
   intercalate(",",[list: 'a']) is "a"
   intercalate(",",[list: 'a', 'b']) is "a,b"
   intercalate(",",[list: 'a', 'b', 'c', 'd']) is "a,b,c,d"
+end
+
+fun not-elem(i,lst):
+
+  cases lst:
+    | empty => true
+    | link(x,xs) =>
+      if x == i:false
+      else: not-elem(i,xs)
+      end
+  end
+
+where:
+
+  not-elem(1,empty) is true
+  not-elem(1,[list: 1]) is false
+  not-elem(1,[list: 2]) is true
+
+  not-elem(1,[list: 2,1,3]) is false
+  not-elem(1,[list: 2,3]) is true
 end

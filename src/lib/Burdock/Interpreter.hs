@@ -1488,6 +1488,9 @@ builtInFF =
     ,("+", \case
              [NumV a,NumV b] -> pure $ NumV $ a + b
              [TextV a, TextV b] -> pure $ TextV $ a ++ b
+             [a, b] | Just a' <- fromBList a
+                    , Just b' <- fromBList b
+                    -> pure $ makeBList $ a' ++ b'
              as -> _errorWithCallStack $ "unsupported args to + :" ++ show as)
     ,("-", \case
              [NumV a] -> pure $ NumV (- a)
