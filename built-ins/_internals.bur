@@ -75,6 +75,8 @@ format-call-stack = ffi-function("format-call-stack")
 run-script = ffi-function("run-script")
 
 sysexit = ffi-function("sysexit")
+burdock-version = ffi-function("burdock-version")
+
 
 # debugging and troubleshooting support
 

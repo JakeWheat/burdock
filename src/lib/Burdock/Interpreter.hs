@@ -188,6 +188,8 @@ import System.Exit (exitSuccess, exitWith, ExitCode(ExitFailure))
 
 import qualified Burdock.GeneratedBuiltins
 
+import qualified Burdock.Version as Version
+
 
 --import Control.Monad.IO.Class
 --    (MonadIO)
@@ -1579,6 +1581,7 @@ builtInFF =
     ,("haskell-undefined", haskellUndefined)
     ,("haskell-show", haskellShow)
     ,("sysexit", sysExit)
+    ,("burdock-version", bBurdockVersion)
 
     ,("is-nothing", isNothing)
     ,("is-Nothing", isNothing)
@@ -1864,6 +1867,11 @@ sysExit [NumV n'] | Just n <- extractInt n' =
              then exitSuccess
              else exitWith (ExitFailure n)
 sysExit _ = error "wrong args tosysExit"
+
+bBurdockVersion :: [Value] -> Interpreter Value
+bBurdockVersion [] =
+    pure $ TextV $ Version.version
+bBurdockVersion _ = error "wrong args burdock-version"
 
 bParseFile :: [Value] -> Interpreter Value
 bParseFile [TextV fn] = do

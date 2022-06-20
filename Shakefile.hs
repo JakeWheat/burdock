@@ -40,8 +40,14 @@ import Development.Shake.Util
 
 import qualified System.Directory as D
 
+import System.Exit (ExitCode(ExitSuccess))
+
+
 newtype Packages = Packages () deriving (Show,Typeable,Eq,Hashable,Binary,NFData)
 type instance RuleResult Packages = String
+
+newtype BurdockVersion = BurdockVersion () deriving (Show,Typeable,Eq,Hashable,Binary,NFData)
+type instance RuleResult BurdockVersion = String
 
 main :: IO ()
 main = do
@@ -190,6 +196,26 @@ main = do
             e <- liftIO $ D.doesFileExist fn
             when e (f =<< liftIO (readFile fn))
 
+    let generateVersionString full = do
+            -- read the base version file
+            v <- liftIO $ readFile "version"
+            if not full
+                then pure v
+                else do
+                -- get the git commit
+                (Exit c, Stdout out) <- cmd "git rev-parse HEAD"
+                let ghash = case c of
+                        ExitSuccess -> take 6 out
+                        -- doesn't work if git isn't found
+                        _ -> "NOGIT"
+                Exit c1 <- cmd "git diff-index --quiet HEAD"
+                let gd = case c1  of
+                        ExitSuccess -> ""
+                        _ -> "-changed"
+                -- determine if any files have been changed, roughtly
+                -- put a different string if there's no git repo
+                pure $ v ++ "-" ++ ghash ++ gd
+    
     ------------------------------------------------------------------------------
 
     -- build rules
@@ -247,7 +273,12 @@ main = do
                                    ,"packages/ffitypes-test/bur//*.bur"]
         need ("_build/GenerateBuiltinsFile" : fs)
         cmd_ "_build/GenerateBuiltinsFile " out fs
- 
+
+    withTargetDocs "generated version file" $
+        "_build/generated-hs/Burdock/Version.hs" %> \out -> do
+        str <- askOracle (BurdockVersion ())
+        liftIO $ writeFile out $ "module Burdock.Version where\nversion :: String\nversion = " ++ show str
+  
     withTargetDocs "auto haskell deps" $
         "_build//*.hs.deps" %> \out -> do
         need [mainPackageDB]
@@ -257,7 +288,8 @@ main = do
                          ,"_build/objs/src/examples/DemoFFI.hs.deps"
                          ,"_build/objs/src/test/BurdockTests.hs.deps"
                          ]) $
-             need ["_build/generated-hs/Burdock/GeneratedBuiltins.hs"]
+             need ["_build/generated-hs/Burdock/GeneratedBuiltins.hs"
+                  ,"_build/generated-hs/Burdock/Version.hs"]
         -- the dep file needs rebuilding if any of the .hs files it
         -- references have changed
         -- is this the right idiom for this?
@@ -318,5 +350,6 @@ main = do
         need [rst, "website2/header.html"]
         doPandoc "website2/header.html" rst out
 
-    void $ addOracle $ \(Packages _) -> pure (unlines directPackages) :: Action String
+    void $ addOracle $ \(Packages {}) -> pure (unlines directPackages) :: Action String
+    void $ addOracle $ \(BurdockVersion {}) -> generateVersionString True :: Action String
 
