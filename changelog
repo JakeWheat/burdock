@@ -1,3 +1,9 @@
+## Week 24 26th June
+
+- add version number
+- bundle built in modules so the exe is standalone
+- create poc release build
+
 ## Week 23 19th June
 
 - fix bug with multiline string parsing

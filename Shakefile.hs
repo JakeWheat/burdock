@@ -1,4 +1,3 @@
-
 {-
 
 use the ./build script to run this easily
@@ -128,9 +127,9 @@ main = do
         allTargetExes = map (\(_,e,_,_,_,_) -> e) exes
         simplePhonies =
             [("build all the exes", "all", allTargetExes)
-            ,("build all the exes, build the website, run the tests"
+            ,("build all the exes, build the website, run the tests, build the release"
              ,"really-all"
-             ,["all", "website", "test-all"])
+             ,["all", "website", "test-all", "release-build"])
             ]
 
     ------------------------------------------------------------------------------
@@ -222,6 +221,35 @@ main = do
 
     forM_ exes $ \(doc,outnm,hsmain,generatedSources,cfiles, linkOpts) ->
         withTargetDocs doc $ outnm %> \out -> compileHaskellExe out hsmain generatedSources cfiles linkOpts
+
+    withTargetDocs "create release tarball" $
+        "_build/burdock.tar.gz" %> \out -> do
+        fs <- getDirectoryFiles "" ["src//*.c", "src//*.hs", "packages//*.hs"]
+        
+        -- add generated files
+        need $ ["LICENSE", "README", "cabal/burdock.cabal"] ++ fs
+          ++ ["_build/generated-hs/Burdock/GeneratedBuiltins.hs"
+             ,"_build/generated-hs/Burdock/Version.hs"]
+
+        let cabalBuildDir = "_build/cabal-sdist"
+        mkdirP cabalBuildDir
+        Stdout t <- cmd "sh cabal/makecabalsdist.sh"
+        case lines t of
+            [_,nm] -> liftIO $ do
+                --putStrLn $ "'''" ++ nm ++ "'''"
+                ver <- generateVersionString True
+                let nm' = "_build/burdock-" ++ ver <.> "tar.gz"
+                D.renameFile nm nm'
+                D.copyFile nm' out
+            _ -> error $ "didn't understand output of cabal sdist: " ++ t
+
+    withTargetDocs "build from release source" $ phony "release-build" $ do
+        need ["_build/burdock.tar.gz"]
+        mkdirP "_build/cabal-build"
+        cmd_ "sh cabal/buildfromcabaltarball.sh"
+        ver <- generateVersionString True
+        liftIO $ D.copyFile "_build/cabal-build/burdock" ("_build/burdock-release-" ++ ver)
+
 
     forM_ simplePhonies $ \(doc, nm, needage) ->
         withTargetDocs doc $ phony nm $ need needage

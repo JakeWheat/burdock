@@ -1,0 +1,73 @@
+cabal-version:      2.4
+name:               burdock
+version:            0.1
+
+-- A short (one-line) description of the package.
+-- synopsis:
+
+-- A longer description of the package.
+-- description:
+
+-- A URL where users can report bugs.
+-- bug-reports:
+
+-- The license under which the package is released.
+-- license:
+author:             Jake
+maintainer:         jakewheat@tutanota.com
+
+-- A copyright notice.
+-- copyright:
+-- category:
+extra-source-files:
+    LICENSE
+    README
+
+executable burdock
+    main-is:          BurdockExe.hs
+
+    -- Modules included in this executable, other than Main.
+    other-modules: Burdock.HsConcurrency
+                   Burdock.Interpreter
+                   Burdock.Parse
+                   Burdock.Pretty
+                   Burdock.Relational
+                   Burdock.Scientific
+                   Burdock.Syntax
+                   FFITypesTest
+                   PyWrap
+                   PythonFFI
+                   Burdock.GeneratedBuiltins
+                   Burdock.Version
+
+    -- LANGUAGE extensions used by modules in this package.
+    -- other-extensions:
+    build-depends:    base >=4 && < 5,
+                      safe-exceptions,
+                      exceptions,
+                      stm,
+                      time,
+                      async,
+                      scientific,
+                      megaparsec,
+                      prettyprinter,
+                      mtl,
+                      filepath,
+                      pretty-show,
+                      process,
+                      directory,
+                      Glob,
+                      haskeline,
+                      optparse-applicative,
+                      text,
+                      raw-strings-qq,
+                      
+    hs-source-dirs:   src/app,
+                      src/lib,
+                      packages/python-ffi/haskell-src,
+                      packages/ffitypes-test/haskell-src,
+                      generated-src
+                      
+    default-language: Haskell2010
+  pkgconfig-depends:   python3-embed
+  C-sources:           src/pywrap/pywrap-c.c
