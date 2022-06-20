@@ -82,32 +82,44 @@ main = do
                   ,"src/pywrap"
                   ,"packages/python-ffi/haskell-src"
                   ,"packages/ffitypes-test/haskell-src"
-                  ,"src/test/"]
+                  ,"src/test/"
+                  ,"_build/generated-hs/"
+                  ]
         userCCompileOptsLoad = "pkg-config python3-embed --cflags"
         userLinkOptsLoad = "pkg-config --libs python3-embed"
         pythonCFiles = ["src/pywrap/pywrap-c.c"]
         exes = [("build the Burdock interpreter"
                 ,"_build/burdock"
                 ,"src/app/BurdockExe.hs"
+                ,["_build/generated-hs/Burdock/GeneratedBuiltins.hs"]
                 ,pythonCFiles
                 ,"-threaded")
                ,("build the Burdock interpreter without threading (temporary for Python issues)"
                 ,"_build/burdock-unthreaded"
                 ,"src/app/BurdockExe.hs"
+                ,[]
                 ,pythonCFiles
                 ,"")                
                ,("build the Burdock tests"
                 ,"_build/burdock-tests"
                 ,"src/test/BurdockTests.hs"
+                ,[]
                 ,pythonCFiles
                 ,"-threaded")
                ,("build the Demo user FFI interpreter"
                 ,"_build/DemoFFI"
                 ,"src/examples/DemoFFI.hs"
                 ,[]
+                ,[]
+                ,"-threaded")
+               ,("build the Demo user FFI interpreter"
+                ,"_build/GenerateBuiltinsFile"
+                ,"src/build/GenerateBuiltinsFile.hs"
+                ,[]
+                ,[]
                 ,"-threaded")
                ]
-        allTargetExes = map (\(_,e,_,_,_) -> e) exes
+        allTargetExes = map (\(_,e,_,_,_,_) -> e) exes
         simplePhonies =
             [("build all the exes", "all", allTargetExes)
             ,("build all the exes, build the website, run the tests"
@@ -159,8 +171,9 @@ main = do
     let getAllObjsFromGhcDeps makefileDepsString =
             let deps = parseMakefileDeps makefileDepsString
             in nub $ sort $ map fst deps
-    let compileHaskellExe exeName mainSource cfiles additionalLinkOpts = do
+    let compileHaskellExe exeName mainSource generatedSources cfiles additionalLinkOpts = do
             need [mainPackageDB]
+            need generatedSources
             -- get all the haskell files needed for linking using the deps
             let depsFile = objsDir </> mainSource <.> "deps"
             need [depsFile]
@@ -181,8 +194,8 @@ main = do
 
     -- build rules
 
-    forM_ exes $ \(doc,outnm,hsmain,cfiles, linkOpts) ->
-        withTargetDocs doc $ outnm %> \out -> compileHaskellExe out hsmain cfiles linkOpts
+    forM_ exes $ \(doc,outnm,hsmain,generatedSources,cfiles, linkOpts) ->
+        withTargetDocs doc $ outnm %> \out -> compileHaskellExe out hsmain generatedSources cfiles linkOpts
 
     forM_ simplePhonies $ \(doc, nm, needage) ->
         withTargetDocs doc $ phony nm $ need needage
@@ -225,9 +238,26 @@ main = do
         void $ askOracle (Packages ())
         installPackageDB out directPackages
 
+    -- question: would this work better if generatedbuiltins.hs was
+    -- imported into this build file and used directly?
+    withTargetDocs "build generated built-ins" $
+        "_build/generated-hs/Burdock/GeneratedBuiltins.hs" %> \out -> do
+        fs <- getDirectoryFiles "" ["built-ins//*.bur"
+                                   ,"packages/python-ffi/bur//*.bur"
+                                   ,"packages/ffitypes-test/bur//*.bur"]
+        need ("_build/GenerateBuiltinsFile" : fs)
+        cmd_ "_build/GenerateBuiltinsFile " out fs
+ 
     withTargetDocs "auto haskell deps" $
         "_build//*.hs.deps" %> \out -> do
         need [mainPackageDB]
+        -- hack for the generated file
+        -- todo: find a way to do this more automatically and robustly
+        when (out `elem` ["_build/objs/src/app/BurdockExe.hs.deps"
+                         ,"_build/objs/src/examples/DemoFFI.hs.deps"
+                         ,"_build/objs/src/test/BurdockTests.hs.deps"
+                         ]) $
+             need ["_build/generated-hs/Burdock/GeneratedBuiltins.hs"]
         -- the dep file needs rebuilding if any of the .hs files it
         -- references have changed
         -- is this the right idiom for this?

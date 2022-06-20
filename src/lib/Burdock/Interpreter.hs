@@ -1,6 +1,7 @@
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE FlexibleContexts #-}
 module Burdock.Interpreter
     (TestResult(..)
     ,CheckBlockResult(..)
@@ -149,6 +150,7 @@ import System.FilePath
     ,takeFileName
     ,takeBaseName
     ,takeExtension
+    ,splitExtension
     ,(</>)
     ,(<.>)
     )
@@ -183,6 +185,8 @@ import System.Directory as D
 import qualified System.FilePath.Glob as Glob
 
 import System.Exit (exitSuccess, exitWith, ExitCode(ExitFailure))
+
+import qualified Burdock.GeneratedBuiltins
 
 
 --import Control.Monad.IO.Class
@@ -763,8 +767,9 @@ newBurdockHandle = do
     rs <- newTVarIO []
     h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs
     spawnWaitCast ch $ \th -> runInterp th False (Handle h) initBootstrapModule
-    ip <- getBuiltInModulePath "_internals"
-    spawnWaitCast ch $ \th -> runInterp th False (Handle h) $ loadAndRunModule False "_internals" ip
+    spawnWaitCast ch $ \th -> runInterp th False (Handle h) $ do
+        (internalsFn, internalsSrc) <- readImportSource (ImportName "_internals")
+        loadAndRunModuleSource False "_internals" internalsFn internalsSrc
     pure h
 
 newSourceHandle :: ThreadHandle -> TVar BurdockHandleState -> IO ThreadLocalState
@@ -1792,7 +1797,10 @@ bPrint _ = _errorWithCallStack $ "wrong number of args to print"
 -- load module at filepath
 bLoadModule :: [Value] -> Interpreter Value
 bLoadModule [TextV moduleName, TextV fn] = do
-    loadAndRunModule True moduleName fn
+    let is = ImportSpecial "file" [fn]
+    (fn',src) <- readImportSource is
+    _moduleName' <- moduleNameOf is
+    loadAndRunModuleSource True moduleName fn' src
     pure nothing
 bLoadModule _ = _errorWithCallStack $ "wrong args to load module"
 
@@ -2249,7 +2257,9 @@ bRunTestsWithOpts [opts] = do
     cbs <- concat <$>
         (forM testSrcs $ \testSrc -> runIsolated showProgressLog hideSuccesses $ do
             case testSrc of
-                Left fn -> loadAndRunModule True fn fn
+                Left fn -> do
+                    (fn',src) <- readImportSource (ImportSpecial "file" [fn])
+                    loadAndRunModuleSource True fn' fn' src
                 Right (fn, src) -> loadAndRunModuleSource True fn fn src
             takeTestResultsI)
     rs <- testResultsToB cbs
@@ -3228,8 +3238,7 @@ it's slightly annoying otherwise - maybe not annoying enough?
 -}
 
 interpStatement (Import is al) =  do
-    (modName,fn) <- resolveImportPath is
-    ensureModuleLoaded modName fn
+    modName <- ensureModuleLoaded is
     as <- aliasModule modName [ProvideAll]
     letIncludedValue al $ VariantV (bootstrapType "Record") "record" as
     pure nothing
@@ -3259,8 +3268,7 @@ include m == include from m: * end
 -}
 
 interpStatement (Include is) = do
-    (modName,fn) <- resolveImportPath is
-    ensureModuleLoaded modName fn
+    modName <- ensureModuleLoaded is
     ls <- aliasModule modName [ProvideAll]
     mapM_ (uncurry letIncludedValue) ls
     pure nothing
@@ -3474,51 +3482,60 @@ testPredSupport testPredName e0 e1 testPredCheck = do
             BoolV True -> pure True
             _ -> pure False
 
+------------------------------------------------------------------------------
 
+-- import handlers
+
+fileImportHandler :: [String] -> Interpreter (String,String)
+fileImportHandler [fn] = do
+    src <- liftIO $ readFile fn
+    pure (fn, src)
+fileImportHandler x = error $ "bad args to file import handler " ++ show x
+
+
+builtinsImportHandler :: [String] -> Interpreter (String,String)
+builtinsImportHandler [nm] =
+    let fn = -- hack for bundled package files
+            if '.' `elem` nm
+            then case splitExtension nm of
+                (p, ('.':nm')) -> "packages" </> p </> "bur" </> nm' <.> "bur"
+                _ -> error $ "bad import name: " ++ nm
+            else "built-ins" </> nm <.>"bur"
+    in case lookup fn Burdock.GeneratedBuiltins.builtins of
+        Nothing -> error $ "built in module not found: " ++ nm ++ "\n" ++ fn ++ "\n" ++ intercalate "\n" (map fst Burdock.GeneratedBuiltins.builtins)
+        Just src -> pure (fn, src)
+builtinsImportHandler x = error $ "bad args to built ins import handler " ++ show x
+
+-- todo: get rid of the module name concept, it's not real
+moduleNameOf :: ImportSource -> Interpreter String
+moduleNameOf (ImportName nm) = pure nm
+moduleNameOf (ImportSpecial "file" [nm]) = pure $ dropExtension $ takeFileName nm
+moduleNameOf x = error $ "import source not supported " ++ show x
+
+readImportSource :: ImportSource -> Interpreter (String,String)
+readImportSource is = case is of
+    ImportName nm -> builtinsImportHandler [nm]
+    ImportSpecial "file" [nm] -> fileImportHandler [nm]
+    _ -> error $ "unsupported import source: " ++ show is
 
 ------------------------------------------------------------------------------
 
 -- module loading support
 
-
-getBuiltInModulePath :: String -> IO FilePath
-getBuiltInModulePath nm =
-    -- later will need to use the cabal Paths_ thing and stuff
-    pure ("built-ins" </> nm <.> "bur")
-
--- check import sources for ambiguity
-resolveImportPath :: ImportSource -> Interpreter (String, FilePath)
-resolveImportPath is = do
-    case is of
-        ImportSpecial "file" [fn] ->
-            pure (dropExtension $ takeFileName fn, fn)
-        ImportSpecial {} -> _errorWithCallStack "unsupported import"
-        -- todo: set this path in a sensible and flexible way
-        ImportName nm -> do
-            let (p,nm') = break (=='.') nm
-            if nm' == ""
-                then (nm,) <$> liftIO (getBuiltInModulePath nm)
-                else do
-                    ps <- getPackages
-                    case lookup p ps of
-                        Nothing -> (nm,) <$> liftIO (getBuiltInModulePath nm)
-                        Just fn -> pure (nm,fn </> "bur" </> drop 1 nm' <.> "bur")
-  where
-    getPackages = do
-        st <- ask
-        hsLoadedPackages <$> (liftIO $ atomically $ readTVar (tlHandleState st))
-
-ensureModuleLoaded :: String -> FilePath -> Interpreter ()
-ensureModuleLoaded moduleName moduleFile = do
+ensureModuleLoaded :: ImportSource -> Interpreter String
+ensureModuleLoaded is = do
     modRec <- interp $ makeDotPathExpr ["_system", "modules"]
+    moduleName <- moduleNameOf is
     case modRec of
         VariantV tg "record" fs
             | tg == bootstrapType "Record"
             , moduleName `notElem` map fst fs -> do
                 --liftIO $ putStrLn $ "loading module: " ++ moduleFile
-                loadAndRunModule True moduleName moduleFile
+                (fn,src) <- readImportSource is
+                loadAndRunModuleSource True moduleName fn src
+                pure moduleName
             | tg == bootstrapType "Record"
-            , otherwise -> pure ()
+            , otherwise -> pure moduleName
         _ -> _errorWithCallStack $ "_system.modules is not a record??"
 
 -- bootstrap is a special built in module which carefully creates
@@ -3572,10 +3589,8 @@ runModule filename moduleName f =
                         <$> aliasSomething localModuleEnv allModuleEnv pis
         modifyAddModule filename moduleName moduleRecord
 
--- todo: replace the includeGlobals flag with use context
-loadAndRunModule :: Bool -> String -> FilePath -> Interpreter ()
-loadAndRunModule includeGlobals moduleName fn = spawnExtWaitI $ \_ -> do
-    src <- liftIO $ readFile fn
+loadAndRunModuleSource :: Bool -> String -> FilePath -> String -> Interpreter ()
+loadAndRunModuleSource includeGlobals moduleName fn src = spawnExtWaitI $ \_ -> do
     -- auto include globals, revisit when use context added
     let incG = if includeGlobals && moduleName /= "globals"
                then (Include (ImportName "globals") :)
@@ -3584,17 +3599,6 @@ loadAndRunModule includeGlobals moduleName fn = spawnExtWaitI $ \_ -> do
             then parseLiterateScript
             else parseScript
     Script ast' <- either error id <$> useSource (Just fn) moduleName src p
-    let ast = incG ast'
-    -- todo: track generated unique names better?
-    runModule fn moduleName $ void $ interpStatements ast
-
-loadAndRunModuleSource :: Bool -> String -> FilePath -> String -> Interpreter ()
-loadAndRunModuleSource includeGlobals moduleName fn src = spawnExtWaitI $ \_ -> do
-    -- auto include globals, revisit when use context added
-    let incG = if includeGlobals && moduleName /= "globals"
-               then (Include (ImportName "globals") :)
-               else id
-    Script ast' <- either error id <$> useSource (Just fn) moduleName src parseScript
     let ast = incG ast'
     -- todo: track generated unique names better?
     runModule fn moduleName $ void $ interpStatements ast
