@@ -1,5 +1,5 @@
 cd "_build/cabal-sdist"
-cp ../../misc-build/burdock.cabal .
+cp ../../src/misc-build/burdock.cabal .
 rm -f LICENSE
 ln -s ../../LICENSE .
 rm -f README

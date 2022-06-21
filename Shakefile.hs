@@ -197,7 +197,7 @@ main = do
 
     let generateVersionString full = do
             -- read the base version file
-            v <- liftIO $ readFile "misc-build/version"
+            v <- liftIO $ readFile "src/misc-build/version"
             if not full
                 then pure v
                 else do
@@ -227,13 +227,13 @@ main = do
         fs <- getDirectoryFiles "" ["src//*.c", "src//*.hs", "src/packages//*.hs"]
         
         -- add generated files
-        need $ ["LICENSE", "README", "misc-build/burdock.cabal"] ++ fs
+        need $ ["LICENSE", "README", "src/misc-build/burdock.cabal"] ++ fs
           ++ ["_build/generated-hs/Burdock/GeneratedBuiltins.hs"
              ,"_build/generated-hs/Burdock/Version.hs"]
 
         let cabalBuildDir = "_build/cabal-sdist"
         mkdirP cabalBuildDir
-        Stdout t <- cmd "sh misc-build/makecabalsdist.sh"
+        Stdout t <- cmd "sh src/misc-build/makecabalsdist.sh"
         case lines t of
             [_,nm] -> liftIO $ do
                 --putStrLn $ "'''" ++ nm ++ "'''"
@@ -247,7 +247,7 @@ main = do
     withTargetDocs "build from release source" $ phony "release-build" $ do
         need ["_build/burdock.tar.gz"]
         mkdirP "_build/cabal-build"
-        cmd_ "sh misc-build/buildfromcabaltarball.sh"
+        cmd_ "sh src/misc-build/buildfromcabaltarball.sh"
         ver <- generateVersionString True
         liftIO $ D.copyFile "_build/cabal-build/burdock" ("_build/burdock-release-" ++ ver)
 

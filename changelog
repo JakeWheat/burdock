@@ -1,6 +1,6 @@
 ## Week 24 26th June
 
-- add version number
+- add version number with manual component and automatic git hash
 - bundle built in modules so the exe is standalone
 - create poc release build
 
