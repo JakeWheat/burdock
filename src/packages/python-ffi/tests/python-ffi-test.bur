@@ -5,7 +5,7 @@
 
 |#
 
-use package "packages/python-ffi"
+use package "src/packages/python-ffi"
 
 include python-ffi.python
 

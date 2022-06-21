@@ -1,7 +1,0 @@
-import file("burdock-test-src/trivial-var-module.bur") as M
-
-check:
-  M.a is 1
-  M.a := 4
-  M.a is 4
-end

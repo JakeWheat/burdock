@@ -188,8 +188,8 @@ doRepl = bracket B.newHandle B.closeHandle $ \h -> do
 
 addPackages :: B.Handle -> IO ()
 addPackages h = do
-    B.addFFIPackage h "packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
-    B.addFFIPackage h "packages/python-ffi" PythonFFI.pythonFFIPackage
+    B.addFFIPackage h "src/packages/ffitypes-test" FFITypesTest.ffiTypesFFIPackage
+    B.addFFIPackage h "src/packages/python-ffi" PythonFFI.pythonFFIPackage
 
 ------------------------------------------------------------------------------
 

@@ -8,7 +8,7 @@ then use the python sqlite lib to insert it into sql
 
 |#
 
-use package "packages/python-ffi"
+use package "src/packages/python-ffi"
 
 include python-ffi.python
 

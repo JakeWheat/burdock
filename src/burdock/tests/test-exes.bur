@@ -48,7 +48,7 @@ check:
   fun do-repl-test(ls):
     ls1 = map(lam(x): '("' + x.{0} + '","' + x.{1} + '")' end, ls)
     ls2 = "[" + intercalate(",", ls1) + "]"
-    call-process("test-support/test-repl.py", [list:ls2])
+    call-process("src/python/test-repl.py", [list:ls2])
   end
   # todo: definitely need a dsl syntax
   #do-repl-test([list:{"1 + 2"; "3"}]) is nothing

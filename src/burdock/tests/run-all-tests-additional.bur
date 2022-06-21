@@ -1,16 +1,5 @@
 
-#|
-
-read all bur and rst files in built-ins
-burdock test src except this one
-docs
-examples
-packages/ffitypes-test
-website2
-
-|#
-
-import _internals as _internals
+# test the ffi example, plus temporarily the python until the concurrency is fixed
 
 include filesystem
 import from lists:
@@ -25,13 +14,9 @@ fun my-ld(dir):
   glob(dir + "**/*.bur") + glob(dir + "**/*.rst")
 end
 
-srcs = (my-ld("built-ins")
-       ^ filter(not-elem(_,[list:"./built-ins/_internals.bur", "./built-ins/globals.bur"]), _))
-       + (my-ld("burdock-test-src")
-       ^ filter(not-elem(_,[list:"./burdock-test-src/run-all-tests.bur",
-                            "./burdock-test-src/run-all-tests-additional.bur"]), _))
-       + my-ld("docs")
-       + my-ld("website2")
+srcs = [list: "examples/load-csv-python.bur"]
+       + my-ld("src/packages/ffitypes-test")
+       + my-ld("src/packages/python-ffi")
 
 
 ts = run-tests-with-opts(default-test-opts.{test-sources:map(file-test(_), srcs),

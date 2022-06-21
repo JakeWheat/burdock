@@ -1,5 +1,5 @@
 
-use package "packages/ffitypes-test"
+use package "src/packages/ffitypes-test"
 
 include ffitypes-test.ffitypes-test
 

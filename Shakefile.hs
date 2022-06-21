@@ -85,8 +85,8 @@ main = do
         userGhcOpts = "-v0 -hide-all-packages -package-env " ++ mainPackageDB
         srcDirs = ["src/lib"
                   ,"src/pywrap"
-                  ,"packages/python-ffi/haskell-src"
-                  ,"packages/ffitypes-test/haskell-src"
+                  ,"src/packages/python-ffi/haskell-src"
+                  ,"src/packages/ffitypes-test/haskell-src"
                   ,"src/test/"
                   ,"_build/generated-hs/"
                   ]
@@ -106,7 +106,7 @@ main = do
                 ,pythonCFiles
                 ,"")                
                ,("build the Burdock tests"
-                ,"_build/burdock-tests"
+                ,"_build/burdock-hunit-tests"
                 ,"src/test/BurdockTests.hs"
                 ,[]
                 ,pythonCFiles
@@ -224,7 +224,7 @@ main = do
 
     withTargetDocs "create release tarball" $
         "_build/burdock.tar.gz" %> \out -> do
-        fs <- getDirectoryFiles "" ["src//*.c", "src//*.hs", "packages//*.hs"]
+        fs <- getDirectoryFiles "" ["src//*.c", "src//*.hs", "src/packages//*.hs"]
         
         -- add generated files
         need $ ["LICENSE", "README", "cabal/burdock.cabal"] ++ fs
@@ -255,17 +255,17 @@ main = do
         withTargetDocs doc $ phony nm $ need needage
 
     withTargetDocs "run the tests" $ phony "test-all" $ do
-        need ["_build/burdock-tests"
+        need ["_build/burdock-hunit-tests"
              ,"_build/burdock"
              -- temporary hack while python is incompatible threads
              ,"_build/burdock-unthreaded"]
-        cmd_ "_build/burdock-tests --color never --ansi-tricks false --hide-successes"
-        cmd_  "_build/burdock-unthreaded burdock-test-src/run-all-tests-additional.bur"
-        cmd_  "_build/burdock burdock-test-src/run-all-tests.bur"
+        cmd_ "_build/burdock-hunit-tests --color never --ansi-tricks false --hide-successes"
+        cmd_  "_build/burdock-unthreaded src/burdock/tests/run-all-tests-additional.bur"
+        cmd_  "_build/burdock src/burdock/tests/run-all-tests.bur"
 
     withTargetDocs "run the tests" $ phony "test" $ do
         need ["_build/burdock"]
-        cmd_  "_build/burdock burdock-test-src/run-all-tests.bur"
+        cmd_  "_build/burdock src/burdock/tests/run-all-tests.bur"
 
     withTargetDocs "build the website" $ phony "website" $ do
         mkdirP "_build/website"
@@ -296,9 +296,9 @@ main = do
     -- imported into this build file and used directly?
     withTargetDocs "build generated built-ins" $
         "_build/generated-hs/Burdock/GeneratedBuiltins.hs" %> \out -> do
-        fs <- getDirectoryFiles "" ["built-ins//*.bur"
-                                   ,"packages/python-ffi/bur//*.bur"
-                                   ,"packages/ffitypes-test/bur//*.bur"]
+        fs <- getDirectoryFiles "" ["src/burdock/built-ins//*.bur"
+                                   ,"src/packages/python-ffi/bur//*.bur"
+                                   ,"src/packages/ffitypes-test/bur//*.bur"]
         need ("_build/GenerateBuiltinsFile" : fs)
         cmd_ "_build/GenerateBuiltinsFile " out fs
 

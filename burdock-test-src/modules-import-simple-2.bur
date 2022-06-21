@@ -1,4 +1,0 @@
-import file("burdock-test-src/trivial-two.bur") as X
-check:
-  X.a is 5
-end

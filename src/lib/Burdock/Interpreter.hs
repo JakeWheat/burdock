@@ -3506,9 +3506,9 @@ builtinsImportHandler [nm] =
     let fn = -- hack for bundled package files
             if '.' `elem` nm
             then case splitExtension nm of
-                (p, ('.':nm')) -> "packages" </> p </> "bur" </> nm' <.> "bur"
+                (p, ('.':nm')) -> "src/packages" </> p </> "bur" </> nm' <.> "bur"
                 _ -> error $ "bad import name: " ++ nm
-            else "built-ins" </> nm <.>"bur"
+            else "src/burdock/built-ins" </> nm <.>"bur"
     in case lookup fn Burdock.GeneratedBuiltins.builtins of
         Nothing -> error $ "built in module not found: " ++ nm ++ "\n" ++ fn ++ "\n" ++ intercalate "\n" (map fst Burdock.GeneratedBuiltins.builtins)
         Just src -> pure (fn, src)

@@ -64,8 +64,8 @@ executable burdock
                       
     hs-source-dirs:   src/app,
                       src/lib,
-                      packages/python-ffi/haskell-src,
-                      packages/ffitypes-test/haskell-src,
+                      src/packages/python-ffi/haskell-src,
+                      src/packages/ffitypes-test/haskell-src,
                       generated-src
                       
     default-language: Haskell2010

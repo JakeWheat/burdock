@@ -6,8 +6,6 @@ rm -f README
 ln -s ../../README .
 rm -f src
 ln -s ../../src .
-rm -f packages
-ln -s ../../packages .
 mkdir -p generated-src/Burdock
 (cd generated-src/Burdock;
  rm -f GeneratedBuiltins.hs
