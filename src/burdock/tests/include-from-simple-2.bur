@@ -1,4 +1,4 @@
-import file("src/burdock/tests/trivial-one.bur") as X
+import file("trivial-one.bur") as X
 include from X:
   a
 end

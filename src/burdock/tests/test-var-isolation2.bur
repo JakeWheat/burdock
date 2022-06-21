@@ -1,4 +1,4 @@
-import file("src/burdock/tests/trivial-var-module.bur") as M
+import file("trivial-var-module.bur") as M
 
 check:
   M.a is 1

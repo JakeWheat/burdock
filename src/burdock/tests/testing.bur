@@ -6,12 +6,12 @@ import from _internals:
 end
 
 # check run-test isolation
-import file("src/burdock/tests/trivial-var-module.bur") as M
+import file("trivial-var-module.bur") as M
 
 check:
   run-tests("src/burdock/tests/demo-test.bur")
     is [list:
-        module-check-results("src/burdock/tests/demo-test.bur",
+        module-check-results("./src/burdock/tests/demo-test.bur",
         [list:
          check-results("check-block-0",
                       ([list: test-pass("1 + 2 is 3")]))])]
@@ -44,14 +44,14 @@ check:
 
     run-tests("src/burdock/tests/imported-tests.bur")
       is [list:
-          module-check-results("src/burdock/tests/four-tests.bur",
+          module-check-results("./src/burdock/tests/four-tests.bur",
           [list:
            check-results("check-block-0",
                         ([list: test-pass("1 is 1"), test-pass("2 is 2")])),
            check-results("check-block-1",
                         ([list: test-pass("3 is 3"), test-pass("4 is 4")]))
            ]),
-          module-check-results("src/burdock/tests/imported-tests.bur",
+          module-check-results("./src/burdock/tests/imported-tests.bur",
           [list:
            check-results("check-block-0",
                         ([list: test-pass("1 + 2 is 3")]))])]
@@ -62,8 +62,8 @@ check "format-test-results":
 
   format-test-results(run-tests("src/burdock/tests/imported-tests.bur"), false)
     is 
-```Module: src/burdock/tests/four-tests.bur
-----------------------------------------
+```Module: ./src/burdock/tests/four-tests.bur
+------------------------------------------
 Check block: check-block-0
   test (1 is 1): OK
   test (2 is 2): OK
@@ -73,14 +73,14 @@ Check block: check-block-1
   test (3 is 3): OK
   test (4 is 4): OK
   2/2 tests passed in check block: check-block-1
-4/4 tests passed in module: src/burdock/tests/four-tests.bur
+4/4 tests passed in module: ./src/burdock/tests/four-tests.bur
 
-Module: src/burdock/tests/imported-tests.bur
---------------------------------------------
+Module: ./src/burdock/tests/imported-tests.bur
+----------------------------------------------
 Check block: check-block-0
   test (1 + 2 is 3): OK
   1/1 tests passed in check block: check-block-0
-1/1 tests passed in module: src/burdock/tests/imported-tests.bur
+1/1 tests passed in module: ./src/burdock/tests/imported-tests.bur
 5/5 tests passed in all modules```
 
   format-test-results(run-tests-string("xx", ```

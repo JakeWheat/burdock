@@ -151,6 +151,7 @@ import System.FilePath
     ,takeBaseName
     ,takeExtension
     ,splitExtension
+    ,takeDirectory
     ,(</>)
     ,(<.>)
     )
@@ -777,7 +778,7 @@ newBurdockHandle = do
 newSourceHandle :: ThreadHandle -> TVar BurdockHandleState -> IO ThreadLocalState
 newSourceHandle th bs =
     ThreadLocalState bs
-        <$> newIORef (ModuleState "unknown" "unknown") -- todo: generate unique names
+        <$> newIORef (ModuleState "unknown" "") -- todo: generate unique names
         <*> pure th
         <*> newIORef []
         <*> pure []
@@ -3496,8 +3497,11 @@ testPredSupport testPredName e0 e1 testPredCheck = do
 
 fileImportHandler :: [String] -> Interpreter (String,String)
 fileImportHandler [fn] = do
-    src <- liftIO $ readFile fn
-    pure (fn, src)
+    cm <- msModuleSourcePath <$> (liftIO . readIORef =<< (tlModuleState <$> ask))
+    --liftIO $ putStrLn $ "loading " ++ fn ++ " from " ++ cm
+    let fn1 = takeDirectory cm </> fn
+    src <- liftIO $ readFile fn1
+    pure (fn1, src)
 fileImportHandler x = error $ "bad args to file import handler " ++ show x
 
 

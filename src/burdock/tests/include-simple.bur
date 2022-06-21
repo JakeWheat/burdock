@@ -1,4 +1,4 @@
-include file("src/burdock/tests/trivial-one.bur")
+include file("trivial-one.bur")
 check:
   a is 5
 end
