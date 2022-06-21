@@ -83,43 +83,43 @@ main = do
 
     let objsDir = "_build/objs"
         userGhcOpts = "-v0 -hide-all-packages -package-env " ++ mainPackageDB
-        srcDirs = ["src/lib"
-                  ,"src/pywrap"
+        srcDirs = ["src/haskell/lib"
+                  ,"src/haskell/pywrap"
                   ,"src/packages/python-ffi/haskell-src"
                   ,"src/packages/ffitypes-test/haskell-src"
-                  ,"src/test/"
+                  ,"src/haskell/test/"
                   ,"_build/generated-hs/"
                   ]
         userCCompileOptsLoad = "pkg-config python3-embed --cflags"
         userLinkOptsLoad = "pkg-config --libs python3-embed"
-        pythonCFiles = ["src/pywrap/pywrap-c.c"]
+        pythonCFiles = ["src/haskell/pywrap/pywrap-c.c"]
         exes = [("build the Burdock interpreter"
                 ,"_build/burdock"
-                ,"src/app/BurdockExe.hs"
+                ,"src/haskell/app/BurdockExe.hs"
                 ,["_build/generated-hs/Burdock/GeneratedBuiltins.hs"]
                 ,pythonCFiles
                 ,"-threaded")
                ,("build the Burdock interpreter without threading (temporary for Python issues)"
                 ,"_build/burdock-unthreaded"
-                ,"src/app/BurdockExe.hs"
+                ,"src/haskell/app/BurdockExe.hs"
                 ,[]
                 ,pythonCFiles
                 ,"")                
                ,("build the Burdock tests"
                 ,"_build/burdock-hunit-tests"
-                ,"src/test/BurdockTests.hs"
+                ,"src/haskell/test/BurdockTests.hs"
                 ,[]
                 ,pythonCFiles
                 ,"-threaded")
                ,("build the Demo user FFI interpreter"
                 ,"_build/DemoFFI"
-                ,"src/examples/DemoFFI.hs"
+                ,"src/haskell/examples/DemoFFI.hs"
                 ,[]
                 ,[]
                 ,"-threaded")
                ,("build the Demo user FFI interpreter"
                 ,"_build/GenerateBuiltinsFile"
-                ,"src/build/GenerateBuiltinsFile.hs"
+                ,"src/haskell/build/GenerateBuiltinsFile.hs"
                 ,[]
                 ,[]
                 ,"-threaded")
@@ -285,7 +285,7 @@ main = do
 
     withTargetDocs "clean everything that any of the targets creates"
         $ phony "clean" $ do
-        liftIO $ removeFiles "." ["_build", "dist-newstyle", "src/pywrap/dist-newstyle"]
+        liftIO $ removeFiles "." ["_build", "dist-newstyle", "src/haskell/pywrap/dist-newstyle"]
 
     withTargetDocs "build the cabal package db for the haskell code"
         $ mainPackageDB %> \out -> do
@@ -312,9 +312,9 @@ main = do
         need [mainPackageDB]
         -- hack for the generated file
         -- todo: find a way to do this more automatically and robustly
-        when (out `elem` ["_build/objs/src/app/BurdockExe.hs.deps"
-                         ,"_build/objs/src/examples/DemoFFI.hs.deps"
-                         ,"_build/objs/src/test/BurdockTests.hs.deps"
+        when (out `elem` ["_build/objs/src/haskell/app/BurdockExe.hs.deps"
+                         ,"_build/objs/src/haskell/examples/DemoFFI.hs.deps"
+                         ,"_build/objs/src/haskell/test/BurdockTests.hs.deps"
                          ]) $
              need ["_build/generated-hs/Burdock/GeneratedBuiltins.hs"
                   ,"_build/generated-hs/Burdock/Version.hs"]
