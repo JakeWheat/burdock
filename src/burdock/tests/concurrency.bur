@@ -1,335 +1,47 @@
-
 include concurrency
-include option
+import concurrency-internals as ci
 include either
-
 import from _internals:
-  haskell-error,
-  haskell-undefined
+  haskell-error
 end
 
-# utils for the testing
-# perhaps these should be in the standard lib?
+check "exit value of thread":
 
-fun receive-any():
-  receive: | _ as zz => zz end
-end
-
-fun wait-ref(mref):
-  receive:
-    | monitor-down(_tg,et,v,mr) when mr == mref =>
-        cases et:
-          | exit-value => {exit-value;v}
-            # don't return the callstack, just the exception value
-          | exit-exception => {exit-exception; v.{0}}
-        end
+  fun f():
+    {exit:123}
   end
+
+  h = spawn(f)
+
+  wait(h) is {exit:123}
+
+  h1 = spawn(f)
+
+  wait-either(h1) is right({exit:123})
+
 end
 
-fun wait-ref-regular-exit(val):
-  val.{0} == exit-value
-end
+check "error exit value of thread":
 
-check "wait-ref":
-  x = spawn-monitor(lam(): "myret" end)
-  wait-ref(x.{1}) is {exit-value;"myret"}
-
-  x1 = spawn-monitor(lam(): raise("myretexc") end)
-  wait-ref(x1.{1}) is {exit-exception;"myretexc"}
-end
-# demonstrate a check block inside a spawned thread
-# needs some design thought?
-
-r11 = spawn-monitor(lam():
-    check "check block in spawn":
-      1 is 1
-    end end)
-
-check "check block in spawn exit":
-  wait-ref(r11.{1}) satisfies wait-ref-regular-exit
-end
-
-# spawn inside a check block - straightforward design
-
-check "spawn in check block":
-  r22 = spawn-monitor(lam():
-        1 is 1
-      end)
-  wait-ref(r22.{1}) satisfies wait-ref-regular-exit
-end
-
-# the check block in spawn and spawn in check block need better
-# testing than this -> assert the results include the expected test
-# predicates
-
-# quick hack to run tests in a new thread, so the inbox isn't shared
-# between tests - one test messing up won't affect others
-# it makes sure to wait until the thread has finished and checks the
-# thread didn't exit with an exception (this check isn't quite bullet
-# proof yet)
-
-fun run-tests-in-thread(f):
-  ar = spawn-monitor(f)
-  wait-ref(ar.{1}) satisfies wait-ref-regular-exit
-end
-
-fun receive-all-inbox():
-  receive:
-    | _ as zz=> link(zz, receive-all-inbox())
-    | after 0 => empty
+  fun f():
+    raise({exit:123})
   end
+
+  # use no link, because if a linked spawned thread (the default)
+  # exits with error, it asynchronously exits the thread that spawned it
+  h = spawn-nolink(f)
+
+  wait-either(h) is left({exit:123})
+
+  fun shadow f():
+    haskell-error("a haskell exception")
+  end
+
+  shadow h = spawn-nolink(f)
+
+  r = wait-either(h)
+  is-left(r) is true
+  string-index-of(r.v, "a haskell exception") is-not -1
+
 end
 
-check "receive-all-inbox":
-  run-tests-in-thread(lam():
-    send(self,1)
-    send(self,2)
-    receive-all-inbox() is [list: 1,2]
-    receive-all-inbox() is [list: ]
-  end)
-end
-
-#######################################
-
-data Msg: msg(ret,val) end
-
-check "trivial send and receive":
-  run-tests-in-thread(lam():
-    pid = spawn(lam():
-        x = receive-any()
-        send(x.ret, "hello " + x.val)
-      end)
-    send(pid, {ret:self, val:"world"})
-    receive-any() is "hello world"
-  end)
-end
-
-check "receive pattern matching":
-  run-tests-in-thread(lam():
-    pid = spawn(lam():
-          receive:
-            | msg(ret,val) =>
-                send(ret, msg(self,"hello " + val))
-          end
-        end)
-    send(pid, msg(self,"world"))
-    x = receive: | msg(_,a) => a end
-    x is "hello world"
-  end)
-end
-
-check "trivial selective receive":
-  run-tests-in-thread(lam():
-    # alias self so can use it from the closure of the spawned thread
-    outer-self = self
-    pid = spawn(lam():
-            send(outer-self, left("skip1"))
-            send(outer-self, left("skip2a"))
-            send(outer-self, right("got it"))
-          end)
-    receive:
-      | right(x) => x
-    end is "got it"
-    receive-all-inbox() is [list: left("skip1"), left("skip2a")]
-  end)
-end
-
-check "nested receive":
-  run-tests-in-thread(lam():
-    outer-self = self
-    shadow x = spawn-monitor(lam():
-          send(outer-self, left("skip1"))
-          send(outer-self, left("skip2b"))
-        end)
-    wait-ref(x.{1}) satisfies wait-ref-regular-exit
-    receive:
-      | _ as z0 =>
-        receive:
-          | _ as z1 => [list: z0,z1]
-        end
-    end is [list: left("skip1") , left("skip2b")]
-    shadow x = spawn-monitor(lam():
-          send(outer-self, left("skip1x"))
-          send(outer-self, left("skip2c"))
-        end)
-    wait-ref(x.{1}) satisfies wait-ref-regular-exit
-    receive-all-inbox() is [list: left("skip1x") , left("skip2c")]
-  end)
-end
-
-# test?:
-# spawn 1
-# spawn 2
-# spawn: tell 2 to exit
-#   then tell 1 to exit - race possibility?
-# wait-ref on 1
-# wait-ref on 2
-
-check "a trivial select receive":
-  run-tests-in-thread(lam():
-    pid = spawn(lam():
-            ret = receive-any()
-            send(ret, msg(self,2))
-            send(ret, msg(self,3))
-            send(ret, msg(self,4))
-          end)
-    send(pid, self)
-    receive:
-      | msg(ret,v) when v == 3 => 3
-    end is 3
-    x1 = receive-any()
-    x2 = receive-any()
-    x1.val is 2
-    x2.val is 4
-  end)
-end
-
-
-check "receive timeout":
-  run-tests-in-thread(lam():
-    # timeout 0 with nothing in the queue
-    shadow x = receive:
-        | msg(ret,val) => some(val)
-        | after 0 => none
-      end
-    x is none
-    # timeout 0 with something in the queue
-    send(self, msg(self,"stuff"))
-    shadow x = receive:
-        | msg(ret,val) => some(val)
-        | after 0 => none
-      end
-    x is some("stuff")
-    #todo:
-    # timeout 1 with nothing in the queue
-    # timeout 1 with something posted to the queue after 0.1
-  end)
-end
-
-
-# todo:
-
-# timeout 1 with non matching in queue, non matching posted after 0.1
-# then matching posted after another 0.1
-
-# explicit infinity timeout
-# duplicate the implicit infinity timeout test above
-
-# spawn-monitor: exit val, exit exception
-
-check "spawn-monitor":
-  run-tests-in-thread(lam():
-    admr = spawn-monitor(lam(): msg(self,"result") end)
-    receive:
-      | monitor-down(tg,et,v,mr) =>
-          v.val is "result"
-          tg is nothing
-          et is exit-value
-         mr is admr.{1}
-    end
-  end)
-end
-
-
-check "spawn-monitor-exception":
-  run-tests-in-thread(lam():
-    x = spawn-monitor(lam(): raise(msg(self,"errorthing")) end)
-    receive:
-      | monitor-down(tg,et,v,mr) =>
-          v.{0}.val is "errorthing"
-          # v.{1} is a callstack
-          tg is nothing
-          et is exit-exception
-          mr is x.{1}
-    end
-  end)
-end
-
-
-# TODO check the callstack when it's an exception
-# come back to this when write anomaly and error tests which check the
-# call stack in detail
-
-check "spawn-monitor-tag":
-  run-tests-in-thread(lam():
-    admr = spawn-monitor-tag({a:1,b:true}, lam(): msg(self,"result") end)
-    receive:
-      | monitor-down(tg,et,v,mr) =>
-          v.val is "result"
-          tg is {a:1,b:true}
-          et is exit-value
-          mr is admr.{1}
-    end
-    x = spawn-monitor-tag({a:2,b:false},
-                          lam(): raise(msg(self,"errorthing")) end)
-    receive:
-      | monitor-down(tg,et,v,mr) =>
-          v.{0}.val is "errorthing"
-          # v.{1} is a callstack
-          tg is {a:2,b:false}
-          et is exit-exception
-          mr is x.{1}
-    end
-  end)
-end
-
-check "spawn-monitor-haskell-stuff":
-  run-tests-in-thread(lam():
-    admr = spawn-monitor(lam(): haskell-error("check this message gets through") end)
-    receive:
-      | monitor-down(tg,et,v,mr) =>
-          v satisfies lam(x): string-index-of(x, "check this message gets through") > -1 end
-          tg is nothing
-          et is exit-exception
-          mr is admr.{1}
-    end
-    admr2 = spawn-monitor(lam(): haskell-undefined() end)
-    receive:
-      | monitor-down(tg,et,v,mr) =>
-          v satisfies lam(x): string-index-of(x, "Prelude.undefined") > -1 end
-          tg is nothing
-          et is exit-exception
-          mr is admr2.{1}
-    end
-  end)
-end
-
-check "async exit":
-  run-tests-in-thread(lam():
-    waiter = spawn-monitor(lam():
-        _ = receive:
-              | _ => nothing
-            end
-      end)
-    # todo: bug
-    # intermittent test failures, the bug is due to a race condition
-    # the async-exit executes before the spawned thread is running
-    # so you get an error from the ghc thread system 'thread not found'
-    # this bug appears if you remove the sleep call
-    sleep(0.01)
-    async-exit(waiter.{0}, "on yer bike")
-
-    # todo: spawn-monitor should return a record instead of a tuple?
-    # todo: should the monitor down distinguish between async and
-    # non async exceptions?
-    receive:
-      | monitor-down(tg,et,v,mr) =>
-          v is "on yer bike"
-          # todo: how to get a callstack for this?
-          # need to maintain the callstack differently?
-          # i.e. not using ReaderT::local
-          # v.{0} is "on yer bike"
-          # v.{1} is a callstack
-          tg is nothing
-          et is exit-exception
-          mr is waiter.{1}
-    end
-  end)
-end
-
-# todo: add support for non local exit from a thread
-# with arbitrary value
-# it will raise an exception internally
-# the system knows to produce the monitor-down with
-# exit-value instead of exit-exception when it sees this
-# particular exception

@@ -148,24 +148,5 @@ fun set-auto-run-tests(b):
   auto-run-tests := b
 end
 
-data ExitType:
-  | exit-value
-  | exit-exception
-end
-
-data MonitorRef:
-    monitor-ref(a,b)
-end
-
-data MonitorDown<a,b>:
-    monitor-down(tag :: a, exit-type :: ExitType, v :: b, mref :: MonitorRef)
-end
-
-# todo: do these need to be here? or can they just be in the concurrency module
-spawn = ffi-function("spawn")
-spawn-monitor = ffi-function("spawn-monitor")
-spawn-monitor-tag = ffi-function("spawn-monitor-tag")
-self = ffi-function("self")
 sleep = ffi-function("sleep")
-send = ffi-function("send")
-async-exit = ffi-function("async-exit")
+

@@ -5,7 +5,6 @@ import Burdock.TestData
 import Burdock.Parse
 import Burdock.Pretty
 import Burdock.Interpreter
-import qualified Burdock.HsConcurrencyTests as HsConcurrencyTests
 
 import qualified PyWrapTests
 
@@ -28,7 +27,6 @@ main = do
     pts <- PyWrapTests.tests
     at <- makeTests testdata
     T.defaultMain $ T.testGroup "group" [at
-                                        ,HsConcurrencyTests.tests
                                         ,pts]
                   
 

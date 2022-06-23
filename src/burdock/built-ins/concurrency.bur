@@ -1,17 +1,15 @@
 
 provide:
-  self,
   spawn,
-  spawn-monitor,
-  spawn-monitor-tag,
-  send,
-  async-exit,
-
-  data Infinity,
-  data ExitType,
-  data MonitorRef,
-  data MonitorDown
-  
+  spawn-nolink,
+  wait,
+  wait-either
 end
 
 include _internals
+
+spawn = ffi-function("spawn")
+spawn-nolink = ffi-function("spawn-nolink")
+wait = ffi-function("wait")
+wait-either = ffi-function("wait-either")
+

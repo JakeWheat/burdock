@@ -32,6 +32,7 @@ srcs = (my-ld("src/burdock/built-ins")
                             "./src/burdock/tests/run-all-tests-additional.bur"]), _))
        + my-ld("docs")
        + my-ld("website2")
+#shadow srcs = [list: "src/burdock/tests/testing.bur"]
 
 
 ts = run-tests-with-opts(default-test-opts.{test-sources:map(file-test(_), srcs),

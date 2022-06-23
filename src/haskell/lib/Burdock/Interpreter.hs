@@ -58,7 +58,7 @@ module Burdock.Interpreter
 import Control.Concurrent
     (setNumCapabilities
     ,threadDelay
-    --,myThreadId
+    ,myThreadId
     )
 
 import qualified System.Environment as E
@@ -94,7 +94,10 @@ import Data.IORef (IORef
                   ,modifyIORef
                   ,writeIORef)
 
-import Data.Maybe (catMaybes, isJust, fromJust)
+import Data.Maybe (catMaybes
+                  ,isJust
+                  --,fromJust
+                  )
 import Text.Read (readMaybe)
 
 import Burdock.Scientific
@@ -103,26 +106,8 @@ import Burdock.Pretty
 import Burdock.Parse (parseScript, parseLiterateScript, parseExpr)
 import qualified Burdock.Relational as R
 
-import Burdock.HsConcurrency
-    (openBConcurrency
-    ,closeBConcurrency
-    ,BConcurrencyHandle
-    ,ThreadHandle
-    ,Addr
-
-    ,spawnExtWait
-    ,spawn
-    ,spawnMonitor
-    ,addr
-    ,send
-    ,zreceive
-    ,zreceiveTimeout
-    ,asyncExit
-
-    ,MonitorDown(..)
-    ,ExitType(..)
-    ,MonitorRef(..)
-    )
+import qualified Burdock.HsConcurrency as HC
+import qualified Control.Concurrent.Async as A
 
 import Control.Exception.Safe (catch
                               ,SomeException
@@ -130,6 +115,7 @@ import Control.Exception.Safe (catch
                               ,throwM
                               ,catchAny
                               ,fromException
+                              ,try
                               )
 
 import qualified Prettyprinter as P
@@ -207,8 +193,7 @@ newHandle = do
     pure $ Handle x
 
 closeHandle :: Handle -> IO ()
-closeHandle (Handle h) =
-    closeBConcurrency . hsConcurrencyHandle =<< atomically (readTVar h)
+closeHandle (Handle _) = pure ()
 
 runScript :: Handle
           -> Maybe FilePath
@@ -231,14 +216,15 @@ runScript' :: Bool
           -> String
           -> IO Value
 runScript' lit h mfn lenv src =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ do
+    runInterp True h $ do
         Script ast <- either error id
             <$> useSource mfn (maybe "runScript" id mfn) src
             (if lit then parseLiterateScript else parseScript)
-        -- todo: how to make this local to this call only
-        forM_ lenv $ \(n,v) -> letValue' Shadow n v
-        ret <- interpStatements ast
-        pure ret
+        localModule (maybe "runScript" id mfn) mfn $ do
+            -- todo: how to make this local to this call only
+            forM_ lenv $ \(n,v) -> letValue' Shadow n v
+            ret <- interpStatements ast
+            pure ret
     
 evalExpr :: Handle
          -> Maybe FilePath
@@ -246,11 +232,7 @@ evalExpr :: Handle
          -> String
          -> IO Value
 evalExpr h mfn lenv src =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ evalI mfn lenv src
-    {-ast <- either error id <$> useSource mfn (maybe "evalExpr" id mfn) src parseExpr
-    -- todo: how to make this local to this call only
-    forM_ lenv $ \(n,v) -> letValue' Shadow n v
-    interp ast-}
+    runInterp True h $ evalI mfn lenv src
 
 evalI :: Maybe FilePath
       -> [(String,Value)]
@@ -258,50 +240,44 @@ evalI :: Maybe FilePath
       -> Interpreter Value
 evalI mfn lenv src = do
     ast <- either error id <$> useSource mfn (maybe "evalExpr" id mfn) src parseExpr
-    -- todo: how to make this local to this call only
-    forM_ lenv $ \(n,v) -> letValue' Shadow n v
-    interp ast
+    localModule (maybe "evalExpr" id mfn) mfn $ do
+        -- todo: how to make this local to this call only
+        forM_ lenv $ \(n,v) -> letValue' Shadow n v
+        interp ast
 
 evalFun :: Handle
         -> String 
         -> [Value]
         -> IO Value
 evalFun h fun args =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ evalFunI fun args
-    {-ast <- either error id <$> useSource Nothing "evalFun" fun parseExpr
-    f <- interpStatements [StmtExpr ast]
-    let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
-        src' = "fff(" ++ intercalate "," (map fst as) ++ ")"
-    ast' <- either error id <$> useSource Nothing "evalFun" src' parseExpr
-    forM_ (("fff", f):as) $ \(n,v) -> letValue' Shadow n v
-    interp ast'-}
+    runInterp True h $ evalFunI fun args
 
 evalFunI :: String -> [Value] -> Interpreter Value
 evalFunI fun args = do
     ast <- either error id <$> useSource Nothing "evalFun" fun parseExpr
-    f <- interpStatements [StmtExpr ast]
-    let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
-        src' = "fff(" ++ intercalate "," (map fst as) ++ ")"
-    ast' <- either error id <$> useSource Nothing "evalFun" src' parseExpr
-    forM_ (("fff", f):as) $ \(n,v) -> letValue' Shadow n v
-    interp ast'
+    localModule "evalFun" Nothing $ do
+        f <- interpStatements [StmtExpr ast]
+        let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
+            src' = "fff(" ++ intercalate "," (map fst as) ++ ")"
+        ast' <- either error id <$> useSource Nothing "evalFun" src' parseExpr
+        forM_ (("fff", f):as) $ \(n,v) -> letValue' Shadow n v
+        interp ast'
 
 valueToStringIO :: Handle -> Value -> IO (Maybe String)
 valueToStringIO h v =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ valueToString v
+    runInterp True h $ valueToString v
 
 formatException :: Handle -> Bool -> InterpreterException -> IO String
 formatException h includeCallstack e =
-    spawnExtWaitHandle h $ \th ->
-        runInterp th True h $ formatExceptionI includeCallstack e
+    runInterp True h $ formatExceptionI includeCallstack e
 
 addFFIImpls :: Handle -> [(String, [Value] -> Interpreter Value)] -> IO ()
 addFFIImpls h ffis =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ addFFIImpls' ffis
+    runInterp True h $ addFFIImpls' ffis
 
 addFFIPackage :: Handle -> String -> FFIPackage -> IO ()
 addFFIPackage h nm ffipkg =
-    spawnExtWaitHandle h $ \th -> runInterp th True h $ do
+    runInterp True h $ do
         addFFIPackage' nm ffipkg
         st <- ask
         liftIO $ atomically $ do
@@ -310,7 +286,7 @@ addFFIPackage h nm ffipkg =
                    ((nm,ffipkg) : hsPackages x)}
 
 allTestsPassed :: Handle -> IO Bool
-allTestsPassed h = spawnExtWaitHandle h $ \th -> runInterp th True h $ do
+allTestsPassed h = runInterp True h $ do
     trs <- getTestResultsI
     pure $ and $ map isPass $ concatMap tr $ concatMap snd trs
   where
@@ -331,8 +307,7 @@ data CheckBlockResult = CheckBlockResult String [TestResult]
                       deriving Show
 
 takeTestResults :: Handle -> IO [(String, [CheckBlockResult])]
-takeTestResults h =
-    spawnExtWaitHandle h $ \th -> runInterp th True h takeTestResultsI
+takeTestResults h = runInterp True h takeTestResultsI
 
 takeTestResultsI :: Interpreter [(String, [CheckBlockResult])]
 takeTestResultsI = do
@@ -484,9 +459,9 @@ instance Eq Value where
     FFIValue _ a == FFIValue _ b
         | Just (a' :: R.Relation Value) <- fromDynamic a
         , Just b' <- fromDynamic b = either (error . show) id $ R.relEqual a' b'
-    FFIValue _ a == FFIValue _ b
+    {-FFIValue _ a == FFIValue _ b
         | Just (a' :: Addr) <- fromDynamic a
-        , Just b' <- fromDynamic b = a' == b'
+        , Just b' <- fromDynamic b = a' == b'-}
     -- todo: funv, boxv ..., ffivalue
     -- ioref has an eq instance for pointer equality
     --    this is very useful
@@ -681,8 +656,7 @@ updated by multiple threads), put it in a tvar
 
 data BurdockHandleState
     = BurdockHandleState
-    {hsConcurrencyHandle :: BConcurrencyHandle
-    ,hsLoadedModules :: [(FilePath,(String,Value))] -- modulename, module value (as a record)
+    {hsLoadedModules :: [(FilePath,(String,Value))] -- modulename, module value (as a record)
     ,hsTempBaseEnv :: [(String,Value)]
     ,hsForeignFunctionImpls :: [ForeignFunctionEntry]
     ,hsForeignTypes :: [(String, FFITypeInfo)]
@@ -704,8 +678,7 @@ data ModuleState
 data ThreadLocalState
     = ThreadLocalState
     {tlHandleState :: TVar BurdockHandleState
-    ,tlModuleState :: IORef ModuleState
-    ,tlThreadHandle :: ThreadHandle
+    ,tlModuleState :: ModuleState
     -- collect the provides, used at end of module loading
     ,tlProvides :: IORef [ProvideItem]
     ,tlCallStack :: CallStack
@@ -766,27 +739,25 @@ interpreterExceptionCallStack (ValueException cs _) = cs
 
 newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
-    ch <- openBConcurrency (Just extractValueException)
     rs <- newTVarIO []
-    h <- newTVarIO $ BurdockHandleState ch [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs
-    spawnWaitCast ch $ \th -> runInterp th False (Handle h) initBootstrapModule
-    spawnWaitCast ch $ \th -> runInterp th False (Handle h) $ do
+    h <- newTVarIO $ BurdockHandleState [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs
+    runInterp False (Handle h) initBootstrapModule
+    runInterp False (Handle h) $ do
         (internalsFn, internalsSrc) <- readImportSource (ImportName "_internals")
         loadAndRunModuleSource False "_internals" internalsFn internalsSrc
     pure h
 
-newSourceHandle :: ThreadHandle -> TVar BurdockHandleState -> IO ThreadLocalState
-newSourceHandle th bs =
+newSourceHandle :: TVar BurdockHandleState -> IO ThreadLocalState
+newSourceHandle bs =
     ThreadLocalState bs
-        <$> newIORef (ModuleState "unknown" "") -- todo: generate unique names
-        <*> pure th
+        <$> pure (ModuleState "unknown" "") -- todo: generate unique names
         <*> newIORef []
         <*> pure []
         <*> newIORef []
         <*> newIORef []
         <*> newIORef []
         <*> pure Nothing
-        <*> newIORef 1
+        <*> newIORef 0
         <*> pure True
 
 {-
@@ -846,7 +817,7 @@ readCallStack :: Interpreter CallStack
 readCallStack = tlCallStack <$> ask
 
 readModuleName :: Interpreter String
-readModuleName = msModuleName <$> (liftIO . readIORef =<< (tlModuleState <$> ask))
+readModuleName = msModuleName <$> (tlModuleState <$> ask)
 
 modifyAddModule :: FilePath -> String -> Value -> Interpreter ()
 modifyAddModule fn modName modv = do
@@ -900,11 +871,12 @@ modifyReplCreatedBindings f = do
     v' <- f v
     liftIO $ writeIORef (tlReplCreatedBindings st) v'
 
-
-putModule :: ModuleState -> Interpreter ()
-putModule m = do
-    st <- ask
-    liftIO $ writeIORef (tlModuleState st) m
+localModule :: String -> Maybe String -> Interpreter a -> Interpreter a
+localModule modName mfn f = do
+    n <- case mfn of
+              Nothing -> uniqueSourceName
+              Just x -> pure x
+    local (\x -> x {tlModuleState = ModuleState modName n}) f
 
 lookupBinding :: String -> Interpreter (Maybe Value)
 lookupBinding k = lookup k <$> askBindings
@@ -999,7 +971,7 @@ enterCheckBlock mcbnm f = do
 addTestResult :: TestResult -> Interpreter ()
 addTestResult tr = do
     st <- ask
-    ms <- liftIO $ readIORef $ tlModuleState st
+    let ms = tlModuleState st
     cbnm <- case tlCurrentCheckblock st of
         Just n -> pure n
         -- todo: this check should be done before the test is executed
@@ -1084,74 +1056,11 @@ addFFIPackage' _nm pkg = do
 
 -- concurrency support
 
-spawnExtWaitHandle :: Typeable a => Handle -> (ThreadHandle -> IO a) -> IO a
-spawnExtWaitHandle (Handle h) f = do
-    st <- atomically $ readTVar h
-    spawnWaitCast (hsConcurrencyHandle st) f
-
-spawnWaitCast :: Typeable a => BConcurrencyHandle -> (ThreadHandle -> IO a) -> IO a
-spawnWaitCast h f = do
-    r <- spawnExtWait h (\th -> toDyn <$> f th)
-    pure (fromJust $ fromDynamic r)
-
-askThreadHandle :: Interpreter ThreadHandle
-askThreadHandle = tlThreadHandle <$> ask
-
-extractValueException :: SomeException -> Maybe Dynamic
+extractValueException :: SomeException -> Maybe Value
 extractValueException e = case fromException e of
-    Just (InterpreterException cs s) -> f (TextV s) cs
-    Just (ValueException cs v) -> f v cs
+    Just (InterpreterException _cs s) -> Just $ TextV s
+    Just (ValueException _cs v) -> Just v
     _ -> Nothing
-  where
-    f v cs = Just $ toDyn $ VariantV (bootstrapType "Tuple") "tuple"
-                  [("0", v), ("1", FFIValue ("_system","callstack") $ toDyn cs)]
-
-bSpawn :: [Value] -> Interpreter Value
-bSpawn [f] = do
-    st <- ask
-    x <- liftIO $ spawn (tlThreadHandle st) $ \th ->
-        runInterpInherit st th True $ toDyn <$> app f []
-    pure $ FFIValue ("_system","addr") $ toDyn x
-bSpawn x = _errorWithCallStack $ "wrong args to bSpawn: " ++ show x
-
-bSpawnMonitor :: [Value] -> Interpreter Value
-bSpawnMonitor [f] =  spawnMonitorWrap Nothing f
-bSpawnMonitor x = _errorWithCallStack $ "wrong args to bSpawnMonitor: " ++ show x
-
-bSpawnMonitorTag :: [Value] -> Interpreter Value
-bSpawnMonitorTag [tg,f] = spawnMonitorWrap (Just tg) f
-bSpawnMonitorTag x = _errorWithCallStack $ "wrong args to bSpawnMonitorTag: " ++ show x
-
-spawnMonitorWrap :: Maybe Value -> Value -> Interpreter Value
-spawnMonitorWrap tag f = do
-    st <- ask
-    (saddr,ref) <- liftIO $ spawnMonitor (tlThreadHandle st) (toDyn <$> tag) $ \th ->
-        runInterpInherit st th True $ do
-        toDyn <$> app f []
-    pure $ VariantV (bootstrapType "Tuple") "tuple"
-        [("0",FFIValue ("_system","addr") $ toDyn saddr)
-        ,("1", convertHsMonitorRef ref)]
-
-bAsyncExit :: [Value] -> Interpreter Value
-bAsyncExit [FFIValue _ffitag to,val] = do
-    let toaddr = maybe (error $ "async-exit to non addr: " ++ show to) id $ fromDynamic to
-    th <- askThreadHandle
-    liftIO $ asyncExit th toaddr $ toDyn val
-    pure nothing
-bAsyncExit x = _errorWithCallStack $ "wrong args to bAsyncExit: " ++ show x
-
-convertHsMonitorRef :: MonitorRef -> Value
-convertHsMonitorRef (MonitorRef s i) =
-    VariantV (internalsType "MonitorRef") "monitor-ref"
-        [("a", TextV s)
-        ,("b", NumV $ fromIntegral i)
-        ]
-
-bSelf :: [Value] -> Interpreter Value
-bSelf [] = do
-    x <- askThreadHandle
-    pure $ FFIValue ("_system","addr") $ toDyn $ addr x
-bSelf x = _errorWithCallStack $ "wrong args to bSelf: " ++ show x
 
 bSleep :: [Value] -> Interpreter Value
 bSleep [NumV t] = do
@@ -1159,53 +1068,73 @@ bSleep [NumV t] = do
     pure nothing
 bSleep x = _errorWithCallStack $ "wrong args to sleep: " ++ show x
 
-bSend :: [Value] -> Interpreter Value
-bSend [FFIValue _ffitag to, val] = do
-    let toaddr = maybe (error $ "send to non addr: " ++ show to) id $ fromDynamic to
-    th <- askThreadHandle
-    liftIO $ send th toaddr $ toDyn val
-    pure nothing
-bSend x = _errorWithCallStack $ "wrong args to bSend: " ++ show x
+inboxTag :: (String,String)
+inboxTag = ("_system","inbox")
+threadHandleTag :: (String,String)
+threadHandleTag = ("_system","thread-handle")
 
-{-bReceive :: [Value] -> Interpreter Value
-bReceive [] = do
-    th <- askThreadHandle
-    v <- liftIO $ zreceive th (\x -> pure $ Just x)
-    let x = maybe (error $ "got non value from receive: " ++ show v) id $ fromDynamic v
-    pure x
-bReceive x = error $ "wrong args to bReceive: " ++ show x-}
+type Inbox = HC.Inbox Value
 
+makeInbox :: [Value] -> Interpreter Value
+makeInbox [] = do
+    (x :: Inbox) <- liftIO $ HC.makeInbox
+    pure $ FFIValue inboxTag $ toDyn x
+makeInbox x = error $ "wrong args to make-inbox: " ++ show x
 
--- stubs - this is what the new api in hsconcurrency should be modified too
--- needs a bunch of rewriting because the code currently runs the prd
--- in the stm monad, which is too inconvenient now
--- try to hack it first using unsafeperformio
--- then can check everything else works before doing this big rewrite
--- xreceive :: MonadIO m => ThreadHandle -> (Dynamic -> m (Maybe Dynamic)) -> m Dynamic
-{-xreceive :: ThreadHandle -> (Dynamic -> Interpreter (Maybe Dynamic)) -> Interpreter Dynamic
-xreceive th prd = do
+sendInbox :: [Value] -> Interpreter Value
+sendInbox [FFIValue _ffitag to, v]
+    | Just ib <- fromDynamic to
+    = do
+          liftIO $ HC.send ib v
+          pure nothing
+sendInbox x = error $ "wrong args to send-inbox: " ++ show x
+
+receiveInbox :: [Value] -> Interpreter Value
+receiveInbox [FFIValue _ffitag frm]
+    | Just ib <- fromDynamic frm
+    = liftIO $ HC.receive ib
+receiveInbox x = error $ "wrong args to receive-inbox: " ++ show x
+
+closeInbox  :: [Value] -> Interpreter Value
+closeInbox x = error $ "wrong args to close-inbox: " ++ show x
+
+bSpawn :: [Value] -> Interpreter Value
+bSpawn [f] = do
     st <- ask
-    let prd' :: Dynamic -> Bool
-        prd' d = unsafePerformIO $ do
-            let f x = runReaderT x st
-            x <- f $ prd d
-            case x of
-                Nothing -> pure False
-                Just {} -> pure True
-    x <- liftIO $ receive th prd'
-    x' <- prd x
-    case x' of
-        Nothing -> error $ "receive hack: predicate was not consistent?"
-        Just v -> pure v
-    
-xreceiveTimeout :: MonadIO m =>
-                   ThreadHandle
-                -> Int
-                -> (Dynamic -> m (Maybe Dynamic))
-                -> m (Maybe Dynamic)
-xreceiveTimeout = undefined-}
+    h <- liftIO $ HC.masync ext $ runInterpInherit st True $ app f []
+    pure $ FFIValue threadHandleTag $ toDyn h
+  where
+    ext _x = pure () -- putStrLn $ "exit callback: " ++ show x
+bSpawn x = error $ "wrong args to spawn: " ++ show x
 
+bSpawnNoLink :: [Value] -> Interpreter Value
+bSpawnNoLink = bSpawn
 
+bWait :: [Value] -> Interpreter Value
+bWait [FFIValue _ffitag h']
+    | Just h <- fromDynamic h' = do
+    (x :: Value) <- liftIO $ A.wait $ HC.asyncHandle h
+    pure x
+bWait x = error $ "wrong args to wait: " ++ show x
+
+bWaitEither :: [Value] -> Interpreter Value
+bWaitEither [FFIValue _ffitag h']
+    | Just h <- fromDynamic h' = do
+    (x :: Either SomeException Value) <- liftIO $ A.waitCatch $ HC.asyncHandle h
+    case x of
+        Right v -> do
+            r <- interp (Iden "right")
+            app r [v]
+        Left e -> do
+            l <- interp (Iden "left")
+            case extractValueException e of
+                Nothing -> app l [TextV $ show e]
+                Just v -> app l [v]
+bWaitEither x = error $ "wrong args to wait: " ++ show x
+
+bThreadId :: [Value] -> Interpreter Value
+bThreadId [] = (TextV . show) <$> liftIO myThreadId
+bThreadId x = error $ "wrong args to haskell-thread-id: " ++ show x
 ---------------------------------------
 
 -- new handles, running interpreter functions using a handle
@@ -1235,9 +1164,9 @@ baseEnv =
 
     ]
 
-runInterp :: ThreadHandle -> Bool -> Handle -> Interpreter a -> IO a
-runInterp th incG (Handle h) f = do
-    sh <- newSourceHandle th h
+runInterp :: Bool -> Handle -> Interpreter a -> IO a
+runInterp incG (Handle h) f = do
+    sh <- newSourceHandle h
     flip runReaderT sh $ do
         -- will become the use context thing
         -- only bootstrapping a handle with the bootstrap and _internals
@@ -1248,16 +1177,15 @@ runInterp th incG (Handle h) f = do
 -- used for a local thread - one that isn't for a new haskell api call or
 -- new module/source file - it preserves the right part of the
 -- enclosing state
-runInterpInherit :: ThreadLocalState -> ThreadHandle -> Bool -> Interpreter a -> IO a
-runInterpInherit parentSh th incG f = do
+runInterpInherit :: ThreadLocalState -> Bool -> Interpreter a -> IO a
+runInterpInherit parentSh incG f = do
     p <- newIORef []
     b <- newIORef =<< readIORef (tlLocallyCreatedBindings parentSh)
     bo <- newIORef =<< readIORef (tlIncludedBindings parentSh)
     rb <- newIORef =<< readIORef (tlReplCreatedBindings parentSh)
     cbn <- newIORef 0
     let sh = parentSh
-            {tlThreadHandle = th
-            ,tlProvides = p
+            {tlProvides = p
             ,tlLocallyCreatedBindings = b
             ,tlReplCreatedBindings = rb
             ,tlIncludedBindings = bo
@@ -1308,7 +1236,7 @@ useSource :: Maybe FilePath
           -> String
           -> (FilePath -> String -> Either String a)
           -> Interpreter (Either String a)
-useSource mfn modName src p = do
+useSource mfn _modName src p = do
     fn <- case mfn of
               Nothing -> uniqueSourceName
               Just x -> pure x
@@ -1316,7 +1244,6 @@ useSource mfn modName src p = do
     liftIO $ atomically $ do
         modifyTVar (tlHandleState st) $ \x ->
             x {hsSourceCache = (fn,src) : hsSourceCache x }
-    putModule (ModuleState modName fn)
     pure $ p fn src
 
 -- needs some checking
@@ -1461,7 +1388,7 @@ liftEquals tyname f a b =
         _ -> error $ "expected two " ++ tyname ++ ", got " ++ show (a,b)-}
 
 -- this is definitely way too much boilerplate
-addrEquals :: [Value] -> Interpreter Value
+{-addrEquals :: [Value] -> Interpreter Value
 addrEquals [FFIValue _ a, FFIValue _ b] =
     case (fromDynamic a, fromDynamic b) of
         (Just a', Just b') -> BoolV <$> e a' b'
@@ -1476,7 +1403,7 @@ addrToRepr [FFIValue _ a] =
     case fromDynamic a of
         Just (_ :: Addr) -> pure $ TextV $ show a
         _ -> error $ "bad arg to addr torepr " ++ show a
-addrToRepr _ = error "bad args to addr torepr"
+addrToRepr _ = error "bad args to addr torepr"-}
 
 
 {-addrEquals :: Dynamic -> Dynamic -> Interpreter Bool
@@ -1635,21 +1562,18 @@ builtInFF =
     ,("rel-summarize", relSummarize)
     ,("union-recs", unionRecs)
 
-    ,("spawn", bSpawn)
-    ,("spawn-monitor", bSpawnMonitor)
-    ,("spawn-monitor-tag", bSpawnMonitorTag)
-    ,("self", bSelf)
     ,("sleep", bSleep)
-    ,("send", bSend)
-    ,("async-exit", bAsyncExit)
-    ,("addr-equals", addrEquals)
-    ,("addr-to-repr", addrToRepr)
-    ,("_member-addr", ffiMemberDispatcher $ FMD
-         {fmdLkp = [("_equals", ffiSingleArgMethod "addr-equals")
-                   ,("_torepr", ffiNoArgMethod "addr-to-repr")
-                   ]
-         ,fmdFallback = Nothing})
+    ,("make-inbox", makeInbox)
+    ,("send-inbox", sendInbox)
+    ,("receive-inbox", receiveInbox)
+    ,("close-inbox", closeInbox)
 
+    ,("spawn", bSpawn)
+    ,("spawn-nolink", bSpawnNoLink)
+    ,("wait", bWait)
+    ,("wait-either", bWaitEither)
+    ,("haskell-thread-id", bThreadId)
+    
     ,("get-args", bGetArgs)
 
     ,("read-process", bReadProcess)
@@ -1902,12 +1826,13 @@ bFormatCallStack _ = _errorWithCallStack $ "wrong args to format-call-stack"
 bRunScript :: [Value] -> Interpreter Value
 bRunScript [TextV src] = do
     Script ast <- either error id <$> useSource Nothing "run-script" src parseScript
-    x <- interpStatements ast
-    -- todo: need to only get the new bindings created in the interpstatements
-    -- just called
-    stuff <- askLocallyCreatedBindings
-    modifyReplCreatedBindings (extendBindings stuff)
-    pure x
+    localModule "run-script" Nothing $ do
+        x <- interpStatements ast
+        -- todo: need to only get the new bindings created in the interpstatements
+        -- just called
+        stuff <- askLocallyCreatedBindings
+        modifyReplCreatedBindings (extendBindings stuff)
+        pure x
 
 bRunScript _ = _errorWithCallStack $ "wrong args to run-script"
 
@@ -2265,11 +2190,18 @@ bRunTestsWithOpts [opts] = do
 
     cbs <- concat <$>
         (forM testSrcs $ \testSrc -> runIsolated showProgressLog hideSuccesses $ do
-            case testSrc of
+            r <- try $ case testSrc of
                 Left fn -> do
                     (fn',src) <- readImportSource (ImportSpecial "file" [fn])
                     loadAndRunModuleSource True fn' fn' src
                 Right (fn, src) -> loadAndRunModuleSource True fn fn src
+            case r of
+                Right {} -> pure ()
+                Left (e :: SomeException) -> do
+                    let nm = "load module " ++ show testSrc
+                    local (\st' -> st' {tlCurrentCheckblock = Just nm}) $
+                        addTestResult (TestFail nm (show e))
+                    --liftIO $ putStrLn $ show e
             takeTestResultsI)
     rs <- testResultsToB cbs
     when autoPrintResults $ void $
@@ -2301,7 +2233,8 @@ then extract the hstestresults from it
         if hideSuccesses
             then liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-hide-test-successes(true)"
             else liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-hide-test-successes(false)"
-        liftIO $ spawnExtWaitHandle h $ \th -> runInterp th True h f
+        liftIO $ runInterp True h f
+            
     isV v nm = case v of
         VariantV _ nm' _ -> nm == nm'
         _ -> False
@@ -2619,76 +2552,9 @@ interp (AssertTypeCompat e t) = do
 
 interp (TypeLet tds e) = typeLet tds $ interpStatements e
 
-interp (Receive cs aft) = do
-    -- turn the cs into a function which returns a maybe x
-    -- put the branches in a cases
-    -- each branch is wrapped in some()
-    -- add an else which return none
-    -- create a wrapper which unlifts the some/none to Maybe
-    -- the branches are wrapped in a lambda, so that the bodies
-    -- are run after the hsconcurrency receive is finished,
-    -- so that nested receives work correctly
-    let rv = "receivevalx123"
-        some = internalsRef "some"
-        none = internalsRef "none"
-        cs' = flip map cs $ \(cb, tst, e) -> (cb, tst, [StmtExpr $ App Nothing some [lam0 $ Block e]])
-        prdf = Lam (FunHeader [] [ShadowBinding rv] Nothing)
-               [StmtExpr $ Cases (Iden rv) Nothing cs' (Just [StmtExpr none])]
-    prdfv <- interp prdf
-    let prd :: Dynamic -> Interpreter (Maybe Dynamic)
-        prd v = do
-                let v' = case fromDynamic v of
-                        Just w -> w
-                        _ -> case fromDynamic v of
-                            Just (MonitorDown tg et mv r) -> --trace(show (tg,et,mv,r)) $
-                                makeMonitorDown tg et mv r
-                            _ -> error $ "receive pred got something that wasn't a value: " ++ show v
-                r <- app prdfv [v']
-                case r of
-                    VariantV tg "none" [] | tg == internalsType "Option" -> pure Nothing
-                    VariantV tg "some" [(_,x)] | tg == internalsType "Option" -> pure $ Just $ toDyn x
-                    _ -> _errorWithCallStack $ "expected Option type in prdfv ret, got " ++ show r
-    th <- askThreadHandle
-    let getVal :: Dynamic -> Interpreter Value
-        getVal v | Just v' <- fromDynamic v = app v' []
-                 | otherwise = _errorWithCallStack $ "expected <<Value>> from receive, got " ++ show v
-    case aft of
-        Nothing -> getVal =<< zreceive th prd
-        Just (a, e) -> do
-            tme <- interp a
-            case tme of
-                VariantV tg "infinity" []
-                    | tg == internalsType "Infinity"
-                      -> getVal =<< zreceive th prd                   
-                NumV tme' -> do
-                    v <- zreceiveTimeout th (floor (tme' * 1000 * 1000)) prd
-                    case v of
-                        Just v' -> getVal v'
-                        Nothing -> interpStatements e
-                _ -> _errorWithCallStack $ "after timeout value not number: " ++ show tme
+interp (Receive _cs _aft) = do
+    undefined
 
-  where
-    lam0 e = Lam (FunHeader [] [] Nothing) [StmtExpr e]
-    makeMonitorDown tg et v r = --trace (show (fromDynamic v :: Maybe String)) $
-        let tg' = case fromDynamic tg of
-                      Just vx -> vx
-                      _ -> case fromDynamic tg of
-                          Just () -> nothing
-                          _ -> FFIValue ("_system","unknown") tg
-            et' = case et of
-                      ExitValue -> VariantV (internalsType "ExitType") "exit-value" []
-                      ExitException -> VariantV (internalsType "ExitType") "exit-exception" []
-            v' = case fromDynamic v of
-                     Just vx -> vx
-                     _ -> case fromDynamic v of
-                              Just s -> TextV s
-                              _ -> FFIValue ("_system","unknown") v
-            r' = convertHsMonitorRef r
-        in VariantV (internalsType "MonitorDown") "monitor-down"
-               [("tag", tg')
-               ,("exit-type", et')
-               ,("v", v')
-               ,("mref", r')]
 interp (Template sp) =
     pure $ TemplateV sp
 
@@ -3478,7 +3344,7 @@ testPredSupport testPredName e0 e1 testPredCheck = do
   where
     logit = do
         st <- ask
-        ms <- msModuleSourcePath <$> (liftIO $ readIORef $ tlModuleState st)
+        let ms = msModuleSourcePath $ tlModuleState st
         cbnm <- case tlCurrentCheckblock st of
             Just n -> pure n
             Nothing -> _errorWithCallStack $ "test predicate not in check block: " ++ testPredName
@@ -3500,7 +3366,7 @@ testPredSupport testPredName e0 e1 testPredCheck = do
 
 fileImportHandler :: [String] -> Interpreter (String,String)
 fileImportHandler [fn] = do
-    cm <- msModuleSourcePath <$> (liftIO . readIORef =<< (tlModuleState <$> ask))
+    cm <- msModuleSourcePath <$> (tlModuleState <$> ask)
     --liftIO $ putStrLn $ "loading " ++ fn ++ " from " ++ cm
     let fn1 = takeDirectory cm </> fn
     src <- liftIO $ readFile fn1
@@ -3605,7 +3471,7 @@ runModule filename moduleName f =
         modifyAddModule filename moduleName moduleRecord
 
 loadAndRunModuleSource :: Bool -> String -> FilePath -> String -> Interpreter ()
-loadAndRunModuleSource includeGlobals moduleName fn src = spawnExtWaitI $ \_ -> do
+loadAndRunModuleSource includeGlobals moduleName fn src = do
     -- auto include globals, revisit when use context added
     let incG = if includeGlobals && moduleName /= "globals"
                then (Include (ImportName "globals") :)
@@ -3614,39 +3480,14 @@ loadAndRunModuleSource includeGlobals moduleName fn src = spawnExtWaitI $ \_ -> 
             then parseLiterateScript
             else parseScript
     Script ast' <- either error id <$> useSource (Just fn) moduleName src p
-    let ast = incG ast'
-    -- todo: track generated unique names better?
-    runModule fn moduleName $ void $ interpStatements ast
-
-
--- todo: refactor all these spawn thread and runreadert wrapper variations
--- this resets the interpreter state for a fresh thread
--- there are two kinds of spawn: api level, and regular subthread spawn
--- which modify the new state differently
-spawnExtWaitI :: Typeable a => (ThreadHandle -> Interpreter a) -> Interpreter a
-spawnExtWaitI f = do
-    st <- ask
-    h <- hsConcurrencyHandle <$> liftIO (atomically $ readTVar (tlHandleState st))
-    liftIO $ spawnWaitCast h $ \th -> do
-        ms <- newIORef =<< readIORef (tlModuleState st)
-        p <- newIORef []
-        b <- newIORef []
-        rb <- newIORef []
-        bo <- newIORef []
-        cbn <- newIORef 0
-        let st1 = st
-                {tlModuleState = ms
-                ,tlThreadHandle = th
-                ,tlProvides = p
-                ,tlCallStack = []
-                ,tlLocallyCreatedBindings = b
-                ,tlReplCreatedBindings = rb
-                ,tlIncludedBindings = bo
-                ,tlCurrentCheckblock = Nothing
-                ,tlNextAnonCheckblockNum = cbn
-                ,_tlIsModuleRootThread = True
-                }
-        flip runReaderT st1 (f th)
+    localModule moduleName (Just fn) $ localX $ do
+        let ast = incG ast'
+        -- todo: track generated unique names better?
+        runModule fn moduleName $ void $ interpStatements ast
+  where
+    localX f = do
+        x1 <- liftIO $ newIORef 0
+        local (\x -> x {tlNextAnonCheckblockNum = x1}) f
 
 -- TODO: not really happy with how messy these functions are
 

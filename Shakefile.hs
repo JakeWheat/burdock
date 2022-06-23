@@ -255,7 +255,17 @@ main = do
     forM_ simplePhonies $ \(doc, nm, needage) ->
         withTargetDocs doc $ phony nm $ need needage
 
-    withTargetDocs "run the tests" $ phony "test-all" $ do
+    withTargetDocs "run the tests" $ phony "test" $ do
+        need ["_build/burdock"]
+        cmd_  "_build/burdock src/burdock/tests/run-all-tests.bur"
+
+    withTargetDocs "run hunit tests" $ phony "test-hunit" $ do
+        need ["_build/burdock-hunit-tests"]
+        cmd_ "_build/burdock-hunit-tests --color never --ansi-tricks false --hide-successes"
+        cmd_  "_build/burdock src/burdock/tests/run-all-tests.bur"
+
+
+    withTargetDocs "run all the tests, including slow ones" $ phony "test-all" $ do
         need ["_build/burdock-hunit-tests"
              ,"_build/burdock"
              -- temporary hack while python is incompatible threads
@@ -264,9 +274,6 @@ main = do
         cmd_  "_build/burdock-unthreaded src/burdock/tests/run-all-tests-additional.bur"
         cmd_  "_build/burdock src/burdock/tests/run-all-tests.bur"
 
-    withTargetDocs "run the tests" $ phony "test" $ do
-        need ["_build/burdock"]
-        cmd_  "_build/burdock src/burdock/tests/run-all-tests.bur"
 
     withTargetDocs "build the website" $ phony "website" $ do
         mkdirP "_build/website"

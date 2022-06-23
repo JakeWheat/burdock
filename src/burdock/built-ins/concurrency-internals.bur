@@ -1,0 +1,19 @@
+
+provide:
+  make-inbox,
+  send-inbox,
+  receive-inbox,
+  receive-from,
+  close-inbox,
+  haskell-thread-id
+end
+
+include _internals
+
+make-inbox = ffi-function("make-inbox")
+send-inbox = ffi-function("send-inbox")
+receive-from = ffi-function("receive-from")
+receive-inbox = ffi-function("receive-inbox")
+close-inbox = ffi-function("close-inbox")
+
+haskell-thread-id = ffi-function("haskell-thread-id")
