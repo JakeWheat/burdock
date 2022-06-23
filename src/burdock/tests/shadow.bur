@@ -72,5 +72,20 @@ and shadow empty = x
     end
   end is {1;2}
 
+  block:
+    fun f():
+      nothing
+    end
+
+    f() is nothing
+
+    fun shadow f():
+      1
+    end
+
+    f() is 1
+
+
+  end
 
 end

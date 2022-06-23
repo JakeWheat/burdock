@@ -2972,11 +2972,14 @@ interpStatements' ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
     interpStatements' (doLetRec recbs ++ chks ++ ss')
   where
     getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
-    getRecs accdecls accchks (FunDecl (SimpleBinding _ nm mty) fh _ds bdy whr : ss') =
+    getRecs accdecls accchks (FunDecl (SimpleBinding sh nm mty) fh _ds bdy whr : ss') =
         let accchks' = maybe accchks (\w -> Check (Just nm) w : accchks) whr
+            b1 = case sh of
+                     Shadow -> ShadowBinding nm
+                     NoShadow -> NameBinding nm
             b = case mty of
-                    Nothing -> NameBinding nm
-                    Just ty -> TypedBinding (NameBinding nm) ty
+                    Nothing -> b1
+                    Just ty -> TypedBinding b1 ty
         in getRecs ((b, Lam fh bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
