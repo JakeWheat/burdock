@@ -43,5 +43,43 @@ check "error exit value of thread":
   is-left(r) is true
   string-index-of(r.v, "a haskell exception") is-not -1
 
+
+  fun check-wait-throw():
+    fun shadow f():
+      raise("thread exception")
+    end
+
+    shadow h = spawn-nolink(f)
+    wait(h)
+    nothing
+  end
+
+  check-wait-throw() raises "thread exception"
+
 end
 
+
+check "self, simple send and receive":
+
+  fun f():
+    cases receive-any():
+    #receive:
+      | {ret;"hello"} =>
+        send(ret, {self;"hello to you"})
+      | x =>
+        raise("expected {_;'hello'}, got " + torepr(x))
+    end
+  end
+
+  h = spawn(f)
+  send(h, {self;"hello"})
+  #receive:
+  cases receive-any():
+    | {frm;"hello to you"} =>
+      frm is h
+    | x =>
+      raise("expected {_;'hello to you'}, got " + torepr(x))
+  end
+  wait(h)
+
+end

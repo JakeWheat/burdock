@@ -678,6 +678,7 @@ data ModuleState
 data ThreadLocalState
     = ThreadLocalState
     {tlHandleState :: TVar BurdockHandleState
+    ,tlConcurrencyHandle :: ConcurrencyHandle
     ,tlModuleState :: ModuleState
     -- collect the provides, used at end of module loading
     ,tlProvides :: IORef [ProvideItem]
@@ -750,7 +751,8 @@ newBurdockHandle = do
 newSourceHandle :: TVar BurdockHandleState -> IO ThreadLocalState
 newSourceHandle bs =
     ThreadLocalState bs
-        <$> pure (ModuleState "unknown" "") -- todo: generate unique names
+        <$> (ConcurrencyHandle Nothing <$> HC.makeInbox)
+        <*> pure (ModuleState "unknown" "") -- todo: generate unique names
         <*> newIORef []
         <*> pure []
         <*> newIORef []
@@ -1056,6 +1058,14 @@ addFFIPackage' _nm pkg = do
 
 -- concurrency support
 
+data ConcurrencyHandle
+    = ConcurrencyHandle
+    { -- maybe because the handle for the calling thread
+      -- doesn't have one of these, only an inbox
+     chThreadHandle :: Maybe (HC.MAsync Value)
+    ,chInbox :: HC.Inbox Value
+    }
+
 extractValueException :: SomeException -> Maybe Value
 extractValueException e = case fromException e of
     Just (InterpreterException _cs s) -> Just $ TextV s
@@ -1087,7 +1097,8 @@ sendInbox [FFIValue _ffitag to, v]
     = do
           liftIO $ HC.send ib v
           pure nothing
-sendInbox x = error $ "wrong args to send-inbox: " ++ show x
+sendInbox x = do
+    error $ "wrong args to send-inbox: " ++ show x
 
 receiveInbox :: [Value] -> Interpreter Value
 receiveInbox [FFIValue _ffitag frm]
@@ -1095,16 +1106,42 @@ receiveInbox [FFIValue _ffitag frm]
     = liftIO $ HC.receive ib
 receiveInbox x = error $ "wrong args to receive-inbox: " ++ show x
 
-closeInbox  :: [Value] -> Interpreter Value
+closeInbox :: [Value] -> Interpreter Value
 closeInbox x = error $ "wrong args to close-inbox: " ++ show x
+
+bThreadHandleEquals :: [Value] -> Interpreter Value
+bThreadHandleEquals [FFIValue _ x, FFIValue _ y]
+    | Just (x' :: ConcurrencyHandle) <- fromDynamic x
+    , Just y' <- fromDynamic y
+    = pure $ BoolV $
+      HC.ibQueue (chInbox x') == HC.ibQueue (chInbox y') 
+bThreadHandleEquals x = error $ "wrong args to thread-handle-equals: " ++ show x
+
+bThreadHandleToRepr :: [Value] -> Interpreter Value
+bThreadHandleToRepr [FFIValue _ x]
+    | Just (x' :: ConcurrencyHandle) <- fromDynamic x
+    = pure $ TextV $ case chThreadHandle x' of
+          Nothing -> "api-thread-handle"
+          Just z -> show $ A.asyncThreadId $ HC.asyncHandle z
+
+bThreadHandleToRepr x = error $ "wrong args to thread-handle-to-repr: " ++ show x
 
 bSpawn :: [Value] -> Interpreter Value
 bSpawn [f] = do
     st <- ask
-    h <- liftIO $ HC.masync ext $ runInterpInherit st True $ app f []
-    pure $ FFIValue threadHandleTag $ toDyn h
+    ch <- liftIO $ HC.makeInbox
+    h <- liftIO $ HC.masync ext $ runInterpInherit st True $ do
+        ah' <- liftIO $ HC.receive ch
+        let ah = case ah' of
+              FFIValue _ffitag a | Just a' <- fromDynamic a -> a'
+              _ -> error $ "expected async handle, got " ++ show ah'
+        local (\x -> x {tlConcurrencyHandle = ConcurrencyHandle (Just ah) ch})
+            $ app f []
+            
+    liftIO $ HC.send ch $ FFIValue ("temp", "temp") $ toDyn h
+    pure $ FFIValue threadHandleTag $ toDyn $ ConcurrencyHandle (Just h) ch
   where
-    ext _x = pure () -- putStrLn $ "exit callback: " ++ show x
+    ext _x = pure () -- putStrLn $ "exit callback: " ++ show _x
 bSpawn x = error $ "wrong args to spawn: " ++ show x
 
 bSpawnNoLink :: [Value] -> Interpreter Value
@@ -1112,14 +1149,17 @@ bSpawnNoLink = bSpawn
 
 bWait :: [Value] -> Interpreter Value
 bWait [FFIValue _ffitag h']
-    | Just h <- fromDynamic h' = do
-    (x :: Value) <- liftIO $ A.wait $ HC.asyncHandle h
-    pure x
+    | Just h'' <- fromDynamic h' = do
+    case chThreadHandle h'' of
+        Nothing -> error "can't wait on main/api call thread"
+        Just h -> liftIO $ A.wait $ HC.asyncHandle h
 bWait x = error $ "wrong args to wait: " ++ show x
 
 bWaitEither :: [Value] -> Interpreter Value
 bWaitEither [FFIValue _ffitag h']
-    | Just h <- fromDynamic h' = do
+    | Just h'' <- fromDynamic h' = do
+    let h = maybe (error "can't wait on main/api call thread")
+             id $ chThreadHandle h''
     (x :: Either SomeException Value) <- liftIO $ A.waitCatch $ HC.asyncHandle h
     case x of
         Right v -> do
@@ -1132,9 +1172,31 @@ bWaitEither [FFIValue _ffitag h']
                 Just v -> app l [v]
 bWaitEither x = error $ "wrong args to wait: " ++ show x
 
+bSend :: [Value] -> Interpreter Value
+bSend [FFIValue _ffitag h', v]
+    | Just h <- fromDynamic h' = do
+          liftIO $ HC.send (chInbox h) v
+          pure nothing
+bSend x = error $ "wrong args to send: " ++ show x
+
+bReceiveAny :: [Value] -> Interpreter Value
+bReceiveAny [] = do
+    ch <- (chInbox . tlConcurrencyHandle) <$> ask
+    liftIO $ HC.receive ch
+bReceiveAny x = error $ "wrong args to receive-any: " ++ show x
+
+bSelf :: [Value] -> Interpreter Value
+bSelf [] = do
+    ch <- tlConcurrencyHandle <$> ask
+    pure $ FFIValue threadHandleTag $ toDyn ch
+
+bSelf x = error $ "wrong args to self: " ++ show x
+
+
 bThreadId :: [Value] -> Interpreter Value
 bThreadId [] = (TextV . show) <$> liftIO myThreadId
 bThreadId x = error $ "wrong args to haskell-thread-id: " ++ show x
+
 ---------------------------------------
 
 -- new handles, running interpreter functions using a handle
@@ -1451,7 +1513,7 @@ ffiMemberDispatcher _ _ = error "bad args to ffiMemberDispatcher"
 builtInFFITypes :: [(String,FFITypeInfo)]
 builtInFFITypes =
     [("callstack", FFITypeInfo Nothing)
-    ,("addr", FFITypeInfo (makeFFIMemberFunction "_member-addr"))
+    ,("thread-handle", FFITypeInfo (makeFFIMemberFunction "_member-thread-handle"))
     ,("relation", FFITypeInfo (makeFFIMemberFunction "_member-relation"))
     ,("unknown", FFITypeInfo Nothing)
     ,("burdockast", FFITypeInfo  Nothing)
@@ -1567,12 +1629,23 @@ builtInFF =
     ,("send-inbox", sendInbox)
     ,("receive-inbox", receiveInbox)
     ,("close-inbox", closeInbox)
+    ,("_member-thread-handle"
+     ,ffiMemberDispatcher $ FMD
+      {fmdLkp = [("_equals", ffiSingleArgMethod "thread-handle-equals")
+                ,("_torepr", ffiNoArgMethod "thread-handle-to-repr")]
+      ,fmdFallback = Nothing})
+    ,("thread-handle-equals", bThreadHandleEquals)
+    ,("thread-handle-to-repr", bThreadHandleToRepr)
 
+    
     ,("spawn", bSpawn)
     ,("spawn-nolink", bSpawnNoLink)
     ,("wait", bWait)
     ,("wait-either", bWaitEither)
     ,("haskell-thread-id", bThreadId)
+    ,("send", bSend)
+    ,("self", bSelf)
+    ,("receive-any", bReceiveAny)
     
     ,("get-args", bGetArgs)
 

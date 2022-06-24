@@ -12,6 +12,7 @@ same for a bound thread
 -}
 module Burdock.HsConcurrency
     (Inbox
+    ,ibQueue
     ,makeInbox
     ,closeInbox
     ,send
