@@ -83,3 +83,68 @@ check "self, simple send and receive":
   wait(h)
 
 end
+
+check "cancel thread exit value":
+
+  fun f():
+    sleep(10)
+  end
+
+  x = spawn-nolink(f)
+  thread-cancel(x)
+  wait-either(x) is left("AsyncCancelled")
+
+end
+
+
+
+check "scoped thread exiting":
+
+#|
+
+spawn outer thread
+spawn inner thread
+
+the main thread gets the handle to the inner thread
+
+outer exchanges messages with inner
+outer exits
+see the inner one exited
+ - check the handle with wait-either
+
+
+|#
+
+  #print("main: " + torepr(ci.haskell-thread-id()))
+
+  fun inner():
+    #print("inner: " + torepr(ci.haskell-thread-id()))
+    cases receive-any():
+      | {ret;"hello"} => send(ret,"hello")
+    end
+    sleep(5)
+  end
+
+  outer-self = self
+
+  fun outer():
+    #print("outer: " + torepr(ci.haskell-thread-id()))
+    h = spawn-nolink(inner)
+    send(outer-self, {"inner-address"; h})
+    send(h, {self;"hello"})
+    cases receive-any():
+      | "hello" => nothing
+    end
+    #print("exit outer")
+  end
+
+  h1 = spawn(outer)
+  ih = cases receive-any():
+         | {"inner-address";ih} =>
+           wait-either(ih) is left("AsyncCancelled")
+           ih
+       end
+  wait(h1)
+  wait-either(ih)
+
+end

@@ -77,6 +77,7 @@ main = do
             ,"async"
             ,"exceptions"
             ,"Glob"
+            ,"utf8-string"
             ]
 
     let mainPackageDB = "_build/packages/burdock-packages"

@@ -59,6 +59,7 @@ import Control.Concurrent
     (setNumCapabilities
     ,threadDelay
     ,myThreadId
+    ,ThreadId
     )
 
 import qualified System.Environment as E
@@ -70,6 +71,7 @@ import Control.Monad.Reader (ReaderT
                             ,ask
                             ,local
                             ,liftIO
+                            ,MonadIO
                             )
 
 import Control.Monad (forM_
@@ -160,10 +162,12 @@ import Control.Concurrent.STM.TVar
     ,modifyTVar
     ,newTVarIO
     ,writeTVar
+    ,newTVar
     )
 
 import Control.Concurrent.STM
-    (atomically)
+    (atomically
+    ,STM)
 
 import System.Process (callProcess, readProcess)
 
@@ -177,11 +181,20 @@ import qualified Burdock.GeneratedBuiltins
 
 import qualified Burdock.Version as Version
 
+import qualified Data.ByteString as BS
+import System.IO (stderr)
+import qualified Data.ByteString.UTF8 as BS
 
 --import Control.Monad.IO.Class
 --    (MonadIO)
 
 --import Debug.Trace (trace)
+
+
+-- todo: make this dynamic
+
+logConcurrency :: Bool
+logConcurrency = False
 
 ------------------------------------------------------------------------------
 
@@ -746,12 +759,16 @@ newBurdockHandle = do
     runInterp False (Handle h) $ do
         (internalsFn, internalsSrc) <- readImportSource (ImportName "_internals")
         loadAndRunModuleSource False "_internals" internalsFn internalsSrc
+    debugLogConcurrency Nothing "new handle"
     pure h
 
 newSourceHandle :: TVar BurdockHandleState -> IO ThreadLocalState
-newSourceHandle bs =
+newSourceHandle bs = do
     ThreadLocalState bs
-        <$> (ConcurrencyHandle Nothing <$> HC.makeInbox)
+        <$> (ConcurrencyHandle
+             Nothing
+             <$> HC.makeInbox
+             <*> (atomically defaultThreadExitData))
         <*> pure (ModuleState "unknown" "") -- todo: generate unique names
         <*> newIORef []
         <*> pure []
@@ -1064,7 +1081,45 @@ data ConcurrencyHandle
       -- doesn't have one of these, only an inbox
      chThreadHandle :: Maybe (HC.MAsync Value)
     ,chInbox :: HC.Inbox Value
+    ,chExit :: ThreadExitData
     }
+
+chThreadId :: ConcurrencyHandle -> String
+chThreadId = maybe "unknown" (show . A.asyncThreadId . HC.asyncHandle) . chThreadHandle
+
+debugLogConcurrency :: MonadIO m => Maybe ThreadId -> String -> m ()
+debugLogConcurrency mti msg = when logConcurrency $ do
+    tid <- maybe (show <$> liftIO myThreadId) (pure . show) mti
+                 {-(\x -> case chThreadHandle x of
+                         Nothing -> show <$> liftIO myThreadId
+                         Just a -> pure $ show $ A.asyncThreadId $ HC.asyncHandle a)
+                 mch-}
+    liftIO $ BS.hPutStr stderr $ BS.fromString $ show tid ++ ": " ++ msg ++ "\n"
+
+
+{-
+When a thread exits, it does the following:
+send a message to each thread monitoring it
+send an exit message to each thread that is linked to it
+send an exit message to each thread that is scoped to it
+-}
+data ThreadExitData
+    = ThreadExitData
+    {_tedMonitors :: TVar [ConcurrencyHandle]
+    ,tedLinked :: TVar [ConcurrencyHandle]
+    ,tedScoped :: TVar [ConcurrencyHandle]
+    -- set to have each thread exited exactly once
+    -- when being asynchronously exited
+    ,tedIsExiting :: TVar Bool
+    }
+
+defaultThreadExitData :: STM ThreadExitData
+defaultThreadExitData =
+    ThreadExitData
+    <$> newTVar []
+    <*> newTVar []
+    <*> newTVar []
+    <*> newTVar False
 
 extractValueException :: SomeException -> Maybe Value
 extractValueException e = case fromException e of
@@ -1126,26 +1181,110 @@ bThreadHandleToRepr [FFIValue _ x]
 
 bThreadHandleToRepr x = error $ "wrong args to thread-handle-to-repr: " ++ show x
 
-bSpawn :: [Value] -> Interpreter Value
-bSpawn [f] = do
-    st <- ask
+{-
+todo: what are the race conditions if e.g. the thread is cancelled
+from the calling thread between the masync call and the local $ app f []?
+-}
+
+spawnOpts :: Bool -> Value -> Interpreter Value
+spawnOpts isLinked f = do
+    let isScoped = True
     ch <- liftIO $ HC.makeInbox
-    h <- liftIO $ HC.masync ext $ runInterpInherit st True $ do
-        ah' <- liftIO $ HC.receive ch
-        let ah = case ah' of
+    slf <- tlConcurrencyHandle <$> ask
+
+    subted <- liftIO $ atomically $ do
+        x <- defaultThreadExitData
+        when isLinked $ modifyTVar (tedLinked x) (slf:)
+        pure x
+    st <- ask
+    h <- liftIO $ HC.masync (ext subted) $ runInterpInherit st True $ do
+        x <- liftIO $ HC.receive ch
+        let myCh = case x of
               FFIValue _ffitag a | Just a' <- fromDynamic a -> a'
-              _ -> error $ "expected async handle, got " ++ show ah'
-        local (\x -> x {tlConcurrencyHandle = ConcurrencyHandle (Just ah) ch})
-            $ app f []
-            
-    liftIO $ HC.send ch $ FFIValue ("temp", "temp") $ toDyn h
-    pure $ FFIValue threadHandleTag $ toDyn $ ConcurrencyHandle (Just h) ch
+              _ -> error $ "expected async handle, got " ++ show x
+        local (\z -> z {tlConcurrencyHandle = myCh}) $ app f []
+    let subCh = ConcurrencyHandle (Just h) ch subted
+    liftIO $ HC.send ch $ FFIValue ("temp", "temp") $ toDyn subCh
+    
+    liftIO $ atomically $ do
+        let myTed = chExit $ tlConcurrencyHandle st
+        when isLinked $ do
+            modifyTVar (tedLinked myTed) (subCh:)
+        when isScoped $ do
+            modifyTVar (tedScoped myTed) (subCh:)
+
+    debugLogConcurrency Nothing (unwords ["spawn"
+                                 ,if isLinked
+                                     then "linked"
+                                     else "unlinked"
+                                 ,chThreadId subCh])
+    pure $ FFIValue threadHandleTag $ toDyn subCh
   where
-    ext _x = pure () -- putStrLn $ "exit callback: " ++ show _x
+    ext ted tid x = do
+        debugLogConcurrency (Just tid) $ "starting exit"
+        -- todo: signal monitoring threads
+
+        {- waits until the linked and scoped threads have exited this is for
+        better troubleshooting, so you see a hang instead of it
+        silently failing. Could make it asynchronous with a timeout
+        callback instead in the future
+        -}
+        -- exit linked threads
+        -- exit scoped threads
+        (acts,_info) <- atomically $ do
+            let doExit ch = do
+                    -- check if thread is already exiting
+                    -- todo: this could recurse to all connected threads
+                    -- pretty easily instead of waiting for a thread to exit
+                    -- before recursing
+                    ie <- readTVar (tedIsExiting $ chExit ch)
+                    case (ie, chThreadHandle ch) of
+                        (False, Just ch') -> do
+                            writeTVar (tedIsExiting $ chExit ch) True
+                            pure $ do
+                                debugLogConcurrency (Just tid) $
+                                    "cancelling " ++ show (A.asyncThreadId $ HC.asyncHandle ch')
+                                A.cancel $ HC.asyncHandle ch'
+                        (True, Just ch') -> do
+                            pure $ do
+                                debugLogConcurrency (Just tid) $
+                                    "not cancelling because it's already exiting " ++ show (A.asyncThreadId $ HC.asyncHandle ch')                                
+                                void $ A.wait $ HC.asyncHandle ch'
+                        _ -> do
+                            pure $ do
+                                debugLogConcurrency (Just tid) $
+                                    "mysterious thread connected"
+                    -- if not, set it as exiting
+                    -- return the cancel function call
+            l <- readTVar $ tedLinked ted
+            s <- readTVar $ tedScoped ted
+            a1 <- (++) <$> mapM doExit l <*> mapM doExit s
+            let a2 = (l,s)
+            pure (a1,a2)
+        liftIO $ sequence_ acts
+        -- todo: check a global flag to see if to output
+        -- ideally, want to output when it's a left, and no-one
+        -- notices - no scopers, no linkers, no monitorers
+        debugLogConcurrency (Just tid) $ "exit with " ++ show x 
+        -- putStrLn $ "exit callback: " ++ show x --  ++ "\n" ++ show info
+
+bThreadCancel :: [Value] -> Interpreter Value
+bThreadCancel [FFIValue _ffitag h']
+    | Just h <- fromDynamic h' = do
+          --st <- ask
+          case chThreadHandle $ h of
+              Nothing -> error "thread cannot be cancelled"
+              Just ch' -> liftIO $ A.cancel $ HC.asyncHandle ch'
+          pure nothing
+bThreadCancel x = error $ "wrong args to thread-cancel: " ++ show x
+
+bSpawn :: [Value] -> Interpreter Value
+bSpawn [f] = spawnOpts True f
 bSpawn x = error $ "wrong args to spawn: " ++ show x
 
 bSpawnNoLink :: [Value] -> Interpreter Value
-bSpawnNoLink = bSpawn
+bSpawnNoLink [f] = spawnOpts False f
+bSpawnNoLink x = error $ "wrong args to spawn-nolink: " ++ show x
 
 bWait :: [Value] -> Interpreter Value
 bWait [FFIValue _ffitag h']
@@ -1643,9 +1782,12 @@ builtInFF =
     ,("wait", bWait)
     ,("wait-either", bWaitEither)
     ,("haskell-thread-id", bThreadId)
+    ,("thread-cancel", bThreadCancel)
+    
     ,("send", bSend)
     ,("self", bSelf)
     ,("receive-any", bReceiveAny)
+    
     
     ,("get-args", bGetArgs)
 

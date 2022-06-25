@@ -63,6 +63,12 @@ import System.Timeout (timeout)
 
 import Control.Monad (unless, void)
 
+{-import qualified Data.ByteString as BS
+import System.IO (stderr)
+import qualified Data.ByteString.UTF8 as BS-}
+
+import Control.Concurrent (ThreadId)
+
 ---------------------------------------
 
 data Inbox a
@@ -119,18 +125,24 @@ data MAsync a
     {asyncHandle :: A.Async a
     }
 
-masync :: (Either SomeException a -> IO ()) -> IO a -> IO (MAsync a)
-masync cb fn = do
-    ia <- A.async fn
+mymasync :: (IO a -> IO (A.Async a))
+         -> (ThreadId -> Either SomeException a -> IO ())
+         -> IO a
+         -> IO (MAsync a)
+mymasync myAsync cb fn = do
+    ia <- myAsync fn
     void $ A.async $ do
         r <- A.waitCatch ia
-        cb r
+        cb (A.asyncThreadId ia) r
+    --logit (A.asyncThreadId a1) (A.asyncThreadId ia)
     pure $ MAsync ia
+  {-where
+    logit mon th = do
+        mt <- myThreadId
+        BS.hPutStr stderr $ BS.fromString $ "masync from " ++ show mt ++ ": monitor " ++ show mon ++ ", lauched " ++ show th ++ "\n"-}
 
-masyncBound :: (Either SomeException a -> IO ()) -> IO a -> IO (MAsync a)
-masyncBound cb fn = do
-    ia <- A.asyncBound fn
-    void $ A.async $ do
-        r <- A.waitCatch ia
-        cb r
-    pure $ MAsync ia
+masync :: (ThreadId -> Either SomeException a -> IO ()) -> IO a -> IO (MAsync a)
+masync cb fn = mymasync A.async cb fn
+    
+masyncBound :: (ThreadId -> Either SomeException a -> IO ()) -> IO a -> IO (MAsync a)
+masyncBound cb fn = mymasync A.asyncBound cb fn

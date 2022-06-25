@@ -4,9 +4,11 @@ provide:
   spawn-nolink,
   wait,
   wait-either,
+  thread-cancel,
+  self,
+
   send,
-  receive-any,
-  self
+  receive-any
 end
 
 include _internals
@@ -15,6 +17,8 @@ spawn = ffi-function("spawn")
 spawn-nolink = ffi-function("spawn-nolink")
 wait = ffi-function("wait")
 wait-either = ffi-function("wait-either")
+self = ffi-function("self")
+thread-cancel = ffi-function("thread-cancel")
+
 send = ffi-function("send")
 receive-any = ffi-function("receive-any")
-self = ffi-function("self")
