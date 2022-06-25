@@ -60,6 +60,7 @@ import Control.Concurrent
     ,threadDelay
     ,myThreadId
     ,ThreadId
+    ,throwTo
     )
 
 import qualified System.Environment as E
@@ -184,6 +185,8 @@ import qualified Burdock.Version as Version
 import qualified Data.ByteString as BS
 import System.IO (stderr)
 import qualified Data.ByteString.UTF8 as BS
+
+import Data.Either (isLeft)
 
 --import Control.Monad.IO.Class
 --    (MonadIO)
@@ -731,21 +734,25 @@ type CallStack = [SourcePosition]
 
 data InterpreterException = InterpreterException CallStack String
                           | ValueException CallStack Value
+                          | ScopedExitException
 
 instance Show InterpreterException where
     show (InterpreterException _ s) = s
     -- todo: create a pure version of torepr' just to use here
     show (ValueException _ v) = show v -- unsafePerformIO $ torepr' v
+    show ScopedExitException = "ScopedExitException"
 
 instance Exception InterpreterException where
 
 interpreterExceptionToValue :: InterpreterException -> Value
 interpreterExceptionToValue (InterpreterException _ s) = TextV s
 interpreterExceptionToValue (ValueException _ v) = v
+interpreterExceptionToValue ScopedExitException = TextV "ScopedExitException"
 
 interpreterExceptionCallStack :: InterpreterException -> CallStack
 interpreterExceptionCallStack (InterpreterException cs _) = cs
 interpreterExceptionCallStack (ValueException cs _) = cs
+interpreterExceptionCallStack ScopedExitException = []
 
 ---------------------------------------
 
@@ -1186,9 +1193,10 @@ todo: what are the race conditions if e.g. the thread is cancelled
 from the calling thread between the masync call and the local $ app f []?
 -}
 
-spawnOpts :: Bool -> Value -> Interpreter Value
-spawnOpts isLinked f = do
-    let isScoped = True
+data InternalExitTag = ScopeEx | LinkEx
+
+spawnOpts :: Bool -> Bool -> Value -> Interpreter Value
+spawnOpts isLinked isScoped f = do
     ch <- liftIO $ HC.makeInbox
     slf <- tlConcurrencyHandle <$> ask
 
@@ -1232,19 +1240,25 @@ spawnOpts isLinked f = do
         -- exit linked threads
         -- exit scoped threads
         (acts,_info) <- atomically $ do
-            let doExit ch = do
+            let doExit t ch = do
                     -- check if thread is already exiting
                     -- todo: this could recurse to all connected threads
                     -- pretty easily instead of waiting for a thread to exit
                     -- before recursing
                     ie <- readTVar (tedIsExiting $ chExit ch)
+                    let exitIt ech = case t of
+                            ScopeEx ->
+                                let a = HC.asyncHandle ech
+                                in throwTo (A.asyncThreadId a) ScopedExitException
+                                   <* A.waitCatch a
+                            LinkEx -> A.cancel $ HC.asyncHandle ech
                     case (ie, chThreadHandle ch) of
                         (False, Just ch') -> do
                             writeTVar (tedIsExiting $ chExit ch) True
                             pure $ do
                                 debugLogConcurrency (Just tid) $
                                     "cancelling " ++ show (A.asyncThreadId $ HC.asyncHandle ch')
-                                A.cancel $ HC.asyncHandle ch'
+                                exitIt ch'
                         (True, Just ch') -> do
                             pure $ do
                                 debugLogConcurrency (Just tid) $
@@ -1254,11 +1268,16 @@ spawnOpts isLinked f = do
                             pure $ do
                                 debugLogConcurrency (Just tid) $
                                     "mysterious thread connected"
-                    -- if not, set it as exiting
-                    -- return the cancel function call
-            l <- readTVar $ tedLinked ted
+            -- todo: only exit linked threads if exiting with a left
+            -- for linked threads, instead of using generic cancel
+            -- embed the original exception value
+            -- so every other linked thread that's triggered to exit
+            -- exits with a left(linked-exit(original-exception-value))
+            l <- if isLeft x
+                 then readTVar $ tedLinked ted
+                 else pure []
             s <- readTVar $ tedScoped ted
-            a1 <- (++) <$> mapM doExit l <*> mapM doExit s
+            a1 <- (++) <$> mapM (doExit LinkEx) l <*> mapM (doExit ScopeEx) s
             let a2 = (l,s)
             pure (a1,a2)
         liftIO $ sequence_ acts
@@ -1266,6 +1285,11 @@ spawnOpts isLinked f = do
         -- ideally, want to output when it's a left, and no-one
         -- notices - no scopers, no linkers, no monitorers
         debugLogConcurrency (Just tid) $ "exit with " ++ show x 
+{-how to log thread exit actions nicely
+  want to state the list of linked threads that are being signaled to exit
+    the list of linked threads which are already exiting
+  the list of scoped threads that are being signaled to exit
+    the list of scoped threads which are already exiting-}
         -- putStrLn $ "exit callback: " ++ show x --  ++ "\n" ++ show info
 
 bThreadCancel :: [Value] -> Interpreter Value
@@ -1279,12 +1303,16 @@ bThreadCancel [FFIValue _ffitag h']
 bThreadCancel x = error $ "wrong args to thread-cancel: " ++ show x
 
 bSpawn :: [Value] -> Interpreter Value
-bSpawn [f] = spawnOpts True f
+bSpawn [f] = spawnOpts True True f
 bSpawn x = error $ "wrong args to spawn: " ++ show x
 
 bSpawnNoLink :: [Value] -> Interpreter Value
-bSpawnNoLink [f] = spawnOpts False f
+bSpawnNoLink [f] = spawnOpts False True f
 bSpawnNoLink x = error $ "wrong args to spawn-nolink: " ++ show x
+
+bSpawnUnscoped :: [Value] -> Interpreter Value
+bSpawnUnscoped [f] = spawnOpts True False f
+bSpawnUnscoped x = error $ "wrong args to spawn-unscoped: " ++ show x
 
 bWait :: [Value] -> Interpreter Value
 bWait [FFIValue _ffitag h']
@@ -1414,6 +1442,7 @@ formatExceptionI includeCallstack e = do
             ValueException st (TextV m) -> pure (st,m)
             ValueException st m -> (st,) <$> torepr' m
             InterpreterException st m -> pure (st,m)
+            ScopedExitException -> pure ([], "ScopedExitException")
     stf <- if includeCallstack
            then ("\ncall stack:\n" ++) <$> formatCallStack st
            else pure ""
@@ -1779,6 +1808,7 @@ builtInFF =
     
     ,("spawn", bSpawn)
     ,("spawn-nolink", bSpawnNoLink)
+    ,("spawn-unscoped", bSpawnUnscoped)
     ,("wait", bWait)
     ,("wait-either", bWaitEither)
     ,("haskell-thread-id", bThreadId)

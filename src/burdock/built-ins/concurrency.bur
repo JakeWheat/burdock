@@ -2,6 +2,7 @@
 provide:
   spawn,
   spawn-nolink,
+  spawn-unscoped,
   wait,
   wait-either,
   thread-cancel,
@@ -15,6 +16,7 @@ include _internals
 
 spawn = ffi-function("spawn")
 spawn-nolink = ffi-function("spawn-nolink")
+spawn-unscoped = ffi-function("spawn-unscoped")
 wait = ffi-function("wait")
 wait-either = ffi-function("wait-either")
 self = ffi-function("self")

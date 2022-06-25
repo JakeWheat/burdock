@@ -87,7 +87,7 @@ end
 check "cancel thread exit value":
 
   fun f():
-    sleep(10)
+    receive-any()
   end
 
   x = spawn-nolink(f)
@@ -98,7 +98,7 @@ end
 
 
 
-check "scoped thread exiting":
+check "scoped thread exiting simple":
 
 #|
 
@@ -122,7 +122,7 @@ see the inner one exited
     cases receive-any():
       | {ret;"hello"} => send(ret,"hello")
     end
-    sleep(5)
+    receive-any()
   end
 
   outer-self = self
@@ -141,10 +141,126 @@ see the inner one exited
   h1 = spawn(outer)
   ih = cases receive-any():
          | {"inner-address";ih} =>
-           wait-either(ih) is left("AsyncCancelled")
+           wait-either(ih) is left("ScopedExitException")
            ih
        end
   wait(h1)
   wait-either(ih)
+
+end
+
+
+check "scoped thread exiting cancel":
+
+  fun inner():
+    cases receive-any():
+      | {ret;"hello"} => send(ret,"hello")
+    end
+    receive-any()
+  end
+
+  outer-self = self
+
+  fun outer():
+    h = spawn-nolink(inner)
+    send(outer-self, {"inner-address"; h})
+    send(h, {self;"hello"})
+    cases receive-any():
+      | "hello" => nothing
+    end
+    receive-any()
+  end
+
+  h1 = spawn(outer)
+  ih = cases receive-any():
+         | {"inner-address";ih} =>
+           thread-cancel(h1)
+           wait-either(ih) is left("ScopedExitException")
+           ih
+       end
+  wait-either(h1)
+  wait-either(ih)
+
+end
+
+check "linked thread exiting":
+
+  block:
+
+    fun inner():
+      raise("inner exiting")
+    end
+    
+    fun outer():
+      h = spawn(inner)
+      receive-any()
+    end
+    
+    h = spawn-nolink(outer)
+    wait-either(h) is left("AsyncCancelled") # left(linked-exit("inner exiting"))
+    
+  end
+
+  block:
+
+    fun inner():
+      receive-any()
+    end
+
+    outer-self = self
+    fun outer():
+      h = spawn-unscoped(inner)
+      send(outer-self, h)
+      raise("outer exiting") 
+    end
+    
+    h = spawn-nolink(outer)
+    hinner = receive-any()
+    wait-either(hinner) is left("AsyncCancelled")
+    
+  end
+
+  # if a linked thread exits with regular value, no linked threads
+  # are cancelled
+  block:
+
+    fun inner():
+      "OK exit"
+    end
+    
+    fun outer():
+      h = spawn(inner)
+      # todo: use better coordination
+      sleep(1)
+      "OK"
+    end
+    
+    h = spawn-nolink(outer)
+    wait-either(h) is right("OK")
+    
+  end
+
+  block:
+
+    fun inner():
+      receive-any()
+      "OK"
+    end
+
+    outer-self = self
+    fun outer():
+      h = spawn-unscoped(inner)
+      send(outer-self, h)
+      "outer OK"
+    end
+    
+    h = spawn-nolink(outer)
+    hinner = receive-any()
+    wait(h)
+    send(hinner, "exit now")
+    wait-either(hinner) is right("OK")
+    
+  end
+
 
 end
