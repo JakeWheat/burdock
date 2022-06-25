@@ -141,7 +141,7 @@ see the inner one exited
   h1 = spawn(outer)
   ih = cases receive-any():
          | {"inner-address";ih} =>
-           wait-either(ih) is left("ScopedExitException")
+           wait-either(ih) is left(scoped-cancelled)
            ih
        end
   wait(h1)
@@ -175,7 +175,7 @@ check "scoped thread exiting cancel":
   ih = cases receive-any():
          | {"inner-address";ih} =>
            thread-cancel(h1)
-           wait-either(ih) is left("ScopedExitException")
+           wait-either(ih) is left(scoped-cancelled)
            ih
        end
   wait-either(h1)
@@ -197,7 +197,7 @@ check "linked thread exiting":
     end
     
     h = spawn-nolink(outer)
-    wait-either(h) is left("AsyncCancelled") # left(linked-exit("inner exiting"))
+    wait-either(h) is left(linked-cancelled("inner exiting"))
     
   end
 
@@ -216,7 +216,7 @@ check "linked thread exiting":
     
     h = spawn-nolink(outer)
     hinner = receive-any()
-    wait-either(hinner) is left("AsyncCancelled")
+    wait-either(hinner) is left(linked-cancelled("outer exiting"))
     
   end
 
@@ -261,6 +261,5 @@ check "linked thread exiting":
     wait-either(hinner) is right("OK")
     
   end
-
 
 end

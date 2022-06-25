@@ -1205,7 +1205,13 @@ spawnOpts isLinked isScoped f = do
         when isLinked $ modifyTVar (tedLinked x) (slf:)
         pure x
     st <- ask
-    h <- liftIO $ HC.masync (ext subted) $ runInterpInherit st True $ do
+    scopedCancelled <- interp (Iden "scoped-cancelled")
+    let linkedCancelled :: SomeException -> IO Value
+        linkedCancelled a = flip runReaderT st $ do
+            let a' = maybe (TextV $ show a) id $ extractValueException a
+            lc <- interp (Iden "linked-cancelled")
+            app lc [a']
+    h <- liftIO $ HC.masync (ext scopedCancelled linkedCancelled subted) $ runInterpInherit st True $ do
         x <- liftIO $ HC.receive ch
         let myCh = case x of
               FFIValue _ffitag a | Just a' <- fromDynamic a -> a'
@@ -1228,7 +1234,7 @@ spawnOpts isLinked isScoped f = do
                                  ,chThreadId subCh])
     pure $ FFIValue threadHandleTag $ toDyn subCh
   where
-    ext ted tid x = do
+    ext scopedCancelled linkedCancelled ted tid x = do
         debugLogConcurrency (Just tid) $ "starting exit"
         -- todo: signal monitoring threads
 
@@ -1239,6 +1245,9 @@ spawnOpts isLinked isScoped f = do
         -}
         -- exit linked threads
         -- exit scoped threads
+        lc <- case x of
+                  Left x' -> linkedCancelled x'
+                  _ -> pure nothing
         (acts,_info) <- atomically $ do
             let doExit t ch = do
                     -- check if thread is already exiting
@@ -1249,9 +1258,12 @@ spawnOpts isLinked isScoped f = do
                     let exitIt ech = case t of
                             ScopeEx ->
                                 let a = HC.asyncHandle ech
-                                in throwTo (A.asyncThreadId a) ScopedExitException
+                                in throwTo (A.asyncThreadId a) (ValueException [] scopedCancelled)
                                    <* A.waitCatch a
-                            LinkEx -> A.cancel $ HC.asyncHandle ech
+                            LinkEx -> do
+                                let a = HC.asyncHandle ech
+                                throwTo (A.asyncThreadId a) (ValueException [] lc)
+                                   <* A.waitCatch a
                     case (ie, chThreadHandle ch) of
                         (False, Just ch') -> do
                             writeTVar (tedIsExiting $ chExit ch) True

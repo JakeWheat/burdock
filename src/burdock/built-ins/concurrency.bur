@@ -9,10 +9,18 @@ provide:
   self,
 
   send,
-  receive-any
+  receive-any,
+
+  data ExitVal
 end
 
 include _internals
+
+data ExitVal:
+  | scoped-cancelled
+  | linked-cancelled(e)
+  | cancelled(e)
+end
 
 spawn = ffi-function("spawn")
 spawn-nolink = ffi-function("spawn-nolink")
