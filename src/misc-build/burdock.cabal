@@ -61,6 +61,8 @@ executable burdock
                       optparse-applicative,
                       text,
                       raw-strings-qq,
+                      bytestring,
+                      utf8-string
                       
     hs-source-dirs:   src/haskell/app,
                       src/haskell/lib,

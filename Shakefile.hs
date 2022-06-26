@@ -78,6 +78,7 @@ main = do
             ,"exceptions"
             ,"Glob"
             ,"utf8-string"
+            ,"bytestring"
             ]
 
     let mainPackageDB = "_build/packages/burdock-packages"
@@ -242,7 +243,8 @@ main = do
                 let nm' = "_build/burdock-" ++ ver <.> "tar.gz"
                 D.renameFile nm nm'
                 --D.copyFile nm' out
-                cmd_ "ln -sr " nm' out
+                cmd_ "rm -f" out
+                cmd_ "ln -sr" nm' out
             _ -> error $ "didn't understand output of cabal sdist: " ++ t
 
     withTargetDocs "build from release source" $ phony "release-build" $ do
