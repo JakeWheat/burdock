@@ -260,3 +260,76 @@ check "linked thread exiting":
   end
 
 end
+
+check "spawnmonitor":
+
+  # spawn monitor with normal exit
+  block:
+    fun f():
+      receive-any()
+      "normal-exit"
+    end
+    {sub;mref} = spawn-monitor(f)
+    receive-any-timeout(0) is nothing
+    send(sub, true)
+    receive-any() is monitor-down(nothing,right("normal-exit"),mref)
+
+  end
+  # spawn monitor with error exit
+  block:
+    fun f():
+      receive-any()
+      raise("error-exit")
+    end
+    {sub;mref} = spawn-monitor(f)
+    receive-any-timeout(0) is nothing
+    send(sub, true)
+    receive-any() is monitor-down(nothing,left("error-exit"),mref)
+
+  end
+
+  # spawn monitor tag with normal exit
+
+  block:
+    fun f():
+      receive-any()
+      "normal-exit"
+    end
+    {sub;mref} = spawn-monitor-tag(f,"my-tag")
+    receive-any-timeout(0) is nothing
+    send(sub, true)
+    receive-any() is monitor-down("my-tag",right("normal-exit"),mref)
+
+  end
+
+  # spawn monitor tag with error exit
+
+  block:
+    fun f():
+      receive-any()
+      raise("error-exit")
+    end
+    {sub;mref} = spawn-monitor-tag(f,"my-tag")
+    receive-any-timeout(0) is nothing
+    send(sub, true)
+    receive-any() is monitor-down("my-tag",left("error-exit"),mref)
+
+  end
+
+  # check spawn-monitor 2 functions, the mrefs are not equal
+
+  block:
+    fun f():
+      nothing
+    end
+    {sub;mref} = spawn-monitor(f)
+    {sub1;mref1} = spawn-monitor(f)
+    mref is-not mref1
+
+    wait(sub)
+    wait(sub1)
+    
+  end
+
+
+end

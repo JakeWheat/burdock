@@ -43,19 +43,20 @@ check "inbox simple timeouts":
 #check receive success on timeout 0
 #check receive failure on timeout 0
 
+#|  block:
+    ib = make-inbox()
+    send-inbox(ib, "test message")
+    receive-inbox-timeout(ib,0) is some("test message")
+  end
+
+
+  block:
+    ib = make-inbox()
+    receive-inbox-timeout(ib,0) is none
+  end|#
+
+
 end
-
-check "thread exit callbacks":
-
-#create simple thread with callback, exit ok
-#create simple thread with callback, exit with exception
-
-#create simple bound thread with callback, exit ok
-#create simple bound thread with callback, exit with exception
-
-end
-
-
 
 check "selective receive":
 

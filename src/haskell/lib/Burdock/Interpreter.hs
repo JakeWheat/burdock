@@ -683,6 +683,7 @@ data BurdockHandleState
     -- temp, to be split by module
     -- module path, check block name, result
     ,hsTestResults :: TVar [(String,String,TestResult)]
+    ,hsTempMonitorId :: TVar Int
     }
 
 data ModuleState
@@ -761,7 +762,8 @@ interpreterExceptionCallStack ScopedExitException = []
 newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
     rs <- newTVarIO []
-    h <- newTVarIO $ BurdockHandleState [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs
+    i <- newTVarIO 0
+    h <- newTVarIO $ BurdockHandleState [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs i
     runInterp False (Handle h) initBootstrapModule
     runInterp False (Handle h) $ do
         (internalsFn, internalsSrc) <- readImportSource (ImportName "_internals")
@@ -1113,7 +1115,8 @@ send an exit message to each thread that is scoped to it
 -}
 data ThreadExitData
     = ThreadExitData
-    {_tedMonitors :: TVar [ConcurrencyHandle]
+    -- reference, tag, monitoring thread
+    {tedMonitors :: TVar [(Value, Value, ConcurrencyHandle)]
     ,tedLinked :: TVar [ConcurrencyHandle]
     ,tedScoped :: TVar [ConcurrencyHandle]
     -- set to have each thread exited exactly once
@@ -1194,30 +1197,55 @@ todo: what are the race conditions if e.g. the thread is cancelled
 from the calling thread between the masync call and the local $ app f []?
 -}
 
-spawnOpts :: Bool -> Bool -> Value -> Interpreter Value
-spawnOpts isLinked isScoped f = do
+spawnOpts :: Bool -> Bool -> Maybe Value -> Value -> Interpreter Value
+spawnOpts isLinked isScoped monitorTag f = do
 
     -- create the exit info for the launched thread
-    slf <- tlConcurrencyHandle <$> ask
-    subted <- liftIO $ atomically $ do
+    st <- ask
+    let slf = tlConcurrencyHandle st
+    (mref,subted) <- liftIO $ atomically $ do
         x <- defaultThreadExitData
         when isLinked $ modifyTVar (tedLinked x) (slf:)
-        pure x
+        mref <- case monitorTag of
+            Nothing -> pure Nothing
+            Just tg -> do
+                hs <- readTVar $ tlHandleState st
+                v <- readTVar $ hsTempMonitorId hs
+                writeTVar (hsTempMonitorId hs) (v + 1)
+                let mref = TextV $ show v
+                modifyTVar (tedMonitors x) ((mref,tg,slf):)
+                pure $ Just mref
+        pure (mref,x)
 
     -- helpers for the exit handler for the lauched thread
     scopedCancelled <- interp (Iden "scoped-cancelled")
-    st <- ask
     let linkedCancelled :: SomeException -> IO Value
         linkedCancelled a = flip runReaderT st $ do
             let a' = maybe (TextV $ show a) id $ extractValueException a
             lc <- interp (Iden "linked-cancelled")
             app lc [a']
+    let makeMonitorDown vs = flip runReaderT st $ do
+            mmd <- interp (Iden "monitor-down")
+            app mmd vs
+    let makeEither x = flip runReaderT st $ do
+            case x of
+                Left e -> do
+                    let v = maybe (TextV $ show e) id $ extractValueException e
+                    l <- interp (Iden "left")
+                    app l [v]
+                Right v -> do
+                    l <- interp (Iden "right")
+                    app l [v]
 
     -- inbox for the launched thread
     subInbox <- liftIO $ HC.makeInbox
 
     -- launch the thread
-    h <- liftIO $ HC.masync (ext scopedCancelled linkedCancelled subted)
+    h <- liftIO $ HC.masync (ext scopedCancelled
+                                 linkedCancelled
+                                 makeMonitorDown
+                                 makeEither
+                                 subted)
         $ runInterpInherit st True $ do
         -- get the self concurrency handle, it's done like this because
         -- it contains this thread's own async handle, which we can't
@@ -1246,13 +1274,17 @@ spawnOpts isLinked isScoped f = do
                                      then "linked"
                                      else "unlinked"
                                  ,show $ chThreadId subCh])
-    pure $ FFIValue threadHandleTag $ toDyn subCh
+    let bh = FFIValue threadHandleTag $ toDyn subCh
+    pure $ case mref of
+               Nothing -> bh
+               Just mr -> VariantV (bootstrapType "Tuple") "tuple" $ zipWith (\n v -> (show n, v)) [(0::Int)..] [bh,mr]
   where
-    ext scopedCancelled linkedCancelled ted tid x = do
+    ext scopedCancelled linkedCancelled makeMonitorDown makeEither ted tid x = do
         debugLogConcurrency (Just tid) $ "starting exit " ++ show x
 
-        (scopedExits, linkedExits) <- atomically $ do
+        (monitors, scopedExits, linkedExits) <- atomically $ do
              -- get the list of monitors to send messages to
+             monitors <- readTVar $ tedMonitors ted
              -- run through each scoped thread
              --   if it isn't already exiting, mark it to be exited
              let g xch = do
@@ -1269,8 +1301,12 @@ spawnOpts isLinked isScoped f = do
                  if isLeft x
                  then mapM g =<< readTVar (tedLinked ted)
                  else pure []
-             pure (scopedExits, linkedExits)
-        -- todo: signal monitoring threads
+             pure (monitors, scopedExits, linkedExits)
+        -- signal monitoring threads
+        forM_ monitors $ \(ref,tg,och) -> do
+            x' <- makeEither x
+            v <- makeMonitorDown [tg,x',ref]
+            HC.send (chInbox och) v
 
         {- waits until the scoped threads have exited this is for
         better troubleshooting, so you see a hang instead of it
@@ -1318,16 +1354,24 @@ bThreadCancel [FFIValue _ffitag h']
 bThreadCancel x = error $ "wrong args to thread-cancel: " ++ show x
 
 bSpawn :: [Value] -> Interpreter Value
-bSpawn [f] = spawnOpts True True f
+bSpawn [f] = spawnOpts True True Nothing f
 bSpawn x = error $ "wrong args to spawn: " ++ show x
 
 bSpawnNoLink :: [Value] -> Interpreter Value
-bSpawnNoLink [f] = spawnOpts False True f
+bSpawnNoLink [f] = spawnOpts False True Nothing f
 bSpawnNoLink x = error $ "wrong args to spawn-nolink: " ++ show x
 
 bSpawnUnscoped :: [Value] -> Interpreter Value
-bSpawnUnscoped [f] = spawnOpts True False f
+bSpawnUnscoped [f] = spawnOpts True False Nothing f
 bSpawnUnscoped x = error $ "wrong args to spawn-unscoped: " ++ show x
+
+bSpawnMonitor :: [Value] -> Interpreter Value
+bSpawnMonitor [f] = spawnOpts False True (Just nothing) f
+bSpawnMonitor x = error $ "wrong args to spawn-monitor: " ++ show x
+
+bSpawnMonitorTag :: [Value] -> Interpreter Value
+bSpawnMonitorTag [f,tg] = spawnOpts False True (Just tg) f
+bSpawnMonitorTag x = error $ "wrong args to spawn-monitor-tag: " ++ show x
 
 bWait :: [Value] -> Interpreter Value
 bWait [FFIValue _ffitag h']
@@ -1366,6 +1410,17 @@ bReceiveAny [] = do
     ch <- (chInbox . tlConcurrencyHandle) <$> ask
     liftIO $ HC.receive ch
 bReceiveAny x = error $ "wrong args to receive-any: " ++ show x
+
+bReceiveAnyTimeout :: [Value] -> Interpreter Value
+bReceiveAnyTimeout [NumV n] = do
+    ch <- (chInbox . tlConcurrencyHandle) <$> ask
+    ret <- liftIO $ HC.receiveTimeout ch (floor $ n * 1000 * 1000)
+    case ret of
+        Nothing -> pure nothing
+        Just v -> do
+            i <- interp (Iden "some")
+            app i [v]
+bReceiveAnyTimeout x = error $ "wrong args to receive-any-timeout: " ++ show x
 
 bSelf :: [Value] -> Interpreter Value
 bSelf [] = do
@@ -1824,6 +1879,8 @@ builtInFF =
     ,("spawn", bSpawn)
     ,("spawn-nolink", bSpawnNoLink)
     ,("spawn-unscoped", bSpawnUnscoped)
+    ,("spawn-monitor", bSpawnMonitor)
+    ,("spawn-monitor-tag", bSpawnMonitorTag)
     ,("wait", bWait)
     ,("wait-either", bWaitEither)
     ,("haskell-thread-id", bThreadId)
@@ -1832,6 +1889,7 @@ builtInFF =
     ,("send", bSend)
     ,("self", bSelf)
     ,("receive-any", bReceiveAny)
+    ,("receive-any-timeout", bReceiveAnyTimeout)
     
     
     ,("get-args", bGetArgs)
