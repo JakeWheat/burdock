@@ -9,6 +9,8 @@ provide:
   wait,
   wait-either,
   thread-cancel,
+  thread-cancel-with,
+
   self,
 
   send,
@@ -48,6 +50,7 @@ wait = ffi-function("wait")
 wait-either = ffi-function("wait-either")
 self = ffi-function("self")
 thread-cancel = ffi-function("thread-cancel")
+thread-cancel-with = ffi-function("thread-cancel-with")
 
 send = ffi-function("send")
 receive-any = ffi-function("receive-any")

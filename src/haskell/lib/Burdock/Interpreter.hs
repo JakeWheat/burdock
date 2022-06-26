@@ -1346,13 +1346,25 @@ spawnOpts isLinked isScoped monitorTag f = do
 bThreadCancel :: [Value] -> Interpreter Value
 bThreadCancel [FFIValue _ffitag h']
     | Just h <- fromDynamic h' = do
-          ac <- interp (Iden "cancelled")
-          ac' <- app ac [nothing]
-          case chThreadHandle $ h of
-              Left tid -> liftIO $ throwTo tid $ ValueException [] ac'
-              Right ch' -> liftIO $ throwTo (A.asyncThreadId $ HC.asyncHandle ch') $ ValueException [] ac'
-          pure nothing
+          threadCancelWith h nothing
 bThreadCancel x = error $ "wrong args to thread-cancel: " ++ show x
+
+bThreadCancelWith :: [Value] -> Interpreter Value
+bThreadCancelWith [FFIValue _ffitag h', v]
+    | Just h <- fromDynamic h' = do
+          threadCancelWith h v
+bThreadCancelWith x = error $ "wrong args to thread-cancel-with: " ++ show x
+
+threadCancelWith :: ConcurrencyHandle -> Value -> Interpreter Value
+threadCancelWith h v = do
+    ac <- interp (Iden "cancelled")
+    ac' <- app ac [v]
+    case chThreadHandle $ h of
+        Left tid -> liftIO $ throwTo tid $ ValueException [] ac'
+        Right ch' -> liftIO $ throwTo (A.asyncThreadId $ HC.asyncHandle ch') $ ValueException [] ac'
+    pure nothing
+
+
 
 bSpawn :: [Value] -> Interpreter Value
 bSpawn [f] = spawnOpts True True Nothing f
@@ -1886,6 +1898,7 @@ builtInFF =
     ,("wait-either", bWaitEither)
     ,("haskell-thread-id", bThreadId)
     ,("thread-cancel", bThreadCancel)
+    ,("thread-cancel-with", bThreadCancelWith)
     
     ,("send", bSend)
     ,("self", bSelf)

@@ -96,8 +96,6 @@ check "cancel thread exit value":
 
 end
 
-
-
 check "scoped thread exiting simple":
 
 #|
@@ -331,5 +329,39 @@ check "spawnmonitor":
     
   end
 
+
+end
+
+check "async exits":
+
+  # throw a value, get it out
+
+  block:
+    fun f():
+      receive-any()
+    end
+
+    x = spawn-nolink(f)
+    # should you be able to exit a thread with a regular exception or
+    # with a non error value?
+    thread-cancel-with(x, "my-val")
+    wait-either(x) is left(cancelled("my-val"))
+    
+  end
+
+  # self exit
+
+  block:
+    fun f():
+      thread-cancel-with(self, "x")
+    end
+
+    x = spawn-nolink(f)
+    wait-either(x) is left(cancelled("x"))
+    
+  end
+
+
+  # TODO: check run-task doesn't catch these exceptions
 
 end
