@@ -1346,10 +1346,11 @@ spawnOpts isLinked isScoped monitorTag f = do
 bThreadCancel :: [Value] -> Interpreter Value
 bThreadCancel [FFIValue _ffitag h']
     | Just h <- fromDynamic h' = do
-          --st <- ask
+          ac <- interp (Iden "cancelled")
+          ac' <- app ac [nothing]
           case chThreadHandle $ h of
-              Left tid -> liftIO $ throwTo tid A.AsyncCancelled
-              Right ch' -> liftIO $ A.cancel $ HC.asyncHandle ch'
+              Left tid -> liftIO $ throwTo tid $ ValueException [] ac'
+              Right ch' -> liftIO $ throwTo (A.asyncThreadId $ HC.asyncHandle ch') $ ValueException [] ac'
           pure nothing
 bThreadCancel x = error $ "wrong args to thread-cancel: " ++ show x
 

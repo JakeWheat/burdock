@@ -92,7 +92,7 @@ check "cancel thread exit value":
 
   x = spawn-nolink(f)
   thread-cancel(x)
-  wait-either(x) is left("AsyncCancelled")
+  wait-either(x) is left(cancelled(nothing))
 
 end
 
