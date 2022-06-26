@@ -30,9 +30,22 @@ check "inboxes basics":
     receive-inbox(ib) is "test message"
   end
 
-# try to send on closed inbox
+  # try to send on closed inbox
 
-# try to receive on closed inbox
+  block:
+    ib = make-inbox()
+    close-inbox(ib)
+    send-inbox(ib, "test message") raises "tried to use closed inbox"
+  end
+
+  # try to receive on closed inbox
+
+  block:
+    ib = make-inbox()
+    close-inbox(ib)
+    receive-inbox(ib) raises "tried to use closed inbox"
+  end
+
 
 end
 

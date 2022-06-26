@@ -84,6 +84,18 @@ check "self, simple send and receive":
 
 end
 
+check "send to exited thread":
+
+  fun f():
+    nothing
+  end
+
+  h = spawn(f)
+  wait(h)
+  send(h,"hello") raises "tried to use closed inbox"
+
+end
+
 check "cancel thread exit value":
 
   fun f():
@@ -329,7 +341,6 @@ check "spawnmonitor":
     
   end
 
-
 end
 
 check "async exits":
@@ -360,7 +371,6 @@ check "async exits":
     wait-either(x) is left(cancelled("x"))
     
   end
-
 
   # TODO: check run-task doesn't catch these exceptions
 

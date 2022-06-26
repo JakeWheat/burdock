@@ -1173,6 +1173,9 @@ receiveInbox [FFIValue _ffitag frm]
 receiveInbox x = error $ "wrong args to receive-inbox: " ++ show x
 
 closeInbox :: [Value] -> Interpreter Value
+closeInbox [FFIValue _ffitag frm]
+    | Just (ib :: HC.Inbox Value) <- fromDynamic frm
+    = liftIO (HC.closeInbox ib) >> pure nothing
 closeInbox x = error $ "wrong args to close-inbox: " ++ show x
 
 bThreadHandleEquals :: [Value] -> Interpreter Value
@@ -1241,7 +1244,8 @@ spawnOpts isLinked isScoped monitorTag f = do
     subInbox <- liftIO $ HC.makeInbox
 
     -- launch the thread
-    h <- liftIO $ HC.masync (ext scopedCancelled
+    h <- liftIO $ HC.masync (ext subInbox
+                                 scopedCancelled
                                  linkedCancelled
                                  makeMonitorDown
                                  makeEither
@@ -1279,8 +1283,10 @@ spawnOpts isLinked isScoped monitorTag f = do
                Nothing -> bh
                Just mr -> VariantV (bootstrapType "Tuple") "tuple" $ zipWith (\n v -> (show n, v)) [(0::Int)..] [bh,mr]
   where
-    ext scopedCancelled linkedCancelled makeMonitorDown makeEither ted tid x = do
+    ext subInbox scopedCancelled linkedCancelled makeMonitorDown makeEither ted tid x = do
         debugLogConcurrency (Just tid) $ "starting exit " ++ show x
+
+        liftIO $ HC.closeInbox subInbox
 
         (monitors, scopedExits, linkedExits) <- atomically $ do
              -- get the list of monitors to send messages to
