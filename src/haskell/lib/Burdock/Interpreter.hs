@@ -188,6 +188,12 @@ import qualified Data.ByteString.UTF8 as BS
 
 import Data.Either (isLeft)
 
+import Data.Time.Clock (getCurrentTime
+                       ,diffUTCTime
+                       ,UTCTime
+                       )
+
+
 --import Control.Monad.IO.Class
 --    (MonadIO)
 
@@ -778,6 +784,7 @@ newSourceHandle bs = do
         <$> (ConcurrencyHandle
              (Left tid)
              <$> HC.makeInbox
+             <*> newIORef []
              <*> (atomically defaultThreadExitData))
         <*> pure (ModuleState "unknown" "") -- todo: generate unique names
         <*> newIORef []
@@ -1091,6 +1098,7 @@ data ConcurrencyHandle
       -- doesn't have one of these, only an inbox
      chThreadHandle :: Either ThreadId (HC.MAsync Value)
     ,chInbox :: HC.Inbox Value
+    ,chInboxBuffer :: IORef [Value]
     ,chExit :: ThreadExitData
     }
 
@@ -1260,7 +1268,10 @@ spawnOpts isLinked isScoped monitorTag f = do
               _ -> error $ "expected async handle, got " ++ show x
         local (\z -> z {tlConcurrencyHandle = myCh}) $ app f []
     -- create the concurrency handle for the launched thread
-    let subCh = ConcurrencyHandle (Right h) subInbox subted
+    
+    subCh <- do
+        b <- liftIO $ newIORef []
+        pure $ ConcurrencyHandle (Right h) subInbox b subted
     -- tell the launched thread its concurrency handle
     liftIO $ HC.send subInbox $ FFIValue ("temp", "temp") $ toDyn subCh
 
@@ -1440,6 +1451,73 @@ bReceiveAnyTimeout [NumV n] = do
             i <- interp (Iden "some")
             app i [v]
 bReceiveAnyTimeout x = error $ "wrong args to receive-any-timeout: " ++ show x
+
+{-
+rough pseudocode:
+
+there's a buffer which represents items read from the queue which
+  were not matching in a selective receive
+and the spent buffer
+the spent buffer is items popped from the buffer
+  that don't match during a single receive
+when returning, the new buffer is reverse the spent buffer + the
+  unlooked at buffer
+
+
+  record the start time
+  check the match function against each item in the buffer
+  if one matches, return it
+  then check the match function against each item you can get with a receive with 0 timeout
+    if one matches, return it
+    if one doesn't match, add it to the end of the buffer
+  if the timeout was 0, call the after if there is one, else return none
+  loop:
+    if timeout was infinity, do receive with no timeout
+    otherwise calculate the time left on the timeout
+      receive with this timeout
+    -> if timeout, call the after if there is one, else return none
+    else check the new item with the match function
+    if matched, return it
+    else put it in the spent buffer and loop
+
+TODO: sync up receive-any and receive-any-timeout to the buffer
+-> get them to call this function
+
+-}
+
+fromBOption :: Value -> Maybe (Maybe Value)
+fromBOption (VariantV _ "some" [(_,x)]) = Just $ Just x
+fromBOption (VariantV _ "none" []) = Just Nothing
+fromBOption _ = Nothing
+
+receiveSyntaxHelper :: Value -> Maybe (Maybe Scientific, Value) -> Interpreter Value
+receiveSyntaxHelper matchFn maft = do
+    startTime <- liftIO getCurrentTime
+    ch <- (chInbox . tlConcurrencyHandle) <$> ask
+    (ibR :: IORef [Value]) <- (chInboxBuffer . tlConcurrencyHandle) <$> ask
+    inboxBuffer <- liftIO $ readIORef ibR
+
+    let ret sb ib x = do
+            liftIO $ writeIORef ibR (reverse sb ++ ib)
+            pure (x :: Value)
+        checkForMatch v sb ib next = do
+            res <- app matchFn [v]
+            case fromBOption res of
+                Nothing -> error $ "receive match function returned non option: " ++ show res
+                Just Nothing -> next
+                Just (Just (x :: Value)) -> ret sb ib x
+        doOneTick sb (x:xs) = do
+            checkForMatch x sb xs $ doOneTick (x:sb) xs
+        doOneTick sb [] = do
+            v <- liftIO $ HC.receiveTimeout ch 0
+            case v of
+                Just v' -> do
+                    checkForMatch v' sb [] $ doOneTick (v':sb) []
+                Nothing -> do
+                    -- see if the timeout was 0, or if we've run out of time
+                    --let elapsed = diffUTCTime nw startTime
+                    undefined
+    doOneTick [] inboxBuffer
 
 bSelf :: [Value] -> Interpreter Value
 bSelf [] = do
@@ -1910,7 +1988,6 @@ builtInFF =
     ,("self", bSelf)
     ,("receive-any", bReceiveAny)
     ,("receive-any-timeout", bReceiveAnyTimeout)
-    
     
     ,("get-args", bGetArgs)
 
@@ -2890,8 +2967,46 @@ interp (AssertTypeCompat e t) = do
 
 interp (TypeLet tds e) = typeLet tds $ interpStatements e
 
-interp (Receive _cs _aft) = do
-    undefined
+{-
+
+the match function is built from the receive like this:
+
+receive
+  c1 => t1
+  c2 => t2
+  ...
+  [after ...]
+end
+
+->
+fun matchfn(x):
+  cases x:
+    c1 => some(t1)
+    c2 => some(t2)
+    ...
+    else => none
+  end
+end
+
+-}
+interp (Receive as aft) = do
+    let mpCase (b,x,bdy) = (b,x,[StmtExpr $ App Nothing (Iden "some") [Block bdy]])
+        els = Just [StmtExpr $ Iden "none"]
+        matchFnS = Lam (FunHeader[] [NameBinding "receivepayload"] Nothing)
+                  [StmtExpr $ Cases (Iden "receivepayload") Nothing (map mpCase as) els]
+    matchFn <- interp matchFnS
+    aft' <- case aft of
+            Just (Iden "infinity", fn) -> do
+                aftx <- interp (Lam (FunHeader [] [] Nothing) fn)
+                pure $ Just (Nothing, aftx)
+            Just (e, fn) -> do
+                aftx <- interp (Lam (FunHeader [] [] Nothing) fn)
+                v <- interp e
+                case v of
+                    NumV b -> pure $ Just (Just b, aftx)
+                    _ -> error $ "receive after value is not a number: " ++ show v
+            Nothing -> pure Nothing
+    receiveSyntaxHelper matchFn aft'
 
 interp (Template sp) =
     pure $ TemplateV sp

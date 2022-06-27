@@ -1,6 +1,7 @@
 include concurrency
 import concurrency-internals as ci
 include either
+include option
 import from _internals:
   haskell-error
 end
@@ -336,6 +337,9 @@ check "spawnmonitor":
     {sub1;mref1} = spawn-monitor(f)
     mref is-not mref1
 
+    receive-any()
+    receive-any()
+    
     wait(sub)
     wait(sub1)
     
@@ -373,5 +377,67 @@ check "async exits":
   end
 
   # TODO: check run-task doesn't catch these exceptions
+
+end
+
+check "trivial selective receive":
+
+  block:
+    send(self, true)
+    send(self, false)
+
+    x = receive:
+        | true => true
+      end
+    x is true
+
+    shadow x = receive:
+        | v => v
+      end
+    x is false
+  end
+
+  block:
+    send(self, true)
+    send(self, false)
+
+    x = receive:
+        | false => false
+      end
+    x is false
+
+    shadow x = receive:
+        | v => v
+      end
+    x is true
+  end
+
+end
+
+check "selective receive details":
+
+#|
+consider only two kinds of messages, ones which match and ones which
+  don't, could use true and false?
+call receive with and without a timeout
+  with a timeout 0
+  with a timeout where a message is pushed before the timeout that
+    matches, that doesn't match
+  and where the message is pushed after the timeout
+the starting state will be:
+  matching message in the queue
+  matching message in the buffer
+  unmatching then matching in the queue
+    in the buffer
+    first in the buffer, second in the queue
+  unmatching in the buffer
+  unmatching in the queue
+    both
+
+ create a little dsl to describe these so can generate tests from
+  them quickcheck style
+
+|#
+ 
 
 end
