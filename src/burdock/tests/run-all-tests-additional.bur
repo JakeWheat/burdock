@@ -14,10 +14,7 @@ fun my-ld(dir):
   glob(dir + "**/*.bur") + glob(dir + "**/*.rst")
 end
 
-srcs = [list: "examples/load-csv-python.bur"]
-       + my-ld("src/packages/ffitypes-test")
-       + my-ld("src/packages/python-ffi")
-
+srcs = my-ld("src/packages/ffitypes-test")
 
 ts = run-tests-with-opts(default-test-opts.{test-sources:map(file-test(_), srcs),
                                        show-progress-log:true,

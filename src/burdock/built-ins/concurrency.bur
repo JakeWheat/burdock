@@ -6,6 +6,8 @@ provide:
   spawn-monitor,
   spawn-monitor-tag,
 
+  is-bound,
+
   wait,
   wait-either,
   thread-cancel,
@@ -45,6 +47,8 @@ spawn-nolink = ffi-function("spawn-nolink")
 spawn-unscoped = ffi-function("spawn-unscoped")
 spawn-monitor = ffi-function("spawn-monitor")
 spawn-monitor-tag = ffi-function("spawn-monitor-tag")
+
+is-bound = ffi-function("is-bound")
 
 wait = ffi-function("wait")
 wait-either = ffi-function("wait-either")

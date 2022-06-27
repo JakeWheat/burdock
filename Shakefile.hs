@@ -101,8 +101,8 @@ main = do
                 ,["_build/generated-hs/Burdock/GeneratedBuiltins.hs"]
                 ,pythonCFiles
                 ,"-threaded")
-               ,("build the Burdock interpreter without threading (temporary for Python issues)"
-                ,"_build/burdock-unthreaded"
+               ,("build the Burdock interpreter with demo ffi module"
+                ,"_build/burdock-ffi"
                 ,"src/haskell/app/BurdockExe.hs"
                 ,[]
                 ,pythonCFiles
@@ -272,9 +272,9 @@ main = do
         need ["_build/burdock-hunit-tests"
              ,"_build/burdock"
              -- temporary hack while python is incompatible threads
-             ,"_build/burdock-unthreaded"]
+             ,"_build/burdock-ffi"]
         cmd_ "_build/burdock-hunit-tests --color never --ansi-tricks false --hide-successes"
-        cmd_  "_build/burdock-unthreaded src/burdock/tests/run-all-tests-additional.bur"
+        cmd_  "_build/burdock-ffi src/burdock/tests/run-all-tests-additional.bur"
         cmd_  "_build/burdock src/burdock/tests/run-all-tests.bur"
 
 

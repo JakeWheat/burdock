@@ -25,25 +25,27 @@ sqlite3 = py-import("sqlite3")
 csv = py-import("csv")
 io = py-import("io")
 
-check:
-
-  csvdat = ```1,stuff1
+csvdat = ```1,stuff1
 2,element2
 3,line3
 4,record4```
 
-  ddl = ```
+ddl = ```
 create table dat (
   k int,
   v text
 );```
 
-  conn = sqlite3.connect(':memory:')
-  conn.execute(ddl)
+conn = sqlite3.connect(':memory:')
+conn.execute(ddl)
 
-  for py-for(r from csv.reader(io.StringIO(csvdat))):
-    conn.execute("insert into dat values(?,?)", r)
-  end
+for py-for(r from csv.reader(io.StringIO(csvdat))):
+  conn.execute("insert into dat values(?,?)", r)
+end
+
+print(conn.execute("select * from dat").fetchall())
+
+check:
 
   conn.execute("select * from dat").fetchall() is
     [list: {1;'stuff1'},
@@ -51,6 +53,6 @@ create table dat (
         {3;'line3'},
         {4;'record4'}]
 
-  conn.close()
-
 end
+
+conn.close()

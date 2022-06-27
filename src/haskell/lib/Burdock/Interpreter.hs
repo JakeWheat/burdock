@@ -61,6 +61,7 @@ import Control.Concurrent
     ,myThreadId
     ,ThreadId
     ,throwTo
+    ,isCurrentThreadBound
     )
 
 import qualified System.Environment as E
@@ -1403,6 +1404,10 @@ bSpawnMonitorTag :: [Value] -> Interpreter Value
 bSpawnMonitorTag [f,tg] = spawnOpts False True (Just tg) f
 bSpawnMonitorTag x = error $ "wrong args to spawn-monitor-tag: " ++ show x
 
+bIsBound :: [Value] -> Interpreter Value
+bIsBound [] = BoolV <$> liftIO isCurrentThreadBound
+bIsBound x = error $ "wrong args to is-bound: " ++ show x
+
 bWait :: [Value] -> Interpreter Value
 bWait [FFIValue _ffitag h']
     | Just h'' <- fromDynamic h' = do
@@ -1991,6 +1996,8 @@ builtInFF =
     ,("spawn-unscoped", bSpawnUnscoped)
     ,("spawn-monitor", bSpawnMonitor)
     ,("spawn-monitor-tag", bSpawnMonitorTag)
+    ,("is-bound", bIsBound)
+
     ,("wait", bWait)
     ,("wait-either", bWaitEither)
     ,("haskell-thread-id", bThreadId)

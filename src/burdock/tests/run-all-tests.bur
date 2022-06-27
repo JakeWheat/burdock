@@ -32,8 +32,10 @@ srcs = (my-ld("src/burdock/built-ins")
                             "./src/burdock/tests/run-all-tests-additional.bur"]), _))
        + my-ld("docs")
        + my-ld("website2")
-#shadow srcs = [list: "src/burdock/tests/concurrency.bur"]
+       + [list: "examples/load-csv-python.bur"]
+       + my-ld("src/packages/python-ffi")
 
+#shadow srcs = [list: "src/burdock/tests/concurrency.bur"]
 
 ts = run-tests-with-opts(default-test-opts.{test-sources:map(file-test(_), srcs),
                                        show-progress-log:true,

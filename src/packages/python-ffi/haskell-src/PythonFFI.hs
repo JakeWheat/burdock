@@ -36,7 +36,19 @@ import Burdock.Scientific (extractInt)
 
 import qualified PyWrap as P
 import qualified Data.Text as T
-import Control.Monad (void)
+import Control.Monad (void, when)
+
+import Control.Concurrent.STM.TVar
+    (TVar
+    ,readTVar
+    ,modifyTVar
+    ,newTVarIO
+    ,writeTVar
+    ,newTVar
+    )
+
+import Control.Concurrent.STM (atomically, retry)
+import System.IO.Unsafe (unsafePerformIO)
 
 pythonFFIPackage :: FFIPackage
 pythonFFIPackage = FFIPackage
@@ -64,10 +76,36 @@ pythonFFIPackage = FFIPackage
        ,fmdFallback = Just $ ffiNoArgValue "_pyobject-generic-member"})
      ]}
 
+
+-- hopefully this works
+-- guard it with a helper function
+-- since initializing happens after the atomic block
+-- to update the tvar
+globalStartIsPythonInitialized :: TVar Bool
+globalStartIsPythonInitialized = unsafePerformIO $ newTVarIO False
+{-# NOINLINE globalStartIsPythonInitialized #-}
+
+globalEndIsPythonInitialized :: TVar Bool
+globalEndIsPythonInitialized = unsafePerformIO $ newTVarIO False
+{-# NOINLINE globalEndIsPythonInitialized #-}
+
 safePythonInitialize :: [Value] -> Interpreter Value
 safePythonInitialize [] = do
-    -- should use a global ioref flag to do this once only, with thread safety
-    liftIO P.initialize
+    -- I'm sure this can be done much more simply with a TMVar
+    i <- liftIO $ atomically $ do
+        st <- readTVar globalStartIsPythonInitialized
+        if st
+            then do
+                e <- readTVar globalEndIsPythonInitialized
+                if e
+                    then pure True
+                    else retry
+            else do
+                writeTVar globalStartIsPythonInitialized True
+                pure False
+    when (not i) $ do
+        liftIO P.initialize
+        liftIO $ atomically $ writeTVar globalEndIsPythonInitialized True
     pure nothing
 safePythonInitialize _ = error "bad args to safePythonInitialize"
 
