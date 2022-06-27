@@ -13,7 +13,7 @@ provide:
   thread-cancel,
   thread-cancel-with,
 
-  self,
+  self-thread,
 
   send,
   receive-any,
@@ -52,7 +52,7 @@ is-bound = ffi-function("is-bound")
 
 wait = ffi-function("wait")
 wait-either = ffi-function("wait-either")
-self = ffi-function("self")
+self-thread = ffi-function("self-thread")
 thread-cancel = ffi-function("thread-cancel")
 thread-cancel-with = ffi-function("thread-cancel-with")
 

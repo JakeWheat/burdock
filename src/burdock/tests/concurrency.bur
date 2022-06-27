@@ -60,20 +60,20 @@ check "error exit value of thread":
 end
 
 
-check "self, simple send and receive":
+check "self-thread, simple send and receive":
 
   fun f():
     cases receive-any():
     #receive:
       | {ret;"hello"} =>
-        send(ret, {self;"hello to you"})
+        send(ret, {self-thread;"hello to you"})
       | x =>
         raise("expected {_;'hello'}, got " + torepr(x))
     end
   end
 
   h = spawn(f)
-  send(h, {self;"hello"})
+  send(h, {self-thread;"hello"})
   #receive:
   cases receive-any():
     | {frm;"hello to you"} =>
@@ -136,13 +136,13 @@ see the inner one exited
     receive-any()
   end
 
-  outer-self = self
+  outer-self-thread = self-thread
 
   fun outer():
     #print("outer: " + torepr(ci.haskell-thread-id()))
     h = spawn-nolink(inner)
-    send(outer-self, {"inner-address"; h})
-    send(h, {self;"hello"})
+    send(outer-self-thread, {"inner-address"; h})
+    send(h, {self-thread;"hello"})
     cases receive-any():
       | "hello" => nothing
     end
@@ -169,15 +169,15 @@ check "scoped thread exiting cancel":
     receive-any()
   end
 
-  outer-self = self
+  outer-self-thread = self-thread
 
   fun outer():
     h = spawn-nolink(inner)
-    send(h, {self;"hello"})
+    send(h, {self-thread;"hello"})
     cases receive-any():
       | "hello" => nothing
     end
-    send(outer-self, {"inner-address"; h})
+    send(outer-self-thread, {"inner-address"; h})
     receive-any()
   end
 
@@ -216,10 +216,10 @@ check "linked thread exiting":
       receive-any()
     end
 
-    outer-self = self
+    outer-self-thread = self-thread
     fun outer():
       h = spawn-unscoped(inner)
-      send(outer-self, h)
+      send(outer-self-thread, h)
       raise("outer exiting") 
     end
     
@@ -255,10 +255,10 @@ check "linked thread exiting":
       "OK"
     end
 
-    outer-self = self
+    outer-self-thread = self-thread
     fun outer():
       h = spawn-unscoped(inner)
-      send(outer-self, h)
+      send(outer-self-thread, h)
       "outer OK"
     end
     
@@ -368,7 +368,7 @@ check "async exits":
 
   block:
     fun f():
-      thread-cancel-with(self, "x")
+      thread-cancel-with(self-thread, "x")
     end
 
     x = spawn-nolink(f)
@@ -383,8 +383,8 @@ end
 check "trivial selective receive":
 
   block:
-    send(self, true)
-    send(self, false)
+    send(self-thread, true)
+    send(self-thread, false)
 
     x = receive:
         | true => true
@@ -398,8 +398,8 @@ check "trivial selective receive":
   end
 
   block:
-    send(self, true)
-    send(self, false)
+    send(self-thread, true)
+    send(self-thread, false)
 
     x = receive:
         | false => false
@@ -416,14 +416,14 @@ end
 
 check "receive-any and receive-any-timeout check buffer":
 
-  send(self, true)
+  send(self-thread, true)
   receive:
     | false => nothing
     | after 0 => nothing
   end
   receive-any() is true
 
-  send(self, true)
+  send(self-thread, true)
   receive:
     | false => nothing
     | after 0 => nothing
@@ -438,7 +438,7 @@ check "receive after simple":
     | after 0 => true
   end is true
   
-  send(self,false)
+  send(self-thread,false)
 
   # non matching message in buffer with 0 timeout
   receive:
@@ -499,10 +499,10 @@ this is good as a quick sanity check that won't make the quick tests run too slo
   |#
 
   # test that a message that comes in before the timeout is ok
-  outer-self = self
+  outer-self-thread = self-thread
   shadow myt = spawn(lam():
       receive:
-        | after short-time => send (outer-self, true)
+        | after short-time => send (outer-self-thread, true)
       end
     end)
 
@@ -515,12 +515,11 @@ this is good as a quick sanity check that won't make the quick tests run too slo
 
   # test that a message that comes in before the timeout is ok
   # when it comes in after another message which doesn't match
-  #outer-self = self
   shadow myt = spawn(lam():
       receive:
         | after short-time =>
-            send (outer-self, false)
-            send (outer-self, true)
+            send (outer-self-thread, false)
+            send (outer-self-thread, true)
       end
     end)
 

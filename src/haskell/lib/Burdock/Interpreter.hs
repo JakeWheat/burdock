@@ -1563,12 +1563,12 @@ receiveSyntaxHelper matchFn maft = do
             
     doOneTick [] inboxBuffer
 
-bSelf :: [Value] -> Interpreter Value
-bSelf [] = do
+bSelfThread :: [Value] -> Interpreter Value
+bSelfThread [] = do
     ch <- tlConcurrencyHandle <$> ask
     pure $ FFIValue threadHandleTag $ toDyn ch
 
-bSelf x = error $ "wrong args to self: " ++ show x
+bSelfThread x = error $ "wrong args to self-thread: " ++ show x
 
 
 bThreadId :: [Value] -> Interpreter Value
@@ -2005,7 +2005,7 @@ builtInFF =
     ,("thread-cancel-with", bThreadCancelWith)
     
     ,("send", bSend)
-    ,("self", bSelf)
+    ,("self-thread", bSelfThread)
     ,("receive-any", bReceiveAny)
     ,("receive-any-timeout", bReceiveAnyTimeout)
     
@@ -2748,7 +2748,7 @@ interp (Iden a) = do
     mv <- lookupBinding a
     case mv of
         -- hack for self for concurrency
-        Just f@(ForeignFunV "self") -> app f []
+        Just f@(ForeignFunV "self-thread") -> app f []
         Just (BoxV _ vr) -> liftIO $ readIORef vr
         Just v -> pure v
         Nothing -> _errorWithCallStack $ "identifier not found: " ++ a

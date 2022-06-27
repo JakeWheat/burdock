@@ -69,7 +69,7 @@ fun create-repl():
 end
 
 fun repl-execute(handle, src):
-  send(handle, run-src(self,src))
+  send(handle, run-src(self-thread,src))
   receive:
     | run-src-ok(r,v) when r == handle =>
         cases v:
@@ -83,7 +83,7 @@ fun repl-execute(handle, src):
 end
 
 fun close-repl(handle):
-  send(handle, exit(self))
+  send(handle, exit(self-thread))
   receive:
     | exiting(r) when r == handle => nothing
   end
@@ -97,9 +97,9 @@ fun repl-monitor():
 
   fun repl-down(v):
     receive block:
-      | exit(ret) => send(ret,exiting(self))
+      | exit(ret) => send(ret,exiting(self-thread))
       | run-src(r,_) =>
-          send(r,repl-down(self,v))
+          send(r,repl-down(self-thread,v))
           repl-down(v)
       | _ as e => repl-down(v)
     end
@@ -108,28 +108,28 @@ fun repl-monitor():
   fun repl-monitor-loop():
     receive block:
       | run-src(ret,src) =>
-          send(repl,run-src(self,src))
+          send(repl,run-src(self-thread,src))
           receive block:
             | run-src-ok(r, v) when r == repl =>
-                send(ret, run-src-ok(self, v))
+                send(ret, run-src-ok(self-thread, v))
                 repl-monitor-loop()
             | error(r,e) when r == repl =>
-                send(ret, error(self,e))
+                send(ret, error(self-thread,e))
                 repl-monitor-loop()
             | monitor-down(_,et,v,mr) when mr == rf =>
-                send(ret,repl-down(self, v))
+                send(ret,repl-down(self-thread, v))
                 repl-down(v)
           end
       | exit(ret) =>
-          send(repl, exit(self))
+          send(repl, exit(self-thread))
           receive block:
             | monitor-down(_,et,"exiting",mr) when mr == rf =>
-                send(ret,exiting(self))
+                send(ret,exiting(self-thread))
             | monitor-down(_,et,v,mr) when mr == rf =>
                 # todo: it's no good to print in this thread,
                 # it should send it to the client thread to print
                 print("repl didn't exit nicely: " + torepr(et,v))            
-                send(ret,exiting(self))
+                send(ret,exiting(self-thread))
           end
       | monitor-down(_,_et,v,mr) when mr == rf =>
           # todo: printing in wrong thread, see above
@@ -148,7 +148,7 @@ fun repl-loop():
   receive block:
     | run-src(ret,src) =>
         v = run-task(run-script(src))
-        send(ret, run-src-ok(self, v))
+        send(ret, run-src-ok(self-thread, v))
         repl-loop()
     | exit(ret) => "exiting"
     | _ as e =>

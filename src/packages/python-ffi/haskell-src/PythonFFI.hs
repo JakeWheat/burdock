@@ -41,10 +41,8 @@ import Control.Monad (void, when)
 import Control.Concurrent.STM.TVar
     (TVar
     ,readTVar
-    ,modifyTVar
     ,newTVarIO
     ,writeTVar
-    ,newTVar
     )
 
 import Control.Concurrent.STM (atomically, retry)
