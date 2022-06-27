@@ -45,7 +45,7 @@ data Run-test-opts:
                                       #       test-predicate-name :: Option<String>)
                                       #       -> Boolean>,
                   hide-successes, # :: Boolean,
-                  auto-print-results) # :: Boolean)
+                  print-results) # :: Boolean)
 end
 
 default-test-opts = run-test-opts([list:], false, none, false, false)

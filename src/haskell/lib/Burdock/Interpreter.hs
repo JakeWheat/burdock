@@ -2621,7 +2621,7 @@ bRunTestsWithOpts [opts] = do
             VariantV _ "none" [] -> pure Nothing
             _ -> error $ "test run predicate not supported"
     BoolV hideSuccesses <- getAttr opts "hide-successes"
-    BoolV autoPrintResults <- getAttr opts "auto-print-results"
+    BoolV autoPrintResults <- getAttr opts "print-results"
 
     cbs <- concat <$>
         (forM testSrcs $ \testSrc -> runIsolated showProgressLog hideSuccesses $ do

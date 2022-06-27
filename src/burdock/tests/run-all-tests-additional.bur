@@ -18,7 +18,7 @@ srcs = my-ld("src/packages/ffitypes-test")
 
 ts = run-tests-with-opts(default-test-opts.{test-sources:map(file-test(_), srcs),
                                        show-progress-log:true,
-                                       auto-print-results:true,
+                                       print-results:true,
                                        hide-successes:true
                                       })
 

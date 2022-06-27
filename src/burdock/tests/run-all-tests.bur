@@ -26,7 +26,9 @@ fun my-ld(dir):
 end
 
 srcs = (my-ld("src/burdock/built-ins")
-       ^ filter(not-elem(_,[list:"./src/burdock/built-ins/_internals.bur", "./src/burdock/built-ins/globals.bur"]), _))
+       ^ filter(not-elem(_,[list:"./src/burdock/built-ins/_internals.bur",
+                                 "./src/burdock/built-ins/globals.bur",
+                                 "./src/burdock/built-ins/run-tests.bur"]), _))
        + (my-ld("src/burdock/tests")
        ^ filter(not-elem(_,[list:"./src/burdock/tests/run-all-tests.bur",
                             "./src/burdock/tests/run-all-tests-additional.bur"]), _))
@@ -35,11 +37,12 @@ srcs = (my-ld("src/burdock/built-ins")
        + [list: "examples/load-csv-python.bur"]
        + my-ld("src/packages/python-ffi")
 
-#shadow srcs = [list: "src/burdock/tests/concurrency.bur"]
+#shadow srcs = (my-ld("src/burdock/built-ins")
+#       ^ filter(not-elem(_,[list:"./src/burdock/built-ins/_internals.bur", "./src/burdock/built-ins/globals.bur"]), _))
 
 ts = run-tests-with-opts(default-test-opts.{test-sources:map(file-test(_), srcs),
                                        show-progress-log:true,
-                                       auto-print-results:true,
+                                       print-results:true,
                                        hide-successes:true
                                       })
 

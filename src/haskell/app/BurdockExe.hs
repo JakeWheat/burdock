@@ -117,7 +117,7 @@ runSrc lit fnm (rTests,rallTests,hideSuccesses,hideProgress,hideTestResults) src
                     \             test-sources:[list:source-test(fn, src)],\n\
                     \             show-progress-log:spl,\n\
                     \             hide-successes:hs,\n\
-                    \             auto-print-results:apr\n\
+                    \             print-results:apr\n\
                     \             })\n\
                     \has-test-failures(rs)"
                 case x of
