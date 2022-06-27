@@ -1152,14 +1152,14 @@ bSleep [NumV t] = do
     pure nothing
 bSleep x = _errorWithCallStack $ "wrong args to sleep: " ++ show x
 
-inboxTag :: (String,String)
-inboxTag = ("_system","inbox")
+--inboxTag :: (String,String)
+--inboxTag = ("_system","inbox")
 threadHandleTag :: (String,String)
 threadHandleTag = ("_system","thread-handle")
 
-type Inbox = HC.Inbox Value
+--type Inbox = HC.Inbox Value
 
-makeInbox :: [Value] -> Interpreter Value
+{-makeInbox :: [Value] -> Interpreter Value
 makeInbox [] = do
     (x :: Inbox) <- liftIO $ HC.makeInbox
     pure $ FFIValue inboxTag $ toDyn x
@@ -1184,7 +1184,7 @@ closeInbox :: [Value] -> Interpreter Value
 closeInbox [FFIValue _ffitag frm]
     | Just (ib :: HC.Inbox Value) <- fromDynamic frm
     = liftIO (HC.closeInbox ib) >> pure nothing
-closeInbox x = error $ "wrong args to close-inbox: " ++ show x
+closeInbox x = error $ "wrong args to close-inbox: " ++ show x-}
 
 bThreadHandleEquals :: [Value] -> Interpreter Value
 bThreadHandleEquals [FFIValue _ x, FFIValue _ y]
@@ -1999,10 +1999,10 @@ builtInFF =
     ,("union-recs", unionRecs)
 
     ,("sleep", bSleep)
-    ,("make-inbox", makeInbox)
-    ,("send-inbox", sendInbox)
-    ,("receive-inbox", receiveInbox)
-    ,("close-inbox", closeInbox)
+    --,("make-inbox", makeInbox)
+    --,("send-inbox", sendInbox)
+    --,("receive-inbox", receiveInbox)
+    --,("close-inbox", closeInbox)
     ,("_member-thread-handle"
      ,ffiMemberDispatcher $ FMD
       {fmdLkp = [("_equals", ffiSingleArgMethod "thread-handle-equals")
