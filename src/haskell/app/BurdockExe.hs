@@ -114,7 +114,7 @@ runSrc lit fnm (rTests,rallTests,hideSuccesses,hideProgress,hideTestResults) src
                     "include testing\n\
                     \rs = run-tests-with-opts(\n\
                     \         default-test-opts.{\n\
-                    \             test-source:source-test(fn, src),\n\
+                    \             test-sources:[list:source-test(fn, src)],\n\
                     \             show-progress-log:spl,\n\
                     \             hide-successes:hs,\n\
                     \             auto-print-results:apr\n\
