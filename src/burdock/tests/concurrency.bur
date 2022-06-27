@@ -414,6 +414,126 @@ check "trivial selective receive":
 
 end
 
+check "receive-any and receive-any-timeout check buffer":
+
+  send(self, true)
+  receive:
+    | false => nothing
+    | after 0 => nothing
+  end
+  receive-any() is true
+
+  send(self, true)
+  receive:
+    | false => nothing
+    | after 0 => nothing
+  end
+  receive-any-timeout(0) is true
+
+end
+
+check "receive after simple":
+
+  receive:
+    | after 0 => true
+  end is true
+  
+  send(self,false)
+
+  # non matching message in buffer with 0 timeout
+  receive:
+    | true => true
+    | after 0 => false
+  end is false
+
+  # matching message in buffer with 0 timeout
+  receive:
+    | false => true
+    | after 0 => false
+  end is true
+
+end
+
+check "simple timeout sanity":
+#|
+
+want tests to run fast
+want to check timeouts are about the right time
+don't want tests to sometimes fail when things are fine
+
+can't do all of these at once
+to check the timeout times, need to run a bunch of actions repeatedly
+  and then do some statistical analysis on the numbers
+  this can also show how accurate the timing is - produce this as
+  a helper function, one that can be run on a loaded system + inside
+    a burdock system running a lot of other stuff as a useful utility
+    too
+this test will take a fair bit of time to run
+
+try here to do some quick sanity checks, which at least show the
+timeouts are in the right ballpack. the tradeoff is - if you make the tests quick, you get more relative unreliability in the times. if you make the checks lax, then you might miss some regressions. If you make the checks tight-ish, then you might get test failures from time to time which you shouldn't get
+
+solution:
+have to risk some test failures
+do each test once - if it fits the timings, ok
+if it doesn't, then repeat it up to n times to see a pass
+this is good as a quick sanity check that won't make the quick tests run too slowly
+
+|#
+
+
+  short-time = 0.1
+
+  # test that timing out takes the amount of time expected
+
+  #|
+  st = current-time()
+  receive:
+    | after short-time => nothing
+  end
+  nw = current-time()
+  # todo: what can be done to give better debug info in the test fail message
+  # when the test fails?
+  (diff-in-seconds(nw,st) - short-time) < (short-time/10) is true
+
+  |#
+
+  # test that a message that comes in before the timeout is ok
+  outer-self = self
+  shadow myt = spawn(lam():
+      receive:
+        | after short-time => send (outer-self, true)
+      end
+    end)
+
+  receive:
+    | x => x
+    | after short-time * 2 => nothing
+  end is true
+
+  wait(myt)
+
+  # test that a message that comes in before the timeout is ok
+  # when it comes in after another message which doesn't match
+  #outer-self = self
+  shadow myt = spawn(lam():
+      receive:
+        | after short-time =>
+            send (outer-self, false)
+            send (outer-self, true)
+      end
+    end)
+
+  receive:
+    | true => true
+    | after short-time * 2 => nothing
+  end is true
+
+  receive-any() is false
+  wait(myt)
+
+end
+
 check "selective receive details":
 
 #|

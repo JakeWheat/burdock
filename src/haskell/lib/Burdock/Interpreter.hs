@@ -190,7 +190,7 @@ import Data.Either (isLeft)
 
 import Data.Time.Clock (getCurrentTime
                        ,diffUTCTime
-                       ,UTCTime
+                       --,UTCTime
                        )
 
 
@@ -1435,14 +1435,26 @@ bSend [FFIValue _ffitag h', v]
           pure nothing
 bSend x = error $ "wrong args to send: " ++ show x
 
+receiveFromInboxBufferElse :: Interpreter Value -> Interpreter Value
+receiveFromInboxBufferElse f = do
+    ibR <- (chInboxBuffer . tlConcurrencyHandle) <$> ask
+    ib <- liftIO $ readIORef ibR
+    case ib of
+        [] -> f
+        (x:xs) -> do
+            liftIO $ writeIORef ibR xs
+            pure x
+
 bReceiveAny :: [Value] -> Interpreter Value
-bReceiveAny [] = do
+bReceiveAny [] =
+    receiveFromInboxBufferElse $ do
     ch <- (chInbox . tlConcurrencyHandle) <$> ask
     liftIO $ HC.receive ch
 bReceiveAny x = error $ "wrong args to receive-any: " ++ show x
 
 bReceiveAnyTimeout :: [Value] -> Interpreter Value
-bReceiveAnyTimeout [NumV n] = do
+bReceiveAnyTimeout [NumV n] =
+    receiveFromInboxBufferElse $ do
     ch <- (chInbox . tlConcurrencyHandle) <$> ask
     ret <- liftIO $ HC.receiveTimeout ch (floor $ n * 1000 * 1000)
     case ret of
@@ -1490,33 +1502,60 @@ fromBOption (VariantV _ "some" [(_,x)]) = Just $ Just x
 fromBOption (VariantV _ "none" []) = Just Nothing
 fromBOption _ = Nothing
 
-receiveSyntaxHelper :: Value -> Maybe (Maybe Scientific, Value) -> Interpreter Value
+receiveSyntaxHelper :: Value -> Maybe (Scientific, Value) -> Interpreter Value
 receiveSyntaxHelper matchFn maft = do
     startTime <- liftIO getCurrentTime
     ch <- (chInbox . tlConcurrencyHandle) <$> ask
-    (ibR :: IORef [Value]) <- (chInboxBuffer . tlConcurrencyHandle) <$> ask
+    ibR <- (chInboxBuffer . tlConcurrencyHandle) <$> ask
     inboxBuffer <- liftIO $ readIORef ibR
 
     let ret sb ib x = do
             liftIO $ writeIORef ibR (reverse sb ++ ib)
-            pure (x :: Value)
-        checkForMatch v sb ib next = do
+            pure x
+        checkForMatch v sb ib = do
             res <- app matchFn [v]
             case fromBOption res of
                 Nothing -> error $ "receive match function returned non option: " ++ show res
-                Just Nothing -> next
-                Just (Just (x :: Value)) -> ret sb ib x
-        doOneTick sb (x:xs) = do
-            checkForMatch x sb xs $ doOneTick (x:sb) xs
-        doOneTick sb [] = do
+                Just Nothing -> doOneTick (v:sb) ib
+                Just (Just x) -> ret sb ib x
+        timedOut sb ib aftf = do
+            liftIO $ writeIORef ibR (reverse sb ++ ib)
+            app aftf []
+        -- check through the buffer
+        doOneTick sb (x:xs) = checkForMatch x sb xs
+        doOneTick sb [] = doOneTickIb sb
+        -- check any messages already in the inbox
+        -- TODO: this calls receivetimeout with 0 redundantly
+        -- when the inbox has already been drained, if/when the code
+        -- knows it's going to call it with a non zero timeout
+        -- next
+        doOneTickIb sb = do
             v <- liftIO $ HC.receiveTimeout ch 0
             case v of
-                Just v' -> do
-                    checkForMatch v' sb [] $ doOneTick (v':sb) []
+                Just v' -> checkForMatch v' sb []
+                Nothing -> doOneTickWait sb
+        doOneTickWait sb =
+            case maft of
                 Nothing -> do
-                    -- see if the timeout was 0, or if we've run out of time
-                    --let elapsed = diffUTCTime nw startTime
-                    undefined
+                    -- no timeout
+                    newv <- liftIO $ HC.receive ch
+                    checkForMatch newv sb []
+                Just (tmo, aftf) -> do
+                    togo <- microsecondsLeft tmo
+                    if togo < 0
+                        then timedOut sb [] aftf
+                        else do
+                            v <- liftIO $ HC.receiveTimeout ch togo
+                            case v of
+                                Nothing -> timedOut sb [] aftf
+                                Just v' -> checkForMatch v' sb []
+        microsecondsLeft tmo = do
+            nw <- liftIO getCurrentTime
+            let elapsed = diffUTCTime nw startTime
+                togo :: Int
+                togo = floor ((tmo - realToFrac elapsed) * 1000 * 1000)
+            pure togo
+            
     doOneTick [] inboxBuffer
 
 bSelf :: [Value] -> Interpreter Value
@@ -2996,14 +3035,14 @@ interp (Receive as aft) = do
                   [StmtExpr $ Cases (Iden "receivepayload") Nothing (map mpCase as) els]
     matchFn <- interp matchFnS
     aft' <- case aft of
-            Just (Iden "infinity", fn) -> do
-                aftx <- interp (Lam (FunHeader [] [] Nothing) fn)
-                pure $ Just (Nothing, aftx)
+            -- TODO: this isn't correct, infinity should be a value,
+            -- not a bit of syntax
+            Just (Iden "infinity", _fn) -> pure Nothing
             Just (e, fn) -> do
                 aftx <- interp (Lam (FunHeader [] [] Nothing) fn)
                 v <- interp e
                 case v of
-                    NumV b -> pure $ Just (Just b, aftx)
+                    NumV b -> pure $ Just (b, aftx)
                     _ -> error $ "receive after value is not a number: " ++ show v
             Nothing -> pure Nothing
     receiveSyntaxHelper matchFn aft'
