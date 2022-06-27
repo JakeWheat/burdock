@@ -1823,32 +1823,6 @@ liftEquals tyname f a b =
         (Just a', Just b') -> f a' b'
         _ -> error $ "expected two " ++ tyname ++ ", got " ++ show (a,b)-}
 
--- this is definitely way too much boilerplate
-{-addrEquals :: [Value] -> Interpreter Value
-addrEquals [FFIValue _ a, FFIValue _ b] =
-    case (fromDynamic a, fromDynamic b) of
-        (Just a', Just b') -> BoolV <$> e a' b'
-        _ -> error $ "expected two addrs, got " ++ show (a,b)
-  where
-    e :: Addr -> Addr -> Interpreter Bool
-    e x y = pure $ (==) x y
-addrEquals _ = error "bad args to addr equals"
-
-addrToRepr :: [Value] -> Interpreter Value
-addrToRepr [FFIValue _ a] =
-    case fromDynamic a of
-        Just (_ :: Addr) -> pure $ TextV $ show a
-        _ -> error $ "bad arg to addr torepr " ++ show a
-addrToRepr _ = error "bad args to addr torepr"-}
-
-
-{-addrEquals :: Dynamic -> Dynamic -> Interpreter Bool
-addrEquals a b =
-    liftEquals "addr" e a b
-  where
-    e :: Addr -> Addr -> Interpreter Bool
-    e x y = pure $ (==) x y-}
-
 relationFFIEquals :: [Value] -> Interpreter Value
 relationFFIEquals [FFIValue _ a, FFIValue _ b] =
     case (fromDynamic a, fromDynamic b) of
