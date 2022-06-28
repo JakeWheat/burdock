@@ -59,25 +59,25 @@ expr (InstExpr e ps) = expr e <> pretty "<" <> commaSep (map typ ps) <> pretty "
 expr (App _sp e es) = expr e <> parens (commaSep $ map expr es)
 expr (BinOp a op b) = expr a <+> pretty op <+> expr b
 expr (UnaryMinus e) = pretty "-" <> expr e
-expr (Lam fh e) = prettyBlocklike sep
+expr (Lam fh e) = prettyBlocklike vsep
     [pretty "lam" <> funHeader fh <> pretty ":"
     ,stmts e]
 expr (CurlyLam fh e) =
     pretty "{" <> funHeader fh <> pretty ":" <+> stmts e <> pretty "}"
 
-expr (Let bs e) = prettyBlocklike sep
+expr (Let bs e) = prettyBlocklike vsep
     [pretty "let" <+> bs' <> pretty ":"
     ,stmts e]
   where
     bs' | [(n,v)] <- bs = bindExpr n v
         | otherwise = commaSep $ map (uncurry bindExpr) bs
-expr (LetRec bs e) = prettyBlocklike sep
+expr (LetRec bs e) = prettyBlocklike vsep
     [pretty "letrec" <+> nest 2 (commaSep $ map (uncurry bindExpr) bs) <> pretty ":"
     ,stmts e]
 expr (Block ss) = prettyBlocklike vsep
     [pretty "block:"
     ,stmts ss]
-expr (If cs els) = sep (prettyCs cs ++ pel els ++ [pretty "end"])
+expr (If cs els) = vsep (prettyCs cs ++ pel els ++ [pretty "end"])
   where
     prettyCs [] = []
     prettyCs ((c,t):cs') = [pretty "if" <+> expr c <> pretty ":"
@@ -111,7 +111,7 @@ expr (RecordSel flds) = pretty "{" <> nest 2 (commaSep (map fld flds) <> pretty 
 expr (Extend v flds) = expr v <> pretty ".{" <> nest 2 (commaSep (map fld flds) <> pretty "}")
   where
     fld (n,e) = pretty n <> pretty ":" <+> expr e
-expr (TableSel cs rs) = prettyBlocklike sep
+expr (TableSel cs rs) = prettyBlocklike vsep
     (pretty "table" <+> commaSep (map pretty cs) <> pretty ":"
     : map rl rs)
   where
@@ -132,7 +132,7 @@ expr (Construct e as) =
 expr (AssertTypeCompat e ty) =
     pretty "assert-type-compat(" <> nest 2 (expr e <+> pretty "::" <+> typ ty) <> pretty ")"
 expr (TypeLet tds e) =
-    prettyBlocklike sep
+    prettyBlocklike vsep
     [pretty "type-let" <+> commaSep (map typeDecl tds) <> pretty ":"
     ,stmts e]
 expr (Template _sp) = pretty "..."
@@ -152,7 +152,7 @@ expr (Receive mats after) =
 expr (MethodExpr m) = pretty "method" <+> method m
 
 method :: Method -> Doc a
-method (Method fh bdy) = prettyBlocklike sep
+method (Method fh bdy) = prettyBlocklike vsep
     [funHeader fh <> pretty ":"
     ,stmts bdy]
 
@@ -185,7 +185,7 @@ binding (StringLitBinding t) = expr (Text t)
 
 simpleBinding :: SimpleBinding -> Doc a
 simpleBinding (SimpleBinding s nm ty) =
-    sep $ catMaybes [case s of
+    vsep $ catMaybes [case s of
                         Shadow -> Just $ pretty "shadow"
                         NoShadow -> Nothing
                     ,Just $ pretty nm
@@ -281,7 +281,7 @@ stmt (DataDecl nm ts vs shr w) =
 
 stmt (RecDecl n e) = pretty "rec" <+> bindExpr n e
 stmt (FunDecl pn hdr ds e w) =
-    prettyBlocklike sep
+    prettyBlocklike vsep
      [pretty "fun" <+> simpleBinding pn <> funHeader hdr <> pretty ":"
      ,maybe mempty (\x -> pretty "doc: " <+> expr (Text x)) ds
      ,stmts e

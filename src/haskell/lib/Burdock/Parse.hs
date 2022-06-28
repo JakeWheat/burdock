@@ -10,7 +10,7 @@ module Burdock.Parse
     ) where
 
 
-import Text.Megaparsec (Parsec
+import Text.Megaparsec (ParsecT
                        -- ,many
                        ,(<|>)
                        ,parse
@@ -35,10 +35,10 @@ import Text.Megaparsec (Parsec
                        ,unPos
                        )
 
-import Text.Megaparsec.Char (space
-                            ,char
+import Text.Megaparsec.Char (char
                             ,string
                             ,letterChar
+                            ,spaceChar
                             )
 
 import Data.Char (isAlphaNum,isDigit)
@@ -59,6 +59,8 @@ import Data.Void (Void)
 import Burdock.Syntax
 import Data.List (isPrefixOf)
 
+import Control.Monad.State.Strict (StateT, evalStateT, put, get)
+import Control.Monad.Identity (Identity)
 
 ------------------------------------------------------------------------------
 
@@ -81,13 +83,19 @@ parseLiterateScript fn src = parseHelper script fn $ extractSource src
 parseHelper :: Parser a -> FilePath -> String -> Either String a
 parseHelper parseFn fn src =
     either (Left . errorBundlePretty) Right $
-    parse (whiteSpace *> parseFn <* myEof) fn src
+    parse (evalStateT ((whiteSpace *> (put SeenNewline *> parseFn) <* myEof)) SeenNewline) fn src
+
+data ParserState
+    = SeenNewline
+    | SeenWhitespace
+    | NotSeenWhitespace
+    deriving (Eq,Show)
 
 ------------------------------------------------------------------------------
 
 -- parser helpers and lexer like things
 
-type Parser = Parsec Void String
+type Parser = StateT ParserState (ParsecT Void String Identity)
 
 chainl1 :: Alternative m => m a -> m (a -> a -> a) -> m a
 chainl1 p op = scan
@@ -145,10 +153,41 @@ commaSep = xSep ','
 commaSep1 :: Parser f -> Parser [f]
 commaSep1 = xSep1 ','
 
+{-
+track whitespace so can prevent two expressions on the same line,
+and require no whitespace between an expression and app parens:
+f(x) OK
+f (x) ERROR
+
+todo:
+
+extend to <>, see if there's anything else in this category
+
+require whitespace around binary operators:
+1+2 ERROR
+1+ 2 ERROR
+1 +2 ERROR
+1 + 2 OK
+
+make the parse error messages better
+-}
 whiteSpace :: Parser ()
-whiteSpace = space *> choice [blockComment *> whiteSpace
-                             ,lineComment *> whiteSpace
-                             ,pure ()] <?> ""
+whiteSpace = do
+    x <- whiteSpace'
+    put $ if | '\n' `elem` x -> SeenNewline
+             | not (null x) -> SeenWhitespace
+             | otherwise -> NotSeenWhitespace
+  where
+    whiteSpace' = do
+        sp <- space'
+        sp1 <- choice [blockComment *> whiteSpace'
+                      ,do
+                       lineComment
+                       x <- whiteSpace'
+                       pure ('\n':x)
+                      ,pure ""] <?> ""
+        pure $ sp ++ sp1
+    space' = many spaceChar
 
 char_ :: Char -> Parser ()
 char_ x = () <$ char x
@@ -305,6 +344,8 @@ termSuffixes x = boption x $ do
 
 appSuffix :: Parser (Expr -> Expr)
 appSuffix = do
+    st <- get
+    guard (st == NotSeenWhitespace)
     sp <- sourcePos
     f sp <$> parens (commaSep expr)
   where
@@ -702,24 +743,29 @@ script :: Parser Script
 script = Script <$> stmts
 
 stmt :: Parser Stmt
-stmt = choice
-    [recDecl
-    ,funDecl
-    ,varDecl
-    ,dataDecl
-    ,checkBlock
-    ,typeStmt
-    ,ffiTypeStmt
-    ,provide
-    ,include
-    ,importStmt
-    ,whenStmt
-    ,shadowDecl
-    ,usePackage
-    ,startsWithExprOrBinding]
+stmt = do
+    st <- get
+    guard (st == SeenNewline)
+    choice
+        [recDecl
+        ,funDecl
+        ,varDecl
+        ,dataDecl
+        ,checkBlock
+        ,typeStmt
+        ,ffiTypeStmt
+        ,provide
+        ,include
+        ,importStmt
+        ,whenStmt
+        ,shadowDecl
+        ,usePackage
+        ,startsWithExprOrBinding]
 
 stmts :: Parser [Stmt]
-stmts = many stmt
+stmts = do
+    put SeenNewline
+    many stmt
 
 recDecl :: Parser Stmt
 recDecl = uncurry RecDecl <$> (keyword_ "rec" *> bindExpr)

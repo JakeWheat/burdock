@@ -502,7 +502,7 @@ this is good as a quick sanity check that won't make the quick tests run too slo
   outer-self-thread = self-thread
   shadow myt = spawn(lam():
       receive:
-        | after short-time => send (outer-self-thread, true)
+        | after short-time => send(outer-self-thread, true)
       end
     end)
 
@@ -518,8 +518,8 @@ this is good as a quick sanity check that won't make the quick tests run too slo
   shadow myt = spawn(lam():
       receive:
         | after short-time =>
-            send (outer-self-thread, false)
-            send (outer-self-thread, true)
+            send(outer-self-thread, false)
+            send(outer-self-thread, true)
       end
     end)
 
