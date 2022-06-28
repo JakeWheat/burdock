@@ -397,6 +397,10 @@ statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTe
      ,LetDecl (nm "a") (Num 5))
     ,(" \na = 5"
      ,LetDecl (nm "a") (Num 5))
+    ,("#test\na = 5"
+     ,LetDecl (nm "a") (Num 5))
+    ,("#|test|#a = 5"
+     ,LetDecl (nm "a") (Num 5))
     ,("shadow a = 5"
      ,LetDecl (ShadowBinding "a") (Num 5))
 

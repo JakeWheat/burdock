@@ -1,8 +1,19 @@
+## Week 25 3rd July
+
+- python now works in regular interpreter with thread support
+- new testing front end which allows running only specific tests easily
+- fix whitespace parsing: no space between expr and app parens,
+  statements must start on new line
+- repl restored
+
 ## Week 24 26th June
 
 - add version number with manual component and automatic git hash
 - bundle built in modules so the exe is standalone
 - create poc release build
+- fix imports to be relative to current file
+- new concurrency implementation, with scoping and linking by default
+  and many other improvements, 
 
 ## Week 23 19th June
 

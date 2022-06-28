@@ -17,6 +17,7 @@ module Burdock.Interpreter
     ,closeHandle
     ,Handle
     ,runScript
+    ,runInteractive
     ,runLiterateScript
     ,evalExpr
     ,evalFun
@@ -248,6 +249,39 @@ runScript' lit h mfn lenv src =
             forM_ lenv $ \(n,v) -> letValue' Shadow n v
             ret <- interpStatements ast
             pure ret
+
+-- used for a repl - top level bindings in one call to runinteractive
+-- are available in subsequent calls
+runInteractive :: Handle
+               -> String
+               -> IO Value
+runInteractive h src =
+    runInterp True h $ do
+        st <- ask
+        ig <- liftIO $ atomically $ do
+                a <- readTVar (tlHandleState st)
+                b <- readTVar (hsInteractiveGeneration a)
+                pure b
+        let thisModule = "repl-module-" ++ show (ig + 1)
+            lastModule = "repl-module-" ++ show ig
+        Script ast <- either error id
+            <$> useSource (Just thisModule) thisModule src parseScript
+        localBindings (\_ -> pure []) $ do
+            -- todo: implement provide from and use that?
+            void $ interpStatement (Include (ImportName "globals"))
+            when (ig > 0) $
+                void $ interpStatement (Include (ImportName lastModule))
+            r <- interpStatements ast
+            localModuleEnv <- askLocallyCreatedBindings
+            allModuleEnv <- askIncludedBindings
+            let allbs = localModuleEnv ++ (filter ((`notElem` map fst localModuleEnv) . fst) allModuleEnv)
+            moduleRecord <- VariantV (bootstrapType "Record") "record"
+                        <$> aliasSomething allbs allModuleEnv [ProvideAll]
+            modifyAddModule thisModule thisModule moduleRecord
+            liftIO $ atomically $ do
+                a <- readTVar (tlHandleState st)
+                writeTVar (hsInteractiveGeneration a) (ig + 1)
+            pure r
     
 evalExpr :: Handle
          -> Maybe FilePath
@@ -690,7 +724,8 @@ data BurdockHandleState
     -- temp, to be split by module
     -- module path, check block name, result
     ,hsTestResults :: TVar [(String,String,TestResult)]
-    ,hsTempMonitorId :: TVar Int
+    ,hsTempMonitorId :: TVar Int -- hack for concurrency, will be improved on
+    ,hsInteractiveGeneration :: TVar Int
     }
 
 data ModuleState
@@ -710,9 +745,6 @@ data ThreadLocalState
     -- this is used for the bindings in the current scope
     -- which weren't introduced using a prelude statement
     ,tlLocallyCreatedBindings :: IORef [(String,Value)]
-    -- hack for the repl - save bindings from run script
-    -- so they are preserved from call to call
-    ,tlReplCreatedBindings :: IORef [(String,Value)]
     -- these are the local bindings that were introduced using
     -- a prelude statement
     ,tlIncludedBindings :: IORef [(String,Value)]
@@ -771,7 +803,8 @@ newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
     rs <- newTVarIO []
     i <- newTVarIO 0
-    h <- newTVarIO $ BurdockHandleState [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs i
+    ri <- newTVarIO 0
+    h <- newTVarIO $ BurdockHandleState [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs i ri
     runInterp False (Handle h) initBootstrapModule
     runInterp False (Handle h) $ do
         (internalsFn, internalsSrc) <- readImportSource (ImportName "_internals")
@@ -791,7 +824,6 @@ newSourceHandle bs = do
         <*> pure (ModuleState "unknown" "") -- todo: generate unique names
         <*> newIORef []
         <*> pure []
-        <*> newIORef []
         <*> newIORef []
         <*> newIORef []
         <*> pure Nothing
@@ -903,13 +935,6 @@ modifyIncludedBindings f = do
     v' <- f v
     liftIO $ writeIORef (tlIncludedBindings st) v'
 
-modifyReplCreatedBindings :: (Env -> Interpreter Env) -> Interpreter ()
-modifyReplCreatedBindings f = do
-    st <- ask
-    v <- liftIO $ readIORef (tlReplCreatedBindings st)
-    v' <- f v
-    liftIO $ writeIORef (tlReplCreatedBindings st) v'
-
 localModule :: String -> Maybe String -> Interpreter a -> Interpreter a
 localModule modName mfn f = do
     n <- case mfn of
@@ -924,14 +949,13 @@ askBindings :: Interpreter [(String,Value)]
 askBindings = do
     -- combine the local bindings with the global ones
     l <- askLocallyCreatedBindings
-    lt <- askReplCreatedBindings
     lo <- askIncludedBindings
     st <- ask
     hs <- liftIO $ atomically (readTVar (tlHandleState st))
     let mods = map snd $ hsLoadedModules hs
     -- todo: make sure new bindings override old ones in all situations
     -- do some tests, it's not right at the moment
-    let l1 = l ++ lt ++ lo ++ hsTempBaseEnv hs
+    let l1 = l ++ lo ++ hsTempBaseEnv hs
              ++ [("_system", VariantV (bootstrapType "Record") "record"
                        [("modules", VariantV (bootstrapType "Record") "record" mods)])]
     pure l1
@@ -941,9 +965,6 @@ askBindings = do
 -- bindings that are local only and should not be provideable
 askLocallyCreatedBindings :: Interpreter [(String,Value)]
 askLocallyCreatedBindings = liftIO . readIORef =<< (tlLocallyCreatedBindings <$> ask)
-
-askReplCreatedBindings :: Interpreter [(String,Value)]
-askReplCreatedBindings = liftIO . readIORef =<< (tlReplCreatedBindings <$> ask)
 
 askIncludedBindings :: Interpreter [(String,Value)]
 askIncludedBindings = liftIO . readIORef =<< (tlIncludedBindings <$> ask)
@@ -1629,12 +1650,10 @@ runInterpInherit parentSh incG f = do
     p <- newIORef []
     b <- newIORef =<< readIORef (tlLocallyCreatedBindings parentSh)
     bo <- newIORef =<< readIORef (tlIncludedBindings parentSh)
-    rb <- newIORef =<< readIORef (tlReplCreatedBindings parentSh)
     cbn <- newIORef 0
     let sh = parentSh
             {tlProvides = p
             ,tlLocallyCreatedBindings = b
-            ,tlReplCreatedBindings = rb
             ,tlIncludedBindings = bo
             ,tlNextAnonCheckblockNum = cbn
             ,_tlIsModuleRootThread = False
@@ -2270,10 +2289,6 @@ bRunScript [TextV src] = do
     Script ast <- either error id <$> useSource Nothing "run-script" src parseScript
     localModule "run-script" Nothing $ do
         x <- interpStatements ast
-        -- todo: need to only get the new bindings created in the interpstatements
-        -- just called
-        stuff <- askLocallyCreatedBindings
-        modifyReplCreatedBindings (extendBindings stuff)
         pure x
 
 bRunScript _ = _errorWithCallStack $ "wrong args to run-script"
@@ -3997,10 +4012,10 @@ initBootstrapModule = runModule "BOOTSTRAP" "_bootstrap" $ do
              $ SimpleTypeInfo ["_system","modules","_bootstrap","Function"])
         ]
 
-runModule :: String -> String -> Interpreter () -> Interpreter ()        
+runModule :: String -> String -> Interpreter a -> Interpreter a
 runModule filename moduleName f =
     localBindings (\_ -> pure []) $ do
-        f
+        r <- f
         localModuleEnv <- askLocallyCreatedBindings
         allModuleEnv <- askIncludedBindings
         -- get the pis and make a record from the env using them
@@ -4009,6 +4024,7 @@ runModule filename moduleName f =
         moduleRecord <- VariantV (bootstrapType "Record") "record"
                         <$> aliasSomething localModuleEnv allModuleEnv pis
         modifyAddModule filename moduleName moduleRecord
+        pure r
 
 loadAndRunModuleSource :: Bool -> String -> FilePath -> String -> Interpreter ()
 loadAndRunModuleSource includeGlobals moduleName fn src = do

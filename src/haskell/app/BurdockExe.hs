@@ -28,7 +28,7 @@ This will work better if my_script.bur exits promptly
 import qualified Burdock.Interpreter as B
 
 import Control.Monad.Trans
-import Control.Monad (void)
+import Control.Monad (void, when)
 import System.Console.Haskeline (InputT
                                 ,Interrupt
                                 ,historyFile
@@ -138,45 +138,38 @@ runLiterateFile fp rTests = do
 
 -- repl
 
-process :: B.Handle -> B.Value -> String -> IO ()
-process h replH src =
-    void (B.runScript
-             h
-             Nothing [("handle", replH)
-                     ,("src", B.TextV src)]
-             "include repl\n\
-             \repl-execute(handle,src)")
+process :: B.Handle -> String -> IO ()
+process h src = do
+        v <- B.runInteractive h src
+        when (v /= B.nothing) $
+            void $ B.evalFun h "print" [v]
     `catch` (\e -> do
         x <- B.formatException h True e
         putStrLn $ "Error: " ++ x)
     `catchAny` (\e -> putStrLn $ "Error: " ++ displayException e)
 
-repl :: B.Handle -> B.Value -> InputT IO ()
-repl h replH = go
+repl :: B.Handle -> InputT IO ()
+repl h = go
   where
     go = withInterrupt (do
         minput <- getInputLine "b > "
         case minput of
             Nothing -> pure ()
             Just input -> do
-                liftIO $ process h replH input
+                liftIO $ process h input
                 go)
         -- ctrl-c resets to the prompt, doesn't exit the repl
         `catch` (\(_::Interrupt) -> liftIO (putStr "^C") >> go)
 
-
 doRepl :: IO ()
 doRepl = bracket B.newHandle B.closeHandle $ \h -> do
     addPackages h
-    replH <- B.runScript h Nothing []
-        "include repl\n\
-        \create-repl()"
     --putStrLn "test print"
     --a1 <- B.evalExpr h Nothing [] "1"
     --a2 <- B.evalExpr h Nothing [] "true"
     --B.evalFun h "print" [a1]
     --B.evalFun h "print" [a2]
-    runInputT st (repl h replH)
+    runInputT st (repl h)
   where
     st = defaultSettings {historyFile = Just ".burdockreplhistory"}
 

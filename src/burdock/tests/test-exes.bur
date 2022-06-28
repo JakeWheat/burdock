@@ -23,10 +23,8 @@ end
 
 # exit code 0 when pass, non zero when fail
 
-
-
-#|
 # reenable when implement the improved test runner
+#|
 check "test use_burdock temp [slow]":
   call-process("rm", [list: "-Rf", "_build/use_burdock_tests/"])
   call-process("mkdir", [list: "-p", "_build/use_burdock_tests/"])
@@ -51,8 +49,11 @@ check:
     call-process("src/python/test-repl.py", [list:ls2])
   end
   # todo: definitely need a dsl syntax
-  #do-repl-test([list:{"1 + 2"; "3"}]) is nothing
-  #do-repl-test([list:{"a = 5"; ""}
-  #                  ,{"a + 3"; "8"}]) is nothing
+  do-repl-test([list:{"1 + 2"; "3"}]) is nothing
+  do-repl-test([list:{"a = 5"; ""}
+                    ,{"a + 3"; "8"}]) is nothing
+
+  do-repl-test([list:{"include lists"; ""}
+                    ,{"foldl(_ + _, 0, [list:1,2,3])"; "6"}]) is nothing
 
 end

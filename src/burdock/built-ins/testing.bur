@@ -14,6 +14,50 @@ provide:
   data Run-test-opts
 end
 
+#|
+
+TODO: protection for tests not being run and this going unnoticed
+
+add two args
+one will generate a test log
+one will check against the test log
+
+the test log is a sorted list of module names, checkblock names and
+predicate names in a file, which you check into git
+
+the test log will contain the git commit for debugging, this will be
+passed in an arg too - an arbiitrary label
+
+when you run the tests with a test log to check against,
+if the list of tests isn't the same it will issue test failures
+  listing the added and removed tests
+
+issue: can't get the exact right git commit, since have to run it on
+one commit, which won't be a clean commit, and then commit it to git
+
+downside: you have to review and update the log every time you modify
+tests, including adding them
+-> partial mitigation - it will only issue a warning if all you've done
+is add tests
+would be nice to save a temporary log within a commit so you don't
+lose tests here?
+
+upsides:
+
+you will see if tests have stopped running for any reason, so
+you won't miss this
+
+because the test log is in git, you have some evidence trail to debug
+with if e.g.  a test was removed from the test log by accident and
+this was only noticed many commits later
+
+it's all there in the main git branch (the upsides of putting it
+somewhere else is that you can get pristine commit test logs to
+compare to each other)
+
+
+|#
+
 include _internals
 import _internals as _internals
 include option
