@@ -1,5 +1,5 @@
 
-# test the ffi example, plus temporarily the python until the concurrency is fixed
+# test the ffi example
 
 include filesystem
 import from lists:
@@ -16,12 +16,4 @@ end
 
 srcs = my-ld("src/packages/ffitypes-test")
 
-ts = run-tests-with-opts(default-test-opts.{test-sources:map(file-test(_), srcs),
-                                       show-progress-log:true,
-                                       print-results:true,
-                                       hide-successes:true
-                                      })
-
-when has-test-failures(ts):
-  _internals.sysexit(1)
-end
+default-test-run-exe([list: {(x): x.{test-sources:map(file-test(_), srcs)}}])

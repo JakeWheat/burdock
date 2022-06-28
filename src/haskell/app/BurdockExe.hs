@@ -106,24 +106,18 @@ runSrc lit fnm (rTests,rallTests,hideSuccesses,hideProgress,hideTestResults) src
     flip catch (handleEx h) $ do
         if rTests || rallTests
             then do
-                x <- B.runScript h Nothing [("fn", B.TextV $ maybe "" id fnm)
+                void $ B.runScript h Nothing [("fn", B.TextV $ maybe "" id fnm)
                                            ,("src", B.TextV src)
                                            ,("spl", B.BoolV $ not hideProgress)
                                            ,("hs", B.BoolV hideSuccesses)
                                            ,("apr", B.BoolV $ not hideTestResults)]
                     "include testing\n\
-                    \rs = run-tests-with-opts(\n\
-                    \         default-test-opts.{\n\
+                    \default-test-run-exe([list:{(x): x.{\n\
                     \             test-sources:[list:source-test(fn, src)],\n\
                     \             show-progress-log:spl,\n\
                     \             hide-successes:hs,\n\
                     \             print-results:apr\n\
-                    \             })\n\
-                    \has-test-failures(rs)"
-                case x of
-                    B.BoolV False -> pure ()
-                    B.BoolV True -> exitFailure
-                    _ -> error $ "expected has-test-failures to return bool, got " ++ show x
+                    \             }}])\n"
             else do
                 v <- (if lit then B.runLiterateScript else B.runScript) h fnm [] src
                 pv <- B.valueToStringIO h v

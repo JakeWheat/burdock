@@ -37,15 +37,4 @@ srcs = (my-ld("src/burdock/built-ins")
        + [list: "examples/load-csv-python.bur"]
        + my-ld("src/packages/python-ffi")
 
-#shadow srcs = (my-ld("src/burdock/built-ins")
-#       ^ filter(not-elem(_,[list:"./src/burdock/built-ins/_internals.bur", "./src/burdock/built-ins/globals.bur"]), _))
-
-ts = run-tests-with-opts(default-test-opts.{test-sources:map(file-test(_), srcs),
-                                       show-progress-log:true,
-                                       print-results:true,
-                                       hide-successes:true
-                                      })
-
-when has-test-failures(ts):
-  _internals.sysexit(1)
-end
+default-test-run-exe([list: {(x): x.{test-sources:map(file-test(_), srcs)}}])

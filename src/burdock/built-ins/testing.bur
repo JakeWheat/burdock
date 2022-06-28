@@ -5,6 +5,8 @@ provide:
   format-test-results,
   has-test-failures,
   default-test-opts,
+  apply-args-to-opts,
+  default-test-run-exe,
   data Test-result,
   data Check-results,
   data Module-check-results,
@@ -13,7 +15,16 @@ provide:
 end
 
 include _internals
+import _internals as _internals
 include option
+include env
+
+import from lists:
+  map,
+  filter,
+  not-elem,
+  foldl
+end
 
 run-tests-with-opts = ffi-function("run-tests-with-opts")
 
@@ -49,6 +60,88 @@ data Run-test-opts:
 end
 
 default-test-opts = run-test-opts([list:], false, none, false, false)
+
+
+#|
+extract the following:
+--show-successes / --hide-successes
+--print-results / --no-print-results
+--show-progress-log / --hide-progress-log
+--match-modules
+--match-check-blocks
+--match-predicates
+
+TODO: stop processing args if get to --
+if before --, and it starts with - and don't recognise, error
+|#
+
+
+fun apply-args-to-opts(opts, args):
+  fun parse-args(es):
+    fun f(shadow opts,fs,ms,cbs,tps,shadow es):
+      cases es:
+        | empty => {opts; ms; cbs; tps; fs}
+        | link("--", shadow es) =>
+          f(opts,fs,ms,cbs,tps,es)
+        | link("--hide-successes", shadow es) =>
+          opts1 = link({(x): x.{hide-successes:true}}, opts)
+          f(opts1,fs,ms,cbs,tps,es)
+        | link("--show-successes", shadow es) =>
+          opts1 = link({(x): x.{hide-successes:false}}, opts)
+          f(opts1,fs,ms,cbs,tps,es)
+        | link("--no-print-results", shadow es) =>
+          opts1 = link({(x): x.{print-results:false}}, opts)
+          f(opts1,fs,ms,cbs,tps,es)
+        | link("--hide-progress-log", shadow es) =>
+          opts1 = link({(x): x.{show-progress-log:false}}, opts)
+          f(opts1,fs,ms,cbs,tps,es)
+        | link("--module-matches", link(mm, shadow es)) =>
+          f(opts,fs,link(mm,ms),cbs,tps,es)
+        | link("--check-block-matches", link(cbn, shadow es)) =>
+          f(opts,fs,ms,link(cbn,cbs),tps,es)
+        | link("--test-predicate-matches", link(tp, shadow es)) =>
+          f(opts,fs,ms,cbs,link(tp,tps),es)
+        | link(x,shadow es) =>
+          f(opts,link(x,fs),ms,cbs,tps,es)
+      end
+    end
+    f(empty,empty,empty,empty,empty,es)
+  end
+  {opts-mods; module-matches; check-block-matches; test-pred-matches;srcs} = parse-args(args)
+  shadow opts = opts.{test-sources:map(file-test(_), srcs) + opts.test-sources}
+  shadow opts = foldl({(x,y): y(x)}, opts, opts-mods)
+
+  fun any(prd, lst):
+    cases lst:
+      | empty => false
+      | link(x,xs) =>
+        if prd(x): true
+        else: any(prd,xs)
+        end
+    end
+  end
+  
+  fun match-any(nm, matches):
+    if is-empty(matches): true
+    else:
+      any({(mnm): string-index-of(nm, mnm) >=0 }, matches)
+    end
+  end
+  
+  fun pred(module-name, check-block-name, test-predicate-name):
+  
+    cases {module-name;check-block-name;test-predicate-name}:
+      | {mn;none;none} => match-any(mn, module-matches)
+      | {mn;some(cbn);none} => match-any(mn + "/" + cbn, check-block-matches)
+      | {mn;some(cbn);some(trp)} => match-any(mn + "/" + cbn + "/" + trp, test-pred-matches)
+    end
+  end
+  
+  shadow opts = opts.{test-run-predicate:pred}
+
+  opts
+
+end
 
 fun has-test-failures(lst):
   fun check-trs(trs):
@@ -94,3 +187,19 @@ fun run-tests-string(fn,src):
   run-tests-with-opts(default-test-opts.{test-sources:[list: source-test(fn, src)]})
 end
 
+fun default-test-run-exe(opts-mods):
+
+  opts = default-test-opts.{show-progress-log:true,
+                            print-results:true,
+                            hide-successes:true}
+  shadow opts = foldl({(x,y): y(x)}, opts, opts-mods)
+
+  args = get-args()
+  shadow opts = apply-args-to-opts(opts, args.rest)
+
+  ts = run-tests-with-opts(opts)
+
+  when has-test-failures(ts):
+    _internals.sysexit(1)
+  end
+end

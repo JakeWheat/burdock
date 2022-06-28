@@ -1,61 +1,6 @@
 
-include env
+include option
 include testing
 import _internals as _internals
-import from lists:
-  map,
-  filter,
-  not-elem,
-  foldl
-end
 
-args = get-args()
-
-#|
-extract the following:
---show-successes / --hide-successes
---print-results / --no-print-results
---show-progress-log / --hide-progress-log
-
-TODO: stop processing args if get to --
-if before --, and it starts with - and don't recognise, error
-|#
-
-fun parse-args(es):
-  fun f(opts,fs,shadow es):
-    cases es:
-      | empty => {opts; fs}
-      | link("--", shadow es) =>
-        f(opts,fs,es)
-      | link("--hide-successes", shadow es) =>
-        opts1 = link({(x): x.{hide-successes:true}}, opts)
-        f(opts1,fs,es)
-      | link("--show-successes", shadow es) =>
-        opts1 = link({(x): x.{hide-successes:false}}, opts)
-        f(opts1,fs,es)
-      | link("--no-print-results", shadow es) =>
-        opts1 = link({(x): x.{print-results:false}}, opts)
-        f(opts1,fs,es)
-      | link("--hide-progress-log", shadow es) =>
-        opts1 = link({(x): x.{show-progress-log:false}}, opts)
-        f(opts1,fs,es)
-      | link(x,shadow es) => f(opts,link(x,fs),es)
-    end
-  end
-  f(empty,empty,es)
-end
-
-base-opts = default-test-opts.{show-progress-log:true,
-                               print-results:true,
-                               hide-successes:true
-                              }
-
-{opts-mods;srcs} = parse-args(args.rest)
-shadow base-opts = base-opts.{test-sources:map(file-test(_), srcs)}
-opts = foldl({(x,y): y(x)}, base-opts, opts-mods)
-
-ts = run-tests-with-opts(opts)
-
-when has-test-failures(ts):
-  _internals.sysexit(1)
-end
+default-test-run-exe(empty)

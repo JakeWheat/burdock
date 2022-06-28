@@ -721,6 +721,7 @@ data ThreadLocalState
     -- anonymous checkblocks
     ,tlCurrentCheckblock :: Maybe String
     ,tlNextAnonCheckblockNum :: IORef Int
+    ,tlTestRunPredicate :: IORef (Maybe Value)
     ,_tlIsModuleRootThread :: Bool
     }
 
@@ -795,6 +796,7 @@ newSourceHandle bs = do
         <*> newIORef []
         <*> pure Nothing
         <*> newIORef 0
+        <*> newIORef Nothing
         <*> pure True
 
 {-
@@ -987,19 +989,24 @@ throw an error if already in a check block
 generate a name if it's maybe
 run the check block in a local bindings
 -}
-enterCheckBlock :: Maybe String -> Interpreter a -> Interpreter a
-enterCheckBlock mcbnm f = do
-    st <- ask
-    when (isJust $ tlCurrentCheckblock st)
-        $ _errorWithCallStack $ "nested checkblock " ++ show (tlCurrentCheckblock st) ++ " / " ++ show mcbnm
-    -- generate unique name if anon
+
+checkCheckBlockName :: Maybe String -> Interpreter String
+checkCheckBlockName mcbnm = do
+    -- generate unique name if anon        
     -- todo: incorporate thread id if not root thread
-    cbnm <- case mcbnm of
+    case mcbnm of
         Just nm -> pure nm
         Nothing -> do
+            st <- ask
             i <- liftIO $ readIORef (tlNextAnonCheckblockNum st)
             liftIO $ writeIORef (tlNextAnonCheckblockNum st) (i + 1)
             pure $ "check-block-" ++ show i
+
+enterCheckBlock :: String -> Interpreter a -> Interpreter a
+enterCheckBlock cbnm f = do
+    st <- ask
+    when (isJust $ tlCurrentCheckblock st)
+        $ _errorWithCallStack $ "nested checkblock " ++ show (tlCurrentCheckblock st) ++ " / " ++ show cbnm
     local (\st' -> st' {tlCurrentCheckblock = Just cbnm}) $
         localBindings pure f
     
@@ -2615,28 +2622,41 @@ bRunTestsWithOpts [opts] = do
                     TextV s <- getAttr tsrc "source"
                     pure $ Right (nm, s)
     BoolV showProgressLog <- getAttr opts "show-progress-log"
-    _testRunPredicate :: Maybe Value <- do
+    testRunPredicate :: Maybe Value <- do
         v <- getAttr opts "test-run-predicate"
         case v of
             VariantV _ "none" [] -> pure Nothing
-            _ -> error $ "test run predicate not supported"
+            fn -> pure $ Just fn
     BoolV hideSuccesses <- getAttr opts "hide-successes"
     BoolV autoPrintResults <- getAttr opts "print-results"
 
+    let none = VariantV (internalsType "Option") "none" []
+
     cbs <- concat <$>
-        (forM testSrcs $ \testSrc -> runIsolated showProgressLog hideSuccesses $ do
-            r <- try $ case testSrc of
-                Left fn -> do
-                    (fn',src) <- readImportSource (ImportSpecial "file" [fn])
-                    loadAndRunModuleSource True fn' fn' src
-                Right (fn, src) -> loadAndRunModuleSource True fn fn src
-            case r of
-                Right {} -> pure ()
-                Left (e :: SomeException) -> do
-                    let nm = "load module " ++ show testSrc
-                    local (\st' -> st' {tlCurrentCheckblock = Just nm}) $
-                        addTestResult (TestFail nm (show e))
-                    --liftIO $ putStrLn $ show e
+        (forM testSrcs $ \testSrc -> runIsolated testRunPredicate showProgressLog hideSuccesses $ do
+            shouldRun <- case testRunPredicate of
+                Nothing -> pure True
+                Just fun -> do
+                    let fn = case testSrc of
+                            Left fn' -> fn'
+                            Right (fn',_) -> fn'
+                    r <- app fun [TextV fn,none,none]
+                    case r of
+                        BoolV True -> pure True
+                        _ -> pure False
+            when shouldRun $ do
+                r <- try $ case testSrc of
+                    Left fn -> do
+                        (fn',src) <- readImportSource (ImportSpecial "file" [fn])
+                        loadAndRunModuleSource True fn' fn' src
+                    Right (fn, src) -> loadAndRunModuleSource True fn fn src
+                case r of
+                    Right {} -> pure ()
+                    Left (e :: SomeException) -> do
+                        let nm = "load module " ++ show testSrc
+                        local (\st' -> st' {tlCurrentCheckblock = Just nm}) $
+                            addTestResult (TestFail nm (show e))
+                        --liftIO $ putStrLn $ show e
             takeTestResultsI)
     rs <- testResultsToB cbs
     when autoPrintResults $ void $
@@ -2646,7 +2666,7 @@ bRunTestsWithOpts [opts] = do
             "print(format-test-results(rs1234, hs1234))"
     pure rs
   where
-    runIsolated showProgressLog hideSuccesses f = do
+    runIsolated testRunPredicate showProgressLog hideSuccesses f = do
 {-
 hack: create a new state as if it's a new handle
 run loadandrunmodule with this new state, nested in a new monad context
@@ -2668,7 +2688,15 @@ then extract the hstestresults from it
         if hideSuccesses
             then liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-hide-test-successes(true)"
             else liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-hide-test-successes(false)"
-        liftIO $ runInterp True h f
+
+        liftIO $ runInterp True h $ do
+            case testRunPredicate of
+                Nothing -> pure ()
+                Just fn -> do
+                    st <- ask
+                    liftIO $ writeIORef (tlTestRunPredicate st) $ Just fn
+
+            f
             
     isV v nm = case v of
         VariantV _ nm' _ -> nm == nm'
@@ -3381,10 +3409,12 @@ interpStatement (When t b) = do
         BoolV False -> pure nothing
         _ -> _errorWithCallStack $ "expected when test to have boolean type, but is " ++ show tv
 
-interpStatement (Check cbnm ss) = do
-    runTestsEnabled <- interp $ internalsRef "auto-run-tests"
-    case runTestsEnabled of
-        BoolV True -> enterCheckBlock cbnm $ do
+interpStatement (Check mcbnm ss) = do
+    te <- testsEnabled
+    cbnm <- checkCheckBlockName mcbnm
+    sr <- if te then shouldRun cbnm else pure te
+    if te && sr then
+            enterCheckBlock cbnm $ do
             x <- catchAll $ interpStatements ss
             case x of
                 Right v -> pure v
@@ -3392,9 +3422,29 @@ interpStatement (Check cbnm ss) = do
                     msg <- showExceptionCallStackPair e
                     addTestResult (TestFail "check block threw an exception, some tests may not have executed" msg)
                     pure nothing
-        BoolV False -> pure nothing
-        x -> _errorWithCallStack $ "auto-run-tests not set right (should be boolv): " ++ show x
-    
+        else pure nothing
+  where
+    testsEnabled = do
+        runTestsEnabled <- interp $ internalsRef "auto-run-tests"
+        case runTestsEnabled of
+            BoolV True -> pure True
+            BoolV False -> pure False
+            x -> _errorWithCallStack $ "auto-run-tests not set right (should be boolv): " ++ show x
+    shouldRun :: String -> Interpreter Bool
+    shouldRun cbnm = do
+        let none = VariantV (internalsType "Option") "none" []
+            some v = VariantV (internalsType "Option") "some" [("value", v)]
+        st <- ask
+        let modFn = msModuleSourcePath $ tlModuleState st
+        testRunPredicate <- liftIO $ readIORef (tlTestRunPredicate st)
+        case testRunPredicate of
+            Nothing -> pure True
+            Just fun -> do
+                    r <- app fun [TextV modFn,some (TextV cbnm),none]
+                    case r of
+                        BoolV True -> pure True
+                        _ -> pure False
+
 interpStatement (LetDecl b e) = do
     v <- interp e
     bs <- matchBindingOrError b v
@@ -3784,6 +3834,8 @@ testPredSupport :: String
                     -> Interpreter TestResult)
                 -> Interpreter Value
 testPredSupport testPredName e0 e1 testPredCheck = do
+  sr <- shouldRun
+  when sr $ do
     -- todo 1: check the test-run-p predicate to see if this test should run
     -- todo 2: check the progress log to see if should output a log message
     -- todo 3: if progress log enabled, output OK or FAIL + the message
@@ -3813,7 +3865,7 @@ testPredSupport testPredName e0 e1 testPredCheck = do
             when hideSucc logit
             liftIO $ putStrLn $ " FAIL\n" ++ msg
     addTestResult res
-    pure nothing
+  pure nothing
   where
     logit = do
         st <- ask
@@ -3832,6 +3884,21 @@ testPredSupport testPredName e0 e1 testPredCheck = do
         case e of
             BoolV True -> pure True
             _ -> pure False
+    shouldRun = do
+        let some v = VariantV (internalsType "Option") "some" [("value", v)]
+        st <- ask
+        let modFn = msModuleSourcePath $ tlModuleState st
+        testRunPredicate <- liftIO $ readIORef (tlTestRunPredicate st)
+        let cbnm = maybe (error $ "test predicate being run outside check block")
+                   id $ tlCurrentCheckblock st
+        case testRunPredicate of
+            Nothing -> pure True
+            Just fun -> do
+                    r <- app fun [TextV modFn,some (TextV cbnm), some $ TextV testPredName]
+                    case r of
+                        BoolV True -> pure True
+                        _ -> pure False
+        
 
 ------------------------------------------------------------------------------
 
