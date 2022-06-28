@@ -7,7 +7,10 @@ check:
     is 86531512776056800758948096
   0 - 1 is -1
 end
-# whitespace parsing bug?
 check:
+  # whitespace parsing issue: if want to continue to allow unary minus
+  # can allow only in number literal
+  # or can allow if no whitespace between it and the following expr
+  # and code this into the parser
   -1 is 0 - 1
 end
