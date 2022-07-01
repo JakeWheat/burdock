@@ -172,13 +172,16 @@ fun apply-args-to-opts(opts, args):
     end
   end
   
-  fun pred(module-name, check-block-name, test-predicate-name):
-  
-    cases {module-name;check-block-name;test-predicate-name}:
-      | {mn;none;none} => match-any(mn, module-matches)
-      | {mn;some(cbn);none} => match-any(mn + "/" + cbn, check-block-matches)
-      | {mn;some(cbn);some(trp)} => match-any(mn + "/" + cbn + "/" + trp, test-pred-matches)
-    end
+  fun pred(root-module-name, module-name, check-block-name, test-predicate-name):
+      cases {check-block-name;test-predicate-name}:
+        | {none;none} => match-any(module-name, module-matches)
+        | {some(cbn);none} =>
+          # skip tests if they are in an indirectly imported module
+          # todo: add a flag to cause these tests to also run
+          root-module-name == module-name and
+            match-any(module-name + "/" + cbn, check-block-matches)
+        | {some(cbn);some(trp)} => match-any(module-name + "/" + cbn + "/" + trp, test-pred-matches)
+      end
   end
   
   shadow opts = opts.{test-run-predicate:pred}

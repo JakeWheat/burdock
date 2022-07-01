@@ -754,6 +754,7 @@ data ThreadLocalState
     ,tlCurrentCheckblock :: Maybe String
     ,tlNextAnonCheckblockNum :: IORef Int
     ,tlTestRunPredicate :: IORef (Maybe Value)
+    ,tlTestRootModuleName :: IORef (Maybe String)
     ,_tlIsModuleRootThread :: Bool
     }
 
@@ -828,6 +829,7 @@ newSourceHandle bs = do
         <*> newIORef []
         <*> pure Nothing
         <*> newIORef 0
+        <*> newIORef Nothing
         <*> newIORef Nothing
         <*> pure True
 
@@ -2649,13 +2651,17 @@ bRunTestsWithOpts [opts] = do
 
     cbs <- concat <$>
         (forM testSrcs $ \testSrc -> runIsolated testRunPredicate showProgressLog hideSuccesses $ do
+            st <- ask
+            let hackRemoveLead ('.':'/':xs) = hackRemoveLead xs
+                hackRemoveLead x = x
+                testfn = hackRemoveLead $ case testSrc of
+                            Left fn' -> fn'
+                            Right (fn',_) -> fn'
+            liftIO $ writeIORef (tlTestRootModuleName st) $ Just testfn
             shouldRun <- case testRunPredicate of
                 Nothing -> pure True
                 Just fun -> do
-                    let fn = case testSrc of
-                            Left fn' -> fn'
-                            Right (fn',_) -> fn'
-                    r <- app fun [TextV fn,none,none]
+                    r <- app fun [TextV testfn, TextV testfn,none,none]
                     case r of
                         BoolV True -> pure True
                         _ -> pure False
@@ -3452,10 +3458,12 @@ interpStatement (Check mcbnm ss) = do
         st <- ask
         let modFn = msModuleSourcePath $ tlModuleState st
         testRunPredicate <- liftIO $ readIORef (tlTestRunPredicate st)
+        testRootModuleName <- maybe "" id
+                              <$> liftIO (readIORef (tlTestRootModuleName st))
         case testRunPredicate of
             Nothing -> pure True
             Just fun -> do
-                    r <- app fun [TextV modFn,some (TextV cbnm),none]
+                    r <- app fun [TextV testRootModuleName, TextV modFn,some (TextV cbnm),none]
                     case r of
                         BoolV True -> pure True
                         _ -> pure False
@@ -3904,12 +3912,14 @@ testPredSupport testPredName e0 e1 testPredCheck = do
         st <- ask
         let modFn = msModuleSourcePath $ tlModuleState st
         testRunPredicate <- liftIO $ readIORef (tlTestRunPredicate st)
+        testRootModuleName <- maybe "" id
+                              <$> liftIO (readIORef (tlTestRootModuleName st))
         let cbnm = maybe (error $ "test predicate being run outside check block")
                    id $ tlCurrentCheckblock st
         case testRunPredicate of
             Nothing -> pure True
             Just fun -> do
-                    r <- app fun [TextV modFn,some (TextV cbnm), some $ TextV testPredName]
+                    r <- app fun [TextV testRootModuleName, TextV modFn,some (TextV cbnm), some $ TextV testPredName]
                     case r of
                         BoolV True -> pure True
                         _ -> pure False
@@ -3925,7 +3935,11 @@ fileImportHandler [fn] = do
     --liftIO $ putStrLn $ "loading " ++ fn ++ " from " ++ cm
     let fn1 = takeDirectory cm </> fn
     src <- liftIO $ readFile fn1
-    pure (fn1, src)
+    let fn2 = hackRemoveLead fn1
+    pure (fn2, src)
+  where
+    hackRemoveLead ('.':'/':xs) = hackRemoveLead xs
+    hackRemoveLead x = x
 fileImportHandler x = error $ "bad args to file import handler " ++ show x
 
 

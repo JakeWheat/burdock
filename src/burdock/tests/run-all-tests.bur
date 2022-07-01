@@ -36,5 +36,7 @@ srcs = (my-ld("src/burdock/built-ins")
        + my-ld("website2")
        + [list: "examples/load-csv-python.bur"]
        + my-ld("src/packages/python-ffi")
+#shadow srcs = [list:"./src/burdock/tests/lists.bur"]
+#shadow srcs = [list:"./src/burdock/built-ins/lists.bur"]
 
 default-test-run-exe([list: {(x): x.{test-sources:map(file-test(_), srcs)}}])
