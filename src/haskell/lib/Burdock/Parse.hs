@@ -297,8 +297,9 @@ expr = chainl1 exprlev1 (f testPred)
     exprlev1 = chainr1 exprlev2 (f rightBinOpSym)
     exprlev2 = chainl1 term (f leftBinOpSym)
     f o = do
+        sp <- sourcePos
         op <- o <?> ""
-        pure $ \a b -> BinOp a op b
+        pure $ \a b -> BinOp sp a op b
 
 term :: Parser Expr
 term = (do
@@ -323,7 +324,7 @@ term = (do
         ,methodExpr
         -- make sure all syntax that starts with something that looks like
         -- an identifier appears above here
-        ,Iden <$> identifier
+        ,Iden <$> sourcePos <*> identifier
         ,numE
         ,stringE
         ,parensE
@@ -352,9 +353,9 @@ appSuffix = do
     f sp as x = App sp x as
 
 instSuffix :: Parser (Expr -> Expr)
-instSuffix = f <$> tyParamList
+instSuffix = f <$> sourcePos <*> tyParamList
   where
-    f t e = InstExpr e t
+    f sp t e = InstExpr sp e t
 
 -- todo: remove the try when implement the whitespace rules
 tyParamList :: Parser [Ann]
@@ -366,16 +367,20 @@ sourcePos = do
     pure $ Just (sourceName x, unPos $ sourceLine x, unPos $ sourceColumn x)
 
 dotSuffix :: Parser (Expr -> Expr)
-dotSuffix = symbol_ "." *>
-    bchoice [symbol_ "{" *>
-             choice [flip TupleGet <$> (nonNegativeInteger <* symbol_ "}")
-                    ,flip Extend <$> (commaSep1 fld <* symbol_ "}")]
-            ,flip DotExpr <$> identifier]
+dotSuffix = do
+    sp <- sourcePos
+    symbol_ "." *>
+      bchoice [symbol_ "{" *>
+             choice [flip (TupleGet sp) <$> (nonNegativeInteger <* symbol_ "}")
+                    ,flip (Extend sp) <$> (commaSep1 fld <* symbol_ "}")]
+            ,flip (DotExpr sp) <$> identifier]
   where
     fld = (,) <$> identifier <*> (symbol_ ":" *> expr)
 
 unboxSuffix :: Parser (Expr -> Expr)
-unboxSuffix = flip UnboxRef <$> (try (symbol_ "!" *> identifier))
+unboxSuffix = f <$> sourcePos <*> (try (symbol_ "!" *> identifier))
+  where
+    f a b c = UnboxRef a c b
 
 leftBinOpSym :: Parser String
 leftBinOpSym = choice ([symbol "+"
@@ -406,15 +411,16 @@ testPred = choice (map keyword ["is"
                                ])
 
 unaryMinus :: Parser Expr
-unaryMinus = UnaryMinus <$> (symbol "-" *> term)
+unaryMinus = UnaryMinus <$> sourcePos <*> (symbol "-" *> term)
 
 lamE :: Parser Expr
-lamE = Lam <$> (keyword_ "lam" *> funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
+lamE = Lam <$> sourcePos <*> (keyword_ "lam" *> funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
            <*> (stmts <* keyword_ "end")
 
 curlyLam :: Parser Expr
 curlyLam = CurlyLam
-    <$> (symbol_ "{" *> funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
+    <$> sourcePos
+    <*> (symbol_ "{" *> funHeader <* optional_ (keyword_ "block") <* symbol_ ":")
     <*> (stmts <* symbol_ "}")
 
 {-
@@ -426,7 +432,9 @@ else too,
 
 simpleBinding :: Bool -> Parser SimpleBinding
 simpleBinding allowImplicitTypeTuple =
-    SimpleBinding <$> boption NoShadow (Shadow <$ keyword_ "shadow")
+    SimpleBinding
+    <$> sourcePos
+    <*> boption NoShadow (Shadow <$ keyword_ "shadow")
     <*> identifier
     <*> optional (symbol_ "::" *> typ allowImplicitTypeTuple)
 
@@ -437,10 +445,11 @@ limitedBinding allowImplicitTypeTuple =
   where
     bterm = shadowBinding <|> nameBinding <|> tupleBinding
     nameBinding = do
+        sp <- sourcePos
         x <- identifier
         if x == "_"
-           then pure WildcardBinding
-           else pure $ NameBinding x
+           then pure $ WildcardBinding sp
+           else pure $ NameBinding sp x
 
 bindingSuffixes :: Bool
                 -> Binding
@@ -451,19 +460,21 @@ bindingSuffixes allowImplicitTypeTuple e = option e $ do
                     ]
         bindingSuffixes allowImplicitTypeTuple $ s e
   where
-    asSuffix = asb 
-               <$> (keyword "as" *> boption NoShadow (Shadow <$ keyword_ "shadow"))
+    asSuffix = asb
+               <$> sourcePos
+               <*> (keyword "as" *> boption NoShadow (Shadow <$ keyword_ "shadow"))
                <*> identifier
       where
-        asb s i b = AsBinding b s i
+        asb sp s i b = AsBinding sp b s i
     typedSuffix =
-        flip TypedBinding <$> (symbol_ "::" *> typ allowImplicitTypeTuple)
+        let t sp a b = TypedBinding sp b a
+        in t <$> sourcePos <*> (symbol_ "::" *> typ allowImplicitTypeTuple)
 
 shadowBinding :: Parser Binding
-shadowBinding = ShadowBinding <$> (keyword_ "shadow" *> identifier)
+shadowBinding = ShadowBinding <$> sourcePos <*> (keyword_ "shadow" *> identifier)
 
 tupleBinding :: Parser Binding
-tupleBinding = TupleBinding <$> (symbol "{" *> xSep1 ';' (binding True) <* symbol "}")
+tupleBinding = TupleBinding <$> sourcePos <*> (symbol "{" *> xSep1 ';' (binding True) <* symbol "}")
 
 binding :: Bool -> Parser Binding
 binding allowImplicitTypeTuple =
@@ -472,17 +483,19 @@ binding allowImplicitTypeTuple =
     bterm = shadowBinding <|> nameOrVariantBinding <|> tupleBinding
             <|> numLitBinding <|> stringLitBinding
     numLitBinding = do
+        sp <- sourcePos
         x <- num
         maybe (fail $ "parsing number failed: " ++ x)
-          (pure . NumberLitBinding) (readMaybe x)
-    stringLitBinding = StringLitBinding <$> stringRaw
+          (pure . NumberLitBinding sp) (readMaybe x)
+    stringLitBinding = StringLitBinding <$> sourcePos <*> stringRaw
     nameOrVariantBinding = do
+        sp <- sourcePos
         n <- variantName
         as <- option [] variantArgs
         pure $ case (n,as) of
-            (["_"],[]) -> WildcardBinding
-            ([n'],[]) -> NameBinding n'
-            _ -> VariantBinding n as
+            (["_"],[]) -> WildcardBinding sp
+            ([n'],[]) -> NameBinding sp n'
+            _ -> VariantBinding sp n as
     variantName = do
         i <- identifier
         sfs <- many (symbol_ "." *> identifier)
@@ -490,10 +503,14 @@ binding allowImplicitTypeTuple =
     variantArgs = parens (commaSep (binding False))
 
 expressionLetRec :: Parser Expr
-expressionLetRec = keyword_ "letrec" *> letBody LetRec
+expressionLetRec = do
+    sp <- sourcePos
+    keyword_ "letrec" *> letBody (LetRec sp)
 
 expressionLet :: Parser Expr
-expressionLet = keyword_ "let" *> letBody Let
+expressionLet = do
+    sp <- sourcePos
+    keyword_ "let" *> letBody (Let sp)
  
 letBody :: ([(Binding,Expr)] -> [Stmt] -> Expr) -> Parser Expr
 letBody ctor = ctor <$> commaSep1 bindExpr
@@ -508,41 +525,43 @@ simpleBindExpr = (,) <$> simpleBinding True <*> (symbol_ "=" *> expr)
 
 ifE :: Parser Expr
 ifE = do
+    sp <- sourcePos
     keyword_ "if"
     ife <- conds
-    nextBranch [ife]
+    nextBranch sp [ife]
   where
     conds = (,) <$> expr <*> (optional_ (keyword_ "block") *> symbol_ ":" *> stmts)
     cond = (,) <$> expr <*> (symbol_ ":" *> stmts)
-    nextBranch bs =
+    nextBranch sp bs =
         choice [do
                 x <- elsePart
                 case x of
-                    Right el -> endif bs (Just el)
-                    Left b -> nextBranch (b:bs)
-               ,endif bs Nothing]
+                    Right el -> endif sp bs (Just el)
+                    Left b -> nextBranch sp (b:bs)
+               ,endif sp bs Nothing]
     elsePart = do
         keyword_ "else"
         choice
             [Right <$> (symbol_ ":" *> stmts)
             ,Left <$> (keyword_ "if" *> cond)
             ]
-    endif bs el = keyword_ "end" *> pure (If (reverse bs) el)
+    endif sp bs el = keyword_ "end" *> pure (If sp (reverse bs) el)
 
 ask :: Parser Expr
 ask = do
+    sp <- sourcePos
     keyword_ "ask"
     optional_ (symbol_ "block")
     symbol_ ":"
-    nextBranch []
+    nextBranch sp []
   where
-    nextBranch bs =
+    nextBranch sp bs =
         choice [do
                 x <- branchPart
                 case x of
-                    Right ot -> endask bs (Just ot)
-                    Left b -> nextBranch (b:bs)
-               ,endask bs Nothing]
+                    Right ot -> endask sp bs (Just ot)
+                    Left b -> nextBranch sp (b:bs)
+               ,endask sp bs Nothing]
     branchPart = do
         symbol_ "|"
         choice
@@ -550,28 +569,30 @@ ask = do
             ,Left <$> ((,) <$> (expr <* keyword "then" <* symbol_ ":")
                           <*> stmts)
             ]
-    endask bs ot = keyword_ "end" *> pure (Ask (reverse bs) ot)     
+    endask sp bs ot = keyword_ "end" *> pure (Ask sp (reverse bs) ot)     
 
 block :: Parser Expr
-block = Block <$>
-    (keyword_ "block" *> symbol_ ":" *>
-    stmts
-    <* keyword_ "end")
+block = Block
+    <$> sourcePos
+    <*> (keyword_ "block" *> symbol_ ":" *>
+         stmts
+         <* keyword_ "end")
 
 cases :: Parser Expr
 cases = do
+    sp <- sourcePos
     t <- keyword_ "cases" *> expr
     ty <- optional (symbol_ "::" *> typ True)
           <* optional_ (keyword_ "block") <* symbol_ ":"
-    nextCase t ty []
+    nextCase sp t ty []
   where
-    nextCase t ty cs =
+    nextCase sp t ty cs =
         choice [do
                 x <- casePart
                 case x of
-                    Right el -> endCase t ty cs (Just el)
-                    Left c -> nextCase t ty (c:cs)
-               ,endCase t ty cs Nothing]
+                    Right el -> endCase sp t ty cs (Just el)
+                    Left c -> nextCase sp t ty (c:cs)
+               ,endCase sp t ty cs Nothing]
     casePart = do
         symbol_ "|"
         choice
@@ -579,18 +600,20 @@ cases = do
             ,Left <$> ((,,) <$> (binding False <?> "case pattern")
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
                        <*> (symbol_ "=>" *> stmts))]
-    endCase t ty cs el = keyword_ "end" *> pure (Cases t ty (reverse cs) el)
+    endCase sp t ty cs el = keyword_ "end" *> pure (Cases sp t ty (reverse cs) el)
 
 typeLet :: Parser Expr
 typeLet = TypeLet
-    <$> (keyword_ "type-let" *> commaSep1 (typeDecl False))
+    <$> sourcePos
+    <*> (keyword_ "type-let" *> commaSep1 (typeDecl False))
     <*> (symbol_ ":" *> stmts <* keyword_ "end")
 
 forExpr :: Parser Expr
 forExpr = For
     -- there's probably a fairly easy way to make this work with
     -- any expr in this position
-    <$> (keyword_ "for" *> (Iden <$> identifier))
+    <$> sourcePos
+    <*> (keyword_ "for" *> (Iden <$> sourcePos <*> identifier))
     <*> parens (commaSep forArg)
     <*> optional (symbol "->" *> typ False)
     <*> (symbol ":" *> stmts <* keyword_ "end")
@@ -600,10 +623,11 @@ forExpr = For
 
 tableSel :: Parser Expr
 tableSel = TableSel
-    <$> (keyword_ "table" *> commaSep identifier <* symbol_ ":")
+    <$> sourcePos
+    <*> (keyword_ "table" *> commaSep identifier <* symbol_ ":")
     <*> (many relLineSel <* keyword_ "end")
   where
-    relLineSel = RowSel <$> (keyword "row" *> symbol_ ":" *> commaSep expr)
+    relLineSel = RowSel <$> sourcePos <*> (keyword "row" *> symbol_ ":" *> commaSep expr)
 
 template :: Parser Expr
 template = do
@@ -612,24 +636,26 @@ template = do
 
 assertTypeCompat :: Parser Expr
 assertTypeCompat = do
+    sp <- sourcePos
     keyword_ "assert-type-compat"
-    choice [uncurry AssertTypeCompat <$> parens ((,) <$> expr <*> (symbol_ "::" *> typ True))
-           ,pure $ Iden "assert-type-compat"]
+    choice [uncurry (AssertTypeCompat sp) <$> parens ((,) <$> expr <*> (symbol_ "::" *> typ True))
+           ,pure $ Iden sp "assert-type-compat"]
 
 receive :: Parser Expr
 receive = do
+    sp <- sourcePos
     keyword_ "receive"
     optional_ (keyword_ "block")
     symbol_ ":"
-    nextCase []
+    nextCase sp []
   where
-    nextCase cs =
+    nextCase sp cs =
         choice [do
                 x <- casePart
                 case x of
-                    Right el -> endCase cs (Just el)
-                    Left c -> nextCase (c:cs)
-               ,endCase cs Nothing]
+                    Right el -> endCase sp cs (Just el)
+                    Left c -> nextCase sp (c:cs)
+               ,endCase sp cs Nothing]
     casePart = do
         symbol_ "|"
         choice
@@ -637,11 +663,11 @@ receive = do
             ,Left <$> ((,,) <$> (binding False <?> "case pattern")
                        <*> (optional ((keyword_ "when" *> expr) <?> "when clause"))
                        <*> (symbol_ "=>" *> stmts))]
-    endCase cs aft = keyword_ "end" *> pure (Receive (reverse cs) aft)
+    endCase sp cs aft = keyword_ "end" *> pure (Receive sp (reverse cs) aft)
     after = keyword_ "after" *> expr
 
 methodExpr :: Parser Expr
-methodExpr = MethodExpr <$> (keyword_ "method" *> method)
+methodExpr = MethodExpr <$> sourcePos <*> (keyword_ "method" *> method)
 
 method :: Parser Method
 method = Method
@@ -650,12 +676,13 @@ method = Method
 
 numE :: Parser Expr
 numE = do
+    sp <- sourcePos
     x <- num
     maybe (fail $ "parsing number failed: " ++ x)
-          (pure . Num) (readMaybe x)
+          (pure . Num sp) (readMaybe x)
 
 stringE :: Parser Expr
-stringE = Text <$> stringRaw
+stringE = Text <$> sourcePos <*> stringRaw
             <?> "string literal"
 
 stringRaw :: Parser String
@@ -674,14 +701,16 @@ stringRaw = (quoted <|> multiline) <?> "string literal"
     unescape [] = []
 
 parensE :: Parser Expr
-parensE = Parens <$> parens expr
+parensE = Parens <$> sourcePos <*> parens expr
 
 tupleOrRecord :: Parser Expr
-tupleOrRecord = tupleOrRecord2 RecordSel
-                               TupleSel
+tupleOrRecord = do
+    sp <- sourcePos
+    tupleOrRecord2 (RecordSel sp)
+                   (TupleSel sp)
                                expr
                                (\case
-                                     Iden i -> Just i
+                                     Iden _ i -> Just i
                                      _ -> Nothing)
 
 tupleOrRecord2 :: ([(String, Expr)] -> a)
@@ -696,10 +725,11 @@ tupleOrRecord2 mkRecSel mkTupSel pTupEl extractIden = do
            ,eitherElement]
   where
     methodField = do
+        sp <- sourcePos
         keyword_ "method"
         i <- identifier
         m <- method
-        pure (i,MethodExpr m)
+        pure (i,MethodExpr sp m)
     firstMethodField = do
         x <- methodField
         moreRecord [x]
@@ -732,7 +762,8 @@ tupleOrRecord2 mkRecSel mkTupSel pTupEl extractIden = do
     fld = (,) <$> (identifier <* symbol_ ":") <*> expr
 
 construct :: Parser Expr
-construct = Construct <$> (symbol_ "[" *> xSep1 '.' identifier <* symbol_ ":")
+construct = Construct <$> sourcePos
+            <*> (symbol_ "[" *> xSep1 '.' identifier <* symbol_ ":")
             <*> (commaSep expr <* symbol_ "]")
 
 ---------------------------------------
@@ -768,11 +799,13 @@ stmts = do
     many stmt
 
 recDecl :: Parser Stmt
-recDecl = uncurry RecDecl <$> (keyword_ "rec" *> bindExpr)
-
+recDecl = r <$> sourcePos <*> (keyword_ "rec" *> bindExpr)
+  where
+    r a (b,c) = RecDecl a b c
 funDecl :: Parser Stmt
 funDecl = FunDecl
-    <$> (keyword "fun" *> simpleBinding True)
+    <$> sourcePos
+    <*> (keyword "fun" *> simpleBinding True)
     <*> funHeader
     <*> (optional_ (keyword_ "block") *> symbol_ ":" *> optional ds)
     <*> stmts
@@ -794,11 +827,14 @@ whereBlock :: Parser [Stmt]
 whereBlock = keyword_ "where" *> symbol_ ":" *> stmts
 
 varDecl :: Parser Stmt
-varDecl = uncurry VarDecl <$> (keyword_ "var" *> simpleBindExpr)
+varDecl = v <$> sourcePos <*> (keyword_ "var" *> simpleBindExpr)
+  where
+    v a (b,c) = VarDecl a b c
 
 dataDecl :: Parser Stmt
 dataDecl = (DataDecl
-    <$> (keyword_ "data" *> identifier)
+    <$> sourcePos
+    <*> (keyword_ "data" *> identifier)
     <*> option [] tyNameList
     <*> (symbol_ ":" *> (((:[]) <$> singleVariant)
                          <|> some variant))
@@ -807,10 +843,12 @@ dataDecl = (DataDecl
     <* keyword_ "end"
   where
     singleVariant = VariantDecl
-                    <$> identifier <*> boption [] (parens (commaSep fld))
+                    <$> sourcePos
+                    <*> identifier <*> boption [] (parens (commaSep fld))
                     <*> option [] withMeths
     variant = VariantDecl
-              <$> (symbol_ "|" *> identifier)
+              <$> sourcePos
+              <*> (symbol_ "|" *> identifier)
               <*> boption [] (parens (commaSep fld))
               <*> option [] withMeths
     fld = (,) <$> boption Con (Ref <$ keyword_ "ref") <*> simpleBinding False
@@ -824,15 +862,16 @@ tyNameList = try (symbol_ "<" *> (commaSep1 identifier <?> "type parameter") <* 
 
 checkBlock :: Parser Stmt
 checkBlock = do
+    sp <- sourcePos
     keyword_ "check"
     nm <- optional stringRaw
     symbol_ ":"
     ss <- stmts
     keyword_ "end"
-    pure $ Check nm ss
+    pure $ Check sp nm ss
 
 typeStmt :: Parser Stmt
-typeStmt = TypeStmt <$> (keyword_ "type" *> typeDecl True)
+typeStmt = TypeStmt <$> sourcePos <*> (keyword_ "type" *> typeDecl True)
 
 typeDecl :: Bool -> Parser TypeDecl
 typeDecl allowImplicitTuple = TypeDecl
@@ -842,33 +881,38 @@ typeDecl allowImplicitTuple = TypeDecl
 
 ffiTypeStmt :: Parser Stmt
 ffiTypeStmt = FFITypeStmt
-    <$> (keyword_ "ffitype" *> identifier)
+    <$> sourcePos
+    <*> (keyword_ "ffitype" *> identifier)
     <*> (symbol_ "=" *> stringRaw)
 
 provide :: Parser Stmt
-provide = Provide <$> (keyword_ "provide"
+provide = Provide
+          <$> sourcePos
+          <*> (keyword_ "provide"
                        *> symbol_ ":"
                        *> commaSep provideItem
                        <* keyword_ "end")
 
 provideItem :: Parser ProvideItem
 provideItem = choice
-    [ProvideAll <$ symbol_ "*"
-    ,ProvideType <$> (keyword_ "type" *> identifier)
-    ,ProvideData <$> (keyword_ "data" *> identifier)
+    [ProvideAll <$> (sourcePos <* symbol_ "*")
+    ,ProvideType <$> sourcePos <*> (keyword_ "type" *> identifier)
+    ,ProvideData <$> sourcePos <*> (keyword_ "data" *> identifier)
     ,do
+     sp <- sourcePos
      a <- identifier
-     bchoice [ProvideAlias a <$> (keyword_ "as" *> identifier)
-            ,pure $ ProvideName a]
+     bchoice [ProvideAlias sp a <$> (keyword_ "as" *> identifier)
+            ,pure $ ProvideName sp a]
     ]
 
 include :: Parser Stmt
 include = do
+    sp <- sourcePos
     keyword_ "include"
-    choice [IncludeFrom
+    choice [IncludeFrom sp
             <$> (keyword_ "from" *> identifier <* symbol_ ":")
             <*> (commaSep provideItem <* keyword_ "end")
-           ,Include <$> importSource]
+           ,Include sp <$> importSource]
 
 importSource :: Parser ImportSource
 importSource = do
@@ -885,36 +929,41 @@ importSource = do
         ,pure a]
 
 importStmt :: Parser Stmt
-importStmt = keyword_ "import" *> (importFrom <|> importAs)
+importStmt = do
+    sp <- sourcePos
+    keyword_ "import" *> (importFrom sp <|> importAs sp)
   where
-    importFrom = ImportFrom
+    importFrom sp = ImportFrom sp
         <$> (keyword_ "from" *> importSource <* symbol_ ":")
         <*> (commaSep provideItem <* keyword_ "end")
-    importAs = (Import <$> importSource
+    importAs sp = (Import sp <$> importSource
                 <*> (keyword_ "as" *> identifier))
 
 whenStmt :: Parser Stmt
 whenStmt = When
-           <$> (keyword_ "when" *> expr <* optional_ (keyword_ "block"))
+           <$> sourcePos
+           <*> (keyword_ "when" *> expr <* optional_ (keyword_ "block"))
            <*> (symbol_ ":" *> stmts <* keyword_ "end")
 
 -- todo: what other statements can use shadow
 -- fun? rec? var?
 shadowDecl :: Parser Stmt
 shadowDecl = 
-    f <$> (keyword_ "shadow" *> identifier)
+    f
+    <$> sourcePos
+    <*> (keyword_ "shadow" *> identifier)
     <*> optional ((symbol_ "::" <?> "") *> typ True)
     <*> ((symbol_ "=" <?> "") *> expr)
   where
-    f i ty v = let b = ShadowBinding i
-                   b1 = case ty of
-                      Nothing -> b
-                      Just tyx -> TypedBinding b tyx
-               in LetDecl b1 v
+    f sp i ty v = let b = ShadowBinding sp i
+                      b1 = case ty of
+                          Nothing -> b
+                          Just tyx -> TypedBinding sp b tyx
+                  in LetDecl sp b1 v
 
 usePackage :: Parser Stmt
 usePackage =
-    UsePackage <$> (keyword_ "use" *> keyword_ "package" *> stringRaw)
+    UsePackage <$> sourcePos <*> (keyword_ "use" *> keyword_ "package" *> stringRaw)
 
 {-
 starts with expr or binding
@@ -974,24 +1023,26 @@ parsing stuff which will then get a static check on it before converting
 to the user's/interpreter/desugarer syntax
 
         -}
-        let makeContract b t = pure $ pure $ Contract b t
+        sp <- sourcePos
+        let makeContract b t = pure $ pure $ Contract sp b t
         (ctu :: Parser Stmt) <- try $ do
             p <- limitedBinding True
                 -- todo: hack to stop it matching ==
                 -- fix this when do the whitespace fix pass
-            let myLetDecl = symbol_ "= " *> (pure $ (LetDecl p <$> expr))
+            let myLetDecl = symbol_ "= " *> (pure $ (LetDecl sp p <$> expr))
                 myContract = case p of
-                    TypedBinding (NameBinding b) t -> Just $ makeContract b t
+                    TypedBinding _ (NameBinding _ b) t -> Just $ makeContract b t
                     _ -> Nothing
             choice $ (myLetDecl : maybe [] (:[]) myContract)
         ctu
     startsWithExpr = do
+        sp <- sourcePos
         ex <- expr
         let rf = (,) <$> identifier <*> (symbol_ ":" *> expr)
         choice
-            [SetRef ex <$> ((symbol_ "!{" <?> "") *> commaSep1 rf <* symbol "}")
-            ,SetVar ex <$> ((symbol_ ":=" <?> "") *> expr)
-            ,pure $ StmtExpr ex]
+            [SetRef sp ex <$> ((symbol_ "!{" <?> "") *> commaSep1 rf <* symbol "}")
+            ,SetVar sp ex <$> ((symbol_ ":=" <?> "") *> expr)
+            ,pure $ StmtExpr sp ex]
 
 typ :: Bool -> Parser Ann
 typ allowImplicitTuple =
@@ -1005,51 +1056,58 @@ typ allowImplicitTuple =
         i <- identifier
         ctu it i
     ctu it i = do
+        sp <- sourcePos
         i1 <- tname i
         choice $ catMaybes
-              [Just $ TParam i1 <$> (symbol_ "<" *> commaSep1 noarrow <* symbol_ ">")
+              [Just $ TParam sp i1 <$> (symbol_ "<" *> commaSep1 noarrow <* symbol_ ">")
               ,if it
-               then Just $ (\is r -> TArrow (TName i1:is) r)
+               then Just $ (\is r -> TArrow sp (TName sp i1:is) r)
                   <$> (many (symbol_ "," *> noarrow))
                   <*> (symbol_ "->" *> noarrow)
                else Nothing
-              ,Just $ pure $ TName i1]
+              ,Just $ pure $ TName sp i1]
     noarrow = (parensOrNamedArrow <|> do
         i <- identifier
         noarrowctu i) <?> "type annotation"
     zeroArgArrow ait = (do
+        sp <- sourcePos
         symbol_ "->"
         t <- typ ait
-        pure $ TArrow [] t) <?> "type annotation"
+        pure $ TArrow sp [] t) <?> "type annotation"
     tname i = (i:) <$> many (symbol_ "." *> identifier)
     noarrowctu i = do
+        sp <- sourcePos
         i1 <- tname i
         choice
-              [TParam i1 <$> (symbol_ "<" *> commaSep1 (typ True) <* symbol_ ">")
-              ,pure $ TName i1]
+              [TParam sp i1 <$> (symbol_ "<" *> commaSep1 (typ True) <* symbol_ ">")
+              ,pure $ TName sp i1]
     parensOrNamedArrow = symbol_ "(" *> do
+        sp <- sourcePos
         i <- identifier
         choice [do
                 x <- symbol_ "::" *> noarrow
                 xs <- option [] $ symbol_ "," *> (commaSep1 ((,) <$> identifier <*> (symbol_ "::" *> noarrow)))
                 r <- symbol_ ")" *> symbol_ "->" *> noarrow
-                pure $ TNamedArrow ((i,x):xs) r
+                pure $ TNamedArrow sp ((i,x):xs) r
                ,do
                 i1 <- ctu True i <* symbol_ ")"
-                pure $ TParens i1]
-    ttupleOrRecord = symbol_ "{" *> (f <|> pure (TRecord [])) <* symbol_ "}"
+                pure $ TParens sp i1]
+    ttupleOrRecord = do
+        sp <- sourcePos
+        symbol_ "{" *> (f <|> pure (TRecord sp [])) <* symbol_ "}"
       where
         f = do
+            sp <- sourcePos
             i <- identifier
             choice
                 [do
                  t <- symbol_ "::" *> noarrow
                  ts <- option [] $ symbol_ "," *> commaSep1 ((,) <$> identifier <*> (symbol_ "::" *> noarrow))
-                 pure $ TRecord ((i,t):ts)
+                 pure $ TRecord sp ((i,t):ts)
                 ,do
                  i1 <- noarrowctu i
                  ts <- option [] $ symbol_ ";" *> xSep1 ';' noarrow
-                 pure $ TTuple (i1:ts)]
+                 pure $ TTuple sp (i1:ts)]
 
 
 extractSource :: String -> String

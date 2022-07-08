@@ -268,15 +268,15 @@ runInteractive h src =
             <$> useSource (Just thisModule) thisModule src parseScript
         localBindings (\_ -> pure []) $ do
             -- todo: implement provide from and use that?
-            void $ interpStatement (Include (ImportName "globals"))
+            void $ interpStatement (Include appSourcePos (ImportName "globals"))
             when (ig > 0) $
-                void $ interpStatement (Include (ImportName lastModule))
+                void $ interpStatement (Include appSourcePos (ImportName lastModule))
             r <- interpStatements ast
             localModuleEnv <- askLocallyCreatedBindings
             allModuleEnv <- askIncludedBindings
             let allbs = localModuleEnv ++ (filter ((`notElem` map fst localModuleEnv) . fst) allModuleEnv)
             moduleRecord <- VariantV (bootstrapType "Record") "record"
-                        <$> aliasSomething allbs allModuleEnv [ProvideAll]
+                        <$> aliasSomething allbs allModuleEnv [ProvideAll appSourcePos]
             modifyAddModule thisModule thisModule moduleRecord
             liftIO $ atomically $ do
                 a <- readTVar (tlHandleState st)
@@ -313,7 +313,7 @@ evalFunI :: String -> [Value] -> Interpreter Value
 evalFunI fun args = do
     ast <- either error id <$> useSource Nothing "evalFun" fun parseExpr
     localModule "evalFun" Nothing $ do
-        f <- interpStatements [StmtExpr ast]
+        f <- interpStatements [StmtExpr appSourcePos ast]
         let as = zipWith (\i x -> ("aaa-" ++ show i, x)) [(0::Int)..] args
             src' = "fff(" ++ intercalate "," (map fst as) ++ ")"
         ast' <- either error id <$> useSource Nothing "evalFun" src' parseExpr
@@ -573,34 +573,34 @@ internalsType x = SimpleTypeInfo ["_system","modules","_internals",x]
 -- check the type referred to by the given type annotation is a valid
 -- type (e.g. it exists, and it doesn't have the wrong type params, ...
 typeOfTypeSyntax :: Ann -> Interpreter TypeInfo
-typeOfTypeSyntax (TName x) = do
+typeOfTypeSyntax (TName _ x) = do
     v <- interp (makeDotPathExpr $ prefixLast "_typeinfo-" x)
     case v of
         FFIValue _ffitag v'
             | Just z <- fromDynamic v' -> pure (z :: TypeInfo)
             | otherwise -> _errorWithCallStack $ "type info reference isn't a type info: " ++ show v'
         _ -> _errorWithCallStack $ "type info reference isn't a type info: " ++ show v
-typeOfTypeSyntax (TTuple xs) = do
+typeOfTypeSyntax (TTuple _ xs) = do
     fs <- mapM typeOfTypeSyntax xs
     pure $ TupleTypeInfo fs
-typeOfTypeSyntax (TRecord xs) = do
+typeOfTypeSyntax (TRecord _ xs) = do
     fs <- mapM (secondM typeOfTypeSyntax) xs
     pure $ RecordTypeInfo fs
 
-typeOfTypeSyntax (TParam nm ps) = do
+typeOfTypeSyntax (TParam _ nm ps) = do
     -- check the ps are valid
     pst <- mapM typeOfTypeSyntax ps
     -- check the nm is valid
-    nmt <- typeOfTypeSyntax (TName nm)
+    nmt <- typeOfTypeSyntax (TName appSourcePos nm)
     -- check the number of ps matches what nm allows
     pure $ ParamTypeInfo nmt pst
 
-typeOfTypeSyntax (TArrow as r) = do
+typeOfTypeSyntax (TArrow _ as r) = do
     as' <- mapM typeOfTypeSyntax as
     r' <- typeOfTypeSyntax r
     pure $ ArrowTypeInfo as' r'
 
-typeOfTypeSyntax (TParens t) = typeOfTypeSyntax t
+typeOfTypeSyntax (TParens _ t) = typeOfTypeSyntax t
 
 typeOfTypeSyntax x = _errorWithCallStack $ "typeOfTypeSyntax: " ++ show x
 
@@ -1260,23 +1260,23 @@ spawnOpts isLinked isScoped monitorTag f = do
         pure (mref,x)
 
     -- helpers for the exit handler for the lauched thread
-    scopedCancelled <- interp (Iden "scoped-cancelled")
+    scopedCancelled <- interp (Iden appSourcePos "scoped-cancelled")
     let linkedCancelled :: SomeException -> IO Value
         linkedCancelled a = flip runReaderT st $ do
             let a' = maybe (TextV $ show a) id $ extractValueException a
-            lc <- interp (Iden "linked-cancelled")
+            lc <- interp (Iden appSourcePos "linked-cancelled")
             app lc [a']
     let makeMonitorDown vs = flip runReaderT st $ do
-            mmd <- interp (Iden "monitor-down")
+            mmd <- interp (Iden appSourcePos "monitor-down")
             app mmd vs
     let makeEither x = flip runReaderT st $ do
             case x of
                 Left e -> do
                     let v = maybe (TextV $ show e) id $ extractValueException e
-                    l <- interp (Iden "left")
+                    l <- interp (Iden appSourcePos "left")
                     app l [v]
                 Right v -> do
-                    l <- interp (Iden "right")
+                    l <- interp (Iden appSourcePos "right")
                     app l [v]
 
     -- inbox for the launched thread
@@ -1405,7 +1405,7 @@ bThreadCancelWith x = error $ "wrong args to thread-cancel-with: " ++ show x
 
 threadCancelWith :: ConcurrencyHandle -> Value -> Interpreter Value
 threadCancelWith h v = do
-    ac <- interp (Iden "cancelled")
+    ac <- interp (Iden appSourcePos "cancelled")
     ac' <- app ac [v]
     case chThreadHandle $ h of
         Left tid -> liftIO $ throwTo tid $ ValueException [] ac'
@@ -1454,10 +1454,10 @@ bWaitEither [FFIValue _ffitag h']
     (x :: Either SomeException Value) <- liftIO $ A.waitCatch $ HC.asyncHandle h
     case x of
         Right v -> do
-            r <- interp (Iden "right")
+            r <- interp (Iden appSourcePos "right")
             app r [v]
         Left e -> do
-            l <- interp (Iden "left")
+            l <- interp (Iden appSourcePos "left")
             case extractValueException e of
                 Nothing -> app l [TextV $ show e]
                 Just v -> app l [v]
@@ -1495,7 +1495,7 @@ bReceiveAnyTimeout [NumV n] =
     case ret of
         Nothing -> pure nothing
         Just v -> do
-            i <- interp (Iden "some")
+            i <- interp (Iden appSourcePos "some")
             app i [v]
 bReceiveAnyTimeout x = error $ "wrong args to receive-any-timeout: " ++ show x
 
@@ -1641,7 +1641,7 @@ runInterp incG (Handle h) f = do
         -- will become the use context thing
         -- only bootstrapping a handle with the bootstrap and _internals
         -- loading skips including globals atm
-        when incG $ void $ interpStatement (Include (ImportName "globals"))
+        when incG $ void $ interpStatement (Include appSourcePos (ImportName "globals"))
         f
 
 -- used for a local thread - one that isn't for a new haskell api call or
@@ -1661,7 +1661,7 @@ runInterpInherit parentSh incG f = do
             ,_tlIsModuleRootThread = False
             }
     flip runReaderT sh $ do
-        when incG $ void $ interpStatement (Include (ImportName "globals"))
+        when incG $ void $ interpStatement (Include appSourcePos (ImportName "globals"))
         f
 
 ---------------------------------------
@@ -1826,15 +1826,15 @@ makeFFIMemberFunction f = Just $ pure $ MethodV $ ForeignFunV f
 
 ffiSingleArgMethod :: String -> Value -> Interpreter Value
 ffiSingleArgMethod nm v =
-        pure $ FunV [NameBinding "xx"]
-            (App Nothing (Iden nm) [Iden "yy", Iden "xx"])
+        pure $ FunV [NameBinding appSourcePos "xx"]
+            (App Nothing (Iden appSourcePos nm) [Iden appSourcePos "yy", Iden appSourcePos  "xx"])
             [("yy", v)
             ,(nm, ForeignFunV nm)]
 
 ffiNoArgMethod :: String -> Value -> Interpreter Value
 ffiNoArgMethod nm v =
         pure $ FunV []
-            (App Nothing (Iden nm) [Iden "yy"])
+            (App Nothing (Iden appSourcePos nm) [Iden appSourcePos "yy"])
             [("yy", v)
             ,(nm, ForeignFunV nm)]
 
@@ -1842,7 +1842,7 @@ ffiNoArgValue :: String -> String -> Value -> Interpreter Value
 ffiNoArgValue nm fld v = app f []
   where
     f = FunV []
-            (App Nothing (Iden nm) [Text fld, Iden "yy"])
+            (App Nothing (Iden appSourcePos nm) [Text appSourcePos fld, Iden appSourcePos "yy"])
             [("yy", v)
             ,(nm, ForeignFunV nm)]
 
@@ -2144,7 +2144,7 @@ chainApp as = _errorWithCallStack $ "wrong args to |> " ++ show as
 
 bGT :: [Value] -> Interpreter Value
 bGT [a,b] = do
-    f0 <- interp (Iden "<")
+    f0 <- interp (Iden appSourcePos "<")
     e0 <- app f0 [a,b]
     case e0 of
         BoolV x -> pure $ BoolV $ not x
@@ -2153,9 +2153,9 @@ bGT as = _errorWithCallStack $ "unsupported args to > (todo?) " ++ show as
 
 bLTE :: [Value] -> Interpreter Value
 bLTE [a,b] = do
-    f0 <- interp (Iden "<")
+    f0 <- interp (Iden appSourcePos "<")
     e0 <- app f0 [a,b]
-    f1 <- interp (Iden "==")
+    f1 <- interp (Iden appSourcePos "==")
     e1 <- app f1 [a,b]
     case (e0,e1) of
         (BoolV True, _) -> pure $ BoolV True
@@ -2165,9 +2165,9 @@ bLTE as = _errorWithCallStack $ "unsupported args to <= (todo?) " ++ show as
 
 bGTE :: [Value] -> Interpreter Value
 bGTE [a,b] = do
-    f0 <- interp (Iden ">")
+    f0 <- interp (Iden appSourcePos ">")
     e0 <- app f0 [a,b]
-    f1 <- interp (Iden "==")
+    f1 <- interp (Iden appSourcePos "==")
     e1 <- app f1 [a,b]
     case (e0,e1) of
         (BoolV True, _) -> pure $ BoolV True
@@ -2739,10 +2739,10 @@ bTakeTestResults x = error $ "bad args to take-test-results" ++ show x
 
 testResultsToB :: [(String, [CheckBlockResult])] -> Interpreter Value
 testResultsToB cbs = do
-    mkModuleCheckResults <- interp (Iden "module-check-results")
-    mkCheckResults <- interp (Iden "check-results")
-    mkTestPass <- interp (Iden "test-pass")
-    mkTestFail <- interp (Iden "test-fail")
+    mkModuleCheckResults <- interp (Iden appSourcePos "module-check-results")
+    mkCheckResults <- interp (Iden appSourcePos "check-results")
+    mkTestPass <- interp (Iden appSourcePos "test-pass")
+    mkTestFail <- interp (Iden appSourcePos "test-fail")
     let makeMcr nm cbsx = do
             cs <- mapM makeCbr cbsx
             app mkModuleCheckResults [TextV nm, makeBList cs]
@@ -2789,20 +2789,21 @@ bFormatTestResults x = error $ "bad args to format-test-results" ++ show x
 
 interp :: Expr -> Interpreter Value
 --interp x | trace ("trace: "  ++ prettyExpr x) False = undefined
-interp (Num n) = pure $ NumV n
-interp (Text s) = pure $ TextV s
-interp (Parens e) = interp e
-interp (Iden "_") = _errorWithCallStack $ "wildcard/partial application not supported in this context"
-interp (Iden a) = do
+interp (Num _ n) = pure $ NumV n
+interp (Text _ s) = pure $ TextV s
+interp (Parens _ e) = interp e
+interp (Iden sp "_") = localPushCallStack sp $ _errorWithCallStack $ "wildcard/partial application not supported in this context"
+interp (Iden sp a) = do
     mv <- lookupBinding a
     case mv of
         -- hack for self for concurrency
         Just f@(ForeignFunV "self-thread") -> app f []
         Just (BoxV _ vr) -> liftIO $ readIORef vr
         Just v -> pure v
-        Nothing -> _errorWithCallStack $ "identifier not found: " ++ a
+        Nothing -> do
+            localPushCallStack sp $ _errorWithCallStack $ "identifier not found: " ++ a
 
-interp (UnboxRef e f) = do
+interp (UnboxRef _ e f) = do
     v <- interp e
     case v of
         VariantV _ _ fs
@@ -2810,16 +2811,18 @@ interp (UnboxRef e f) = do
             | Just _  <- lookup f fs -> _errorWithCallStack $ "set ref on non ref: " ++ f ++ " in " ++ show v
         _ -> _errorWithCallStack $ "setref on non variant: " ++ show v
 
-interp (InstExpr e ts) = do
+interp (InstExpr _ e ts) = do
     -- todo: add type check - check the ty param list has valid types
     -- and the type of e accepts this many type params
     mapM_ typeOfTypeSyntax ts
     interp e
 
 -- special case for partial app
-interp (App sp f es) | f == Iden "_" || any (== Iden "_") es =
+interp (App sp f es) | isWild f || any isWild es =
     interp $ makeCurriedApp sp f es
-    
+  where
+    isWild (Iden _ "_") = True
+    isWild _ = False
 interp (App sp f es) = do
     fv <- interp f
     -- special case apps
@@ -2834,28 +2837,28 @@ interp (App sp f es) = do
             localPushCallStack sp $ app fv vs
 
 -- special case binops
-interp (BinOp _ x _)
+interp (BinOp _ _ x _)
     | x `elem` ["is","raises","raises-satisfies", "satisfies"]
     = _errorWithCallStack $ "'" ++ x ++ "' test predicate only allowed in check block"
 
-interp (BinOp e0 "and" e1) = do
+interp (BinOp _ e0 "and" e1) = do
     x <- interp e0
     case x of
         BoolV False -> pure x
         BoolV True -> interp e1
         _ -> _errorWithCallStack $ "bad value type to 'and' operator: " ++ show x
 
-interp (BinOp e0 "or" e1) = do
+interp (BinOp _ e0 "or" e1) = do
     x <- interp e0
     case x of
         BoolV True -> pure x
         BoolV False -> interp e1
         _ -> _errorWithCallStack $ "bad value type to 'or' operator: " ++ show x
 
-interp (BinOp e0 op e1) = interp (App Nothing (Iden op) [e0,e1])
+interp (BinOp _ e0 op e1) = interp (App Nothing (Iden appSourcePos op) [e0,e1])
 
-interp (UnaryMinus e) = do
-    opv <- interp $ Iden "-"
+interp (UnaryMinus _ e) = do
+    opv <- interp $ Iden appSourcePos "-"
     v <- interp e
     app opv [v]
 
@@ -2873,19 +2876,19 @@ lam(x):
 end
 -}
 
-interp (Lam (FunHeader dpms bs rt) e) =
+interp (Lam _ (FunHeader dpms bs rt) e) =
     typeLet tls $ do
     env <- askBindings
     pure $ FunV bs wrapRt env
   where
-    tls = flip map dpms $ \t -> TypeDecl t [] (TName ["Any"])
-    wrapRt = maybe (Block e)
-             (\t -> (AssertTypeCompat (Block e) t))
+    tls = flip map dpms $ \t -> TypeDecl t [] (TName appSourcePos ["Any"])
+    wrapRt = maybe (Block appSourcePos e)
+             (\t -> (AssertTypeCompat appSourcePos (Block appSourcePos e) t))
              rt 
 
-interp (CurlyLam fh e) = interp (Lam fh e)
+interp (CurlyLam _ fh e) = interp (Lam appSourcePos fh e)
 
-interp (Let bs e) = do
+interp (Let _ bs e) = do
     let newEnv [] = interpStatements e
         newEnv ((b,ex):bs') = do
             v <- interp ex
@@ -2893,9 +2896,9 @@ interp (Let bs e) = do
             localBindings (extendBindings' lbs) $ newEnv bs'
     newEnv bs
 
-interp (Block ss) = localBindings pure $ interpStatements ss
+interp (Block _ ss) = localBindings pure $ interpStatements ss
 
-interp (If bs e) = do
+interp (If _ bs e) = do
     let f ((c,t):bs') = do
             c' <- interp c
             case c' of
@@ -2906,13 +2909,13 @@ interp (If bs e) = do
                    Just x -> interpStatements x
                    Nothing -> _errorWithCallStack "NoBranchesSatisfied"
     f bs
-interp (Ask bs e) = interp (If bs e)
+interp (Ask _ bs e) = interp (If appSourcePos bs e)
 
-interp (LetRec bs e) =
+interp (LetRec _ bs e) =
     let sts = doLetRec bs
-    in interp $ Block (sts ++ e)
+    in interp $ Block appSourcePos (sts ++ e)
 
-interp (DotExpr e f) = do
+interp (DotExpr _ e f) = do
     v <- interp e
     interpDotExpr v f
 
@@ -2923,7 +2926,7 @@ run that branch
 if there are members with names, bind these before running the branch
 
 -}
-interp (Cases e ty cs els) = do
+interp (Cases _ e ty cs els) = do
     v <- interp e
     case ty of
         Just ty' -> do
@@ -2936,13 +2939,13 @@ interp (Cases e ty cs els) = do
   where
     bindingMatchesType a _ | a == bootstrapType "Any" = pure ()
     bindingMatchesType _ (ShadowBinding {}) = pure ()
-    bindingMatchesType t (TypedBinding _ a) = do
+    bindingMatchesType t (TypedBinding _ _ a) = do
         ta <- typeOfTypeSyntax a
         when (t /= ta) $ _errorWithCallStack $ "type not compatible: type of pattern not the same as the type of the case: " ++ show (t,ta)
-    bindingMatchesType t (VariantBinding nm _) = checkVariantType t nm
-    bindingMatchesType t (NameBinding nm) = checkVariantType t [nm]
-    bindingMatchesType _ WildcardBinding = pure ()
-    bindingMatchesType t (AsBinding b _ _) = bindingMatchesType t b
+    bindingMatchesType t (VariantBinding _ nm _) = checkVariantType t nm
+    bindingMatchesType t (NameBinding _ nm) = checkVariantType t [nm]
+    bindingMatchesType _ (WildcardBinding _)= pure ()
+    bindingMatchesType t (AsBinding _ b _ _) = bindingMatchesType t b
     bindingMatchesType _t (TupleBinding {}) = error $ "todo: implement tuple binding type check"
     bindingMatchesType _t (NumberLitBinding {}) = error $ "todo: implement numberlit binding type check"
     bindingMatchesType _t (StringLitBinding {}) = error $ "todo: implement numberlit binding type check"
@@ -2971,15 +2974,15 @@ interp (Cases e ty cs els) = do
                     BoolV False -> matchb v cs'
                     _ -> _errorWithCallStack $ "non bool value in when clause: " ++ show tstv
 
-interp (TupleSel es) = do
+interp (TupleSel _ es) = do
     vs <- mapM interp es
     pure $ VariantV (bootstrapType "Tuple") "tuple" $ zipWith (\n v -> (show n, v)) [(0::Int)..] vs
 
-interp (RecordSel fs) = do
+interp (RecordSel _ fs) = do
     vs <- mapM (\(n,e) -> (n,) <$> interp e) fs
     pure $ VariantV (bootstrapType "Record") "record" vs
 
-interp (Extend ev fs) = do
+interp (Extend _ ev fs) = do
     v <- interp ev
     case v of
         -- todo: if the fields being updated aren't already in the variant,
@@ -2990,16 +2993,16 @@ interp (Extend ev fs) = do
             pure $ VariantV tg vr vs''
         _ -> error $ "extend only supported for variants, got " ++ show v
 
-interp (TableSel cs rs) = do
+interp (TableSel _ cs rs) = do
     -- todo: check each row has the right number of fields
-    rs' <- mapM (\(RowSel es) -> mapM interp es) rs
+    rs' <- mapM (\(RowSel _ es) -> mapM interp es) rs
     -- table is a list of records for now
     -- todo: fix this because a row is not the same as a record
     -- a row is more dynamic, and the field order is significant
     let mkr es = VariantV (bootstrapType "Record") "record" $ zip cs es
     pure $ makeBList $ map mkr rs'
 
-interp (TupleGet e f) = do
+interp (TupleGet _ e f) = do
     v <- interp e
     case v of
         VariantV tg "tuple" fs | tg == bootstrapType "Tuple" ->
@@ -3007,7 +3010,7 @@ interp (TupleGet e f) = do
                  $ lookup (show f) fs
         _ -> _errorWithCallStack $ "tuple get called on non tuple value: " ++ show v
 
-interp (Construct c es) = do
+interp (Construct _ c es) = do
     maker <- interp (makeDotPathExpr c)
     case maker of
         VariantV tg "record" fs
@@ -3024,17 +3027,17 @@ interp (Construct c es) = do
               -- otherwise try to call the make
         _ -> _errorWithCallStack $ "non construct record used in construct " ++ show c ++ ": " ++ show maker
 
-interp (For fn args mty bdy) =
+interp (For _ fn args mty bdy) =
     interp (App Nothing fn (f : map snd args))
   where
-    f = Lam (FunHeader [] (map fst args) mty) bdy
+    f = Lam appSourcePos (FunHeader [] (map fst args) mty) bdy
 
-interp (AssertTypeCompat e t) = do
+interp (AssertTypeCompat _ e t) = do
     v <- interp e
     ty' <- shallowizeType <$> typeOfTypeSyntax t
     assertTypeCompat v ty'
 
-interp (TypeLet tds e) = typeLet tds $ interpStatements e
+interp (TypeLet _ tds e) = typeLet tds $ interpStatements e
 
 {-
 
@@ -3058,18 +3061,18 @@ fun matchfn(x):
 end
 
 -}
-interp (Receive as aft) = do
-    let mpCase (b,x,bdy) = (b,x,[StmtExpr $ App Nothing (Iden "some") [Block bdy]])
-        els = Just [StmtExpr $ Iden "none"]
-        matchFnS = Lam (FunHeader[] [NameBinding "receivepayload"] Nothing)
-                  [StmtExpr $ Cases (Iden "receivepayload") Nothing (map mpCase as) els]
+interp (Receive _ as aft) = do
+    let mpCase (b,x,bdy) = (b,x,[StmtExpr appSourcePos $ App Nothing (Iden appSourcePos "some") [Block appSourcePos bdy]])
+        els = Just [StmtExpr appSourcePos $ Iden appSourcePos "none"]
+        matchFnS = Lam appSourcePos (FunHeader[] [NameBinding appSourcePos "receivepayload"] Nothing)
+                  [StmtExpr appSourcePos $ Cases appSourcePos (Iden appSourcePos "receivepayload") Nothing (map mpCase as) els]
     matchFn <- interp matchFnS
     aft' <- case aft of
             -- TODO: this isn't correct, infinity should be a value,
             -- not a bit of syntax
-            Just (Iden "infinity", _fn) -> pure Nothing
+            Just (Iden _ "infinity", _fn) -> pure Nothing
             Just (e, fn) -> do
-                aftx <- interp (Lam (FunHeader [] [] Nothing) fn)
+                aftx <- interp (Lam appSourcePos (FunHeader [] [] Nothing) fn)
                 v <- interp e
                 case v of
                     NumV b -> pure $ Just (b, aftx)
@@ -3080,7 +3083,7 @@ interp (Receive as aft) = do
 interp (Template sp) =
     pure $ TemplateV sp
 
-interp (MethodExpr m) = makeMethodValue m
+interp (MethodExpr _ m) = makeMethodValue m
 
 interpDotExpr :: Value -> String -> Interpreter Value
 interpDotExpr v f = do
@@ -3127,8 +3130,8 @@ interpDotExprE v f =
 -- todo: deal with ts and mty
 makeMethodValue :: Method -> Interpreter Value
 makeMethodValue (Method (FunHeader _ts (a:as) _mty) bdy) =
-    MethodV <$> interp (Lam (FunHeader [] [a] Nothing)
-                        [StmtExpr $ Lam (FunHeader [] as Nothing) bdy])
+    MethodV <$> interp (Lam appSourcePos (FunHeader [] [a] Nothing)
+                        [StmtExpr appSourcePos $ Lam appSourcePos (FunHeader [] as Nothing) bdy])
 makeMethodValue m@(Method (FunHeader _ts [] _mty) _bdy) =
     error $ "method declaration should accept at least one argument: " ++ show m
 
@@ -3142,7 +3145,7 @@ makeBTuple vs =
 
 
 sbindingName :: SimpleBinding -> String
-sbindingName (SimpleBinding _ nm _) = nm
+sbindingName (SimpleBinding _ _ nm _) = nm
 
 makeCurriedApp :: SourcePosition -> Expr -> [Expr] -> Expr
 makeCurriedApp sp f es =
@@ -3150,15 +3153,15 @@ makeCurriedApp sp f es =
     let (nms',newEs) = unzip $ makeNewEs (1::Int) es
         nms = catMaybes nms'
         (newf,nms2) = case f of
-                        Iden "_" -> (Iden "_p0", ("_p0":nms))
+                        Iden _ "_" -> (Iden appSourcePos "_p0", ("_p0":nms))
                         _ -> (f, nms)
-        bs = flip map nms2 $ \n -> ShadowBinding n
-    in Lam (FunHeader [] bs Nothing) [StmtExpr $ App sp newf newEs]
+        bs = flip map nms2 $ \n -> ShadowBinding appSourcePos n
+    in Lam appSourcePos (FunHeader [] bs Nothing) [StmtExpr appSourcePos $ App sp newf newEs]
   where
     makeNewEs _ [] = []
-    makeNewEs n (Iden "_":es') =
+    makeNewEs n (Iden _ "_":es') =
         let nm = "_p" ++ show n
-        in (Just nm, Iden nm) : makeNewEs (n + 1) es'
+        in (Just nm, Iden appSourcePos nm) : makeNewEs (n + 1) es'
     makeNewEs n (x:es') = (Nothing, x) : makeNewEs n es'
 
 app :: Value -> [Value] -> Interpreter Value
@@ -3266,7 +3269,7 @@ assertTypeAnnCompat v t = do
 -- the syntax is used in a few places
 typeLetWrapper :: [String] -> Expr -> Expr
 typeLetWrapper [] x = x
-typeLetWrapper ps e = TypeLet (map (\a -> TypeDecl a [] (TName ["Any"])) ps) [StmtExpr e]
+typeLetWrapper ps e = TypeLet appSourcePos (map (\a -> TypeDecl a [] (TName appSourcePos ["Any"])) ps) [StmtExpr appSourcePos e]
 
 ---------------------------------------
 
@@ -3305,43 +3308,47 @@ currently a contract must immediately precede its let/var/rec/fun decl
 
 desugarContracts :: [Stmt] -> [Stmt]
 desugarContracts
-    (Contract cnm ta : x : sts)
-    | Just (ctor, b@(NameBinding bnm), e) <- letorrec x
+    (Contract _ cnm ta : x : sts)
+    | Just (ctor, b@(NameBinding _ bnm), e) <- letorrec x
     , cnm == bnm
-    = ctor (TypedBinding b ta) e : desugarContracts sts
+    = ctor appSourcePos (TypedBinding appSourcePos b ta) e : desugarContracts sts
   where
-    letorrec (LetDecl b e) = Just (LetDecl,b,e)
-    letorrec (RecDecl b e) = Just (RecDecl,b,e)
+    letorrec (LetDecl _ b e) = Just (LetDecl,b,e)
+    letorrec (RecDecl _ b e) = Just (RecDecl,b,e)
     letorrec _ = Nothing
 
 desugarContracts
-    (Contract cnm ta : VarDecl (SimpleBinding sh bnm lta) e : sts)
+    (Contract _ cnm ta : VarDecl _ (SimpleBinding _ sh bnm lta) e : sts)
     | cnm == bnm
     = case lta of
           Just _ -> error $ "contract for binding that already has type annotation: " ++ cnm
-          Nothing -> VarDecl (SimpleBinding sh bnm (Just ta)) e : desugarContracts sts
+          Nothing -> VarDecl appSourcePos (SimpleBinding appSourcePos sh bnm (Just ta)) e : desugarContracts sts
 
 desugarContracts
-    (Contract cnm ta : s@(FunDecl (SimpleBinding _ fnm _) _ _ _ _) : sts)
+    (Contract _ cnm ta : s@(FunDecl _ (SimpleBinding _ _ fnm _) _ _ _ _) : sts)
         | cnm == fnm
-        , ta `elem` [TName ["Function"] -- todo: need to look these up in the env
-                    ,TName ["Any"]]
+        , isFnThing ta
         = s : desugarContracts sts
-
+  where
+    -- todo: need to look these up in the env
+    isFnThing (TName _ ["Function"]) = True
+    isFnThing (TName _ ["Any"]) = True
+    isFnThing _ = False
+    
 desugarContracts
-    (cd@(Contract cnm (TArrow tas trt)) :
-     fd@(FunDecl nb@(SimpleBinding _ fnm _) (FunHeader ps as rt) ds e chk) :
+    (cd@(Contract _ cnm (TArrow _ tas trt)) :
+     fd@(FunDecl _ nb@(SimpleBinding _ _ fnm _) (FunHeader ps as rt) ds e chk) :
      sts)
     | cnm == fnm
     =
     -- check for annotations in the funheader
     if (not $ null $ catMaybes $ map getTa as) || isJust rt
     then error $ "contract for fun that already has type annotations: " ++ cnm
-    else FunDecl nb (FunHeader ps bindArgs (Just trt)) ds e chk : desugarContracts sts
+    else FunDecl appSourcePos nb (FunHeader ps bindArgs (Just trt)) ds e chk : desugarContracts sts
   where
     bindArgs | length as /= length tas = error $ "type not compatible: different number of args in contract and fundecl" ++ show (cd,fd)
-             | otherwise = zipWith (\ta b -> TypedBinding b ta) tas as
-    getTa (TypedBinding _ ta) = Just $ ta
+             | otherwise = zipWith (\ta b -> TypedBinding appSourcePos b ta) tas as
+    getTa (TypedBinding _ _ ta) = Just $ ta
     getTa _ = Nothing
 
 desugarContracts
@@ -3359,16 +3366,16 @@ interpStatements' :: [Stmt] -> Interpreter Value
 interpStatements' ss | (recbs@(_:_),chks, ss') <- getRecs [] [] ss = do
     interpStatements' (doLetRec recbs ++ chks ++ ss')
   where
-    getRecs accdecls accchks (RecDecl nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
-    getRecs accdecls accchks (FunDecl (SimpleBinding sh nm mty) fh _ds bdy whr : ss') =
-        let accchks' = maybe accchks (\w -> Check (Just nm) w : accchks) whr
+    getRecs accdecls accchks (RecDecl _ nm bdy : ss') = getRecs ((nm,bdy):accdecls) accchks ss'
+    getRecs accdecls accchks (FunDecl _ (SimpleBinding _ sh nm mty) fh _ds bdy whr : ss') =
+        let accchks' = maybe accchks (\w -> Check appSourcePos (Just nm) w : accchks) whr
             b1 = case sh of
-                     Shadow -> ShadowBinding nm
-                     NoShadow -> NameBinding nm
+                     Shadow -> ShadowBinding appSourcePos nm
+                     NoShadow -> NameBinding appSourcePos nm
             b = case mty of
                     Nothing -> b1
-                    Just ty -> TypedBinding b1 ty
-        in getRecs ((b, Lam fh bdy):accdecls) accchks' ss'
+                    Just ty -> TypedBinding appSourcePos b1 ty
+        in getRecs ((b, Lam appSourcePos fh bdy):accdecls) accchks' ss'
     getRecs accdecls accchks ss' = (reverse accdecls, reverse accchks, ss')
 
 -- collect a contract with a following letdecl
@@ -3403,34 +3410,34 @@ and run-is-test will catch any exceptions from evaluating a or b and
 
 -}
 
-interpStatement s@(StmtExpr (BinOp e0 "is" e1)) =
+interpStatement s@(StmtExpr _ (BinOp _ e0 "is" e1)) =
     testIs (prettyStmt s) e0 e1
 
-interpStatement s@(StmtExpr (BinOp e0 "is-not" e1)) =
+interpStatement s@(StmtExpr _ (BinOp _ e0 "is-not" e1)) =
     testIsNot (prettyStmt s) e0 e1
 
-interpStatement s@(StmtExpr (BinOp e0 "raises" e1)) =
+interpStatement s@(StmtExpr _ (BinOp _ e0 "raises" e1)) =
     testRaises (prettyStmt s) e0 e1
 
-interpStatement s@(StmtExpr (BinOp e0 "satisfies" e1)) =
+interpStatement s@(StmtExpr _ (BinOp _ e0 "satisfies" e1)) =
     testSatisfies (prettyStmt s) e0 e1
 
-interpStatement s@(StmtExpr (BinOp e0 "raises-satisfies" f)) =
+interpStatement s@(StmtExpr _ (BinOp _ e0 "raises-satisfies" f)) =
     testRaisesSatisfies (prettyStmt s) e0 f
 
-interpStatement (StmtExpr e) = do
+interpStatement (StmtExpr _ e) = do
     v <- interp e
     case v of
         TemplateV sp -> evalTemplate [sp]
         _ -> pure v
-interpStatement (When t b) = do
+interpStatement (When _ t b) = do
     tv <- interp t
     case tv of
         BoolV True -> interpStatements b
         BoolV False -> pure nothing
         _ -> _errorWithCallStack $ "expected when test to have boolean type, but is " ++ show tv
 
-interpStatement (Check mcbnm ss) = do
+interpStatement (Check _ mcbnm ss) = do
     te <- testsEnabled
     cbnm <- checkCheckBlockName mcbnm
     sr <- if te then shouldRun cbnm else pure te
@@ -3468,29 +3475,29 @@ interpStatement (Check mcbnm ss) = do
                         BoolV True -> pure True
                         _ -> pure False
 
-interpStatement (LetDecl b e) = do
+interpStatement (LetDecl _ b e) = do
     v <- interp e
     bs <- matchBindingOrError b v
     mapM_ (\(x0,x1,x2) -> letValue' x0 x1 x2) bs
     pure nothing
 
-interpStatement (VarDecl b e) = do
+interpStatement (VarDecl _ b e) = do
     v <- interp e
     -- todo: it should only preserve the type of the var itself
     -- if the user used a contract, and not if they used a type
     -- annotation on the value the var is initialized with?
     (sh, v',ty) <- case b of
-              SimpleBinding sh _ (Just ta) -> do
+              SimpleBinding _ sh _ (Just ta) -> do
                   (sh,,) <$> assertTypeAnnCompat v ta
                   <*> typeOfTypeSyntax ta
-              SimpleBinding sh _ _ -> pure (sh, v, bootstrapType "Any")
+              SimpleBinding _ sh _ _ -> pure (sh, v, bootstrapType "Any")
               --_ -> pure (Shadow, v, bootstrapType "Any")
     vr <- liftIO $ newIORef v'
     
     letValue' sh (sbindingName b) (BoxV ty vr)
     pure nothing
 
-interpStatement (SetVar (Iden nm) e) = do
+interpStatement (SetVar _ (Iden _ nm) e) = do
     mv <- lookupBinding nm
     let (ty,vr) = case mv of
                  Just (BoxV vty b) -> (vty,b)
@@ -3501,7 +3508,7 @@ interpStatement (SetVar (Iden nm) e) = do
     liftIO $ writeIORef vr v
     pure nothing
 
-interpStatement (SetVar (DotExpr r@(Iden _) nm) e) = do
+interpStatement (SetVar _ (DotExpr _ r@(Iden {}) nm) e) = do
     r1 <- interp r
     case r1 of
         VariantV _ _ fs | Just mv <- lookup nm fs -> do
@@ -3513,9 +3520,9 @@ interpStatement (SetVar (DotExpr r@(Iden _) nm) e) = do
             liftIO $ writeIORef vr v
             pure nothing
         _ -> error $ "field not found in dot expr: " ++ nm
-interpStatement (SetVar x _) = error $ ":= not supported for " ++ show x
+interpStatement (SetVar _ x _) = error $ ":= not supported for " ++ show x
 
-interpStatement (SetRef e fs) = do
+interpStatement (SetRef _ e fs) = do
     vs <- mapM (secondM interp) fs
     v <- interp e
     case v of
@@ -3549,18 +3556,18 @@ _datainfo-Pt = ["pt"]
 
 -}
 
-interpStatement (DataDecl dnm dpms vs shr whr) = do
-    let makeIs (VariantDecl vnm _ _meth) = 
+interpStatement (DataDecl _ dnm dpms vs shr whr) = do
+    let makeIs (VariantDecl _ vnm _ _meth) = 
             letDecl ("is-" ++ vnm)
             $ lam ["x"]
-            [StmtExpr $ App appSourcePos (bootstrapRef "is-variant") [Iden typeInfoName, Text vnm, Iden "x"]]
-        callIs (VariantDecl vnm _ _) = App appSourcePos (Iden $ "is-" ++ vnm) [Iden "x"]
+            [StmtExpr appSourcePos $ App appSourcePos (bootstrapRef "is-variant") [Iden appSourcePos typeInfoName, Text appSourcePos vnm, Iden appSourcePos "x"]]
+        callIs (VariantDecl _ vnm _ _) = App appSourcePos (Iden appSourcePos $ "is-" ++ vnm) [Iden appSourcePos "x"]
         -- todo: use the type tag instead
         makeIsDat =
             letDecl ("is-" ++ dnm)
             $ lam ["x"]
-           [StmtExpr $ foldl1 orE $ map callIs vs]
-        chk = maybe [] (\w -> [Check (Just dnm) w]) whr
+           [StmtExpr appSourcePos $ foldl1 orE $ map callIs vs]
+        chk = maybe [] (\w -> [Check appSourcePos (Just dnm) w]) whr
     moduleName <- readModuleName
     letValue' NoShadow typeInfoName $ FFIValue ("_system","typeinfo") $ toDyn
         $ SimpleTypeInfo ["_system", "modules", moduleName, dnm]
@@ -3568,7 +3575,7 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
         $ map varName vs
     -- todo: use either a burdock value or a proper ffi value for the casepattern
     -- instead of a haskell tuple
-    forM_ vs $ \(VariantDecl vnm _ _) -> letValue' NoShadow ("_casepattern-" ++ vnm)
+    forM_ vs $ \(VariantDecl _ vnm _ _) -> letValue' NoShadow ("_casepattern-" ++ vnm)
         $ FFIValue ("_system","typeinfo") $ toDyn (SimpleTypeInfo ["_system", "modules", moduleName, dnm], vnm)
     makeVs <- mapM makeV vs
     let desugared = (makeVs ++ map makeIs vs ++ [makeIsDat] ++ chk)
@@ -3576,53 +3583,53 @@ interpStatement (DataDecl dnm dpms vs shr whr) = do
   where
     typeInfoName = "_typeinfo-" ++ dnm
     dataInfoName = "_datainfo-" ++ dnm
-    me (menm,m) = [Iden "false", Text menm, MethodExpr m]
-    varName (VariantDecl vnm _ _) = vnm
-    makeV (VariantDecl vnm fs ms) = do
+    me (menm,m) = [Iden appSourcePos "false", Text appSourcePos menm, MethodExpr appSourcePos  m]
+    varName (VariantDecl _ vnm _ _) = vnm
+    makeV (VariantDecl _ vnm fs ms) = do
         -- make an _equals method which compares the non method fields
         -- if the variant has methods
         -- todo: don't override if the user supplies an explicit _equals method
         -- todo: update this if start supporting equal-now, to add the equal-rec field
-        let cnms = flip map fs $ \(_,SimpleBinding _ nm _) -> nm
-            eqFlds = Construct ["_system", "modules", "_internals", "list"] $ map Text cnms
+        let cnms = flip map fs $ \(_,SimpleBinding _ _ nm _) -> nm
+            eqFlds = Construct appSourcePos ["_system", "modules", "_internals", "list"] $ map (Text appSourcePos) cnms
             equalsWithoutMethods =
                 if null (ms ++ shr)
                 then []
                 else [("_equals"
-                      ,Method (FunHeader [] [NameBinding "self", NameBinding "x"] Nothing)
-                          [StmtExpr $ App appSourcePos (internalsRef "equal-by-field")
-                              [eqFlds, Iden "self", Iden "x"]])]
+                      ,Method (FunHeader [] [NameBinding appSourcePos "self", NameBinding appSourcePos "x"] Nothing)
+                          [StmtExpr appSourcePos $ App appSourcePos (internalsRef "equal-by-field")
+                              [eqFlds, Iden appSourcePos "self", Iden appSourcePos "x"]])]
         let appMakeV = App appSourcePos (bootstrapRef "make-variant")
-                       [Iden typeInfoName
-                       ,Text vnm
-                       ,Construct ["list"] $ concatMap me (ms ++ shr ++ equalsWithoutMethods)
-                       ,Construct ["list"] $ concatMap mvf fs]
+                       [Iden appSourcePos typeInfoName
+                       ,Text appSourcePos vnm
+                       ,Construct appSourcePos ["list"] $ concatMap me (ms ++ shr ++ equalsWithoutMethods)
+                       ,Construct appSourcePos ["list"] $ concatMap mvf fs]
         pure $ recDecl vnm
            $ typeLetWrapper dpms
-           $ (if null fs then id else \e -> Lam (fh $ map (simpleBindingToBinding . snd) fs) [StmtExpr e])
+           $ (if null fs then id else \e -> Lam appSourcePos (fh $ map (simpleBindingToBinding . snd) fs) [StmtExpr appSourcePos e])
            $ appMakeV
     mvf (r, b) = let nm = sbindingName b
                  in ([case r of
-                          Ref -> Iden "true"
-                          Con -> Iden "false"
-                     ,Text nm
-                     ,Iden nm])
-    letDecl nm v = LetDecl (mnm nm) v
-    recDecl nm v = RecDecl (mnm nm) v
-    lam as e = Lam (fh $ map mnm as) e
+                          Ref -> Iden appSourcePos "true"
+                          Con -> Iden appSourcePos "false"
+                     ,Text appSourcePos nm
+                     ,Iden appSourcePos nm])
+    letDecl nm v = LetDecl appSourcePos (mnm nm) v
+    recDecl nm v = RecDecl appSourcePos (mnm nm) v
+    lam as e = Lam appSourcePos (fh $ map mnm as) e
     fh as = FunHeader [] as Nothing
-    orE a b = BinOp a "or" b
-    mnm x = NameBinding x
+    orE a b = BinOp appSourcePos a "or" b
+    mnm x = NameBinding appSourcePos x
 
-interpStatement (FFITypeStmt nm ty) = do
+interpStatement (FFITypeStmt _ nm ty) = do
     -- check the name is in registry
     -- create the _typeinfo value
     letValue' NoShadow ("_typeinfo-" ++ nm) $ FFIValue ("_system","typeinfo") $ toDyn $ SimpleTypeInfo [ty]
     -- create the is-X type tester function
     interpStatement
-        (LetDecl (NameBinding ("is-" ++ nm))
-         (Lam (FunHeader [] [NameBinding "x"] Nothing)
-          [StmtExpr $ App appSourcePos (internalsRef "is-specific-ffi-type") [Text ty, Iden "x"]]))
+        (LetDecl appSourcePos  (NameBinding appSourcePos ("is-" ++ nm))
+         (Lam appSourcePos (FunHeader [] [NameBinding appSourcePos "x"] Nothing)
+          [StmtExpr appSourcePos $ App appSourcePos (internalsRef "is-specific-ffi-type") [Text appSourcePos ty, Iden appSourcePos "x"]]))
     --pure nothing is-specific-ffi-type
 
 interpStatement (TypeStmt {}) = _errorWithCallStack $ "TODO: interp typestmt"
@@ -3661,9 +3668,9 @@ it's slightly annoying otherwise - maybe not annoying enough?
 
 -}
 
-interpStatement (Import is al) =  do
+interpStatement (Import _ is al) =  do
     modName <- ensureModuleLoaded is
-    as <- aliasModule modName [ProvideAll]
+    as <- aliasModule modName [ProvideAll appSourcePos]
     letIncludedValue al $ VariantV (bootstrapType "Record") "record" as
     pure nothing
 {-
@@ -3676,8 +3683,8 @@ makes names in the already visible module alias X available without a
 qualifier
 
 -}
-interpStatement (IncludeFrom nm pis) = do
-    v <- interp (Iden nm)
+interpStatement (IncludeFrom _ nm pis) = do
+    v <- interp (Iden appSourcePos nm)
     case v of
         VariantV tg "record" fs | tg == bootstrapType "Record" -> do
             as <- aliasSomething fs [] pis
@@ -3691,9 +3698,9 @@ include string-dict
 include m == include from m: * end
 -}
 
-interpStatement (Include is) = do
+interpStatement (Include _ is) = do
     modName <- ensureModuleLoaded is
-    ls <- aliasModule modName [ProvideAll]
+    ls <- aliasModule modName [ProvideAll appSourcePos]
     mapM_ (uncurry letIncludedValue) ls
     pure nothing
 
@@ -3709,11 +3716,11 @@ then includefrom the items written
 
 -}
 
-interpStatement (ImportFrom is pis) =
+interpStatement (ImportFrom _ is pis) =
     -- not quite right, it introduces the is name which
     -- will stick around
     let al = show is
-    in interpStatements [Import is al, IncludeFrom al pis]
+    in interpStatements [Import appSourcePos  is al, IncludeFrom appSourcePos al pis]
 
 
 {-
@@ -3729,12 +3736,12 @@ provide: a as b end
 
 -}
 
-interpStatement (Provide pis) = do
+interpStatement (Provide _ pis) = do
     -- todo: turn the provides into burdock values and save as a regular burdock list?
     modifyScriptProvides (++pis)
     pure nothing
 
-interpStatement (UsePackage dr) = do
+interpStatement (UsePackage _ dr) = do
     st <- ask
     let packageName = takeBaseName dr
     liftIO $ atomically $ modifyTVar (tlHandleState st)
@@ -3751,10 +3758,10 @@ bootstrapRef nm = makeDotPathExpr ["_system", "modules", "_bootstrap", nm]
 
 makeDotPathExpr :: [String] -> Expr
 makeDotPathExpr [] = error "empty makedotpathexpr"
-makeDotPathExpr [n] = Iden n
-makeDotPathExpr (n':nms') = f (Iden n') nms'
+makeDotPathExpr [n] = Iden appSourcePos n
+makeDotPathExpr (n':nms') = f (Iden appSourcePos n') nms'
   where
-    f e (n:nms) = f (DotExpr e n) nms
+    f e (n:nms) = f (DotExpr appSourcePos e n) nms
     f e [] = e
 
 ------------------------------------------------------------------------------
@@ -4033,7 +4040,7 @@ runModule filename moduleName f =
         localModuleEnv <- askLocallyCreatedBindings
         allModuleEnv <- askIncludedBindings
         -- get the pis and make a record from the env using them
-        pis <- (\case [] -> [ProvideAll]
+        pis <- (\case [] -> [ProvideAll appSourcePos]
                       x -> x) <$> askScriptProvides
         moduleRecord <- VariantV (bootstrapType "Record") "record"
                         <$> aliasSomething localModuleEnv allModuleEnv pis
@@ -4044,7 +4051,7 @@ loadAndRunModuleSource :: Bool -> String -> FilePath -> String -> Interpreter ()
 loadAndRunModuleSource includeGlobals moduleName fn src = do
     -- auto include globals, revisit when use context added
     let incG = if includeGlobals && moduleName /= "globals"
-               then (Include (ImportName "globals") :)
+               then (Include appSourcePos (ImportName "globals") :)
                else id
     let p = if map toLower (takeExtension fn) == ".rst"
             then parseLiterateScript
@@ -4080,13 +4087,13 @@ aliasSomething :: [(String,Value)] -> [(String,Value)] -> [ProvideItem]
 aliasSomething localBds extraBds pis = concat <$> mapM apis pis
   where
     allBds = localBds ++ extraBds
-    apis ProvideAll = pure $ localBds
-    apis (ProvideAlias k al) = case lookup k allBds of
+    apis (ProvideAll _) = pure $ localBds
+    apis (ProvideAlias _ k al) = case lookup k allBds of
         Nothing -> error $ "provide alias source not found: " ++ k
         Just v ->
             -- todo: check for magic casepattern
             pure $ [(al,v)]
-    apis (ProvideName k) = case lookup k allBds of
+    apis (ProvideName _ k) = case lookup k allBds of
         Nothing -> error $ "provide alias source not found: " ++ k
         Just v -> do
             -- check for magic casepattern
@@ -4094,13 +4101,13 @@ aliasSomething localBds extraBds pis = concat <$> mapM apis pis
             pure $ case lookup c allBds of
                 Nothing ->  [(k,v)]
                 Just v' -> [(k,v),(c,v')]
-    apis (ProvideType t) =
+    apis (ProvideType _ t) =
         let ti = "_typeinfo-" ++ t
             ist = "is-" ++ t
         in pure $ case (,) <$> lookup ti allBds <*> lookup ist allBds of
             Nothing -> error $ "provide type source not found: " ++ t
             Just (tiv, istv) -> [(ti,tiv), (ist, istv)]
-    apis (ProvideData t) = do
+    apis (ProvideData _ t) = do
         bs <- askBindings
         let di = "_datainfo-" ++ t
             t0 = maybe (error $ "type not found: " ++ t) id $ lookup di bs
@@ -4109,10 +4116,10 @@ aliasSomething localBds extraBds pis = concat <$> mapM apis pis
                      FFIValue ("_system","datainfo") v
                          | Just v' <- fromDynamic v -> v'
                      _ -> error "not datainfo"
-        r0 <- apis (ProvideType t)
+        r0 <- apis (ProvideType appSourcePos t)
         let r00 = [(di, t0)]
-        r1 <- mapM (apis . ProvideName) ti
-        r2 <- mapM (\x -> apis (ProvideName ("is-" ++ x))) ti
+        r1 <- mapM (apis . ProvideName appSourcePos) ti
+        r2 <- mapM (\x -> apis (ProvideName appSourcePos ("is-" ++ x))) ti
         pure $ r0 ++ r00 ++ concat r1 ++ concat r2
 
 
@@ -4202,23 +4209,23 @@ doLetRec bs =
         assigned = map makeAssign bs
     in vars ++ assigned
   where
-    makeVar (TypedBinding b _) = makeVar b
-    makeVar (ShadowBinding nm) = makeVar1 (Shadow, nm)
-    makeVar (NameBinding nm) = makeVar1 (NoShadow, nm)
+    makeVar (TypedBinding _ b _) = makeVar b
+    makeVar (ShadowBinding _ nm) = makeVar1 (Shadow, nm)
+    makeVar (NameBinding _ nm) = makeVar1 (NoShadow, nm)
     makeVar x = error $ "unsupported binding in recursive let: " ++ show x
     makeVar1 (sh, nm) =
-        VarDecl (SimpleBinding sh nm Nothing) $ Lam (FunHeader [] [] Nothing)
-        [StmtExpr $ App appSourcePos (Iden "raise")
-            [Text "internal error: uninitialized letrec implementation var"]]
-    makeAssign (ShadowBinding nm, v) = makeAssign1 (nm,Nothing,v)
-    makeAssign (NameBinding nm, v) = makeAssign1 (nm,Nothing,v)
-    makeAssign (TypedBinding (NameBinding nm) ty, v) = makeAssign1 (nm,Just ty,v)
-    makeAssign (TypedBinding (ShadowBinding nm) ty, v) = makeAssign1 (nm,Just ty,v)
+        VarDecl appSourcePos (SimpleBinding appSourcePos sh nm Nothing) $ Lam appSourcePos (FunHeader [] [] Nothing)
+        [StmtExpr appSourcePos $ App appSourcePos (Iden appSourcePos "raise")
+            [Text appSourcePos "internal error: uninitialized letrec implementation var"]]
+    makeAssign (ShadowBinding _ nm, v) = makeAssign1 (nm,Nothing,v)
+    makeAssign (NameBinding _ nm, v) = makeAssign1 (nm,Nothing,v)
+    makeAssign (TypedBinding _ (NameBinding _ nm) ty, v) = makeAssign1 (nm,Just ty,v)
+    makeAssign (TypedBinding _ (ShadowBinding _ nm) ty, v) = makeAssign1 (nm,Just ty,v)
     makeAssign x = error $ "unsupported binding in recursive let: " ++ show x
     makeAssign1 (nm,ty,v)=
-        SetVar (Iden nm) $ (case ty of
+        SetVar appSourcePos (Iden appSourcePos nm) $ (case ty of
                          Nothing -> id
-                         Just ta -> flip AssertTypeCompat ta) v
+                         Just ta -> flip (AssertTypeCompat appSourcePos) ta) v
 
 -- placeholder to mark the places where need to fix the source
 -- position
@@ -4243,21 +4250,21 @@ matchBindingOrError b v = do
 -- needs some design work
 matchBindingMaybe :: Bool -> Binding -> Value -> Interpreter (Maybe [(Shadow,String,Value)])
 -- todo: will turn it to wildcard in the parser
-matchBindingMaybe _ (WildcardBinding) _ = pure $ Just []
+matchBindingMaybe _ (WildcardBinding _) _ = pure $ Just []
 
 
 -- temp until boolean becomes an actual agdt
-matchBindingMaybe _ (NameBinding "true") (BoolV True) = pure $ Just []
-matchBindingMaybe _ (NameBinding "true") _ = pure Nothing
-matchBindingMaybe _ (NameBinding "false") (BoolV False) = pure $ Just []
-matchBindingMaybe _ (NameBinding "false") _ = pure Nothing
+matchBindingMaybe _ (NameBinding _ "true") (BoolV True) = pure $ Just []
+matchBindingMaybe _ (NameBinding _ "true") _ = pure Nothing
+matchBindingMaybe _ (NameBinding _ "false") (BoolV False) = pure $ Just []
+matchBindingMaybe _ (NameBinding _ "false") _ = pure Nothing
 
-matchBindingMaybe _ (ShadowBinding nm) v = do
+matchBindingMaybe _ (ShadowBinding _ nm) v = do
     pure $ Just [(Shadow,nm,v)]
 
-matchBindingMaybe True n@(NameBinding nm) v = do
+matchBindingMaybe True n@(NameBinding _ nm) v = do
     -- try to match a 0 arg variant
-    x <- matchBindingMaybe False (VariantBinding [nm] []) v
+    x <- matchBindingMaybe False (VariantBinding appSourcePos [nm] []) v
     case x of
         Just {} -> pure x
         -- no matching 0 arg variant, match it as a binding
@@ -4279,10 +4286,10 @@ matchBindingMaybe True n@(NameBinding nm) v = do
             _ -> pure False
         
         
-matchBindingMaybe False (NameBinding nm) v = do
+matchBindingMaybe False (NameBinding _ nm) v = do
     pure $ Just [(NoShadow, nm,v)]
 
-matchBindingMaybe _ (VariantBinding cnm bs) (VariantV tg vnm fs) = do
+matchBindingMaybe _ (VariantBinding _ cnm bs) (VariantV tg vnm fs) = do
     let s = prefixLast "_casepattern-" cnm
     caseName <- catchAll $ interp $ makeDotPathExpr s
     case caseName of
@@ -4303,7 +4310,7 @@ matchBindingMaybe _ (VariantBinding cnm bs) (VariantV tg vnm fs) = do
 
 matchBindingMaybe _ (VariantBinding {}) _ = pure Nothing
 
-matchBindingMaybe c (TypedBinding b ty) v = do
+matchBindingMaybe c (TypedBinding _ b ty) v = do
     r <- matchBindingMaybe c b v
     case r of
         Just {} -> do
@@ -4311,13 +4318,13 @@ matchBindingMaybe c (TypedBinding b ty) v = do
             pure r
         Nothing -> pure Nothing
 
-matchBindingMaybe c (AsBinding b s nm) v = do
+matchBindingMaybe c (AsBinding _ b s nm) v = do
     r <- matchBindingMaybe c b v
     pure $ case r of
         Nothing -> Nothing
         Just cs -> Just ((s,nm,v) : cs)
 
-matchBindingMaybe _ (TupleBinding bs) (VariantV tg "tuple" fs)
+matchBindingMaybe _ (TupleBinding _ bs) (VariantV tg "tuple" fs)
     | tg == bootstrapType "Tuple"
     , length bs == length fs = {-trace "got here" $-} do
           xs <- zipWithM (matchBindingMaybe True) bs $ map snd fs
@@ -4325,16 +4332,16 @@ matchBindingMaybe _ (TupleBinding bs) (VariantV tg "tuple" fs)
           
 matchBindingMaybe _ (TupleBinding {}) _ = pure Nothing
 
-matchBindingMaybe _ (NumberLitBinding n) (NumV m) | n == m = pure $ Just []
+matchBindingMaybe _ (NumberLitBinding _ n) (NumV m) | n == m = pure $ Just []
 matchBindingMaybe _ (NumberLitBinding {}) _ = pure Nothing
 
-matchBindingMaybe _ (StringLitBinding t) (TextV s) | t == s = pure $ Just []
+matchBindingMaybe _ (StringLitBinding _ t) (TextV s) | t == s = pure $ Just []
 matchBindingMaybe _ (StringLitBinding {}) _ = pure Nothing
 
 simpleBindingToBinding :: SimpleBinding -> Binding
 simpleBindingToBinding = \case
-    SimpleBinding Shadow nm ty -> wrapTy ty (ShadowBinding nm)
-    SimpleBinding NoShadow nm ty -> wrapTy ty (NameBinding nm)
+    SimpleBinding _ Shadow nm ty -> wrapTy ty (ShadowBinding appSourcePos nm)
+    SimpleBinding _ NoShadow nm ty -> wrapTy ty (NameBinding appSourcePos nm)
   where
     wrapTy Nothing b = b
-    wrapTy (Just ty) b = TypedBinding b ty
+    wrapTy (Just ty) b = TypedBinding appSourcePos b ty

@@ -28,73 +28,73 @@ testdata = TestGroup "allTests"
 
 exprParseTests :: TestTree
 exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
-    [("1", Num 1)
-    ,("\"test\"", Text "test")
+    [("1", Num np 1)
+    ,("\"test\"", Text np "test")
     ,([R.r|```multiline string
          "stuff"
-      ```|], Text "multiline string\n\
+      ```|], Text np "multiline string\n\
 \         \"stuff\"\n\
 \      ")
-    ,("test", Iden "test")
-    ,("(2)", Parens (Num 2))
-    ,("a(7)", App Nothing (Iden "a") [Num 7])
-    ,("a + b", BinOp (Iden "a") "+" (Iden "b"))
-    ,("a + b + c", BinOp (BinOp (Iden "a") "+" (Iden "b")) "+" (Iden "c"))
+    ,("test", Iden np "test")
+    ,("(2)", Parens np (Num np 2))
+    ,("a(7)", App Nothing (Iden np "a") [Num np 7])
+    ,("a + b", BinOp np (Iden np "a") "+" (Iden np "b"))
+    ,("a + b + c", BinOp np (BinOp np (Iden np "a") "+" (Iden np "b")) "+" (Iden np "c"))
 
-    ,("lam(): 2 end", lam [] (sts $ Num 2))
+    ,("lam(): 2 end", lam [] (sts $ Num np 2))
 
-    ,("lam() block: 2 end", lam [] (sts $ Num 2))
+    ,("lam() block: 2 end", lam [] (sts $ Num np 2))
 
-    ,("lam(x): x + 1 end", lam ["x"] (sts $ BinOp (Iden "x") "+" (Num 1)))
+    ,("lam(x): x + 1 end", lam ["x"] (sts $ BinOp np (Iden np "x") "+" (Num np 1)))
     ,("lam(x, y): x - y end"
-     ,lam ["x","y"] (sts $ BinOp (Iden "x") "-" (Iden "y")))
+     ,lam ["x","y"] (sts $ BinOp np (Iden np "x") "-" (Iden np "y")))
 
     ,("let x=3: x + 1 end"
-     , Let [(nm "x", Num 3)]
-         (sts $ BinOp (Iden "x") "+" (Num 1)))
+     , Let np [(nm "x", Num np 3)]
+         (sts $ BinOp np (Iden np "x") "+" (Num np 1)))
     ,("let x=3 block: x + 1 end"
-     , Let [(nm "x", Num 3)]
-         (sts $ BinOp (Iden "x") "+" (Num 1)))
+     , Let np [(nm "x", Num np 3)]
+         (sts $ BinOp np (Iden np "x") "+" (Num np 1)))
     ,("let x=3,y=4: x + y end"
-     , Let [(nm "x", Num 3)
-           ,(nm "y", Num 4)]
-         (sts $ BinOp (Iden "x") "+" (Iden "y")))
+     , Let np [(nm "x", Num np 3)
+           ,(nm "y", Num np 4)]
+         (sts $ BinOp np (Iden np "x") "+" (Iden np "y")))
     ,("let x=3: x + 4 end"
-     ,Let [(nm "x", Num 3)]
-         (sts $ BinOp (Iden "x") "+" (Num 4)))
+     ,Let np [(nm "x", Num np 3)]
+         (sts $ BinOp np (Iden np "x") "+" (Num np 4)))
 
     ,("let _ as b = 3: b end"
-     ,Let [(AsBinding WildcardBinding NoShadow "b", Num 3)] $ sts $ Iden "b")
+     ,Let np [(AsBinding np (WildcardBinding np) NoShadow "b", Num np 3)] $ sts $ Iden np "b")
 
     ,("let _ as shadow b = 3: b end"
-     ,Let [(AsBinding WildcardBinding Shadow "b", Num 3)] $ sts $ Iden "b")
+     ,Let np [(AsBinding np (WildcardBinding np) Shadow "b", Num np 3)] $ sts $ Iden np "b")
 
     
     ,("let {a;b} = {1;2}: a end"
-     ,Let [(TupleBinding [NameBinding "a", NameBinding "b"]
-           ,(TupleSel [Num 1, Num 2]))] $ sts $ Iden "a")
+     ,Let np [(TupleBinding np [NameBinding np "a", NameBinding np "b"]
+           ,(TupleSel np [Num np 1, Num np 2]))] $ sts $ Iden np "a")
 
     
     ,("letrec a = 5: a end"
-     ,LetRec [(nm "a",Num 5)] (sts $ Iden "a"))
+     ,LetRec np [(nm "a",Num np 5)] (sts $ Iden np "a"))
     ,("letrec a = 5 block: a end"
-     ,LetRec [(nm "a",Num 5)] (sts $ Iden "a"))
+     ,LetRec np [(nm "a",Num np 5)] (sts $ Iden np "a"))
 
     
-    ,("block: end", Block [])
+    ,("block: end", Block np [])
     ,("block: \n\
       \  a\n\
-      \end", Block [StmtExpr $ Iden "a"])
+      \end", Block np [StmtExpr np $ Iden np "a"])
     ,("block: \n\
       \  a\n\
       \  1 + 2\n\
-      \end", Block [StmtExpr $ Iden "a", StmtExpr $ BinOp (Num 1) "+" (Num 2)])
+      \end", Block np [StmtExpr np $ Iden np "a", StmtExpr np $ BinOp np (Num np 1) "+" (Num np 2)])
 
     ,("if n == 1: 1 else: 2 end"
-     ,If [(BinOp (Iden "n") "==" (Num 1), sts $ Num 1)] (Just (sts $ Num 2)))
+     ,If np [(BinOp np (Iden np "n") "==" (Num np 1), sts $ Num np 1)] (Just (sts $ Num np 2)))
 
     ,("if n == 1 block: 1 else: 2 end"
-     ,If [(BinOp (Iden "n") "==" (Num 1), sts $ Num 1)] (Just (sts $ Num 2)))
+     ,If np [(BinOp np (Iden np "n") "==" (Num np 1), sts $ Num np 1)] (Just (sts $ Num np 2)))
 
     ,("if n == 1:\n\
       \  0\n\
@@ -103,56 +103,56 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \else:\n\
       \  2\n\
       \end"
-     ,If [(BinOp (Iden "n") "==" (Num 1), sts $ Num 0)
-         ,(BinOp (Iden "n") "==" (Num 2), sts $ Num 1)] (Just (sts $ Num 2)))
+     ,If np [(BinOp np (Iden np "n") "==" (Num np 1), sts $ Num np 0)
+         ,(BinOp np (Iden np "n") "==" (Num np 2), sts $ Num np 1)] (Just (sts $ Num np 2)))
 
-    ,("ask: | otherwise: a end", Ask [] (Just (sts $ Iden "a")))
-    ,("ask block: | otherwise: a end", Ask [] (Just (sts $ Iden "a")))
+    ,("ask: | otherwise: a end", Ask np [] (Just (sts $ Iden np "a")))
+    ,("ask block: | otherwise: a end", Ask np [] (Just (sts $ Iden np "a")))
     ,("ask:\n\
       \   | a == b then: c\n\
       \   | c == d then: e\n\
       \   | otherwise: f\n\
       \end"
-      ,Ask [(BinOp (Iden "a") "==" (Iden "b"), sts $ Iden "c")
-           ,(BinOp (Iden "c") "==" (Iden "d"), sts $ Iden "e")
-           ] (Just (sts $ Iden "f")))
+      ,Ask np [(BinOp np (Iden np "a") "==" (Iden np "b"), sts $ Iden np "c")
+           ,(BinOp np (Iden np "c") "==" (Iden np "d"), sts $ Iden np "e")
+           ] (Just (sts $ Iden np "f")))
     ,("ask:\n\
       \   | a == b then: c\n\
       \   | c == d then: e\n\
       \end"
-      ,Ask [(BinOp (Iden "a") "==" (Iden "b"), sts $ Iden "c")
-           ,(BinOp (Iden "c") "==" (Iden "d"), sts $ Iden "e")
+      ,Ask np [(BinOp np (Iden np "a") "==" (Iden np "b"), sts $ Iden np "c")
+           ,(BinOp np (Iden np "c") "==" (Iden np "d"), sts $ Iden np "e")
            ] Nothing)
 
 
     ,("let shadow a = 4 : a end"
-     ,Let [(ShadowBinding "a", Num 4)] (sts $ Iden "a"))
-    ,("a.b", DotExpr (Iden "a") "b")
-    ,("f(1,2).c", DotExpr (App Nothing (Iden "f") [Num 1, Num 2]) "c")
+     ,Let np [(ShadowBinding np "a", Num np 4)] (sts $ Iden np "a"))
+    ,("a.b", DotExpr np (Iden np "a") "b")
+    ,("f(1,2).c", DotExpr np (App Nothing (Iden np "f") [Num np 1, Num np 2]) "c")
      ,("cases a :: List:\n\
       \  | empty => \"empty\"\n\
       \  | link(f, r) => \"link\"\n\
       \end"
-     ,Cases (Iden "a") (Just (TName ["List"]))
-        [(NameBinding "empty", Nothing, sts $ Text "empty")
-        ,(VariantBinding ["link"] [nm "f", nm "r"], Nothing, sts $ Text "link")]
+     ,Cases np (Iden np "a") (Just (TName np ["List"]))
+        [(NameBinding np "empty", Nothing, sts $ Text np "empty")
+        ,(VariantBinding np ["link"] [nm "f", nm "r"], Nothing, sts $ Text np "link")]
         Nothing)
 
     ,("cases a:\n\
       \  | empty => \"empty\"\n\
       \  | else => \"else\"\n\
       \end"
-     ,Cases (Iden "a") Nothing
-        [(NameBinding "empty", Nothing, sts $ Text "empty")]
-        (Just $ sts $ Text "else"))
+     ,Cases np (Iden np "a") Nothing
+        [(NameBinding np "empty", Nothing, sts $ Text np "empty")]
+        (Just $ sts $ Text np "else"))
 
     ,("cases a block:\n\
       \  | empty => \"empty\"\n\
       \  | else => \"else\"\n\
       \end"
-     ,Cases (Iden "a") Nothing
-        [(NameBinding "empty", Nothing, sts $ Text "empty")]
-        (Just $ sts $ Text "else"))
+     ,Cases np (Iden np "a") Nothing
+        [(NameBinding np "empty", Nothing, sts $ Text np "empty")]
+        (Just $ sts $ Text np "else"))
 
     
     ,("cases a :: z.List:\n\
@@ -160,124 +160,124 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
       \  | z.link(f, r) => x\n\
       \  | else => \"else\"\n\
       \end"
-     ,Cases (Iden "a") (Just $ TName ["z", "List"])
-        [(VariantBinding ["z","empty"] [], Nothing, sts $ Text "empty")
-        ,(VariantBinding ["z","link"] [nm "f", nm "r"], Nothing, sts $ Iden "x")]
-        (Just $ sts $ Text "else"))
+     ,Cases np (Iden np "a") (Just $ TName np ["z", "List"])
+        [(VariantBinding np ["z","empty"] [], Nothing, sts $ Text np "empty")
+        ,(VariantBinding np ["z","link"] [nm "f", nm "r"], Nothing, sts $ Iden np "x")]
+        (Just $ sts $ Text np "else"))
 
      ,("cases a:\n\
       \  | empty when c => \"empty\"\n\
       \  | link(f, r) when d => \"link\"\n\
       \end"
-     ,Cases (Iden "a") Nothing
-        [(NameBinding "empty", Just (Iden "c"), sts $ Text "empty")
-        ,(VariantBinding ["link"] [nm "f", nm "r"], Just (Iden "d"), sts $ Text "link")]
+     ,Cases np (Iden np "a") Nothing
+        [(NameBinding np "empty", Just (Iden np "c"), sts $ Text np "empty")
+        ,(VariantBinding np ["link"] [nm "f", nm "r"], Just (Iden np "d"), sts $ Text np "link")]
         Nothing)
 
      ,("cases a:\n\
       \  | 1 => true\n\
       \  | \"test\" => false\n\
       \end"
-     ,Cases (Iden "a") Nothing
-        [(NumberLitBinding 1, Nothing, sts $ Iden "true")
-        ,(StringLitBinding "test", Nothing, sts $ Iden "false")]
+     ,Cases np (Iden np "a") Nothing
+        [(NumberLitBinding np 1, Nothing, sts $ Iden np "true")
+        ,(StringLitBinding np "test", Nothing, sts $ Iden np "false")]
         Nothing)
 
     
     -- tuple selector
-    ,("{\"a\";\"b\";true}", TupleSel [Text "a", Text "b", Iden "true"])
-    ,("{1}", TupleSel [Num 1])
+    ,("{\"a\";\"b\";true}", TupleSel np [Text np "a", Text np "b", Iden np "true"])
+    ,("{1}", TupleSel np [Num np 1])
     -- tuple field get
-    ,("myobj4.{0}", TupleGet (Iden "myobj4") 0)
-    ,("f().{1}", TupleGet (App Nothing (Iden "f") []) 1)
+    ,("myobj4.{0}", TupleGet np (Iden np "myobj4") 0)
+    ,("f().{1}", TupleGet np (App Nothing (Iden np "f") []) 1)
     -- record selector
-    ,("{a: \"one\", b : 2, c : x }", RecordSel [("a", Text "one")
-                                               ,("b", Num 2)
-                                               ,("c", Iden "x")])
-    ,("{}", RecordSel [])
+    ,("{a: \"one\", b : 2, c : x }", RecordSel np [("a", Text np "one")
+                                               ,("b", Num np 2)
+                                               ,("c", Iden np "x")])
+    ,("{}", RecordSel np [])
 
     ,("{ method m(self, x): self.y + x end, y: 22 }"
-     ,RecordSel [("m", MethodExpr $ Method
-                     (FunHeader [] [NameBinding "self", NameBinding "x"] Nothing)
-                     [StmtExpr $ BinOp (DotExpr (Iden "self") "y") "+" (Iden "x")])
-                ,("y", Num 22)])
+     ,RecordSel np [("m", MethodExpr np $ Method
+                     (FunHeader [] [NameBinding np "self", NameBinding np "x"] Nothing)
+                     [StmtExpr np $ BinOp np (DotExpr np (Iden np "self") "y") "+" (Iden np "x")])
+                ,("y", Num np 22)])
 
-    ,("v.{a:1}", Extend (Iden "v") [("a", Num 1)])
-    ,("v.{a:1, b:2}", Extend (Iden "v") [("a", Num 1)
-                                        ,("b", Num 2)])
+    ,("v.{a:1}", Extend np (Iden np "v") [("a", Num np 1)])
+    ,("v.{a:1, b:2}", Extend np (Iden np "v") [("a", Num np 1)
+                                        ,("b", Num np 2)])
     
-    ,("[list:]", Construct ["list"] [])
-    ,("[list: 1,2,3]", Construct ["list"] [Num 1, Num 2, Num 3])
-    ,("[my.list:]", Construct ["my", "list"] [])
+    ,("[list:]", Construct np ["list"] [])
+    ,("[list: 1,2,3]", Construct np ["list"] [Num np 1, Num np 2, Num np 3])
+    ,("[my.list:]", Construct np ["my", "list"] [])
 
     ,("type-let a = b: c end"
-     ,TypeLet [TypeDecl "a" [] (TName ["b"])] (sts $ Iden "c"))
+     ,TypeLet np [TypeDecl "a" [] (TName np ["b"])] (sts $ Iden np "c"))
     ,("type-let a<x> = b: c end"
-     ,TypeLet [TypeDecl "a" ["x"] (TName ["b"])] (sts $ Iden "c"))
+     ,TypeLet np [TypeDecl "a" ["x"] (TName np ["b"])] (sts $ Iden np "c"))
     
     ,("assert-type-compat(x :: Number)"
-     ,AssertTypeCompat (Iden "x") (TName ["Number"]))
+     ,AssertTypeCompat np (Iden np "x") (TName np ["Number"]))
     ,("assert-type-compat(x :: X.Something)"
-     ,AssertTypeCompat (Iden "x") (TName ["X","Something"]))
+     ,AssertTypeCompat np (Iden np "x") (TName np ["X","Something"]))
     ,("assert-type-compat(x :: {Number; Boolean})"
-     ,AssertTypeCompat (Iden "x") (TTuple [TName ["Number"], TName["Boolean"]]))
+     ,AssertTypeCompat np (Iden np "x") (TTuple np [TName np ["Number"], TName np ["Boolean"]]))
     ,("assert-type-compat(x :: {Number})"
-     ,AssertTypeCompat (Iden "x") (TTuple [TName ["Number"]]))
+     ,AssertTypeCompat np (Iden np "x") (TTuple np [TName np ["Number"]]))
 
     ,("assert-type-compat(x :: {Number})"
-     ,AssertTypeCompat (Iden "x") (TTuple [TName ["Number"]]))
+     ,AssertTypeCompat np (Iden np "x") (TTuple np [TName np ["Number"]]))
     ,("assert-type-compat(x :: List<Number>)"
-     ,AssertTypeCompat (Iden "x") (TParam ["List"] [TName ["Number"]]))
+     ,AssertTypeCompat np (Iden np "x") (TParam np ["List"] [TName np ["Number"]]))
     ,("assert-type-compat(x :: Stuff<Number, Number>)"
-     ,AssertTypeCompat (Iden "x") (TParam ["Stuff"] [TName ["Number"], TName ["Number"]]))
+     ,AssertTypeCompat np (Iden np "x") (TParam np ["Stuff"] [TName np ["Number"], TName np ["Number"]]))
     ,("assert-type-compat(x :: {x :: Number, y :: String})"
-     ,AssertTypeCompat (Iden "x") (TRecord [("x", TName ["Number"]),("y", TName ["String"])]))
+     ,AssertTypeCompat np (Iden np "x") (TRecord np [("x", TName np ["Number"]),("y", TName np ["String"])]))
     ,("assert-type-compat(x :: {})"
-     ,AssertTypeCompat (Iden "x") (TRecord []))
+     ,AssertTypeCompat np (Iden np "x") (TRecord np []))
 
     ,("assert-type-compat(x :: String, (String -> String) -> String)"
-     ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"], TParens (TArrow [TName ["String"]] $ TName ["String"])] $ TName ["String"]))
+     ,AssertTypeCompat np (Iden np "x") (TArrow np [TName np ["String"], TParens np (TArrow np [TName np ["String"]] $ TName np ["String"])] $ TName np ["String"]))
     ,("assert-type-compat(x :: -> String)"
-     ,AssertTypeCompat (Iden "x") (TArrow [] $ TName ["String"]))
+     ,AssertTypeCompat np (Iden np "x") (TArrow np [] $ TName np ["String"]))
     ,("assert-type-compat(x :: String, String -> String)"
-     ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"], TName ["String"]] $ TName ["String"]))
+     ,AssertTypeCompat np (Iden np "x") (TArrow np [TName np ["String"], TName np ["String"]] $ TName np ["String"]))
     ,("assert-type-compat(x :: String -> String)"
-     ,AssertTypeCompat (Iden "x") (TArrow [TName ["String"]] $ TName ["String"]))
+     ,AssertTypeCompat np (Iden np "x") (TArrow np [TName np ["String"]] $ TName np ["String"]))
     ,("assert-type-compat(x :: (s :: String, t :: String) -> String)"
-     ,AssertTypeCompat (Iden "x") (TNamedArrow [("s",TName ["String"]), ("t", TName ["String"])] $ TName ["String"]))
-    ,("assert-type-compat", Iden "assert-type-compat")
+     ,AssertTypeCompat np (Iden np "x") (TNamedArrow np [("s",TName np ["String"]), ("t", TName np ["String"])] $ TName np ["String"]))
+    ,("assert-type-compat", Iden np "assert-type-compat")
 
     ,("let a :: MyType = 4: a end"
-     ,Let [(TypedBinding (NameBinding "a") (TName ["MyType"]), Num 4)] (sts $ Iden "a"))
+     ,Let np [(TypedBinding np (NameBinding np "a") (TName np ["MyType"]), Num np 4)] (sts $ Iden np "a"))
 
     ,("callf<A,B>(x)"
-     ,App Nothing (InstExpr (Iden "callf") [TName ["A"], TName ["B"]]) [Iden "x"])
+     ,App Nothing (InstExpr np (Iden np "callf") [TName np ["A"], TName np ["B"]]) [Iden np "x"])
     ,("callg<Predicate<A>>(x)"
-     ,App Nothing (InstExpr (Iden "callg") [TParam ["Predicate"] [TName ["A"]]]) [Iden "x"])
+     ,App Nothing (InstExpr np (Iden np "callg") [TParam np ["Predicate"] [TName np ["A"]]]) [Iden np "x"])
 
     ,("ctor<a>"
-     ,InstExpr (Iden "ctor") [TName ["a"]])
+     ,InstExpr np (Iden np "ctor") [TName np ["a"]])
 
     ,([R.r|
 lam(x :: Number):
   x + 1
 end|]
-     ,Lam (FunHeader [] [nmt "x" "Number"] Nothing)
-      (sts $ BinOp (Iden "x") "+" (Num 1)))
+     ,Lam np (FunHeader [] [nmt "x" "Number"] Nothing)
+      (sts $ BinOp np (Iden np "x") "+" (Num np 1)))
 
     ,([R.r|
 lam(x) -> Number:
   x + 1
 end|]
-     ,Lam (FunHeader [] [nm "x"] (Just $ TName ["Number"]))
-      (sts $ BinOp (Iden "x") "+" (Num 1)))
+     ,Lam np (FunHeader [] [nm "x"] (Just $ TName np ["Number"]))
+      (sts $ BinOp np (Iden np "x") "+" (Num np 1)))
 
     ,([R.r|
 lam(x :: Number) -> Number:
   x + 1
 end|]
-     ,Lam (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"]))
-      (sts $ BinOp (Iden "x") "+" (Num 1)))
+     ,Lam np (FunHeader [] [nmt "x" "Number"] (Just $ TName np ["Number"]))
+      (sts $ BinOp np (Iden np "x") "+" (Num np 1)))
 
     ,([R.r|
 lam<a>(x :: List<a>) -> Boolean:
@@ -286,194 +286,194 @@ lam<a>(x :: List<a>) -> Boolean:
     | link(_,_) => false
   end
 end|]
-     ,Lam (FunHeader
+     ,Lam np (FunHeader
             ["a"]
-            [TypedBinding (NameBinding "x") (TParam ["List"] [TName ["a"]])]
-            (Just $ TName ["Boolean"]))
-      $ sts $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
-        [(NameBinding "empty", Nothing, sts $ Iden "true")
-        ,(VariantBinding ["link"] [WildcardBinding, WildcardBinding], Nothing, sts $ Iden "false")]
+            [TypedBinding np (NameBinding np "x") (TParam np ["List"] [TName np ["a"]])]
+            (Just $ TName np ["Boolean"]))
+      $ sts $ Cases np (Iden np "x") (Just $ TParam np ["List"] [TName np ["a"]])
+        [(NameBinding np "empty", Nothing, sts $ Iden np "true")
+        ,(VariantBinding np ["link"] [WildcardBinding np, WildcardBinding np], Nothing, sts $ Iden np "false")]
         Nothing)
 
      ,("{(y) : x + y}"
-      ,CurlyLam (FunHeader [] [nm "y"] Nothing)
-       $ sts $ BinOp (Iden "x") "+" (Iden "y"))
+      ,CurlyLam np (FunHeader [] [nm "y"] Nothing)
+       $ sts $ BinOp np (Iden np "x") "+" (Iden np "y"))
 
      ,("{(y) block: x + y}"
-      ,CurlyLam (FunHeader [] [nm "y"] Nothing)
-       $ sts $ BinOp (Iden "x") "+" (Iden "y"))
+      ,CurlyLam np (FunHeader [] [nm "y"] Nothing)
+       $ sts $ BinOp np (Iden np "x") "+" (Iden np "y"))
 
 
      ,("{(x,y) : x + y}"
-      ,CurlyLam (FunHeader [] [nm "x",nm "y"] Nothing)
-       $ sts $ BinOp (Iden "x") "+" (Iden "y"))
+      ,CurlyLam np (FunHeader [] [nm "x",nm "y"] Nothing)
+       $ sts $ BinOp np (Iden np "x") "+" (Iden np "y"))
 
 
      ,("{(y :: Number) -> Number: x + y}"
-      ,CurlyLam (FunHeader []
-                [TypedBinding (NameBinding "y") $ TName ["Number"]]
-                (Just $ TName ["Number"]))
-       $ sts $ BinOp (Iden "x") "+" (Iden "y"))
+      ,CurlyLam np (FunHeader []
+                [TypedBinding np (NameBinding np "y") $ TName np ["Number"]]
+                (Just $ TName np ["Number"]))
+       $ sts $ BinOp np (Iden np "x") "+" (Iden np "y"))
 
      ,("-1 is 0 - 1"
-      ,BinOp (UnaryMinus (Num 1)) "is" (BinOp (Num 0) "-" (Num 1)))
+      ,BinOp np (UnaryMinus np (Num np 1)) "is" (BinOp np (Num np 0) "-" (Num np 1)))
     ,("ex1!x"
-     ,UnboxRef (Iden "ex1") "x")
+     ,UnboxRef np (Iden np "ex1") "x")
     ,("ex2!x!y"
-     ,UnboxRef (UnboxRef (Iden "ex2") "x") "y")
+     ,UnboxRef np (UnboxRef np (Iden np "ex2") "x") "y")
     ,("ex2.y!x"
-     ,UnboxRef (DotExpr (Iden "ex2") "y") "x")
+     ,UnboxRef np (DotExpr np (Iden np "ex2") "y") "x")
 
     ,("...", Template Nothing)
 
     ,([R.r|
 for fold(sum from 0, number from [list: 1,2]):
   sum + number
-end|], For (Iden "fold")
-           [(NameBinding "sum", Num 0)
-           ,(NameBinding "number", Construct ["list"] [Num 1, Num 2])]
+end|], For np (Iden np "fold")
+           [(NameBinding np "sum", Num np 0)
+           ,(NameBinding np "number", Construct np ["list"] [Num np 1, Num np 2])]
            Nothing
-           [StmtExpr $ BinOp (Iden "sum") "+" (Iden "number")])
+           [StmtExpr np $ BinOp np (Iden np "sum") "+" (Iden np "number")])
 
     ,([R.r|
 receive:
   | a => b
 end
-     |], Receive [(NameBinding "a", Nothing, sts $ Iden "b")] Nothing)
+     |], Receive np [(NameBinding np "a", Nothing, sts $ Iden np "b")] Nothing)
 
     ,([R.r|
 receive block:
   | a => b
 end
-     |], Receive [(NameBinding "a", Nothing, sts $ Iden "b")] Nothing)
+     |], Receive np [(NameBinding np "a", Nothing, sts $ Iden np "b")] Nothing)
 
     ,([R.r|
 receive:
   | pat1(a) => a
   | pat2(b) => b
 end
-     |], Receive [(VariantBinding ["pat1"] [nm "a"], Nothing, sts $ Iden "a")
-                 ,(VariantBinding  ["pat2"] [nm "b"], Nothing, sts $ Iden "b")] Nothing)
+     |], Receive np [(VariantBinding np ["pat1"] [nm "a"], Nothing, sts $ Iden np "a")
+                 ,(VariantBinding np ["pat2"] [nm "b"], Nothing, sts $ Iden np "b")] Nothing)
     ,([R.r|
 receive:
   | after infinity => c
 end
-     |], Receive [] (Just (Iden "infinity", sts $ Iden "c")))
+     |], Receive np [] (Just (Iden np "infinity", sts $ Iden np "c")))
     ,([R.r|
 receive:
   | after 1.1 => c
 end
-     |], Receive [] (Just (Num 1.1, sts $ Iden "c")))
+     |], Receive np [] (Just (Num np 1.1, sts $ Iden np "c")))
     ,([R.r|
 receive:
   | pat1(a) => a
   | after f(10) => c
 end
-     |], Receive [(VariantBinding ["pat1"] [nm "a"], Nothing, sts $ Iden "a")]
-                 (Just (App Nothing (Iden "f") [Num 10], sts $ Iden "c")))
+     |], Receive np [(VariantBinding np ["pat1"] [nm "a"], Nothing, sts $ Iden np "a")]
+                 (Just (App Nothing (Iden np "f") [Num np 10], sts $ Iden np "c")))
 
     ,([R.r|
 table a,b:
   row: 1, true
   row: 2, false
-end|], TableSel ["a", "b"] [RowSel [Num 1, Iden "true"]
-                           ,RowSel [Num 2, Iden "false"]])
+end|], TableSel np ["a", "b"] [RowSel np [Num np 1, Iden np "true"]
+                           ,RowSel np [Num np 2, Iden np "false"]])
 
     ,("method(self): self end"
-     ,MethodExpr $ Method (FunHeader [] [NameBinding "self"] Nothing) (sts $ Iden "self"))
+     ,MethodExpr np $ Method (FunHeader [] [NameBinding np "self"] Nothing) (sts $ Iden np "self"))
 
     ]
   where
-    nm x = NameBinding x
-    nmt x t = TypedBinding (NameBinding x) (TName [t])
-    lam as = Lam (FunHeader [] (map nm as) Nothing)
-    sts e = [StmtExpr e]
+    nm x = NameBinding np x
+    nmt x t = TypedBinding np (NameBinding np x) (TName np [t])
+    lam as = Lam np (FunHeader [] (map nm as) Nothing)
+    sts e = [StmtExpr np e]
 
 statementParseTests :: TestTree
 statementParseTests = TestGroup "statementParseTests" $ map (uncurry StmtParseTest)
     [("a = 5"
-     ,LetDecl (nm "a") (Num 5))
+     ,LetDecl np (nm "a") (Num np 5))
     ,(" a = 5"
-     ,LetDecl (nm "a") (Num 5))
+     ,LetDecl np (nm "a") (Num np 5))
     ,(" \na = 5"
-     ,LetDecl (nm "a") (Num 5))
+     ,LetDecl np (nm "a") (Num np 5))
     ,("#test\na = 5"
-     ,LetDecl (nm "a") (Num 5))
+     ,LetDecl np (nm "a") (Num np 5))
     ,("#|test|#a = 5"
-     ,LetDecl (nm "a") (Num 5))
+     ,LetDecl np (nm "a") (Num np 5))
     ,("shadow a = 5"
-     ,LetDecl (ShadowBinding "a") (Num 5))
+     ,LetDecl np (ShadowBinding np "a") (Num np 5))
 
     ,("when x == 3: 4 end"
-     ,When (BinOp (Iden "x") "==" (Num 3)) (sts $ Num 4))
+     ,When np (BinOp np (Iden np "x") "==" (Num np 3)) (sts $ Num np 4))
 
     ,("when x == 3 block: 4 end"
-     ,When (BinOp (Iden "x") "==" (Num 3)) (sts $ Num 4))
+     ,When np (BinOp np (Iden np "x") "==" (Num np 3)) (sts $ Num np 4))
 
      
     ,("var a = 5"
-     ,VarDecl (snm "a") (Num 5))
+     ,VarDecl np (snm "a") (Num np 5))
     ,("a := 6"
-     ,SetVar (Iden "a") (Num 6))
+     ,SetVar np (Iden np "a") (Num np 6))
 
     ,("B.a := 6"
-     ,SetVar (DotExpr (Iden "B") "a") (Num 6))
+     ,SetVar np (DotExpr np (Iden np "B") "a") (Num np 6))
 
     ,("ex1!{x: 42}"
-     ,SetRef (Iden "ex1") [("x", Num 42)])
+     ,SetRef np (Iden np "ex1") [("x", Num np 42)])
     ,("ex1!{x: 42, y:43}"
-     ,SetRef (Iden "ex1") [("x", Num 42), ("y", Num 43)])
+     ,SetRef np (Iden np "ex1") [("x", Num np 42), ("y", Num np 43)])
     ,("ex1!a!{x: 42}"
-     ,SetRef (UnboxRef (Iden "ex1") "a") [("x", Num 42)])
+     ,SetRef np (UnboxRef np (Iden np "ex1") "a") [("x", Num np 42)])
 
     ,("ex1.a!{x: 42}"
-     ,SetRef (DotExpr (Iden "ex1") "a") [("x", Num 42)])
+     ,SetRef np (DotExpr np (Iden np "ex1") "a") [("x", Num np 42)])
 
     ,("data BTree:\n\
       \  | node(value, left, right)\n\
       \  | leaf(value)\n\
-      \end", DataDecl "BTree" [] [VariantDecl "node" [(Con, snm "value"), (Con, snm "left"), (Con, snm "right")] []
-                                 ,VariantDecl "leaf" [(Con, snm "value")] []] [] Nothing)
+      \end", DataDecl np "BTree" [] [VariantDecl np "node" [(Con, snm "value"), (Con, snm "left"), (Con, snm "right")] []
+                                 ,VariantDecl np "leaf" [(Con, snm "value")] []] [] Nothing)
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf\n\
-      \end", DataDecl "MyEnum" []
-             [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")] []
-             ,VariantDecl "leaf" [] []] [] Nothing)
+      \end", DataDecl np "MyEnum" []
+             [VariantDecl np "node" [(Con, snm "left"), (Con, snm "right")] []
+             ,VariantDecl np "leaf" [] []] [] Nothing)
 
     ,("data MyEnum:\n\
       \  | node(left, right)\n\
       \  | leaf()\n\
-      \end", DataDecl "MyEnum" []
-             [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")] []
-             ,VariantDecl "leaf" [] []] [] Nothing)
+      \end", DataDecl np "MyEnum" []
+             [VariantDecl np "node" [(Con, snm "left"), (Con, snm "right")] []
+             ,VariantDecl np "leaf" [] []] [] Nothing)
 
     ,("data Point:\n\
       \  | pt(x, y)\n\
-      \end", DataDecl "Point" [] [VariantDecl "pt" [(Con, snm "x"), (Con, snm "y")] []] [] Nothing)
+      \end", DataDecl np "Point" [] [VariantDecl np "pt" [(Con, snm "x"), (Con, snm "y")] []] [] Nothing)
 
     ,("data Point: pt(x, y) end"
-     ,DataDecl "Point" [] [VariantDecl "pt" [(Con, snm "x"), (Con, snm "y")] []] [] Nothing)
+     ,DataDecl np "Point" [] [VariantDecl np "pt" [(Con, snm "x"), (Con, snm "y")] []] [] Nothing)
 
     ,("data Point: pt() end"
-     ,DataDecl "Point" [] [VariantDecl "pt" [] []] [] Nothing)
+     ,DataDecl np "Point" [] [VariantDecl np "pt" [] []] [] Nothing)
 
     ,("data Point: pt end"
-     ,DataDecl "Point" [] [VariantDecl "pt" [] []] [] Nothing)
+     ,DataDecl np "Point" [] [VariantDecl np "pt" [] []] [] Nothing)
 
     ,("PI :: Number = 3.141592"
-     ,LetDecl (TypedBinding (NameBinding "PI") (TName ["Number"])) (Num 3.141592))
+     ,LetDecl np (TypedBinding np (NameBinding np "PI") (TName np ["Number"])) (Num np 3.141592))
 
     ,([R.r|
 data MyEnum:
   | node(left, right) with:
     method size(self): 1 end
-end |], DataDecl "MyEnum" []
-             [VariantDecl "node"
+end |], DataDecl np "MyEnum" []
+             [VariantDecl np "node"
               [(Con, snm "left"), (Con, snm "right")]
-                  [("size", Method (FunHeader [] [NameBinding "self"] Nothing)
-                            [StmtExpr $ Num 1])]
+                  [("size", Method (FunHeader [] [NameBinding np "self"] Nothing)
+                            [StmtExpr np $ Num np 1])]
              ] [] Nothing)
 
     ,([R.r|
@@ -482,10 +482,10 @@ data MyEnum:
 sharing:
   method values-equal(self, other): 1 end
 end
-  |], DataDecl "MyEnum" []
-             [VariantDecl "node" [(Con, snm "left"), (Con, snm "right")] []]
-         [("values-equal", Method (FunHeader [] [NameBinding "self", NameBinding "other"] Nothing)
-                            [StmtExpr $ Num 1])] Nothing)
+  |], DataDecl np "MyEnum" []
+             [VariantDecl np "node" [(Con, snm "left"), (Con, snm "right")] []]
+         [("values-equal", Method (FunHeader [] [NameBinding np "self", NameBinding np "other"] Nothing)
+                            [StmtExpr np $ Num np 1])] Nothing)
 
    ,([R.r|
 data BinTree:
@@ -493,9 +493,9 @@ data BinTree:
   | node(value :: Number, left :: BinTree, right :: BinTree)
 end
   |]
-    ,DataDecl "BinTree" []
-      [VariantDecl "leaf" [] []
-      ,VariantDecl "node" [(Con, snmt "value" "Number")
+    ,DataDecl np "BinTree" []
+      [VariantDecl np "leaf" [] []
+      ,VariantDecl np "node" [(Con, snmt "value" "Number")
                           ,(Con, snmt "left" "BinTree")
                           ,(Con, snmt "right" "BinTree")] []]
       [] Nothing)
@@ -506,68 +506,68 @@ data List<A>:
   | link(first :: A, rest :: List<A>)
 end
   |]
-    ,DataDecl "List" ["A"]
-      [VariantDecl "empty" [] []
-      ,VariantDecl "link" [(Con, snmt "first" "A")
-                          ,(Con, SimpleBinding NoShadow "rest" (Just $ TParam ["List"] [TName ["A"]]))] []
+    ,DataDecl np "List" ["A"]
+      [VariantDecl np "empty" [] []
+      ,VariantDecl np "link" [(Con, snmt "first" "A")
+                          ,(Con, SimpleBinding np NoShadow "rest" (Just $ TParam np ["List"] [TName np ["A"]]))] []
       ]
       [] Nothing)
 
     
     ,("fun f(a): a + 1 end"
-     ,FunDecl (snm "f") (fh ["a"]) Nothing (sts $ BinOp (Iden "a") "+" (Num 1)) Nothing)
+     ,FunDecl np (snm "f") (fh ["a"]) Nothing (sts $ BinOp np (Iden np "a") "+" (Num np 1)) Nothing)
 
     ,("fun f(a) block: a + 1 end"
-     ,FunDecl (snm "f") (fh ["a"]) Nothing (sts $ BinOp (Iden "a") "+" (Num 1)) Nothing)
+     ,FunDecl np (snm "f") (fh ["a"]) Nothing (sts $ BinOp np (Iden np "a") "+" (Num np 1)) Nothing)
 
     
     ,("fun f(a):\n\
       \  a = 1\n\
       \  a + 1\n\
-      \end", FunDecl (snm "f")
+      \end", FunDecl np (snm "f")
                         (fh ["a"]) Nothing
-                        ([LetDecl (nm "a") (Num 1)
-                               ,StmtExpr $ BinOp (Iden "a") "+" (Num 1)]) Nothing)
+                        ([LetDecl np (nm "a") (Num np 1)
+                               ,StmtExpr np $ BinOp np (Iden np "a") "+" (Num np 1)]) Nothing)
     ,("fun double(n):\n\
       \  n + n\n\
       \where:\n\
       \  double(10) is 20\n\
       \  double(15) is 30\n\
       \end"
-     ,FunDecl (snm "double") (fh ["n"]) Nothing (sts $ BinOp (Iden "n") "+" (Iden "n"))
-      (Just [StmtExpr $ BinOp (App Nothing (Iden "double") [Num 10]) "is" (Num 20)
-           ,StmtExpr $ BinOp (App Nothing (Iden "double") [Num 15]) "is" (Num 30)]))
+     ,FunDecl np (snm "double") (fh ["n"]) Nothing (sts $ BinOp np (Iden np "n") "+" (Iden np "n"))
+      (Just [StmtExpr np $ BinOp np (App Nothing (Iden np "double") [Num np 10]) "is" (Num np 20)
+           ,StmtExpr np $ BinOp np (App Nothing (Iden np "double") [Num np 15]) "is" (Num np 30)]))
 
     ,([R.r|
 fun f(x):
   doc: "adds one to the argument"
   x + 1
 end|]
-     ,FunDecl (snm "f") (FunHeader [] [nm "x"] Nothing)
+     ,FunDecl np (snm "f") (FunHeader [] [nm "x"] Nothing)
       (Just "adds one to the argument")
-      (sts $ BinOp (Iden "x") "+" (Num 1)) Nothing)
+      (sts $ BinOp np (Iden np "x") "+" (Num np 1)) Nothing)
 
     
     ,([R.r|
 fun f(x :: Number):
   x + 1
 end|]
-     ,FunDecl (snm "f") (FunHeader [] [nmt "x" "Number"] Nothing) Nothing
-      (sts $ BinOp (Iden "x") "+" (Num 1)) Nothing)
+     ,FunDecl np (snm "f") (FunHeader [] [nmt "x" "Number"] Nothing) Nothing
+      (sts $ BinOp np (Iden np "x") "+" (Num np 1)) Nothing)
 
     ,([R.r|
 fun f(x) -> Number:
   x + 1
 end|]
-     ,FunDecl (snm "f") (FunHeader [] [nm "x"] (Just $ TName ["Number"])) Nothing
-      (sts $ BinOp (Iden "x") "+" (Num 1)) Nothing)
+     ,FunDecl np (snm "f") (FunHeader [] [nm "x"] (Just $ TName np ["Number"])) Nothing
+      (sts $ BinOp np (Iden np "x") "+" (Num np 1)) Nothing)
 
     ,([R.r|
 fun f(x :: Number) -> Number:
   x + 1
 end|]
-     ,FunDecl (snm "f") (FunHeader [] [nmt "x" "Number"] (Just $ TName ["Number"])) Nothing
-      (sts $ BinOp (Iden "x") "+" (Num 1)) Nothing)
+     ,FunDecl np (snm "f") (FunHeader [] [nmt "x" "Number"] (Just $ TName np ["Number"])) Nothing
+      (sts $ BinOp np (Iden np "x") "+" (Num np 1)) Nothing)
 
     ,([R.r|
 fun f<a>(x :: List<a>) -> Boolean:
@@ -576,13 +576,13 @@ fun f<a>(x :: List<a>) -> Boolean:
     | link(_,_) => false
   end
 end|]
-     ,FunDecl (snm "f") (FunHeader
+     ,FunDecl np (snm "f") (FunHeader
             ["a"]
-            [TypedBinding (NameBinding "x") (TParam ["List"] [TName ["a"]])]
-            (Just $ TName ["Boolean"])) Nothing
-      (sts $ Cases (Iden "x") (Just $ TParam ["List"] [TName ["a"]])
-        [(NameBinding "empty", Nothing, sts $ Iden "true")
-        ,(VariantBinding ["link"] [WildcardBinding, WildcardBinding], Nothing, sts $ Iden "false")]
+            [TypedBinding np (NameBinding np "x") (TParam np ["List"] [TName np ["a"]])]
+            (Just $ TName np ["Boolean"])) Nothing
+      (sts $ Cases np (Iden np "x") (Just $ TParam np ["List"] [TName np ["a"]])
+        [(NameBinding np "empty", Nothing, sts $ Iden np "true")
+        ,(VariantBinding np ["link"] [WildcardBinding np, WildcardBinding np], Nothing, sts $ Iden np "false")]
         Nothing) Nothing)
 
     
@@ -592,84 +592,84 @@ end|]
       \    end\n\
       \  end"
 
-     ,RecDecl (nm "fact")
-            $ Lam (fh ["x"]) $ sts $
-                    If [(BinOp (Iden "x") "==" (Num 0), sts $ Num 1)]
-                    (Just $ sts (BinOp (Iden "x") "*" (App Nothing (Iden "fact") [BinOp (Iden "x") "-" (Num 1)])))
+     ,RecDecl np (nm "fact")
+            $ Lam np (fh ["x"]) $ sts $
+                    If np [(BinOp np (Iden np "x") "==" (Num np 0), sts $ Num np 1)]
+                    (Just $ sts (BinOp np (Iden np "x") "*" (App Nothing (Iden np "fact") [BinOp np (Iden np "x") "-" (Num np 1)])))
             )
 
     ,("type NumPredicate = (Number -> Boolean)"
-     ,TypeStmt $ TypeDecl "NumPredicate" [] (TParens (TArrow [TName ["Number"]] $ TName ["Boolean"])))
+     ,TypeStmt np $ TypeDecl "NumPredicate" [] (TParens np (TArrow np [TName np ["Number"]] $ TName np ["Boolean"])))
 
     ,("type Predicate<a> = (a -> Boolean)"
-     ,TypeStmt $ TypeDecl "Predicate" ["a"] (TParens (TArrow [TName ["a"]] $ TName ["Boolean"])))
+     ,TypeStmt np $ TypeDecl "Predicate" ["a"] (TParens np (TArrow np [TName np ["a"]] $ TName np ["Boolean"])))
 
     ,("ffitype BType = 'htype'"
-     ,FFITypeStmt "BType" "htype")
+     ,FFITypeStmt np "BType" "htype")
 
     ,("a :: Number"
-     ,Contract "a" $ TName ["Number"])
+     ,Contract np "a" $ TName np ["Number"])
 
     ,("a :: String, String -> String"
-     ,Contract "a" $ TArrow [TName ["String"], TName ["String"]] $ TName ["String"])
+     ,Contract np "a" $ TArrow np [TName np ["String"], TName np ["String"]] $ TName np ["String"])
 
 
     ,("provide: * end"
-     ,Provide [ProvideAll])
+     ,Provide np [ProvideAll np])
 
     ,("provide: a end"
-     ,Provide [ProvideName "a"])
+     ,Provide np [ProvideName np "a"])
 
     ,("provide: a,b end"
-     ,Provide [ProvideName "a", ProvideName "b"])
+     ,Provide np [ProvideName np "a", ProvideName np "b"])
 
     ,("provide: a as b end"
-     ,Provide [ProvideAlias "a" "b"])
+     ,Provide np [ProvideAlias np "a" "b"])
 
     ,("provide: type A end"
-     ,Provide [ProvideType "A"])
+     ,Provide np [ProvideType np "A"])
 
     ,("provide: data A end"
-     ,Provide [ProvideData "A"])
+     ,Provide np [ProvideData np "A"])
 
     ,("include file(\"file.tea\")"
-     ,Include (ImportSpecial "file" ["file.tea"]))
+     ,Include np (ImportSpecial "file" ["file.tea"]))
 
     ,("include string-dict"
-     ,Include (ImportName "string-dict"))
+     ,Include np (ImportName "string-dict"))
 
     ,("import file(\"file.tea\") as X"
-     ,Import (ImportSpecial "file" ["file.tea"]) "X")
+     ,Import np (ImportSpecial "file" ["file.tea"]) "X")
 
     ,("import string-dict as X"
-     ,Import (ImportName "string-dict") "X")
+     ,Import np (ImportName "string-dict") "X")
 
     ,("include from X: * end"
-     ,IncludeFrom "X" [ProvideAll])
+     ,IncludeFrom np "X" [ProvideAll np])
 
     ,("include from X: a end"
-     ,IncludeFrom "X" [ProvideName "a"])
+     ,IncludeFrom np "X" [ProvideName np "a"])
 
     ,("include from X: a,b end"
-     ,IncludeFrom "X" [ProvideName "a", ProvideName "b"])
+     ,IncludeFrom np "X" [ProvideName np "a", ProvideName np "b"])
 
     ,("include from X: a as b end"
-     ,IncludeFrom "X" [ProvideAlias "a" "b"])
+     ,IncludeFrom np "X" [ProvideAlias np "a" "b"])
 
     ,("import from string-dict: a as b end"
-     ,ImportFrom (ImportName "string-dict") [ProvideAlias "a" "b"])
+     ,ImportFrom np (ImportName "string-dict") [ProvideAlias np "a" "b"])
 
     -- todo: add optional alias
     ,("use package \"dir/my-package\""
-     ,UsePackage "dir/my-package")
+     ,UsePackage np "dir/my-package")
     ]
   where
-    nm x = NameBinding x
-    snm x = SimpleBinding NoShadow x Nothing
+    nm x = NameBinding np x
+    snm x = SimpleBinding np NoShadow x Nothing
     fh as = FunHeader [] (map nm as) Nothing
-    nmt x t = TypedBinding (NameBinding x) (TName [t])
-    snmt x t = SimpleBinding NoShadow x (Just $ TName [t])
-    sts e = [StmtExpr e]
+    nmt x t = TypedBinding np (NameBinding np x) (TName np [t])
+    snmt x t = SimpleBinding np NoShadow x (Just $ TName np [t])
+    sts e = [StmtExpr np e]
 
 
 scriptParseTests :: TestTree
@@ -679,17 +679,17 @@ check:
   1 is 1
   "test" is "test"
 end
-     |], Script [Check Nothing
-                 [StmtExpr $ BinOp (Num 1) "is" (Num 1)
-                 ,StmtExpr $ BinOp (Text "test") "is"(Text "test")]])
+     |], Script [Check np Nothing
+                 [StmtExpr np $ BinOp np (Num np 1) "is" (Num np 1)
+                 ,StmtExpr np $ BinOp np (Text np "test") "is"(Text np "test")]])
 
     ,([R.r|
 check:
   f(x) raises "something"
 end
-     |], Script [Check Nothing
-                 [StmtExpr $ BinOp (App Nothing (Iden "f") [Iden "x"])
-                             "raises" (Text "something")]])
+     |], Script [Check np Nothing
+                 [StmtExpr np $ BinOp np (App Nothing (Iden np "f") [Iden np "x"])
+                             "raises" (Text np "something")]])
     ,([R.r|
 
 a = 5
@@ -705,11 +705,11 @@ check:
 end
 
      |], Script
-         [LetDecl (nm "a") (Num 5)
-         ,StmtExpr $ App Nothing (Iden "print") [Iden "a"]
-         ,Check (Just "test-1") [LetDecl (nm "b") (Num 6)
-                                ,StmtExpr $ BinOp (Num 1) "is" (Num 1)]
-         ,Check Nothing [StmtExpr $ BinOp (Num 2) "is" (Num 3)]
+         [LetDecl np (nm "a") (Num np 5)
+         ,StmtExpr np $ App Nothing (Iden np "print") [Iden np "a"]
+         ,Check np (Just "test-1") [LetDecl np (nm "b") (Num np 6)
+                                   ,StmtExpr np $ BinOp np (Num np 1) "is" (Num np 1)]
+         ,Check np Nothing [StmtExpr np $ BinOp np (Num np 2) "is" (Num np 3)]
                                 
          ])
     ,([R.r|
@@ -717,5 +717,8 @@ end
      ,Script [])
     ]
   where
-    nm x = NameBinding x
+    nm x = NameBinding np x
 
+
+np :: SourcePosition
+np = Nothing
