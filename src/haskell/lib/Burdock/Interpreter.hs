@@ -3,14 +3,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Burdock.Interpreter
-    (TestResult(..)
-    ,CheckBlockResult(..)
-    ,takeTestResults
-    ,allTestsPassed
-
-
-    --,Value
-    ,valueToStringIO
+    (--,Value
+     valueToStringIO
     --,valueToString
 
     ,newHandle
@@ -342,121 +336,6 @@ addFFIPackage h nm ffipkg =
                 x {hsPackages =
                    ((nm,ffipkg) : hsPackages x)}
 
-allTestsPassed :: Handle -> IO Bool
-allTestsPassed h = runInterp True h $ do
-    trs <- getTestResultsI
-    pure $ and $ map isPass $ concatMap tr $ concatMap snd trs
-  where
-    tr (CheckBlockResult _ x) = x
-    isPass (TestPass {}) = True
-    isPass (TestFail {}) = False
-    
----------------------------------------
-
--- testing, uses haskell values atm, will move to burdock
--- values at some point in the future
-
-data TestResult = TestPass String
-                | TestFail String String
-                deriving Show
-
-data CheckBlockResult = CheckBlockResult String [TestResult]
-                      deriving Show
-
-takeTestResults :: Handle -> IO [(String, [CheckBlockResult])]
-takeTestResults h = runInterp True h takeTestResultsI
-
-takeTestResultsI :: Interpreter [(String, [CheckBlockResult])]
-takeTestResultsI = do
-    st <- ask
-    v <- liftIO $ atomically $ do
-        a <- readTVar $ tlHandleState st
-        r <- readTVar $ hsTestResults a
-        writeTVar (hsTestResults a) []
-        pure r
-    pure $ convertTestLog v
-
-getTestResultsI :: Interpreter [(String, [CheckBlockResult])]
-getTestResultsI = do
-    st <- ask
-    v <- liftIO $ atomically $ do
-        a <- readTVar $ tlHandleState st
-        readTVar $ hsTestResults a
-    pure $ convertTestLog v
-
-
-convertTestLog :: [(String, String, TestResult)]
-               -> [(String, [CheckBlockResult])]
-convertTestLog v = 
-    let perModules :: [(String, [(String,TestResult)])]
-        perModules = partitionN $ map (\(m,cb,tr) -> (m,(cb,tr))) $ reverse v
-        collectCBs :: [(String, [(String,[TestResult])])]
-        collectCBs = map (\(mb,cbs) -> (mb,partitionN cbs)) perModules
-    in map (\(a,b) -> (a, map (uncurry CheckBlockResult) b)) collectCBs
-
-partitionN :: Eq a => [(a,b)] -> [(a,[b])]
-partitionN [] = []
-partitionN vs@((k,_):_) =
-    let (x,y) = partition ((==k) . fst) vs
-    in (k,map snd x) : partitionN y
-
-formatTestResults :: [(String, [CheckBlockResult])] -> Bool -> String
-formatTestResults ms hideSucc =
-    intercalate "\n" [intercalate "\n\n" (filter (/="") $ map formatModule ms)
-                     ,summarizeAll (concatMap snd ms)]
-  where
-    formatTestResult tr =
-        case tr of
-            TestPass nm | hideSucc -> ""
-                        | otherwise -> "  test (" ++ nest 8 nm ++ "): OK"
-            TestFail nm msg -> "  test (" ++ nest 8 nm ++ "): failed, reason:\n" ++ indent 4 msg
-    formatCheckBlock (CheckBlockResult nm trs) =
-        let rs = intercalate "\n" $ filter (/= "") $ map formatTestResult trs
-        in if hideSucc && rs == ""
-           then ""
-           else let (passed, total) = getCheckBlockTotals trs
-                in "Check block: " ++ nm ++ "\n"
-                   ++ rs
-                   ++ "\n  " ++ showOutOf passed total ++ " in check block: " ++ nm
-    formatModule (mnm, cbs) =
-        let cbsf = intercalate "\n\n" $ filter (/= "") $ map formatCheckBlock cbs
-        in if hideSucc && cbsf == ""
-           then ""
-           else heading ("Module: " ++ mnm) ++ "\n"
-                ++ cbsf
-                ++ summarizeCheckBlocks mnm cbs 
-
-    summarizeAll rs =
-        let (passed,total) = getCheckBlocksTotals rs
-        in showOutOf passed total ++ " in all modules"
-
-    showOutOf passed total =
-        show passed ++ "/" ++ show total ++ " tests passed"
-    heading s = s ++ "\n" ++ replicate (length s) '-'
-    -- queries
-    getCheckBlockTotals ts = 
-        let f p t [] = (p,t)
-            f p t (TestPass {} : s) = f (p + 1) (t + 1) s
-            f p t (TestFail {} : s) = f p (t + 1) s
-        in f (0 :: Int) (0 :: Int) ts
-    summarizeCheckBlocks mnm cbs =
-        let (passed, total) = getCheckBlocksTotals cbs
-        in "\n" ++ showOutOf passed total ++ " in module: " ++ mnm
-
-    getCheckBlocksTotals cbs = 
-        sumPairs $ map (\(CheckBlockResult _ ts) -> getCheckBlockTotals ts) cbs
-    sumPairs ps = 
-        let f t1 t2 [] = (t1,t2)
-            f t1 t2 ((a,b):rs) = f (t1 + a) (t2 + b) rs
-        in f (0 :: Int) (0 :: Int) ps
-    -- formatting
-    indent n txt = unlines $ map (replicate n ' ' ++) $ lines txt
-    nest n txt =
-        case lines $ txt of
-            (f:r) -> trim $ unlines (f : map (replicate n ' ' ++) r)
-            _ -> trim txt
-    trim = reverse . dropWhile isSpace . reverse . dropWhile isSpace
-
 ------------------------------------------------------------------------------
 
 -- runtime language values
@@ -723,8 +602,8 @@ data BurdockHandleState
     ,hsPackages :: [(String,FFIPackage)] -- todo: combine with loadedpackages?
     -- temp, to be split by module
     -- module path, check block name, result
-    ,hsTestResults :: TVar [(String,String,TestResult)]
     ,hsTempMonitorId :: TVar Int -- hack for concurrency, will be improved on
+    -- used for repl/interactive execution
     ,hsInteractiveGeneration :: TVar Int
     }
 
@@ -748,14 +627,7 @@ data ThreadLocalState
     -- these are the local bindings that were introduced using
     -- a prelude statement
     ,tlIncludedBindings :: IORef [(String,Value)]
-    -- support for testing - identify current check block
-    -- if there is one, and generating unique names for
-    -- anonymous checkblocks
-    ,tlCurrentCheckblock :: Maybe String
-    ,tlNextAnonCheckblockNum :: IORef Int
-    ,tlTestRunPredicate :: IORef (Maybe Value)
-    ,tlTestRootModuleName :: IORef (Maybe String)
-    ,_tlIsModuleRootThread :: Bool
+    ,tlTestState :: TestState
     }
 
 type InterpreterState = ThreadLocalState 
@@ -802,10 +674,9 @@ interpreterExceptionCallStack ScopedExitException = []
 
 newBurdockHandle :: IO (TVar BurdockHandleState)
 newBurdockHandle = do
-    rs <- newTVarIO []
     i <- newTVarIO 0
     ri <- newTVarIO 0
-    h <- newTVarIO $ BurdockHandleState [] baseEnv builtInFF builtInFFITypes [] [] 0 [] rs i ri
+    h <- newTVarIO $ BurdockHandleState [] baseEnv builtInFF builtInFFITypes [] [] 0 [] i ri
     runInterp False (Handle h) initBootstrapModule
     runInterp False (Handle h) $ do
         (internalsFn, internalsSrc) <- readImportSource (ImportName "_internals")
@@ -827,11 +698,7 @@ newSourceHandle bs = do
         <*> pure []
         <*> newIORef []
         <*> newIORef []
-        <*> pure Nothing
-        <*> newIORef 0
-        <*> newIORef Nothing
-        <*> newIORef Nothing
-        <*> pure True
+        <*> newTestState
 
 {-
 
@@ -1006,51 +873,6 @@ extendBindings' bs env = do
     -- return the new env
     pure (map (\(_,n,v) -> (n,v)) bs ++ env)
 
-    
-{-
-throw an error if already in a check block
-generate a name if it's maybe
-run the check block in a local bindings
--}
-
-checkCheckBlockName :: Maybe String -> Interpreter String
-checkCheckBlockName mcbnm = do
-    -- generate unique name if anon        
-    -- todo: incorporate thread id if not root thread
-    case mcbnm of
-        Just nm -> pure nm
-        Nothing -> do
-            st <- ask
-            i <- liftIO $ readIORef (tlNextAnonCheckblockNum st)
-            liftIO $ writeIORef (tlNextAnonCheckblockNum st) (i + 1)
-            pure $ "check-block-" ++ show i
-
-enterCheckBlock :: String -> Interpreter a -> Interpreter a
-enterCheckBlock cbnm f = do
-    st <- ask
-    when (isJust $ tlCurrentCheckblock st)
-        $ _errorWithCallStack $ "nested checkblock " ++ show (tlCurrentCheckblock st) ++ " / " ++ show cbnm
-    local (\st' -> st' {tlCurrentCheckblock = Just cbnm}) $
-        localBindings pure f
-    
--- get the check block name, error if there isn't one
--- update the test results tvar
-addTestResult :: TestResult -> Interpreter ()
-addTestResult tr = do
-    st <- ask
-    let ms = tlModuleState st
-    cbnm <- case tlCurrentCheckblock st of
-        Just n -> pure n
-        -- todo: this check should be done before the test is executed
-        -- this can happen once implement static checks on the syntax
-        -- before interpretation
-        Nothing -> _errorWithCallStack $ "test predicate not in check block: " ++ show tr
-    liftIO $ atomically $ do
-        v <- readTVar (tlHandleState st)
-        -- nested tvar will be removed when test results per module
-        -- is implemented
-        modifyTVar (hsTestResults v) ((msModuleSourcePath ms, cbnm, tr):)
-
 localPushCallStack :: SourcePosition -> Interpreter a -> Interpreter a
 localPushCallStack sp = do
     local (\tl -> tl { tlCallStack = sp : tlCallStack tl})
@@ -1094,7 +916,6 @@ then figure out how to show values as bindings to other bindings
     which will display like this instead of with the actual value on the lhs
 
 
-TODO: add test results -> but these will end up in the above before
 long
 foreign functions 
 
@@ -1652,13 +1473,12 @@ runInterpInherit parentSh incG f = do
     p <- newIORef []
     b <- newIORef =<< readIORef (tlLocallyCreatedBindings parentSh)
     bo <- newIORef =<< readIORef (tlIncludedBindings parentSh)
-    cbn <- newIORef 0
+    ts' <- newThreadTestState $ tlTestState parentSh
     let sh = parentSh
             {tlProvides = p
             ,tlLocallyCreatedBindings = b
             ,tlIncludedBindings = bo
-            ,tlNextAnonCheckblockNum = cbn
-            ,_tlIsModuleRootThread = False
+            ,tlTestState = ts'
             }
     flip runReaderT sh $ do
         when incG $ void $ interpStatement (Include appSourcePos (ImportName "globals"))
@@ -2625,162 +2445,6 @@ bGlob [TextV pn] = do
 bGlob x = error $ "bad args to glob" ++ show x
 
 
-bRunTestsWithOpts :: [Value] -> Interpreter Value
-bRunTestsWithOpts [opts] = do
-    testSrcs :: [Either FilePath (FilePath,String)] <- do
-        tsrcs' <- getAttr opts "test-sources"
-        let tsrcs = maybe (error $ "bad args to run-tests-with-opts" ++ show opts) id
-                    $ fromBList tsrcs'
-        forM tsrcs $ \tsrc -> do
-            TextV nm <- getAttr tsrc "file-name"
-            if isV tsrc "file-test"
-                then pure $ Left nm
-                else do
-                    TextV s <- getAttr tsrc "source"
-                    pure $ Right (nm, s)
-    BoolV showProgressLog <- getAttr opts "show-progress-log"
-    testRunPredicate :: Maybe Value <- do
-        v <- getAttr opts "test-run-predicate"
-        case v of
-            VariantV _ "none" [] -> pure Nothing
-            fn -> pure $ Just fn
-    BoolV hideSuccesses <- getAttr opts "hide-successes"
-    BoolV autoPrintResults <- getAttr opts "print-results"
-
-    let none = VariantV (internalsType "Option") "none" []
-
-    cbs <- concat <$>
-        (forM testSrcs $ \testSrc -> runIsolated testRunPredicate showProgressLog hideSuccesses $ do
-            st <- ask
-            let hackRemoveLead ('.':'/':xs) = hackRemoveLead xs
-                hackRemoveLead x = x
-                testfn = hackRemoveLead $ case testSrc of
-                            Left fn' -> fn'
-                            Right (fn',_) -> fn'
-            liftIO $ writeIORef (tlTestRootModuleName st) $ Just testfn
-            shouldRun <- case testRunPredicate of
-                Nothing -> pure True
-                Just fun -> do
-                    r <- app fun [TextV testfn, TextV testfn,none,none]
-                    case r of
-                        BoolV True -> pure True
-                        _ -> pure False
-            when shouldRun $ do
-                r <- try $ case testSrc of
-                    Left fn -> do
-                        (fn',src) <- readImportSource (ImportSpecial "file" [fn])
-                        loadAndRunModuleSource True fn' fn' src
-                    Right (fn, src) -> loadAndRunModuleSource True fn fn src
-                case r of
-                    Right {} -> pure ()
-                    Left (e :: SomeException) -> do
-                        let nm = "load module " ++ show testSrc
-                        local (\st' -> st' {tlCurrentCheckblock = Just nm}) $
-                            addTestResult (TestFail nm (show e))
-                        --liftIO $ putStrLn $ show e
-            takeTestResultsI)
-    rs <- testResultsToB cbs
-    when autoPrintResults $ void $
-        evalI Nothing [("rs1234", rs)
-                      ,("hs1234", BoolV hideSuccesses)
-                      ]
-            "print(format-test-results(rs1234, hs1234))"
-    pure rs
-  where
-    runIsolated testRunPredicate showProgressLog hideSuccesses f = do
-{-
-hack: create a new state as if it's a new handle
-run loadandrunmodule with this new state, nested in a new monad context
-then extract the hstestresults from it
--}
-        subH <- liftIO $ newBurdockHandle
-        let h = Handle subH
-        -- add the loaded packages to the new handle
-        pkgs <- do
-            st <- ask
-            hs <- liftIO $ atomically $ readTVar $ tlHandleState st
-            pure $ reverse $ hsPackages hs
-        forM_ pkgs $ \(nm,p) -> liftIO $ addFFIPackage h nm p
-
-        liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-auto-run-tests(true)"
-        if showProgressLog
-            then liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-show-test-progress-log(true)"
-            else liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-show-test-progress-log(false)"
-        if hideSuccesses
-            then liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-hide-test-successes(true)"
-            else liftIO $ void $ runScript h Nothing [] "_system.modules._internals.set-hide-test-successes(false)"
-
-        liftIO $ runInterp True h $ do
-            case testRunPredicate of
-                Nothing -> pure ()
-                Just fn -> do
-                    st <- ask
-                    liftIO $ writeIORef (tlTestRunPredicate st) $ Just fn
-
-            f
-            
-    isV v nm = case v of
-        VariantV _ nm' _ -> nm == nm'
-        _ -> False
-    getAttr v nm = evalI Nothing [("v", v)] ("v." ++ nm)
-
-bRunTestsWithOpts x = error $ "bad args to run-tests-with-opts" ++ show x
-
-bTakeTestResults :: [Value] -> Interpreter Value
-bTakeTestResults [] = do
-    st <- ask
-    cbs <- liftIO $ atomically $ do
-        a <- readTVar $ tlHandleState st
-        r <- readTVar $ hsTestResults a
-        writeTVar (hsTestResults a) []
-        pure r
-    testResultsToB $ convertTestLog cbs
-bTakeTestResults x = error $ "bad args to take-test-results" ++ show x
-
-testResultsToB :: [(String, [CheckBlockResult])] -> Interpreter Value
-testResultsToB cbs = do
-    mkModuleCheckResults <- interp (Iden appSourcePos "module-check-results")
-    mkCheckResults <- interp (Iden appSourcePos "check-results")
-    mkTestPass <- interp (Iden appSourcePos "test-pass")
-    mkTestFail <- interp (Iden appSourcePos "test-fail")
-    let makeMcr nm cbsx = do
-            cs <- mapM makeCbr cbsx
-            app mkModuleCheckResults [TextV nm, makeBList cs]
-        makeCbr (CheckBlockResult nm trs) = do
-            trs' <- forM trs $ \case
-                        TestPass tnm -> app mkTestPass [TextV tnm]
-                        TestFail tnm msg -> app mkTestFail [TextV tnm, TextV msg]
-            app mkCheckResults [TextV nm, makeBList trs']
-            
-    x <- mapM (uncurry makeMcr) cbs
-    pure $ makeBList x
-    
-
-bFormatTestResults :: [Value] -> Interpreter Value
-bFormatTestResults as@[lst', BoolV hs] | Just lst <- fromBList lst' = do
-    let extractMod v = do
-            TextV mn <- getAttr v "module-name"
-            cbs <- getAttr v "mcheck-results"
-            let cbs' = maybe (error $ "bad args to format-test-results" ++ show as) id $ fromBList cbs
-            (mn,) <$> mapM extractCB cbs'
-        extractCB v = do
-            TextV cbn <- getAttr v "block-name"
-            trs <- getAttr v "results"
-            let trs' = maybe (error $ "bad args to format-test-results" ++ show as) id $ fromBList trs
-            CheckBlockResult cbn <$> mapM extractTr trs'
-        extractTr v = do
-            TextV nm <- getAttr v "name"
-            case v of
-                VariantV _ "test-fail" _ -> do
-                    TextV msg <- getAttr v "msg"
-                    pure $ TestFail nm msg
-                _ -> pure $ TestPass nm
-    v <- mapM extractMod lst
-    let res = formatTestResults v hs
-    pure $ TextV res
-  where
-    getAttr v nm = evalI Nothing [("v", v)] ("v." ++ nm)
-bFormatTestResults x = error $ "bad args to format-test-results" ++ show x
     
 
 ------------------------------------------------------------------------------
@@ -3425,6 +3089,9 @@ interpStatement s@(StmtExpr _ (BinOp _ e0 "satisfies" e1)) =
 interpStatement s@(StmtExpr _ (BinOp _ e0 "raises-satisfies" f)) =
     testRaisesSatisfies (prettyStmt s) e0 f
 
+interpStatement (Check _ mcbnm ss) =
+    doCheckblock mcbnm ss
+
 interpStatement (StmtExpr _ e) = do
     v <- interp e
     case v of
@@ -3437,43 +3104,6 @@ interpStatement (When _ t b) = do
         BoolV False -> pure nothing
         _ -> _errorWithCallStack $ "expected when test to have boolean type, but is " ++ show tv
 
-interpStatement (Check _ mcbnm ss) = do
-    te <- testsEnabled
-    cbnm <- checkCheckBlockName mcbnm
-    sr <- if te then shouldRun cbnm else pure te
-    if te && sr then
-            enterCheckBlock cbnm $ do
-            x <- catchAll $ interpStatements ss
-            case x of
-                Right v -> pure v
-                Left e -> do
-                    msg <- showExceptionCallStackPair e
-                    addTestResult (TestFail "check block threw an exception, some tests may not have executed" msg)
-                    pure nothing
-        else pure nothing
-  where
-    testsEnabled = do
-        runTestsEnabled <- interp $ internalsRef "auto-run-tests"
-        case runTestsEnabled of
-            BoolV True -> pure True
-            BoolV False -> pure False
-            x -> _errorWithCallStack $ "auto-run-tests not set right (should be boolv): " ++ show x
-    shouldRun :: String -> Interpreter Bool
-    shouldRun cbnm = do
-        let none = VariantV (internalsType "Option") "none" []
-            some v = VariantV (internalsType "Option") "some" [("value", v)]
-        st <- ask
-        let modFn = msModuleSourcePath $ tlModuleState st
-        testRunPredicate <- liftIO $ readIORef (tlTestRunPredicate st)
-        testRootModuleName <- maybe "" id
-                              <$> liftIO (readIORef (tlTestRootModuleName st))
-        case testRunPredicate of
-            Nothing -> pure True
-            Just fun -> do
-                    r <- app fun [TextV testRootModuleName, TextV modFn,some (TextV cbnm),none]
-                    case r of
-                        BoolV True -> pure True
-                        _ -> pure False
 
 interpStatement (LetDecl _ b e) = do
     v <- interp e
@@ -3766,7 +3396,376 @@ makeDotPathExpr (n':nms') = f (Iden appSourcePos n') nms'
 
 ------------------------------------------------------------------------------
 
--- test predicates
+-- testing
+
+-- todo: refactoring, it could be much less messy
+
+
+data TestResult = TestPass String
+                | TestFail String String
+                deriving Show
+
+data CheckBlockResult = CheckBlockResult String [TestResult]
+                      deriving Show
+
+data TestState
+    = TestState
+    {tlCurrentCheckblock :: Maybe String
+    ,tlNextAnonCheckblockNum :: IORef Int
+    ,tlTestRunPredicate :: Maybe Value
+    ,tlTestRootModuleName :: IORef (Maybe String)
+    ,tlTestResults :: TVar [(String,String,TestResult)]
+    ,tlShowTestProgressLog :: Bool
+    ,tlHideTestSuccesses :: Bool
+    ,tlAutoRunTests :: Bool
+    }
+
+newTestState :: IO TestState
+newTestState =
+    TestState
+    <$> pure Nothing
+    <*> newIORef 0
+    <*> pure Nothing
+    <*> newIORef Nothing
+    <*> newTVarIO []
+    <*> pure False
+    <*> pure False
+    <*> pure False
+
+newThreadTestState :: TestState -> IO TestState
+newThreadTestState ts = do
+    cbn <- newIORef 0
+    pure $ ts {tlNextAnonCheckblockNum = cbn}
+
+{-newModuleTestState :: TestState -> IO TestState
+newModuleTestState ts = do
+    cbn <- newIORef 0
+    pure $ ts {tlNextAnonCheckblockNum = cbn}-}
+
+-- get the check block name, error if there isn't one
+-- update the test results tvar
+addTestResult :: TestResult -> Interpreter ()
+addTestResult tr = do
+    st <- ask
+    let ms = tlModuleState st
+    cbnm <- case tlCurrentCheckblock $ tlTestState st of
+        Just n -> pure n
+        -- todo: this check should be done before the test is executed
+        -- this can happen once implement static checks on the syntax
+        -- before interpretation
+        Nothing -> _errorWithCallStack $ "test predicate not in check block: " ++ show tr
+    liftIO $ atomically $
+        modifyTVar (tlTestResults $ tlTestState st) ((msModuleSourcePath ms, cbnm, tr):)
+
+{-
+throw an error if already in a check block
+generate a name if it's maybe
+run the check block in a local bindings
+-}
+
+checkCheckBlockName :: Maybe String -> Interpreter String
+checkCheckBlockName mcbnm = do
+    -- generate unique name if anon        
+    -- todo: incorporate thread id if not root thread
+    case mcbnm of
+        Just nm -> pure nm
+        Nothing -> do
+            st <- ask
+            i <- liftIO $ readIORef (tlNextAnonCheckblockNum $ tlTestState st)
+            liftIO $ writeIORef (tlNextAnonCheckblockNum $ tlTestState st) (i + 1)
+            pure $ "check-block-" ++ show i
+
+enterCheckBlock :: String -> Interpreter a -> Interpreter a
+enterCheckBlock cbnm f = do
+    st <- ask
+    when (isJust $ tlCurrentCheckblock $ tlTestState st)
+        $ _errorWithCallStack $ "nested checkblock " ++ show (tlCurrentCheckblock $ tlTestState st) ++ " / " ++ show cbnm
+    local (\st' ->
+               let ts' = (tlTestState st') {tlCurrentCheckblock = Just cbnm}
+               in st' {tlTestState = ts'}) $
+        localBindings pure f
+
+
+--------------------------------------
+
+-- functions for getting test results and formatting them
+
+takeTestResultsI :: Interpreter [(String, [CheckBlockResult])]
+takeTestResultsI = do
+    st <- ask
+    v <- liftIO $ atomically $ do
+        r <- readTVar $ tlTestResults $ tlTestState st
+        writeTVar (tlTestResults $ tlTestState st) []
+        pure r
+    pure $ convertTestLog v
+
+convertTestLog :: [(String, String, TestResult)]
+               -> [(String, [CheckBlockResult])]
+convertTestLog v = 
+    let perModules :: [(String, [(String,TestResult)])]
+        perModules = partitionN $ map (\(m,cb,tr) -> (m,(cb,tr))) $ reverse v
+        collectCBs :: [(String, [(String,[TestResult])])]
+        collectCBs = map (\(mb,cbs) -> (mb,partitionN cbs)) perModules
+    in map (\(a,b) -> (a, map (uncurry CheckBlockResult) b)) collectCBs
+
+partitionN :: Eq a => [(a,b)] -> [(a,[b])]
+partitionN [] = []
+partitionN vs@((k,_):_) =
+    let (x,y) = partition ((==k) . fst) vs
+    in (k,map snd x) : partitionN y
+
+formatTestResults :: [(String, [CheckBlockResult])] -> Bool -> String
+formatTestResults ms hideSucc =
+    intercalate "\n" [intercalate "\n\n" (filter (/="") $ map formatModule ms)
+                     ,summarizeAll (concatMap snd ms)]
+  where
+    formatTestResult tr =
+        case tr of
+            TestPass nm | hideSucc -> ""
+                        | otherwise -> "  test (" ++ nest 8 nm ++ "): OK"
+            TestFail nm msg -> "  test (" ++ nest 8 nm ++ "): failed, reason:\n" ++ indent 4 msg
+    formatCheckBlock (CheckBlockResult nm trs) =
+        let rs = intercalate "\n" $ filter (/= "") $ map formatTestResult trs
+        in if hideSucc && rs == ""
+           then ""
+           else let (passed, total) = getCheckBlockTotals trs
+                in "Check block: " ++ nm ++ "\n"
+                   ++ rs
+                   ++ "\n  " ++ showOutOf passed total ++ " in check block: " ++ nm
+    formatModule (mnm, cbs) =
+        let cbsf = intercalate "\n\n" $ filter (/= "") $ map formatCheckBlock cbs
+        in if hideSucc && cbsf == ""
+           then ""
+           else heading ("Module: " ++ mnm) ++ "\n"
+                ++ cbsf
+                ++ summarizeCheckBlocks mnm cbs 
+
+    summarizeAll rs =
+        let (passed,total) = getCheckBlocksTotals rs
+        in showOutOf passed total ++ " in all modules"
+
+    showOutOf passed total =
+        show passed ++ "/" ++ show total ++ " tests passed"
+    heading s = s ++ "\n" ++ replicate (length s) '-'
+    -- queries
+    getCheckBlockTotals ts = 
+        let f p t [] = (p,t)
+            f p t (TestPass {} : s) = f (p + 1) (t + 1) s
+            f p t (TestFail {} : s) = f p (t + 1) s
+        in f (0 :: Int) (0 :: Int) ts
+    summarizeCheckBlocks mnm cbs =
+        let (passed, total) = getCheckBlocksTotals cbs
+        in "\n" ++ showOutOf passed total ++ " in module: " ++ mnm
+
+    getCheckBlocksTotals cbs = 
+        sumPairs $ map (\(CheckBlockResult _ ts) -> getCheckBlockTotals ts) cbs
+    sumPairs ps = 
+        let f t1 t2 [] = (t1,t2)
+            f t1 t2 ((a,b):rs) = f (t1 + a) (t2 + b) rs
+        in f (0 :: Int) (0 :: Int) ps
+    -- formatting
+    indent n txt = unlines $ map (replicate n ' ' ++) $ lines txt
+    nest n txt =
+        case lines $ txt of
+            (f:r) -> trim $ unlines (f : map (replicate n ' ' ++) r)
+            _ -> trim txt
+    trim = reverse . dropWhile isSpace . reverse . dropWhile isSpace
+
+--------------------------------------
+
+-- burdock api to the test system
+
+bRunTestsWithOpts :: [Value] -> Interpreter Value
+bRunTestsWithOpts [opts] = do
+    testSrcs :: [Either FilePath (FilePath,String)] <- do
+        tsrcs' <- getAttr opts "test-sources"
+        let tsrcs = maybe (error $ "bad args to run-tests-with-opts" ++ show opts) id
+                    $ fromBList tsrcs'
+        forM tsrcs $ \tsrc -> do
+            TextV nm <- getAttr tsrc "file-name"
+            if isV tsrc "file-test"
+                then pure $ Left nm
+                else do
+                    TextV s <- getAttr tsrc "source"
+                    pure $ Right (nm, s)
+    BoolV showProgressLog <- getAttr opts "show-progress-log"
+    testRunPredicate :: Maybe Value <- do
+        v <- getAttr opts "test-run-predicate"
+        case v of
+            VariantV _ "none" [] -> pure Nothing
+            fn -> pure $ Just fn
+    BoolV hideSuccesses <- getAttr opts "hide-successes"
+    BoolV autoPrintResults <- getAttr opts "print-results"
+
+    let none = VariantV (internalsType "Option") "none" []
+
+    cbs <- concat <$>
+        (forM testSrcs $ \testSrc -> runIsolated testRunPredicate showProgressLog hideSuccesses $ do
+            st <- ask
+            let hackRemoveLead ('.':'/':xs) = hackRemoveLead xs
+                hackRemoveLead x = x
+                testfn = hackRemoveLead $ case testSrc of
+                            Left fn' -> fn'
+                            Right (fn',_) -> fn'
+            liftIO $ writeIORef (tlTestRootModuleName $ tlTestState st) $ Just testfn
+            shouldRun <- case testRunPredicate of
+                Nothing -> pure True
+                Just fun -> do
+                    r <- app fun [TextV testfn, TextV testfn,none,none]
+                    case r of
+                        BoolV True -> pure True
+                        _ -> pure False
+            when shouldRun $ do
+                r <- try $ case testSrc of
+                    Left fn -> do
+                        (fn',src) <- readImportSource (ImportSpecial "file" [fn])
+                        loadAndRunModuleSource True fn' fn' src
+                    Right (fn, src) -> loadAndRunModuleSource True fn fn src
+                case r of
+                    Right {} -> pure ()
+                    Left (e :: SomeException) -> do
+                        let nm = "load module " ++ show testSrc
+                        local (\st' ->
+                                   let ts' = (tlTestState st') {tlCurrentCheckblock = Just nm}
+                                   in st' {tlTestState = ts'}) $
+                            addTestResult (TestFail nm (show e))
+                        --liftIO $ putStrLn $ show e
+            takeTestResultsI)
+    rs <- testResultsToB cbs
+    when autoPrintResults $ void $
+        evalI Nothing [("rs1234", rs)
+                      ,("hs1234", BoolV hideSuccesses)
+                      ]
+            "print(format-test-results(rs1234, hs1234))"
+    pure rs
+  where
+    runIsolated testRunPredicate showProgressLog hideSuccesses f = do
+{-
+hack: create a new state as if it's a new handle
+run loadandrunmodule with this new state, nested in a new monad context
+then extract the hstestresults from it
+-}
+        subH <- liftIO $ newBurdockHandle
+        let h = Handle subH
+        -- add the loaded packages to the new handle
+        pkgs <- do
+            st <- ask
+            hs <- liftIO $ atomically $ readTVar $ tlHandleState st
+            pure $ reverse $ hsPackages hs
+        forM_ pkgs $ \(nm,p) -> liftIO $ addFFIPackage h nm p
+
+        liftIO $ runInterp True h $ do
+            st <- ask
+            let stx = (tlTestState st)
+                      {tlTestRunPredicate = testRunPredicate
+                      ,tlShowTestProgressLog = showProgressLog
+                      ,tlHideTestSuccesses = hideSuccesses
+                      ,tlAutoRunTests = True}
+            local (\x -> x {tlTestState = stx}) f
+            
+    isV v nm = case v of
+        VariantV _ nm' _ -> nm == nm'
+        _ -> False
+    getAttr v nm = evalI Nothing [("v", v)] ("v." ++ nm)
+
+
+
+bRunTestsWithOpts x = error $ "bad args to run-tests-with-opts" ++ show x
+
+bTakeTestResults :: [Value] -> Interpreter Value
+bTakeTestResults [] = do
+    st <- ask
+    cbs <- liftIO $ atomically $ do
+        r <- readTVar $ tlTestResults $ tlTestState st
+        writeTVar (tlTestResults $ tlTestState st) []
+        pure r
+    testResultsToB $ convertTestLog cbs
+bTakeTestResults x = error $ "bad args to take-test-results" ++ show x
+
+testResultsToB :: [(String, [CheckBlockResult])] -> Interpreter Value
+testResultsToB cbs = do
+    mkModuleCheckResults <- interp (Iden appSourcePos "module-check-results")
+    mkCheckResults <- interp (Iden appSourcePos "check-results")
+    mkTestPass <- interp (Iden appSourcePos "test-pass")
+    mkTestFail <- interp (Iden appSourcePos "test-fail")
+    let makeMcr nm cbsx = do
+            cs <- mapM makeCbr cbsx
+            app mkModuleCheckResults [TextV nm, makeBList cs]
+        makeCbr (CheckBlockResult nm trs) = do
+            trs' <- forM trs $ \case
+                        TestPass tnm -> app mkTestPass [TextV tnm]
+                        TestFail tnm msg -> app mkTestFail [TextV tnm, TextV msg]
+            app mkCheckResults [TextV nm, makeBList trs']
+            
+    x <- mapM (uncurry makeMcr) cbs
+    pure $ makeBList x
+    
+
+bFormatTestResults :: [Value] -> Interpreter Value
+bFormatTestResults as@[lst', BoolV hs] | Just lst <- fromBList lst' = do
+    let extractMod v = do
+            TextV mn <- getAttr v "module-name"
+            cbs <- getAttr v "mcheck-results"
+            let cbs' = maybe (error $ "bad args to format-test-results" ++ show as) id $ fromBList cbs
+            (mn,) <$> mapM extractCB cbs'
+        extractCB v = do
+            TextV cbn <- getAttr v "block-name"
+            trs <- getAttr v "results"
+            let trs' = maybe (error $ "bad args to format-test-results" ++ show as) id $ fromBList trs
+            CheckBlockResult cbn <$> mapM extractTr trs'
+        extractTr v = do
+            TextV nm <- getAttr v "name"
+            case v of
+                VariantV _ "test-fail" _ -> do
+                    TextV msg <- getAttr v "msg"
+                    pure $ TestFail nm msg
+                _ -> pure $ TestPass nm
+    v <- mapM extractMod lst
+    let res = formatTestResults v hs
+    pure $ TextV res
+  where
+    getAttr v nm = evalI Nothing [("v", v)] ("v." ++ nm)
+bFormatTestResults x = error $ "bad args to format-test-results" ++ show x
+
+
+--------------------------------------
+
+-- test syntax execution
+
+doCheckblock :: Maybe String -> [Stmt] -> Interpreter Value
+doCheckblock mcbnm ss = do
+    te <- testsEnabled
+    cbnm <- checkCheckBlockName mcbnm
+    sr <- if te then shouldRun cbnm else pure te
+    if te && sr then
+            enterCheckBlock cbnm $ do
+            x <- catchAll $ interpStatements ss
+            case x of
+                Right v -> pure v
+                Left e -> do
+                    msg <- showExceptionCallStackPair e
+                    addTestResult (TestFail "check block threw an exception, some tests may not have executed" msg)
+                    pure nothing
+        else pure nothing
+  where
+    testsEnabled = tlAutoRunTests . tlTestState <$> ask
+    shouldRun :: String -> Interpreter Bool
+    shouldRun cbnm = do
+        let none = VariantV (internalsType "Option") "none" []
+            some v = VariantV (internalsType "Option") "some" [("value", v)]
+        st <- ask
+        let modFn = msModuleSourcePath $ tlModuleState st
+        let testRunPredicate = tlTestRunPredicate $ tlTestState st
+        testRootModuleName <- maybe "" id
+                              <$> liftIO (readIORef (tlTestRootModuleName $ tlTestState st))
+        case testRunPredicate of
+            Nothing -> pure True
+            Just fun -> do
+                    r <- app fun [TextV testRootModuleName, TextV modFn,some (TextV cbnm),none]
+                    case r of
+                        BoolV True -> pure True
+                        _ -> pure False
+
 testIs :: String -> Expr -> Expr -> Interpreter Value
 testIs msg e0 e1 =
     testPredSupport msg e0 e1 $ \v0 v1 -> do
@@ -3900,29 +3899,21 @@ testPredSupport testPredName e0 e1 testPredCheck = do
     logit = do
         st <- ask
         let ms = msModuleSourcePath $ tlModuleState st
-        cbnm <- case tlCurrentCheckblock st of
+        cbnm <- case tlCurrentCheckblock $ tlTestState st of
             Just n -> pure n
             Nothing -> _errorWithCallStack $ "test predicate not in check block: " ++ testPredName
         liftIO $ putStr $ "test " ++ ms ++ "/" ++ cbnm ++ "/" ++ testPredName
-    isProgressLogEnabled = do
-        e <- interp $ internalsRef "show-test-progress-log"
-        case e of
-            BoolV True -> pure True
-            _ -> pure False
-    isHideSuccesses = do
-        e <- interp $ internalsRef "hide-test-successes"
-        case e of
-            BoolV True -> pure True
-            _ -> pure False
+    isProgressLogEnabled = tlShowTestProgressLog . tlTestState <$> ask
+    isHideSuccesses = tlHideTestSuccesses . tlTestState <$> ask
     shouldRun = do
         let some v = VariantV (internalsType "Option") "some" [("value", v)]
         st <- ask
         let modFn = msModuleSourcePath $ tlModuleState st
-        testRunPredicate <- liftIO $ readIORef (tlTestRunPredicate st)
+        let testRunPredicate = tlTestRunPredicate $ tlTestState st
         testRootModuleName <- maybe "" id
-                              <$> liftIO (readIORef (tlTestRootModuleName st))
+                              <$> liftIO (readIORef (tlTestRootModuleName $ tlTestState  st))
         let cbnm = maybe (error $ "test predicate being run outside check block")
-                   id $ tlCurrentCheckblock st
+                   id $ tlCurrentCheckblock  $ tlTestState st
         case testRunPredicate of
             Nothing -> pure True
             Just fun -> do
@@ -4064,7 +4055,9 @@ loadAndRunModuleSource includeGlobals moduleName fn src = do
   where
     localX f = do
         x1 <- liftIO $ newIORef 0
-        local (\x -> x {tlNextAnonCheckblockNum = x1}) f
+        local (\x -> let ts' = (tlTestState x) {tlNextAnonCheckblockNum = x1}
+                  in x {tlTestState = ts'}) f
+        
 
 -- TODO: not really happy with how messy these functions are
 

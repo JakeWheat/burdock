@@ -125,28 +125,5 @@ data Infinity:
   | infinity
 end
 
-# if tests are run, automatically print the results
-# this is used to disable the printing when you are getting the test
-# results out and printing them or using them differently yourself
-# it's used by the tasty testing adaptor
-var auto-print-test-results = true
-fun set-auto-print-test-results(b):
-  auto-print-test-results := b
-end
-var show-test-progress-log = true
-fun set-show-test-progress-log(b):
-  show-test-progress-log := b
-end
-var hide-test-successes = false
-fun set-hide-test-successes(b):
-  hide-test-successes := b
-end
-# set whether tests should be run or ignored
-var auto-run-tests = false
-# the 'api' is to use the function, don't read or write the var directly
-fun set-auto-run-tests(b):
-  auto-run-tests := b
-end
-
 sleep = ffi-function("sleep")
 
