@@ -101,27 +101,21 @@ main = do
                 ,["_build/generated-hs/Burdock/GeneratedBuiltins.hs"]
                 ,pythonCFiles
                 ,"-threaded")
-               ,("build the Burdock interpreter with demo ffi module"
-                ,"_build/burdock-ffi"
-                ,"src/haskell/app/BurdockExe.hs"
-                ,[]
-                ,pythonCFiles
-                ,"")                
                ,("build the Burdock tests"
                 ,"_build/burdock-hunit-tests"
                 ,"src/haskell/test/BurdockTests.hs"
                 ,[]
                 ,pythonCFiles
                 ,"-threaded")
-               ,("build the Demo user FFI interpreter"
-                ,"_build/DemoFFI"
-                ,"src/haskell/examples/DemoFFI.hs"
+               ,("generate the haskell wrapper for the burdoc built ins sources"
+                ,"_build/GenerateBuiltinsFile"
+                ,"src/haskell/build/GenerateBuiltinsFile.hs"
                 ,[]
                 ,[]
                 ,"-threaded")
-               ,("build the Demo user FFI interpreter"
-                ,"_build/GenerateBuiltinsFile"
-                ,"src/haskell/build/GenerateBuiltinsFile.hs"
+               ,("build the Demo user FFI interpreter (bitrot)"
+                ,"_build/DemoFFI"
+                ,"src/haskell/examples/DemoFFI.hs"
                 ,[]
                 ,[]
                 ,"-threaded")
@@ -270,11 +264,8 @@ main = do
 
     withTargetDocs "run all the tests, including slow ones" $ phony "test-all" $ do
         need ["_build/burdock-hunit-tests"
-             ,"_build/burdock"
-             -- temporary hack while python is incompatible threads
-             ,"_build/burdock-ffi"]
+             ,"_build/burdock"]
         cmd_ "_build/burdock-hunit-tests --color never --ansi-tricks false --hide-successes"
-        cmd_  "_build/burdock-ffi src/burdock/tests/run-all-tests-additional.bur"
         cmd_  "_build/burdock src/burdock/tests/run-all-tests.bur"
 
 

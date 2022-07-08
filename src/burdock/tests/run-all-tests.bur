@@ -36,6 +36,7 @@ srcs = (my-ld("src/burdock/built-ins")
        + my-ld("website2")
        + [list: "examples/load-csv-python.bur"]
        + my-ld("src/packages/python-ffi")
+       + my-ld("src/packages/ffitypes-test")
 #shadow srcs = [list:"./src/burdock/tests/lists.bur"]
 #shadow srcs = [list:"./src/burdock/built-ins/lists.bur"]
 
