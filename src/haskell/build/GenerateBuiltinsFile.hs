@@ -1,6 +1,7 @@
 
 
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE TupleSections #-}
 import qualified Text.RawString.QQ as R
 
 import Data.List (intercalate)

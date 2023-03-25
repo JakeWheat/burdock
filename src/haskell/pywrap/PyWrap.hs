@@ -83,16 +83,20 @@ import Foreign.ForeignPtr
     --,newForeignPtr_
     ,withForeignPtr)
 import Foreign.Concurrent (newForeignPtr)
-import Control.Monad.Except
-    (ExceptT(..)
-    ,MonadIO
-    ,runExceptT
-    ,void
+import Control.Monad.IO.Class
+    (MonadIO
     ,liftIO
+    )
+import Control.Monad
+    (void
     ,when
-    ,throwError
     ,forM_
     ,forM
+    )
+import Control.Monad.Except
+    (ExceptT(..)
+    ,runExceptT
+    ,throwError
     )
 import Control.Concurrent (isCurrentThreadBound)
 import Control.Monad.Catch (bracket, MonadMask)
