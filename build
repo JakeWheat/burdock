@@ -11,13 +11,13 @@ mkdir -p _build/packages
 if [ ! -f _build/packages/shakefile-packages ]; then
     # could be really fancy and match the verbosity args
     echo "# (bootstrap) cabal (for _build/packages/shakefile-packages)"
-    cabal -v0 -j install --lib shake --package-env _build/packages/shakefile-packages
+    cabal -v0 -j install --lib shake --lib hashable --package-env _build/packages/shakefile-packages
 fi
 
 # why does anyone even need a build system, when you have shell?
 if [ ! -f _build/shakefile ] || [ _build/shakefile -ot Shakefile.hs ]; then
     echo "# (bootstrap) ghc (for _build/shakefile)"
-    ghc -v0 -Wall --make Shakefile.hs -rtsopts -threaded -with-rtsopts="-I0" -outputdir=_build/objs/shakefile-build -o _build/shakefile -package-env _build/packages/shakefile-packages -package hashable
+    ghc -v0 -Wall --make Shakefile.hs -rtsopts -threaded -with-rtsopts="-I0" -outputdir=_build/objs/shakefile-build -o _build/shakefile -package-env _build/packages/shakefile-packages
 fi
 
 _build/shakefile +RTS -N -RTS -k -j "$@"
