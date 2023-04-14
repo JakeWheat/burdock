@@ -29,7 +29,9 @@ mySrc :: Text
 mySrc = [R.r|
 
 check:
+  #1._plus(2) is 3
   1 + 2 is 3
+  #3 + 4 is 7
   #a = 3
   #a + 1 is 4
   #ffi-demo(5) is 10

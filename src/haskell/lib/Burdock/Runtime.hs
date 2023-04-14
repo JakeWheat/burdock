@@ -16,7 +16,10 @@ module Burdock.Runtime
     ,runBurdock
     ,Runtime
     ,liftIO
+    ,Scientific
     ) where
+
+import Burdock.Scientific
 
 import Control.Monad.Reader (ReaderT
                             ,runReaderT
@@ -30,7 +33,10 @@ data RuntimeState = RuntimeState
 
 type Runtime = ReaderT RuntimeState IO
 
-data Value = Value
+-- todo: make this abstract
+-- don't use the eq and show except for debugging
+data Value = Number Scientific
+           | VNothing
     deriving (Eq, Show)
 
 runBurdock :: Runtime a -> IO a
