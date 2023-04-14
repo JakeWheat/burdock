@@ -1,6 +1,0 @@
-
-provide:
-  a
-end
-
-var a = 1

@@ -1,7 +1,0 @@
-
-check:
-  1 + 2 is 4 - 1
-  1 + 2 is-not "a"
-  raise("test") raises "test"
-  raise(2) raises-satisfies is-Number
-end

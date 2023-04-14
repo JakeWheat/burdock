@@ -1,1 +1,0 @@
-../pywrap/PyWrapTests.hs

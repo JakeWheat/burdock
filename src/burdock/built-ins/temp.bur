@@ -1,5 +1,0 @@
-
-
-fun add-two(n):
-  n + 2
-end

@@ -1,7 +1,0 @@
-
-provide:
-  a as c
-end
-
-a = 5
-b = 6

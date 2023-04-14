@@ -1,7 +1,0 @@
-
-provide:
-  a
-end
-
-a = 5
-b = 6

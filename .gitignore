@@ -2,3 +2,6 @@
 dist-newstyle/
 /website2
 /.burdockreplhistory
+.emacs.desktop
+.emacs.desktop.lock
+.emacs.savehist

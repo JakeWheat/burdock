@@ -1,6 +1,0 @@
-
-provide:
-  ffi-function
-end
-
-include _internals

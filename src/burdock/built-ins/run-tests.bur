@@ -1,6 +1,0 @@
-
-include option
-include testing
-import _internals as _internals
-
-default-test-run-exe(empty)
