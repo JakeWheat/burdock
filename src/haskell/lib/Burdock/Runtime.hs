@@ -17,27 +17,107 @@ module Burdock.Runtime
     ,Runtime
     ,liftIO
     ,Scientific
+
+    ,RuntimeState
+    ,emptyRuntimeState
+    ,addFFIType
+
+    ,makeFunctionValue
+    ,makeValue
+    ,extractValue
+    ,Type(..)
+    ,Env
+    ,captureClosure
+
+    ,getMember
+    ,app
+
+    --,ffimethodapp
     ) where
 
 import Burdock.Scientific
 
 import Control.Monad.Reader (ReaderT
                             ,runReaderT
-                            --,ask
+                            ,ask
                             --,local
                             ,liftIO
                             --,MonadIO
                             )
+import Data.Text (Text)
+import qualified Data.Text as T
+import Data.Dynamic
+    (Dynamic
+    ,toDyn
+    ,fromDynamic
+    ,Typeable
+    )
 
-data RuntimeState = RuntimeState
+import Data.IORef
+    (IORef
+    ,newIORef
+    ,modifyIORef
+    ,readIORef
+    )
+
+data RuntimeState
+    = RuntimeState
+    {rtFFITypes :: IORef [(Text,Type)]
+    }
+
+emptyRuntimeState :: IO RuntimeState
+emptyRuntimeState =
+    RuntimeState <$> newIORef []
+
+addFFIType :: Text -> Type -> Runtime ()
+addFFIType nm ty = do
+    x <- rtFFITypes <$> ask
+    liftIO $ modifyIORef x ((nm,ty) :)
 
 type Runtime = ReaderT RuntimeState IO
 
 -- todo: make this abstract
 -- don't use the eq and show except for debugging
 data Value = Number Scientific
+           | Value Text Dynamic
            | VNothing
-    deriving (Eq, Show)
+           | VBool Bool
+           | VFun ([Value] -> Runtime Value)
+    --deriving (Show)
 
-runBurdock :: Runtime a -> IO a
-runBurdock f = runReaderT f RuntimeState
+data Env = Env [(Text, Value)]
+    --deriving Show
+
+makeValue :: Typeable a => Text -> a -> Value
+makeValue nm v = Value nm $ toDyn v
+
+extractValue :: Typeable a => Value -> Maybe a
+extractValue (Value _ v) = fromDynamic v
+extractValue _x = error $ "can't extract value from something"
+
+makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
+makeFunctionValue f = pure $ VFun f
+
+captureClosure :: [Text] -> Runtime Env
+captureClosure _ = pure $ Env []
+
+getMember :: Value -> Text -> Runtime Value
+getMember v fld = do
+    st <- ask
+    let tyNm = case v of
+                   Value x _ -> x
+                   _ -> error $ "get member on wrong sort of value"
+    ty <- liftIO ((maybe (error $ "type not found " ++ T.unpack tyNm) id . lookup tyNm) <$> readIORef (rtFFITypes st))
+    (tyMemberFn ty) fld v
+
+app :: Value -> [Value] -> Runtime Value
+app (VFun f) args = f args
+    --([Value] -> Runtime Value) = undefined
+app _ _ = error $ "app called on non function value"
+
+data Type
+    = Type
+    {tyMemberFn :: (Text -> Value -> Runtime Value)}
+
+runBurdock :: RuntimeState -> Runtime a -> IO a
+runBurdock rt f = runReaderT f rt

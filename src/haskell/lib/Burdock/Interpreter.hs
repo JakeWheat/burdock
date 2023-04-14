@@ -6,6 +6,7 @@ executes it on the runtime.
 
 -}
 
+{-# LANGUAGE OverloadedStrings #-}
 module Burdock.Interpreter
     (interpBurdock
     ) where
@@ -16,13 +17,57 @@ import Burdock.Runtime
     ,runBurdock
     ,Runtime
     ,liftIO
+
+    --,ffimethodapp
+    --,RuntimeState
+    ,emptyRuntimeState
+    ,addFFIType
+
+    ,getMember
+    ,app
+
+    ,makeValue
+    ,extractValue
+    ,makeFunctionValue
+    ,Type(..)
+    ,Scientific
     )
 
 import Burdock.Pretty (prettyExpr)
+import Data.Text (Text)
+import qualified Data.Text as T
 
+
+initRuntime :: Runtime ()
+initRuntime = do
+    addFFIType "number" (Type scientificFFI)
+    pure ()
+    
+scientificFFI :: Text -> Value -> Runtime Value
+scientificFFI "_plus" v1 = do
+    let f as = case as of
+                   [v2] -> do
+                       let n1 :: Scientific
+                           n1 = maybe (error "not a number") id $ extractValue v1
+                           n2 = maybe (error "not a number") id $ extractValue v2
+                       pure $ makeValue "number" $ n1 + n2
+    makeFunctionValue f
+
+scientificFFI "_equals" v1 = do
+    let f as = case as of
+                   [v2] -> do
+                       let n1 :: Scientific
+                           n1 = maybe (error "not a number") id $ extractValue v1
+                           n2 = maybe (error "not a number") id $ extractValue v2
+                       pure $ VBool $ n1 == n2
+    makeFunctionValue f
 
 interpBurdock :: S.Script -> IO Value
-interpBurdock (S.Script ss) = runBurdock $ interpStmts ss
+interpBurdock (S.Script ss) = do
+    st <- emptyRuntimeState
+    runBurdock st $ do
+        initRuntime
+        interpStmts ss
 
 interpStmts :: [S.Stmt] -> Runtime Value
 interpStmts [] = error "no statements"
@@ -35,8 +80,12 @@ interpStmt (S.Check _ _ ss) = interpStmts ss
 interpStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) = do
     v1 <- interpExpr e1
     v2 <- interpExpr e2
-    let res = v1 == v2
-    liftIO $ putStrLn $ (if res then "PASS" else "FAIL") <> " " <> prettyExpr e1 <> " is " <> prettyExpr e2
+
+    eqm <- getMember v1 "_equals" 
+    res <- app eqm [v2]
+    let res' = case res of
+                   VBool x -> x
+    liftIO $ putStrLn $ (if res' then "PASS" else "FAIL") <> " " <> prettyExpr e1 <> " is " <> prettyExpr e2
     pure $ VNothing
 
 interpStmt s = error $ "interpStmt: " ++ show s
@@ -45,11 +94,17 @@ interpExpr :: S.Expr -> Runtime Value
 interpExpr (S.BinOp _ e1 "+" e2) = do
     -- todo: move to desugar phase
     interpExpr $ S.App Nothing (S.DotExpr Nothing e1 "_plus") [e2]
-interpExpr (S.App _ (S.DotExpr _ e1 "_plus") [e2]) = do
+
+interpExpr (S.DotExpr _ e1 fld) = do
     v1 <- interpExpr e1
-    v2 <- interpExpr e2
-    case (v1,v2) of
-        (Number a, Number b) -> pure $ Number $ a + b
-        x -> error $ "bad args to plus: " ++ show x
-interpExpr (S.Num _ n) = pure $ Number n        
+    getMember v1 (T.pack fld)
+
+interpExpr (S.App _ ef es) = do
+    vs <- mapM interpExpr es
+    f <- interpExpr ef
+    app f vs
+    
+interpExpr (S.Num _ n) =
+    pure $ makeValue "number" n
+
 interpExpr x = error $ "interpExpr: " ++ show x
