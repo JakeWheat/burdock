@@ -34,3 +34,30 @@ check "simple lambdas":
   b(5) is 9
 
 end
+
+check:
+  x = "hello"
+  #print(x)
+  y = " world"
+  x + y is "hello world"
+
+  (3) is 3
+end
+
+check:
+  (3 + 4) * 5 is 35
+
+  x = true
+  x is true
+  y = false
+  y is false
+
+  if x: 1 else: 2 end is 1
+  if y: 1 else: 2 end is 2
+
+  block:
+    c = 3
+    c is 3
+  end
+
+end

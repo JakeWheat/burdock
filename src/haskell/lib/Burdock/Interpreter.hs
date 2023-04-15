@@ -35,7 +35,7 @@ import Burdock.Runtime
     ,captureClosure
     
     ,makeValue
-    --,extractValue
+    ,extractValue
     --,makeFunctionValue
     --,Type(..)
     --,Scientific
@@ -90,6 +90,10 @@ interpExpr (S.BinOp _ e1 "+" e2) = do
     -- todo: move to desugar phase
     interpExpr $ S.App Nothing (S.DotExpr Nothing e1 "_plus") [e2]
 
+interpExpr (S.BinOp _ e1 "*" e2) = do
+    -- todo: move to desugar phase
+    interpExpr $ S.App Nothing (S.DotExpr Nothing e1 "_times") [e2]
+
 interpExpr (S.DotExpr _ e1 fld) = do
     v1 <- interpExpr e1
     getMember v1 (T.pack fld)
@@ -120,6 +124,16 @@ interpExpr (S.Num _ n) =
     -}
     pure $ makeValue "number" n
 
+interpExpr (S.Text _ t) =
+    pure $ makeValue "string" $ T.pack t
+
+-- should true be a built in value (built into the runtime), or an ffi
+-- value, or a agdt?
+interpExpr (S.Iden _ "true") = 
+    pure $ makeValue "boolean" True
+interpExpr (S.Iden _ "false") = 
+    pure $ makeValue "boolean" False
+
 interpExpr (S.Let _ bs e) = withScope $ do
     letExprs bs
     interpStmts e
@@ -129,6 +143,25 @@ interpExpr (S.Iden _ nm) = do
     case b of
         Nothing -> error $ "binding not found: " ++ nm
         Just v -> pure v
+
+interpExpr (S.Block _ sts) = withScope $ interpStmts sts
+
+interpExpr (S.Parens _ e) = interpExpr e
+
+interpExpr (S.If _ cs els) =
+    let m ((t,e):cs') = do
+            tv <- interpExpr t
+            case extractValue tv of
+                Nothing -> error "non boolean in if test"
+                Just v ->
+                    if v
+                    then interpStmts e
+                    else m cs'
+        m [] = do
+            case els of
+                Nothing -> error "no if branches matched and no else"
+                Just e -> interpStmts e
+    in m cs
 
 interpExpr x = error $ "interpExpr: " ++ show x
 
