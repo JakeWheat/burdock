@@ -29,6 +29,10 @@ module Burdock.Runtime
     ,Env
     ,captureClosure
 
+    ,withScope
+    ,addBinding
+    ,lookupBinding
+
     ,getMember
     ,app
 
@@ -40,7 +44,7 @@ import Burdock.Scientific
 import Control.Monad.Reader (ReaderT
                             ,runReaderT
                             ,ask
-                            --,local
+                            ,local
                             ,liftIO
                             --,MonadIO
                             )
@@ -63,11 +67,12 @@ import Data.IORef
 data RuntimeState
     = RuntimeState
     {rtFFITypes :: IORef [(Text,Type)]
+    ,rtBindings :: IORef [(Text, Value)]
     }
 
 emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
-    RuntimeState <$> newIORef []
+    RuntimeState <$> newIORef [] <*> newIORef []
 
 addFFIType :: Text -> Type -> Runtime ()
 addFFIType nm ty = do
@@ -114,6 +119,25 @@ app :: Value -> [Value] -> Runtime Value
 app (VFun f) args = f args
     --([Value] -> Runtime Value) = undefined
 app _ _ = error $ "app called on non function value"
+
+
+withScope :: Runtime a -> Runtime a
+withScope f = do
+    x <- rtBindings <$> ask
+    x1 <- liftIO $ readIORef x
+    b1 <- liftIO $ newIORef x1
+    local (\y -> y{rtBindings = b1}) f
+
+addBinding :: Text -> Value -> Runtime ()
+addBinding nm v = do
+    x <- rtBindings <$> ask
+    liftIO $ modifyIORef x ((nm,v):)
+
+lookupBinding :: Text -> Runtime (Maybe Value)
+lookupBinding nm = do
+    x <- rtBindings <$> ask
+    x1 <- liftIO $ readIORef x
+    pure $ lookup nm x1
 
 data Type
     = Type
