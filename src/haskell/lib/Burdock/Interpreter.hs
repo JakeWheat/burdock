@@ -8,6 +8,7 @@ executes it on the runtime.
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 module Burdock.Interpreter
     (interpBurdock
     ) where
@@ -28,8 +29,10 @@ import Burdock.Runtime
     ,app
 
     ,withScope
+    ,withNewEnv
     ,addBinding
     ,lookupBinding
+    ,captureClosure
     
     ,makeValue
     --,extractValue
@@ -39,7 +42,7 @@ import Burdock.Runtime
     )
 
 import Burdock.Pretty (prettyExpr)
---import Data.Text (Text)
+import Data.Text (Text)
 import qualified Data.Text as T
 
 import Burdock.DefaultRuntime (initRuntime)
@@ -61,7 +64,7 @@ interpStmt :: S.Stmt -> Runtime Value
 interpStmt (S.Check _ _ ss) = interpStmts ss
 
 interpStmt (S.LetDecl _ b e) = do
-    letBindings [(b, e)]
+    letExprs [(b, e)]
     pure VNothing
 
 interpStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) = do
@@ -95,7 +98,20 @@ interpExpr (S.App _ ef es) = do
     vs <- mapM interpExpr es
     f <- interpExpr ef
     app f vs
-    
+
+interpExpr (S.Lam _ (S.FunHeader _ bs _) bdy) = do
+    env <- captureClosure $ freeVars (S.Block Nothing bdy) -- [] -- todo: get the free vars
+    -- todo: how do you test the freevars function?
+    -- how do you test that the right closures are captured?
+    let runF :: [Value] -> Runtime Value
+        runF vs = do
+            -- todo: check lists same length
+            let bs' = zip bs vs
+            withNewEnv env $ do
+                letValues bs'
+                interpStmts bdy
+    pure $ VFun runF
+
 interpExpr (S.Num _ n) =
     {- todo: you either have to look up "number" in the runtime environment
        or keep a token from when the number type was created, this is so type
@@ -105,7 +121,7 @@ interpExpr (S.Num _ n) =
     pure $ makeValue "number" n
 
 interpExpr (S.Let _ bs e) = withScope $ do
-    letBindings bs
+    letExprs bs
     interpStmts e
 
 interpExpr (S.Iden _ nm) = do
@@ -116,14 +132,36 @@ interpExpr (S.Iden _ nm) = do
 
 interpExpr x = error $ "interpExpr: " ++ show x
 
-letBindings :: [(S.Binding, S.Expr)] -> Runtime ()
-letBindings bs = do
+
+letExprs :: [(S.Binding, S.Expr)] -> Runtime ()
+letExprs bs = do
+    bs' <- mapM (\(nm,e) -> (nm,) <$> interpExpr e) bs
+    letValues bs'
+
+letValues :: [(S.Binding, Value)] -> Runtime ()
+letValues bs = do
     forM_ bs $ \case
-        (S.NameBinding _ nm, ex) -> do
-            vx <- interpExpr ex
-            addBinding (T.pack nm) vx
-        (S.ShadowBinding _ nm, ex) -> do
-            vx <- interpExpr ex
-            addBinding (T.pack nm) vx
-        x -> error $ "unsupported binding: " ++ show x
-    
+        (S.NameBinding _ nm, v) -> addBinding (T.pack nm) v
+        (S.ShadowBinding _ nm, v) -> addBinding (T.pack nm) v
+        (x,_) -> error $ "unsupported binding: " ++ show x
+
+
+freeVars :: S.Expr -> [Text]
+freeVars e = freeVars' [] e
+
+freeVars' :: [Text] -> S.Expr -> [Text]
+freeVars' bs (S.Iden _ a)
+    | T.pack a `elem` bs = []
+    | otherwise = [T.pack a]
+
+freeVars' bs (S.Block _ sts) = concatMap (freeVarsSt' bs) sts
+
+freeVars' bs (S.BinOp _ a _ b) = freeVars' bs a ++ freeVars' bs b
+
+freeVars' _ e = error $ "freeVars': " ++ show e
+
+freeVarsSt' :: [Text] -> S.Stmt -> [Text]
+
+freeVarsSt' bs (S.StmtExpr _ e) = freeVars' bs e
+
+freeVarsSt' _bs st = error $ "freeVarsSt': " ++ show st

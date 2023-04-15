@@ -30,6 +30,7 @@ module Burdock.Runtime
     ,captureClosure
 
     ,withScope
+    ,withNewEnv
     ,addBinding
     ,lookupBinding
 
@@ -104,7 +105,11 @@ makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
 makeFunctionValue f = pure $ VFun f
 
 captureClosure :: [Text] -> Runtime Env
-captureClosure _ = pure $ Env []
+captureClosure nms = do
+    envr <- rtBindings <$> ask
+    env <- liftIO $ readIORef envr
+    -- todo: check all the nms are found
+    pure $ Env $ filter ((`elem` nms) . fst) env
 
 getMember :: Value -> Text -> Runtime Value
 getMember v fld = do
@@ -127,6 +132,11 @@ withScope f = do
     x1 <- liftIO $ readIORef x
     b1 <- liftIO $ newIORef x1
     local (\y -> y{rtBindings = b1}) f
+
+withNewEnv :: Env -> Runtime a -> Runtime a
+withNewEnv (Env env) f = do
+    er <- liftIO $ newIORef env
+    local (\y -> y{rtBindings = er}) f
 
 addBinding :: Text -> Value -> Runtime ()
 addBinding nm v = do

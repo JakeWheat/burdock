@@ -1,8 +1,13 @@
-check:
+check "plus on numbers":
   #1._plus(2) is 3
   1 + 2 is 3
   #3 + 4 is 7
+end
+
+check "simple let and let decl":
+
   let a = 3: a + 1 end is 4
+
 
   a = 3
   a + 1 is 4
@@ -11,4 +16,21 @@ check:
   a is 3
 
   #ffi-demo(5) is 10
+end
+
+check "simple lambdas":
+  f = lam(x): x + 1 end
+  f(1) is 2
+
+  a = 3
+  g = lam(x): x + a end
+  g(2) is 5
+
+  h = lam(x):
+        lam(y): x + y end
+      end
+
+  b = h(4)
+  b(5) is 9
+
 end
