@@ -21,46 +21,23 @@ import Burdock.Runtime
     --,ffimethodapp
     --,RuntimeState
     ,emptyRuntimeState
-    ,addFFIType
+    --,addFFIType
 
     ,getMember
     ,app
 
     ,makeValue
-    ,extractValue
-    ,makeFunctionValue
-    ,Type(..)
-    ,Scientific
+    --,extractValue
+    --,makeFunctionValue
+    --,Type(..)
+    --,Scientific
     )
 
 import Burdock.Pretty (prettyExpr)
-import Data.Text (Text)
+--import Data.Text (Text)
 import qualified Data.Text as T
 
-
-initRuntime :: Runtime ()
-initRuntime = do
-    addFFIType "number" (Type scientificFFI)
-    pure ()
-    
-scientificFFI :: Text -> Value -> Runtime Value
-scientificFFI "_plus" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Scientific
-                           n1 = maybe (error "not a number") id $ extractValue v1
-                           n2 = maybe (error "not a number") id $ extractValue v2
-                       pure $ makeValue "number" $ n1 + n2
-    makeFunctionValue f
-
-scientificFFI "_equals" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Scientific
-                           n1 = maybe (error "not a number") id $ extractValue v1
-                           n2 = maybe (error "not a number") id $ extractValue v2
-                       pure $ VBool $ n1 == n2
-    makeFunctionValue f
+import Burdock.DefaultRuntime (initRuntime)
 
 interpBurdock :: S.Script -> IO Value
 interpBurdock (S.Script ss) = do
@@ -78,6 +55,7 @@ interpStmt :: S.Stmt -> Runtime Value
 interpStmt (S.Check _ _ ss) = interpStmts ss
 
 interpStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) = do
+    -- todo: do most of this in desugaring
     v1 <- interpExpr e1
     v2 <- interpExpr e2
 
@@ -85,6 +63,7 @@ interpStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) = do
     res <- app eqm [v2]
     let res' = case res of
                    VBool x -> x
+                   _x -> error $ "wrong return type for equals"
     liftIO $ putStrLn $ (if res' then "PASS" else "FAIL") <> " " <> prettyExpr e1 <> " is " <> prettyExpr e2
     pure $ VNothing
 

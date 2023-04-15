@@ -5,13 +5,11 @@ quick fake test runner to bootstrap the code
 
 -}
 
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
-import Data.Text (Text)
-import qualified Data.Text as T
-import qualified Text.RawString.QQ as R
+--import Data.Text (Text)
+--import qualified Data.Text as T
 --import Text.Show.Pretty (ppShow)
 
 import Burdock.Parse (parseScript)
@@ -23,30 +21,15 @@ import Burdock.Interpreter
 import Control.Monad
     (void)
 
-
-
-mySrc :: Text
-mySrc = [R.r|
-
-check:
-  #1._plus(2) is 3
-  1 + 2 is 3
-  #3 + 4 is 7
-  #a = 3
-  #a + 1 is 4
-  #ffi-demo(5) is 10
-end
-         
-         |]
+import System.Environment (getArgs)
 
 main :: IO ()
 main = do
-    let ast = either error id $ parseScript "" $ T.unpack mySrc
+    args <- getArgs
+    let fn = case args of
+                    [x] -> x
+                    _ -> error $ "please pass name of script to test, got: " ++ show args
+    mySrc <- readFile fn
+    let ast = either error id $ parseScript "" mySrc
     void $ interpBurdock ast
-    --runInterp InterpreterState $ interpStmts ast
-    --putStrLn $ ppShow ast
-    --putStrLn "Hello, Haskell!"
     pure ()
-
-
-

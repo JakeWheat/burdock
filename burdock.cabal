@@ -35,6 +35,7 @@ executable burdock
                       Burdock.Parse
                       Burdock.Scientific
                       Burdock.Runtime
+                      Burdock.DefaultRuntime
                       Burdock.Interpreter
 
     -- LANGUAGE extensions used by modules in this package.
@@ -43,7 +44,7 @@ executable burdock
                     , scientific
                     , prettyprinter
                     , text
-                    , raw-strings-qq
+                    --, raw-strings-qq
                     , megaparsec
                     , mtl
                     , pretty-show
