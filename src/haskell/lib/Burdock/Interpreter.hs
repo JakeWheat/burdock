@@ -9,6 +9,7 @@ executes it on the runtime.
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Interpreter
     (interpBurdock
     ) where
@@ -74,14 +75,13 @@ interpStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) = do
 
     eqm <- getMember v1 "_equals" 
     res <- app eqm [v2]
-    let res' = case res of
-                   VBool x -> x
-                   _x -> error $ "wrong return type for equals"
+    let res' = case extractValue res of
+                   Just (y :: Bool) -> y
+                   Nothing -> error $ "wrong return type for equals"
     liftIO $ putStrLn $ (if res' then "PASS" else "FAIL") <> " " <> prettyExpr e1 <> " is " <> prettyExpr e2
     pure VNothing
 
 interpStmt (S.StmtExpr _ e) = interpExpr e
-
 
 interpStmt s = error $ "interpStmt: " ++ show s
 
@@ -97,6 +97,12 @@ interpExpr (S.BinOp _ e1 "*" e2) = do
 interpExpr (S.DotExpr _ e1 fld) = do
     v1 <- interpExpr e1
     getMember v1 (T.pack fld)
+
+interpExpr (S.RecordSel _ fs) = do
+    vs <- mapM (\(n,e) -> (T.pack n,) <$> interpExpr e) fs
+    -- todo: "record" has to be namespaced
+    pure $ VariantV "record" vs
+
 
 interpExpr (S.App _ ef es) = do
     vs <- mapM interpExpr es

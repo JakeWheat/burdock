@@ -84,10 +84,9 @@ type Runtime = ReaderT RuntimeState IO
 
 -- todo: make this abstract
 -- don't use the eq and show except for debugging
-data Value = Number Scientific
-           | Value Text Dynamic
+data Value = Value Text Dynamic
+           | VariantV Text [(Text, Value)]
            | VNothing
-           | VBool Bool
            | VFun ([Value] -> Runtime Value)
     --deriving (Show)
 
@@ -112,13 +111,18 @@ captureClosure nms = do
     pure $ Env $ filter ((`elem` nms) . fst) env
 
 getMember :: Value -> Text -> Runtime Value
-getMember v fld = do
+getMember v@(Value tyNm _ ) fld = do
     st <- ask
-    let tyNm = case v of
-                   Value x _ -> x
-                   _ -> error $ "get member on wrong sort of value"
-    ty <- liftIO ((maybe (error $ "type not found " ++ T.unpack tyNm) id . lookup tyNm) <$> readIORef (rtFFITypes st))
+    ty <- liftIO ((maybe (error $ "type not found " ++ T.unpack tyNm) id . lookup tyNm)
+                  <$> readIORef (rtFFITypes st))
     (tyMemberFn ty) fld v
+
+getMember (VariantV _ fs) fld = do
+    case lookup fld fs of
+        Nothing -> error $ "field not found:" ++ T.unpack fld
+        Just v -> pure v
+
+getMember _ _ = error $ "get member on wrong sort of value"
 
 app :: Value -> [Value] -> Runtime Value
 app (VFun f) args = f args
