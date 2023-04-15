@@ -169,6 +169,13 @@ interpExpr (S.If _ cs els) =
                 Just e -> interpStmts e
     in m cs
 
+interpExpr (S.MethodExpr _ (S.Method (S.FunHeader _ts (a:as) _mty) bdy)) =
+    MethodV <$> interpExpr (S.Lam Nothing (S.FunHeader [] [a] Nothing)
+                        [S.StmtExpr Nothing $ S.Lam Nothing (S.FunHeader [] as Nothing) bdy])
+interpExpr (S.MethodExpr _ (S.Method (S.FunHeader _ts [] _mty) _bdy)) =
+    error $ "method declaration should accept at least one argument"
+
+
 interpExpr x = error $ "interpExpr: " ++ show x
 
 
@@ -196,6 +203,8 @@ freeVars' bs (S.Iden _ a)
 freeVars' bs (S.Block _ sts) = concatMap (freeVarsSt' bs) sts
 
 freeVars' bs (S.BinOp _ a _ b) = freeVars' bs a ++ freeVars' bs b
+
+freeVars' bs (S.DotExpr _ e _) = freeVars' bs e
 
 freeVars' _ e = error $ "freeVars': " ++ show e
 

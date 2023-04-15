@@ -86,6 +86,8 @@ type Runtime = ReaderT RuntimeState IO
 -- don't use the eq and show except for debugging
 data Value = Value Text Dynamic
            | VariantV Text [(Text, Value)]
+           | MethodV Value
+           -- todo: change nothing to a variant
            | VNothing
            | VFun ([Value] -> Runtime Value)
     --deriving (Show)
@@ -117,16 +119,18 @@ getMember v@(Value tyNm _ ) fld = do
                   <$> readIORef (rtFFITypes st))
     (tyMemberFn ty) fld v
 
-getMember (VariantV _ fs) fld = do
+getMember v@(VariantV _ fs) fld = do
     case lookup fld fs of
         Nothing -> error $ "field not found:" ++ T.unpack fld
-        Just v -> pure v
+        Just (MethodV v1) -> app v1 [v]
+        Just v1 -> pure v1
 
 getMember _ _ = error $ "get member on wrong sort of value"
 
 app :: Value -> [Value] -> Runtime Value
 app (VFun f) args = f args
     --([Value] -> Runtime Value) = undefined
+app (MethodV f) args = app f args
 app _ _ = error $ "app called on non function value"
 
 
