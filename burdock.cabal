@@ -50,6 +50,7 @@ executable burdock
                     , megaparsec
                     , mtl
                     , pretty-show
+                    , safe-exceptions 
     hs-source-dirs:   src/haskell/lib
                     , src/haskell/app
     default-language: Haskell2010

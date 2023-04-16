@@ -9,6 +9,9 @@ The interpreter takes syntax and calls functions in the runtime.
 Haskell ffi code uses function in the runtime too.
 
 -}
+
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Burdock.Runtime
     (Value(..)
@@ -32,6 +35,8 @@ module Burdock.Runtime
     ,captureClosure
     ,makeVariant
     ,variantTag
+    ,catchEither
+    ,throwValue
     
     ,withScope
     ,withNewEnv
@@ -71,6 +76,15 @@ import Data.IORef
     ,modifyIORef
     ,readIORef
     )
+
+import Control.Exception.Safe (catch
+                              ,SomeException
+                              ,Exception
+                              ,throwM
+                              --,catchAny
+                              --,fromException
+                              --,try
+                              )
 
 data RuntimeState
     = RuntimeState
@@ -201,3 +215,23 @@ data Type
 
 runBurdock :: RuntimeState -> Runtime a -> IO a
 runBurdock rt f = runReaderT f rt
+
+catchEither:: Runtime a -> Runtime (Either (Either Text Value) a)
+catchEither f =
+    catch' (catchValue (Right <$> f))
+  where
+    -- first try to catch a specific burdock value that was thrown
+    catchValue = flip catch $ \(ValueException v) -> pure $ Left $ Right v
+    -- then try to catch any haskell (non async) exception
+    catch' = flip catch $ \(e :: SomeException) -> pure $ Left $ Left $ T.pack $ show e
+
+throwValue :: Value -> Runtime a
+throwValue v = throwM $ ValueException v
+
+data RuntimeException = ValueException Value
+
+instance Show RuntimeException where
+    show (ValueException v) = "ValueException " ++ T.unpack (debugShowValue v)
+
+instance Exception RuntimeException
+

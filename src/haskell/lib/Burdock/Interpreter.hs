@@ -38,6 +38,8 @@ import Burdock.Runtime
     
     ,makeValue
     ,extractValue
+
+    ,catchEither
     --,makeFunctionValue
     --,Type(..)
     --,Scientific
@@ -83,6 +85,21 @@ interpExpr (I.RecordSel fs) = do
     -- todo: "record" has to be namespaced
     pure $ VariantV "record" vs
 
+interpExpr (I.RunTask tsk) = do
+    x <- catchEither $ interpExpr tsk
+    case x of
+        -- a left left of a string is an show'n arbitrary haskell exception
+        Left (Left e) -> do
+            left <- interpExpr (I.Iden "left")
+            app left [makeValue "string" e]
+        -- a left right v is a burdock value that has been raised from burdock
+        -- or ffi code
+        Left (Right v) -> do
+            left <- interpExpr (I.Iden "left")
+            app left [v]
+        Right v -> do
+            right <- interpExpr (I.Iden "right")
+            app right [v]
 
 interpExpr (I.App ef es) = do
     vs <- mapM interpExpr es
@@ -159,3 +176,4 @@ letExprs bs = do
 -- not duplicate a bunch of non-syntax syntax for the runtime
 letValues :: [(Text, Value)] -> Runtime ()
 letValues bs = forM_ bs $ \(nm,v) -> addBinding nm v
+

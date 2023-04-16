@@ -25,4 +25,6 @@ data Expr
     | IString Text
     | Iden Text
     | MethodExpr Expr
+    | RunTask Expr
     deriving (Eq,Show,Data)
+

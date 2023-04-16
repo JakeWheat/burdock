@@ -18,6 +18,7 @@ import Burdock.Runtime
     ,addBinding
 
     ,debugShowValue
+    ,throwValue
 
     ,makeList
     ,extractList
@@ -55,6 +56,7 @@ initRuntime = do
     addBinding "is-variant" =<< makeFunctionValue myIsVariant
     addBinding "debug-print" =<< makeFunctionValue myDebugPrint
     addBinding "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
+    addBinding "raise" =<< makeFunctionValue raise
 
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
@@ -240,3 +242,8 @@ checkVariantsEqual [flds, a, b] = do
             else pure $ makeValue "boolean" False
         _ -> pure $ makeValue "boolean" False
 checkVariantsEqual _ = error $ "bad args to checkVariantsEqual"
+
+raise :: [Value] -> Runtime Value
+raise [x] = throwValue x
+raise _ = error $ "bad args to raise"
+

@@ -150,6 +150,13 @@ desugarExpr (S.DotExpr _ e fld) =
 desugarExpr (S.RecordSel _ fs) =
     I.RecordSel $ map (\(a,b) -> (T.pack a, desugarExpr b)) fs
 
+-- what's the right way to find run-task, so it can be implemented
+-- differently at runtime from a regular function
+-- it has to be looked up in the environment. the desugarer should have
+-- the info to do this
+desugarExpr (S.App _ (S.Iden _ "run-task") [e]) =
+    I.RunTask $ desugarExpr e
+
 desugarExpr (S.App _ f es) =
     I.App (desugarExpr f) $ map desugarExpr es
 
