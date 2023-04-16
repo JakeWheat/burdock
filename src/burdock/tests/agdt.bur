@@ -1,6 +1,4 @@
 
-
-
 data Point:
   | pt(x, y)
 end
@@ -35,14 +33,12 @@ end
 t1 = pt1(1,2)
 t2 = pt2(3,4)
 
-
 check:
   t1 is pt1(1,2)
   t2 is pt2(3,4)
   t1 == pt1(3,4) is false
 end
 
-#|
 
 #fun pf(a,n):
 pf = lam(a,n):
@@ -73,7 +69,8 @@ data MyOption:
 end
 
 check:
-  fun f(a):
+  #fun f(a):
+  f = lam(a):
     cases a:
       | my-none => "none"
       | my-some(b) => "some" + tostring(b)
@@ -85,11 +82,14 @@ check:
   # y = my-some(1)
   # f(y) is "some1"
 end
+
  
 data BTree:
   | node(value #|:: Number|#, left #|:: BTree|#, right #|:: BTree|#)
   | leaf(value #|:: Number|#)
-where:
+end
+check:
+#where:
   a-btree = node(1, leaf(2), node(3, leaf(4), leaf(5)))
 
   is-BTree(a-btree) is true
@@ -109,5 +109,3 @@ where:
   a-btree.right.right.value is 5
 
 end
-
-|#

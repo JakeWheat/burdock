@@ -35,6 +35,7 @@ module Burdock.Runtime
     ,captureClosure
     ,makeVariant
     ,variantTag
+    ,variantFields
     ,catchEither
     ,throwValue
     
@@ -156,6 +157,10 @@ makeVariant n fs = pure $ VariantV n fs
 variantTag :: Value -> Runtime (Maybe Text)
 variantTag (VariantV nm _) = pure $ Just nm
 variantTag _ = pure Nothing -- error $ "non variant passed to variant tag"
+
+variantFields :: Value -> Runtime (Maybe [(Text, Value)])
+variantFields (VariantV _ flds) = pure $ Just flds
+variantFields _ = pure Nothing
 
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do

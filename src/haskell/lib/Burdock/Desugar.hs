@@ -201,16 +201,31 @@ desugarExpr (S.Construct _ ["list"] es) =
     desugarExpr $ S.App Nothing (S.Iden Nothing "make-list") es
 
 
+desugarExpr (S.Cases _ tst _ bs mels) =
+    let tst' = desugarExpr tst
+        bs' = flip map bs $ \(bm,_,bdy) -> (desugarBinding bm, desugarStmts bdy)
+        mels' = case mels of
+                    Nothing -> [] -- todo: insert explicit raise here
+                    Just bdy -> [(I.WildcardBinding, desugarStmts bdy)]
+    in I.Cases tst' (bs' ++ mels')
+      
+
+--                | Cases Expr [(Binding, [Stmt])]
+
 desugarExpr x = error $ "desugarExpr " ++ show x
 
 desugarBinding :: S.Binding -> I.Binding
 desugarBinding = \case
     S.NameBinding _ nm -> I.NameBinding $ T.pack nm
     S.ShadowBinding _ nm -> I.NameBinding $ T.pack nm
+    S.VariantBinding _ [vnm] bs -> I.VariantBinding (T.pack vnm) $ map desugarBinding bs
     x -> error $ "unsupported binding: " ++ show x
+    
     
 getBindingNames :: I.Binding -> [Text]
 getBindingNames (I.NameBinding nm) = [nm]
+getBindingNames I.WildcardBinding = []
+getBindingNames (I.VariantBinding _ bs) = concatMap getBindingNames bs
 
 freeVarsExpr :: [Text] -> I.Expr -> [Text]
 freeVarsExpr bs (I.Block sts) = freeVarsStmts bs sts

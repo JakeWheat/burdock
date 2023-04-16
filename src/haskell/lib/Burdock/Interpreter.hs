@@ -27,6 +27,9 @@ import Burdock.Runtime
     ,emptyRuntimeState
     --,addFFIType
 
+    ,variantTag
+    ,variantFields
+    
     ,getMember
     ,app
 
@@ -52,7 +55,9 @@ import Data.Text (Text)
 import qualified Data.Text as T
 
 import Burdock.DefaultRuntime (initRuntime)
-import Control.Monad (forM_)
+import Control.Monad
+    (forM_
+    ,when)
 
 interpBurdock :: [I.Stmt] -> IO Value
 interpBurdock ss = do
@@ -156,6 +161,18 @@ interpExpr (I.If cs els) =
                 Just e -> interpStmts e
     in m cs
 
+interpExpr (I.Cases e bs) = do
+    v <- interpExpr e
+    let f [] = error $ "internal error, cases fall through"
+        f ((b,bdy):bs') = do
+            b' <- tryApplyBinding b v
+            case b' of
+                Nothing -> f bs'
+                Just ls -> withScope $ do
+                    letSimple ls
+                    interpStmts bdy
+    f bs
+
 interpExpr (I.MethodExpr e) =
     MethodV <$> interpExpr e
     -- todo: need to check coding and user errors produce useful error messages
@@ -183,6 +200,10 @@ letValues bs = forM_ bs $ \(b,v) -> do
         Nothing -> error $ "couldn't bind " ++ T.unpack (debugShowValue v) ++ " to " ++ show b
         Just bs' -> mapM_ (uncurry addBinding) bs'
 
+letSimple :: [(Text, Value)] -> Runtime ()
+letSimple bs = mapM_ (uncurry addBinding) bs
+
+
 
 {-
 
@@ -197,4 +218,26 @@ tryApplyBinding :: I.Binding -> Value -> Runtime (Maybe [(Text,Value)])
 
 
 tryApplyBinding (I.NameBinding nm) v = pure $ Just [(nm,v)]
+tryApplyBinding I.WildcardBinding _ = pure $ Just []
+tryApplyBinding (I.VariantBinding vnm flds) v = do
+    -- check v is a variant
+    vt' <- variantTag v 
+    case vt' of
+        Nothing -> pure Nothing
+        Just vt ->
+            -- check it's tag matches vnm
+            if vt /= vnm
+            then pure Nothing
+            else do
+                vfs' <- maybe (error "impossible? tryApplyBinding I.VariantBinding variant fields Nothing") id
+                       <$> variantFields v
+                -- dirty hack
+                -- todo: generate something internal to be able to get the fields like this
+                let vfs = filter ((/="_equals") . fst) vfs'
+                -- check there's the right number of flds
+                when (length vfs /= length flds) $ error $ "wrong number of args to variant binding " ++ T.unpack vnm ++ " expected " ++ show (length vfs) ++ ", got " ++ show (length flds)
+                   ++ "\n" ++ show (flip map vfs $ \(n,v1)-> (n, debugShowValue v1), flds)
+                -- gather the tryapplies recursively for the v fields
+                x :: [Maybe [(Text, Value)]] <- mapM (uncurry tryApplyBinding) (zip flds $ map snd vfs)
+                pure (concat <$> sequence x)
 --tryApplyBinding _ = Nothing

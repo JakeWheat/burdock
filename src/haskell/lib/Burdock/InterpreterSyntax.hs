@@ -28,10 +28,13 @@ data Expr
     | Iden Text
     | MethodExpr Expr
     | RunTask Expr
+    | Cases Expr [(Binding, [Stmt])]
     deriving (Eq,Show,Data)
 
 
 data Binding
     = NameBinding Text
+    | WildcardBinding
+    | VariantBinding Text [Binding]
     deriving (Eq,Show,Data)
 
