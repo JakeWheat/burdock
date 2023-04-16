@@ -17,10 +17,15 @@ import Burdock.Runtime
     ,addFFIType
     ,addBinding
 
+    ,makeList
+    ,extractList
+
     ,getMember
     ,app
 
     ,makeValue
+    ,makeVariant
+    ,variantTag
     ,extractValue
     ,makeFunctionValue
     ,Type(..)
@@ -31,6 +36,7 @@ import Burdock.Runtime
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Control.Monad (when)
 
 initRuntime :: Runtime ()
 initRuntime = do
@@ -39,6 +45,9 @@ initRuntime = do
     addFFIType "boolean" (Type booleanFFI)
     addBinding "print" =<< makeFunctionValue myPrint
     addBinding "do-is-test" =<< makeFunctionValue doIsTest
+    addBinding "make-list" =<< makeFunctionValue myMakeList
+    addBinding "make-variant" =<< makeFunctionValue myMakeVariant
+    addBinding "is-variant" =<< makeFunctionValue myIsVariant
     
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
@@ -150,3 +159,41 @@ doIsTest [v1,v2, m1, m2] = do
 
 
 doIsTest _ = error $ "bad args to doIsTest"
+
+myMakeList :: [Value] -> Runtime Value
+myMakeList vs = pure $ makeList vs
+
+myMakeVariant :: [Value] -> Runtime Value
+myMakeVariant [nm, flds, es] = do
+    let t :: Text
+        t = maybe (error $ "bad args to make variant, first arg is not text")
+            id $ extractValue nm
+        flds' = maybe (error $ "bad args to make variant, second arg is not list")
+                id $ extractList flds
+        flds'' :: [Text]
+        flds'' = flip map flds' $ \f -> maybe (error $ "bad args to make variant, second arg has non string in list")
+                 id $ extractValue f
+        es' = maybe (error $ "bad args to make variant, third arg is not list")
+                id $ extractList es
+                                        
+    when (length es' /= length flds') $ error $ "wrong number of args to create variant " ++ T.unpack t
+    makeVariant t $ zip flds'' es'
+myMakeVariant _ = error $ "bad args to makeVariant"
+
+myIsVariant :: [Value] -> Runtime Value
+myIsVariant [nm, x] = do
+    
+    let nm' :: Text
+        nm' = maybe (error $ "bad args to is variant, first arg is not text")
+            id $ extractValue nm
+    x' <- variantTag x
+    case x' of
+        Nothing -> do
+            --liftIO $ putStrLn "wrong type"
+            pure $ makeValue "boolean" False
+        Just t -> do
+            --liftIO $ putStrLn $ "check " <> T.unpack nm' <> " " <> T.unpack t
+            pure $ makeValue "boolean" $ nm' == t
+        
+myIsVariant _ = error $ "bad args to myIsVariant"
+

@@ -21,6 +21,7 @@ import qualified Burdock.InterpreterSyntax as I
 import Data.Text (Text)
 import qualified Data.Text as T
 import Burdock.Pretty (prettyExpr)
+import Data.List (nub,sort)
 
 desugar :: S.Script -> [I.Stmt]
 desugar (S.Script ss) = desugarStmts ss
@@ -41,6 +42,51 @@ desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
     in desugarStmt (S.StmtExpr Nothing $ S.App Nothing (S.Iden Nothing "do-is-test") [e1,e2,m1,m2])
 
 desugarStmt (S.StmtExpr _ e) = [I.StmtExpr $ desugarExpr e]
+
+{-
+
+data decl desugars to:
+make function for each variant
+is-x function for each variant
+is-dat function
+support functions for cases
+support for dynamic type checks
+support for modules * syntax
+
+-}
+desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
+    desugarStmts $ concatMap varF vs ++ [isDat]
+  where
+    varF (S.VariantDecl _ vnm bs []) =
+        -- my-pt = lam(ps...) = make-variant("my-pt", [list:vnms...], [list:ps]) end
+        [if null bs
+         then letDecl vnm $ S.App n (S.Iden n "make-variant") [S.Text n vnm, lst [], lst []]
+         else let ps = map sbNm bs
+              in letDecl vnm $
+                 S.Lam n (fh $ map (S.NameBinding n) ps)
+            [S.StmtExpr n $
+             S.App n (S.Iden n "make-variant") [S.Text n vnm
+                                               , lst $ map (S.Text n) ps
+                                               , lst $ map (S.Iden n) ps]]
+        
+                 -- is-my-pt = lam(x): is-variant("my-pt", x) end
+        ,letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
+                                   S.App n (S.Iden n "is-variant")
+                                   [S.Text n vnm, S.Iden n "x"]]
+        ]
+    varF v = error $ "unsupported variant decl: " ++ show v
+    lst es = S.Construct n ["list"] es
+    callIs (S.VariantDecl _ vnm _ _) = S.App n (S.Iden n $ "is-" ++ vnm) [S.Iden n "x"]
+    isDat = letDecl ("is-" ++ dnm)
+            $ lam ["x"]
+           [S.StmtExpr n $ foldl1 orE $ map callIs vs]
+    sbNm (_,S.SimpleBinding _ _ nm _) = nm
+    n = Nothing
+    letDecl nm v = S.LetDecl n (mnm nm) v
+    lam as e = S.Lam n (fh $ map mnm as) e
+    fh as = S.FunHeader [] as Nothing
+    orE a b = S.BinOp n a "or" b
+    mnm x = S.NameBinding n x
 
 desugarStmt x = error $ "desugarStmt " ++ show x
 
@@ -65,7 +111,7 @@ desugarExpr (S.App _ f es) =
 desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
     let bdy' = desugarStmts bdy
         pnms = map simpleBindingName bs
-        fv = freeVarsStmts pnms bdy'
+        fv = nub $ sort $ freeVarsStmts pnms bdy'
     in I.Lam fv pnms bdy'
 desugarExpr (S.Text _ s) = I.IString $ T.pack s
 desugarExpr (S.Num _ s) = I.Num s
@@ -98,6 +144,10 @@ desugarExpr (S.Let _ bs e) =
         $ (map (\(b,e1) -> S.LetDecl Nothing b e1) bs) ++ e -- [S.StmtExpr Nothing e]
 desugarExpr (S.Parens _ e) = desugarExpr e
 
+desugarExpr (S.Construct _ ["list"] es) =
+    desugarExpr $ S.App Nothing (S.Iden Nothing "make-list") es
+
+
 desugarExpr x = error $ "desugarExpr " ++ show x
 
 simpleBindingName :: S.Binding -> Text
@@ -118,7 +168,12 @@ freeVarsExpr bs (I.Iden i) = if i `elem` bs
                              then []
                              else [i]
 
-freeVarsExpr _ e = error $ "freeVarsExpr': " ++ show e
+freeVarsExpr _bs (I.IString {}) = []
+freeVarsExpr bs (I.If ts els) =
+    concatMap (\(a,b) -> freeVarsExpr bs a ++ freeVarsStmts bs b) ts
+    ++ maybe [] (freeVarsStmts bs) els
+
+freeVarsExpr _ e = error $ "freeVarsExpr: " ++ show e
 
 
 freeVarsStmt :: [Text] -> I.Stmt -> [Text]

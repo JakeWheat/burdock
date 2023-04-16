@@ -28,11 +28,16 @@ module Burdock.Runtime
     ,Type(..)
     ,Env
     ,captureClosure
-
+    ,makeVariant
+    ,variantTag
+    
     ,withScope
     ,withNewEnv
     ,addBinding
     ,lookupBinding
+
+    ,makeList
+    ,extractList
 
     ,getMember
     ,app
@@ -89,6 +94,8 @@ data Value = Value Text Dynamic
            | MethodV Value
            -- todo: change nothing to a variant
            | VNothing
+           -- todo: change to variant, or something?
+           | VList [Value]
            | VFun ([Value] -> Runtime Value)
     --deriving (Show)
 
@@ -98,12 +105,26 @@ data Env = Env [(Text, Value)]
 makeValue :: Typeable a => Text -> a -> Value
 makeValue nm v = Value nm $ toDyn v
 
+makeList :: [Value] -> Value
+makeList = VList
+
+extractList :: Value -> Maybe [Value]
+extractList (VList vs) = Just vs
+extractList _ = Nothing
+
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v
 extractValue _x = error $ "can't extract value from something"
 
 makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
 makeFunctionValue f = pure $ VFun f
+
+makeVariant :: Text -> [(Text,Value)] -> Runtime Value
+makeVariant n fs = pure $ VariantV n fs
+
+variantTag :: Value -> Runtime (Maybe Text)
+variantTag (VariantV nm _) = pure $ Just nm
+variantTag _ = pure Nothing -- error $ "non variant passed to variant tag"
 
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do

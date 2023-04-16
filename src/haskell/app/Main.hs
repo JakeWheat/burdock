@@ -33,4 +33,6 @@ main = do
     forM_ args $ \fn -> do
         mySrc <- readFile fn
         let ast = either error id $ parseScript "" mySrc
-        void $ interpBurdock $ desugar ast
+            dast = desugar ast
+        --putStrLn $ ppShow dast
+        void $ interpBurdock dast 
