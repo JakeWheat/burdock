@@ -18,6 +18,9 @@ import Burdock.Parse (parseScript)
 import Burdock.Interpreter
     (interpBurdock)
 
+import Burdock.Desugar (desugar)
+
+
 import Control.Monad
     (void)
 
@@ -30,4 +33,4 @@ main = do
     forM_ args $ \fn -> do
         mySrc <- readFile fn
         let ast = either error id $ parseScript "" mySrc
-        void $ interpBurdock ast
+        void $ interpBurdock $ desugar ast

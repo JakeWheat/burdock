@@ -1,4 +1,5 @@
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.DefaultRuntime
     (initRuntime
     ) where
@@ -16,8 +17,8 @@ import Burdock.Runtime
     ,addFFIType
     ,addBinding
 
-    --,getMember
-    --,app
+    ,getMember
+    ,app
 
     ,makeValue
     ,extractValue
@@ -36,9 +37,9 @@ initRuntime = do
     addFFIType "number" (Type scientificFFI)
     addFFIType "string" (Type stringFFI)
     addFFIType "boolean" (Type booleanFFI)
-    f <- makeFunctionValue myPrint
-    addBinding "print" f
-
+    addBinding "print" =<< makeFunctionValue myPrint
+    addBinding "do-is-test" =<< makeFunctionValue doIsTest
+    
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
     addBinding "true" (makeValue "boolean" True)
@@ -127,3 +128,25 @@ myPrint [v] = do
     pure VNothing
 
 myPrint _ = error $ "bad args to myPrint"
+
+
+-- todo: this needs to be desugared completely differently to catch
+-- exceptions, etc.
+doIsTest :: [Value] -> Runtime Value
+doIsTest [v1,v2, m1, m2] = do
+
+    eqm <- getMember v1 "_equals" 
+    res <- app eqm [v2]
+    let res' = case extractValue res of
+                   Just (y :: Bool) -> y
+                   Nothing -> error $ "wrong return type for equals"
+    let f Nothing = "nothing"
+        f (Just t) = T.unpack t
+        m1' = f $ extractValue m1
+        m2' = f $ extractValue m2
+    
+    liftIO $ putStrLn $ (if res' then "PASS" else "FAIL") <> " " <> m1' <> " is " <> m2'
+    pure VNothing
+
+
+doIsTest _ = error $ "bad args to doIsTest"
