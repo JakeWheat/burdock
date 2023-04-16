@@ -9,7 +9,7 @@ The interpreter takes syntax and calls functions in the runtime.
 Haskell ffi code uses function in the runtime too.
 
 -}
-
+{-# LANGUAGE OverloadedStrings #-}
 module Burdock.Runtime
     (Value(..)
 
@@ -17,6 +17,8 @@ module Burdock.Runtime
     ,Runtime
     ,liftIO
     ,Scientific
+
+    ,debugShowValue
 
     ,RuntimeState
     ,emptyRuntimeState
@@ -98,6 +100,21 @@ data Value = Value Text Dynamic
            | VList [Value]
            | VFun ([Value] -> Runtime Value)
     --deriving (Show)
+
+debugShowValue :: Value -> Text
+debugShowValue (Value tg dn) = "Value " <> T.pack (show tg) <> " " <> T.pack (show dn)
+debugShowValue (VariantV tf fs) =
+    "VariantV " <> tf <> " " <> T.concat (map f fs)
+    where
+        f (nm,v) = nm <> " " <> debugShowValue v <> ","
+debugShowValue (MethodV v) = "MethodV " <> debugShowValue v
+debugShowValue VNothing = "VNothing"
+debugShowValue (VList vs)
+    = "VList " <> T.concat (map f vs)
+    where
+        f v = debugShowValue v <> ","
+debugShowValue (VFun {}) = "VFun {}"
+
 
 data Env = Env [(Text, Value)]
     --deriving Show

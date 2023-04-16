@@ -17,6 +17,8 @@ import Burdock.Runtime
     ,addFFIType
     ,addBinding
 
+    ,debugShowValue
+
     ,makeList
     ,extractList
 
@@ -48,6 +50,7 @@ initRuntime = do
     addBinding "make-list" =<< makeFunctionValue myMakeList
     addBinding "make-variant" =<< makeFunctionValue myMakeVariant
     addBinding "is-variant" =<< makeFunctionValue myIsVariant
+    addBinding "debug-print" =<< makeFunctionValue myDebugPrint
     
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
@@ -64,8 +67,8 @@ scientificFFI "_plus" v1 = do
     let f as = case as of
                    [v2] -> do
                        let n1 :: Scientific
-                           n1 = maybe (error "not a number") id $ extractValue v1
-                           n2 = maybe (error "not a number") id $ extractValue v2
+                           n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
+                           n2 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v2)) id $ extractValue v2
                        pure $ makeValue "number" $ n1 + n2
                    _ -> error $ "bad args to number plus"
     makeFunctionValue f
@@ -74,8 +77,8 @@ scientificFFI "_times" v1 = do
     let f as = case as of
                    [v2] -> do
                        let n1 :: Scientific
-                           n1 = maybe (error "not a number") id $ extractValue v1
-                           n2 = maybe (error "not a number") id $ extractValue v2
+                           n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
+                           n2 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v2)) id $ extractValue v2
                        pure $ makeValue "number" $ n1 * n2
                    _ -> error $ "bad args to number times"
     makeFunctionValue f
@@ -85,9 +88,12 @@ scientificFFI "_equals" v1 = do
     let f as = case as of
                    [v2] -> do
                        let n1 :: Scientific
-                           n1 = maybe (error "not a number") id $ extractValue v1
-                           n2 = maybe (error "not a number") id $ extractValue v2
-                       pure $ makeValue "boolean" $ n1 == n2
+                           n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
+                           mn2 = extractValue v2
+                       pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
+
+                       --    n2 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v2)) id $ extractValue v2
+                       --pure $ makeValue "boolean" $ n1 == n2
                    _ -> error $ "bad args to number equals"
     makeFunctionValue f
 scientificFFI m _ = error $ "unsupported field on number: " ++ T.unpack m
@@ -120,8 +126,8 @@ booleanFFI "_equals" v1 = do
                    [v2] -> do
                        let n1 :: Bool
                            n1 = maybe (error "not a boolean") id $ extractValue v1
-                           n2 = maybe (error "not a boolean") id $ extractValue v2
-                       pure $ makeValue "boolean" $ n1 == n2
+                           mn2 = extractValue v2
+                       pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
                    _ -> error $ "bad args to boolean equals"
     makeFunctionValue f
 booleanFFI m _ = error $ "unsupported field on boolean: " ++ T.unpack m
@@ -196,4 +202,10 @@ myIsVariant [nm, x] = do
             pure $ makeValue "boolean" $ nm' == t
         
 myIsVariant _ = error $ "bad args to myIsVariant"
+
+myDebugPrint :: [Value] -> Runtime Value
+myDebugPrint [x] = do
+    liftIO $ putStrLn $ T.unpack $ debugShowValue x
+    pure VNothing
+myDebugPrint _ = error $ "bad args to myDebugPrint"
 

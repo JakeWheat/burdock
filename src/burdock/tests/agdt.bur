@@ -1,4 +1,6 @@
 
+
+
 data Point:
   | pt(x, y)
 end
@@ -32,6 +34,8 @@ end
 
 t1 = pt1(1,2)
 t2 = pt2(3,4)
+
+#|
 
 #fun pf(a,n):
 pf = lam(a,n):
@@ -99,3 +103,4 @@ where:
 
 end
 
+|#
