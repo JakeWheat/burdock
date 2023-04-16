@@ -53,6 +53,17 @@ support functions for cases
 support for dynamic type checks
 support for modules * syntax
 
+how do you generate an _equals function?
+if the user supplies one, don't generate one
+otherwise, it should check if both sides are the same variant,
+  then check all the non method fields are the same (maybe also non
+  functions as well?)
+->
+check-variants-equal(on-fields :: list<string>,a,b)
+   check they are the same variant
+   then go through each given field and check it matches
+
+
 -}
 desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
     desugarStmts $ concatMap varF vs ++ [isDat]
@@ -60,14 +71,33 @@ desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
     varF (S.VariantDecl _ vnm bs []) =
         -- my-pt = lam(ps...) = make-variant("my-pt", [list:vnms...], [list:ps]) end
         [if null bs
-         then letDecl vnm $ S.App n (S.Iden n "make-variant") [S.Text n vnm, lst [], lst []]
+         then
+             let 
+             in letDecl vnm
+                $ S.App n (S.Iden n "make-variant")
+                [S.Text n vnm
+                , lst [S.Text n "_equals"]
+                , let eqm = S.MethodExpr n $ S.Method
+                            (fh $ map mnm ["a", "b"])
+                            [S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
+                                [S.Construct n ["list"] []
+                                , S.Iden n "a"
+                                , S.Iden n "b"]]
+                  in lst [eqm]
+                ]
          else let ps = map sbNm bs
-              in letDecl vnm $
-                 S.Lam n (fh $ map (S.NameBinding n) ps)
-            [S.StmtExpr n $
-             S.App n (S.Iden n "make-variant") [S.Text n vnm
-                                               , lst $ map (S.Text n) ps
-                                               , lst $ map (S.Iden n) ps]]
+              in letDecl vnm
+                 $ S.Lam n (fh $ map (S.NameBinding n) ps)
+                 [S.StmtExpr n $
+                  S.App n (S.Iden n "make-variant")
+                  [S.Text n vnm
+                  , lst $ map (S.Text n) ("_equals" : ps)
+                  , let eqm = S.MethodExpr n $ S.Method
+                            (fh $ map mnm ["a", "b"])
+                            [letDecl "flds" $ S.Construct n ["list"] $ map (S.Text n) ps
+                            ,S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
+                                [S.Iden n "flds", S.Iden n "a", S.Iden n "b"]]
+                    in lst (eqm : map (S.Iden n) ps)]]
         
                  -- is-my-pt = lam(x): is-variant("my-pt", x) end
         ,letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
@@ -169,18 +199,22 @@ freeVarsExpr bs (I.Iden i) = if i `elem` bs
                              else [i]
 
 freeVarsExpr _bs (I.IString {}) = []
+freeVarsExpr _bs (I.Num {}) = []
 freeVarsExpr bs (I.If ts els) =
     concatMap (\(a,b) -> freeVarsExpr bs a ++ freeVarsStmts bs b) ts
     ++ maybe [] (freeVarsStmts bs) els
 
+freeVarsExpr _bs (I.Lam fv _as _bdy) = fv
+freeVarsExpr bs (I.MethodExpr e) = freeVarsExpr bs e
+
 freeVarsExpr _ e = error $ "freeVarsExpr: " ++ show e
 
-
-freeVarsStmt :: [Text] -> I.Stmt -> [Text]
-
-freeVarsStmt bs (I.StmtExpr e) = freeVarsExpr bs e
-
-freeVarsStmt _bs st = error $ "freeVarsStmt': " ++ show st
-
 freeVarsStmts :: [Text] -> [I.Stmt] -> [Text]
-freeVarsStmts bs ss = concatMap (freeVarsStmt bs) ss
+freeVarsStmts _bs [] = []
+freeVarsStmts bs (I.StmtExpr e : ss) =
+    freeVarsExpr bs e ++ freeVarsStmts bs ss
+
+freeVarsStmts bs (I.LetDecl nm e : ss) =
+    freeVarsExpr bs e
+    ++ freeVarsStmts (nm : bs) ss
+

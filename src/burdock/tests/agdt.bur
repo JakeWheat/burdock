@@ -24,7 +24,7 @@ n1 = nowt
 check:
   is-Nowt(n1) is true
   is-nowt(n1) is true
-  #n1 is nowt
+  n1 is nowt
 end
 
 data Two:
@@ -34,6 +34,13 @@ end
 
 t1 = pt1(1,2)
 t2 = pt2(3,4)
+
+
+check:
+  t1 is pt1(1,2)
+  t2 is pt2(3,4)
+  t1 == pt1(3,4) is false
+end
 
 #|
 

@@ -38,7 +38,10 @@ import Burdock.Runtime
 import Data.Text (Text)
 import qualified Data.Text as T
 
-import Control.Monad (when)
+import Control.Monad
+    (when
+    ,forM
+    )
 
 initRuntime :: Runtime ()
 initRuntime = do
@@ -51,7 +54,8 @@ initRuntime = do
     addBinding "make-variant" =<< makeFunctionValue myMakeVariant
     addBinding "is-variant" =<< makeFunctionValue myIsVariant
     addBinding "debug-print" =<< makeFunctionValue myDebugPrint
-    
+    addBinding "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
+
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
     addBinding "true" (makeValue "boolean" True)
@@ -138,7 +142,7 @@ booleanFFI m _ = error $ "unsupported field on boolean: " ++ T.unpack m
 myPrint :: [Value] -> Runtime Value
 myPrint [v] = do
     case extractValue v of
-        Nothing -> error "wrong type passed to print"
+        Nothing -> liftIO $ putStrLn $ T.unpack (debugShowValue v)
         Just s -> liftIO $ putStrLn $ T.unpack s
     pure VNothing
 
@@ -209,3 +213,30 @@ myDebugPrint [x] = do
     pure VNothing
 myDebugPrint _ = error $ "bad args to myDebugPrint"
 
+checkVariantsEqual :: [Value] -> Runtime Value
+checkVariantsEqual [flds, a, b] = do
+    at <- variantTag a
+    bt <- variantTag b
+    let flds' = maybe (error "fields arg not list") id $  extractList flds
+    let (mflds'' :: [Maybe Text]) = map extractValue flds'
+        mflds''1 :: Maybe [Text ] = sequence mflds''
+    let flds'' = maybe (error $ "non string in field list for check variants equal") id mflds''1
+    case (at,bt) of
+        (Just at', Just bt') ->
+            if at' == bt'
+            then do
+                fsEq <- forM flds'' $ \f -> do
+                    va <- getMember a f
+                    vb <- getMember b f
+                    eqx <- getMember va "_equals" 
+                    app eqx [vb]
+                -- and together all the fsEq
+                let andEm [] = pure $ makeValue "boolean" True
+                    andEm (v:vs) = case extractValue v of
+                        Just True -> andEm vs
+                        Just False -> pure $ makeValue "boolean" False
+                        _ -> error $ "non boolean returned from _equals method"
+                andEm fsEq        
+            else pure $ makeValue "boolean" False
+        _ -> pure $ makeValue "boolean" False
+checkVariantsEqual _ = error $ "bad args to checkVariantsEqual"
