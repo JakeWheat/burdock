@@ -18,8 +18,8 @@ import Burdock.Parse (parseScript)
 import Burdock.Interpreter
     (interpBurdock)
 
-import Burdock.Desugar (desugar)
-
+import Burdock.Desugar (desugar, prelude)
+import qualified Data.Text as T
 
 import Control.Monad
     (void)
@@ -32,7 +32,7 @@ main = do
     args <- getArgs
     forM_ args $ \fn -> do
         mySrc <- readFile fn
-        let ast = either error id $ parseScript "" mySrc
+        let ast = either error id $ parseScript "" (T.unpack prelude <> mySrc)
             dast = desugar ast
         --putStrLn $ ppShow dast
         void $ interpBurdock dast 

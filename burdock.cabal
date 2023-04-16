@@ -46,7 +46,7 @@ executable burdock
                     , scientific
                     , prettyprinter
                     , text
-                    --, raw-strings-qq
+                    , raw-strings-qq
                     , megaparsec
                     , mtl
                     , pretty-show

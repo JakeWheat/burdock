@@ -12,8 +12,11 @@ checker run
 -}
 
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Burdock.Desugar
     (desugar
+    ,prelude
     ) where
 
 import qualified Burdock.Syntax as S
@@ -22,6 +25,18 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Burdock.Pretty (prettyExpr)
 import Data.List (nub,sort)
+
+import qualified Text.RawString.QQ as R
+
+-- temp hack
+prelude :: Text
+prelude = [R.r|
+data Eithee:
+  | left(v)
+  | right(v)
+end
+  |]
+
 
 desugar :: S.Script -> [I.Stmt]
 desugar (S.Script ss) = desugarStmts ss

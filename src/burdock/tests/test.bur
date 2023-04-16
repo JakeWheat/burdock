@@ -70,3 +70,11 @@ check "simple record":
   a.b is 2
   a.c is 33
 end
+
+
+check "temp prelude with either":
+
+  right(5) is right(5)
+  left('b') is left('b')
+
+end
