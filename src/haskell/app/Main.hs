@@ -22,14 +22,12 @@ import Control.Monad
     (void)
 
 import System.Environment (getArgs)
+import Control.Monad (forM_)
 
 main :: IO ()
 main = do
     args <- getArgs
-    let fn = case args of
-                    [x] -> x
-                    _ -> error $ "please pass name of script to test, got: " ++ show args
-    mySrc <- readFile fn
-    let ast = either error id $ parseScript "" mySrc
-    void $ interpBurdock ast
-    pure ()
+    forM_ args $ \fn -> do
+        mySrc <- readFile fn
+        let ast = either error id $ parseScript "" mySrc
+        void $ interpBurdock ast
