@@ -48,7 +48,7 @@ desugarStmt :: S.Stmt -> [I.Stmt]
 desugarStmt (S.Check _ _ ss) = desugarStmts ss
 
 desugarStmt (S.LetDecl _ b e) =
-    let nm = simpleBindingName b
+    let nm = desugarBinding b
     in [I.LetDecl nm $ desugarExpr e]
 
 desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
@@ -162,8 +162,9 @@ desugarExpr (S.App _ f es) =
 
 desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
     let bdy' = desugarStmts bdy
-        pnms = map simpleBindingName bs
-        fv = nub $ sort $ freeVarsStmts pnms bdy'
+        pnms = map desugarBinding bs
+        pnmsx = concatMap getBindingNames pnms
+        fv = nub $ sort $ freeVarsStmts pnmsx bdy'
     in I.Lam fv pnms bdy'
 desugarExpr (S.Text _ s) = I.IString $ T.pack s
 desugarExpr (S.Num _ s) = I.Num s
@@ -202,12 +203,14 @@ desugarExpr (S.Construct _ ["list"] es) =
 
 desugarExpr x = error $ "desugarExpr " ++ show x
 
-simpleBindingName :: S.Binding -> Text
-simpleBindingName = \case
-        S.NameBinding _ nm -> T.pack nm
-        S.ShadowBinding _ nm -> T.pack nm
-        x -> error $ "unsupported binding: " ++ show x
-
+desugarBinding :: S.Binding -> I.Binding
+desugarBinding = \case
+    S.NameBinding _ nm -> I.NameBinding $ T.pack nm
+    S.ShadowBinding _ nm -> I.NameBinding $ T.pack nm
+    x -> error $ "unsupported binding: " ++ show x
+    
+getBindingNames :: I.Binding -> [Text]
+getBindingNames (I.NameBinding nm) = [nm]
 
 freeVarsExpr :: [Text] -> I.Expr -> [Text]
 freeVarsExpr bs (I.Block sts) = freeVarsStmts bs sts
@@ -238,5 +241,6 @@ freeVarsStmts bs (I.StmtExpr e : ss) =
 
 freeVarsStmts bs (I.LetDecl nm e : ss) =
     freeVarsExpr bs e
-    ++ freeVarsStmts (nm : bs) ss
+    ++ let bbs = getBindingNames nm ++ bs
+       in freeVarsStmts bbs ss
 

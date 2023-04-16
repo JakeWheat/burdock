@@ -3,6 +3,7 @@
 module Burdock.InterpreterSyntax
     (Stmt(..)
     ,Expr(..)
+    ,Binding(..)
     ) where
 
 import Data.Text (Text)
@@ -10,7 +11,7 @@ import Burdock.Scientific (Scientific)
 import Data.Data (Data)
 
 data Stmt
-    = LetDecl Text Expr
+    = LetDecl Binding Expr
     | StmtExpr Expr
     deriving (Eq,Show,Data)
 
@@ -20,11 +21,17 @@ data Expr
     | DotExpr Expr Text
     | App Expr [Expr]
     | RecordSel [(Text,Expr)]
-    | Lam [Text] [Text] [Stmt]
+    -- free vars, param bindings, body
+    | Lam [Text] [Binding] [Stmt]
     | Num Scientific
     | IString Text
     | Iden Text
     | MethodExpr Expr
     | RunTask Expr
+    deriving (Eq,Show,Data)
+
+
+data Binding
+    = NameBinding Text
     deriving (Eq,Show,Data)
 

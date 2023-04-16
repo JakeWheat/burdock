@@ -39,6 +39,8 @@ import Burdock.Runtime
     ,makeValue
     ,extractValue
 
+    ,debugShowValue
+    
     ,catchEither
     --,makeFunctionValue
     --,Type(..)
@@ -162,7 +164,7 @@ interpExpr (I.MethodExpr e) =
 --interpExpr x = error $ "interpExpr: " ++ show x
 
 
-letExprs :: [(Text, I.Expr)] -> Runtime ()
+letExprs :: [(I.Binding, I.Expr)] -> Runtime ()
 letExprs bs = do
     bs' <- mapM (\(nm,e) -> (nm,) <$> interpExpr e) bs
     letValues bs'
@@ -174,6 +176,25 @@ letExprs bs = do
 -- runtime
 -- or create a separate helper module to keep syntax out of the runtime but
 -- not duplicate a bunch of non-syntax syntax for the runtime
-letValues :: [(Text, Value)] -> Runtime ()
-letValues bs = forM_ bs $ \(nm,v) -> addBinding nm v
+letValues :: [(I.Binding, Value)] -> Runtime ()
+letValues bs = forM_ bs $ \(b,v) -> do
+    mbs <- tryApplyBinding b v
+    case mbs of
+        Nothing -> error $ "couldn't bind " ++ T.unpack (debugShowValue v) ++ " to " ++ show b
+        Just bs' -> mapM_ (uncurry addBinding) bs'
 
+
+{-
+
+function which takes binding syntax, and a value, and returns just if they match,
+returning all the simple binding names and the corresponding values to apply
+as letdecls
+later it will also return the shadow-age of each binding
+
+-}
+
+tryApplyBinding :: I.Binding -> Value -> Runtime (Maybe [(Text,Value)])
+
+
+tryApplyBinding (I.NameBinding nm) v = pure $ Just [(nm,v)]
+--tryApplyBinding _ = Nothing
