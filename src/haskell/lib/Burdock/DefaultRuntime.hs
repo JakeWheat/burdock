@@ -38,6 +38,12 @@ initRuntime = do
     addFFIType "boolean" (Type booleanFFI)
     f <- makeFunctionValue myPrint
     addBinding "print" f
+
+    -- should true be a built in value (built into the runtime), or an ffi
+    -- value, or a agdt?
+    addBinding "true" (makeValue "boolean" True)
+    addBinding "false" (makeValue "boolean" False)
+   
     pure ()
 
 _stubType :: Text -> Text -> Value -> Runtime Value

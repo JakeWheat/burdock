@@ -86,6 +86,16 @@ interpStmt (S.StmtExpr _ e) = interpExpr e
 interpStmt s = error $ "interpStmt: " ++ show s
 
 interpExpr :: S.Expr -> Runtime Value
+
+-- desugaring if e1 then True else e2
+interpExpr (S.BinOp _ e1 "or" e2) =
+    interpExpr (S.If Nothing [(e1, [S.StmtExpr Nothing $ S.Iden Nothing "true"])] (Just [S.StmtExpr Nothing e2]))
+
+-- if e1 then e2 else False
+interpExpr (S.BinOp _ e1 "and" e2) =
+    interpExpr (S.If Nothing [(e1, [S.StmtExpr Nothing e2])] (Just [S.StmtExpr Nothing $ S.Iden Nothing "false"]))
+
+               
 interpExpr (S.BinOp _ e1 "+" e2) = do
     -- todo: move to desugar phase
     interpExpr $ S.App Nothing (S.DotExpr Nothing e1 "_plus") [e2]
@@ -132,13 +142,6 @@ interpExpr (S.Num _ n) =
 
 interpExpr (S.Text _ t) =
     pure $ makeValue "string" $ T.pack t
-
--- should true be a built in value (built into the runtime), or an ffi
--- value, or a agdt?
-interpExpr (S.Iden _ "true") = 
-    pure $ makeValue "boolean" True
-interpExpr (S.Iden _ "false") = 
-    pure $ makeValue "boolean" False
 
 interpExpr (S.Let _ bs e) = withScope $ do
     letExprs bs
