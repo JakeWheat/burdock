@@ -31,7 +31,7 @@ import qualified Text.RawString.QQ as R
 -- temp hack
 prelude :: Text
 prelude = [R.r|
-data Eithee:
+data Either:
   | left(v)
   | right(v)
 end

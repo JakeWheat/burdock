@@ -12,6 +12,10 @@ executes it on the runtime.
 {-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Interpreter
     (interpBurdock
+    ,createHandle
+    ,runBurdock
+    ,getTempTestsPass
+    ,liftIO
     ) where
 
 --import qualified Burdock.Syntax as S
@@ -20,7 +24,10 @@ import Burdock.Runtime
     (Value(..)
     ,runBurdock
     ,Runtime
-    --,liftIO
+    ,RuntimeState
+    ,getRuntimeState
+    ,getTempTestsPass
+    ,liftIO
 
     --,ffimethodapp
     --,RuntimeState
@@ -59,12 +66,15 @@ import Control.Monad
     (forM_
     ,when)
 
-interpBurdock :: [I.Stmt] -> IO Value
-interpBurdock ss = do
+createHandle :: IO RuntimeState
+createHandle = do
     st <- emptyRuntimeState
     runBurdock st $ do
         initRuntime
-        interpStmts ss
+        getRuntimeState
+
+interpBurdock :: [I.Stmt] -> Runtime Value
+interpBurdock ss = interpStmts ss
 
 interpStmts :: [I.Stmt] -> Runtime Value
 interpStmts [] = error "no statements"

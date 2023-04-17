@@ -25,6 +25,7 @@ module Burdock.Runtime
 
     ,RuntimeState
     ,emptyRuntimeState
+    ,getRuntimeState
     ,addFFIType
 
     ,makeFunctionValue
@@ -49,6 +50,9 @@ module Burdock.Runtime
 
     ,getMember
     ,app
+
+    ,setTempTestsPass
+    ,getTempTestsPass
 
     --,ffimethodapp
     ) where
@@ -76,6 +80,7 @@ import Data.IORef
     ,newIORef
     ,modifyIORef
     ,readIORef
+    ,writeIORef
     )
 
 import Control.Exception.Safe (catch
@@ -91,11 +96,12 @@ data RuntimeState
     = RuntimeState
     {rtFFITypes :: IORef [(Text,Type)]
     ,rtBindings :: IORef [(Text, Value)]
+    ,rtTempTestPass :: IORef Bool
     }
 
 emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
-    RuntimeState <$> newIORef [] <*> newIORef []
+    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef True
 
 addFFIType :: Text -> Type -> Runtime ()
 addFFIType nm ty = do
@@ -240,3 +246,15 @@ instance Show RuntimeException where
 
 instance Exception RuntimeException
 
+setTempTestsPass :: Bool -> Runtime ()
+setTempTestsPass x = do
+    st <- ask
+    liftIO $ writeIORef (rtTempTestPass st) x
+    
+getTempTestsPass :: Runtime Bool
+getTempTestsPass = do
+    st <- ask
+    liftIO $ readIORef (rtTempTestPass st)
+
+getRuntimeState :: Runtime RuntimeState
+getRuntimeState = ask

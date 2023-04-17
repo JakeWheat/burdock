@@ -10,6 +10,7 @@ import Burdock.Runtime
     --,runBurdock
     ,Runtime
     ,liftIO
+    ,setTempTestsPass
 
     --,ffimethodapp
     --,RuntimeState
@@ -167,6 +168,7 @@ doIsTest [v1,v2, m1, m2] = do
         m2' = f $ extractValue m2
     
     liftIO $ putStrLn $ (if res' then "PASS" else "FAIL") <> " " <> m1' <> " is " <> m2'
+    when (not res') $ setTempTestsPass False
     pure VNothing
 
 
