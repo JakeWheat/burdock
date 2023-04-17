@@ -27,6 +27,7 @@ module Burdock.Runtime
     ,emptyRuntimeState
     ,getRuntimeState
     ,addFFIType
+    
 
     ,makeFunctionValue
     ,makeValue
@@ -39,6 +40,8 @@ module Burdock.Runtime
     ,variantFields
     ,catchEither
     ,throwValue
+
+    ,getCallStack
     
     ,withScope
     ,withNewEnv
@@ -97,11 +100,12 @@ data RuntimeState
     {rtFFITypes :: IORef [(Text,Type)]
     ,rtBindings :: IORef [(Text, Value)]
     ,rtTempTestPass :: IORef Bool
+    ,rtCallStack :: IORef [Maybe Text]
     }
 
 emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
-    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef True
+    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef True <*> newIORef []
 
 addFFIType :: Text -> Type -> Runtime ()
 addFFIType nm ty = do
@@ -137,6 +141,11 @@ debugShowValue (VList vs)
 debugShowValue (VFun {}) = "VFun {}"
 
 
+getCallStack :: Runtime [Maybe Text]
+getCallStack = do
+    st <- ask
+    liftIO $ readIORef (rtCallStack st)
+
 data Env = Env [(Text, Value)]
     --deriving Show
 
@@ -152,7 +161,7 @@ extractList _ = Nothing
 
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v
-extractValue _x = error $ "can't extract value from something"
+extractValue x = error $ "can't extract value from " ++ T.unpack (debugShowValue x)
 
 makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
 makeFunctionValue f = pure $ VFun f
@@ -185,17 +194,36 @@ getMember v@(Value tyNm _ ) fld = do
 getMember v@(VariantV _ fs) fld = do
     case lookup fld fs of
         Nothing -> error $ "field not found:" ++ T.unpack fld
-        Just (MethodV v1) -> app v1 [v]
+        Just (MethodV v1) -> app Nothing v1 [v]
         Just v1 -> pure v1
 
 getMember _ _ = error $ "get member on wrong sort of value"
 
-app :: Value -> [Value] -> Runtime Value
-app (VFun f) args = f args
-    --([Value] -> Runtime Value) = undefined
-app (MethodV f) args = app f args
-app _ _ = error $ "app called on non function value"
+app :: Maybe Text -> Value -> [Value] -> Runtime Value
+app sourcePos (VFun f) args =
+    withCallstackEntry sourcePos $ f args
+app sp (MethodV f) args = app sp f args
+app _ _ _ = error $ "app called on non function value"
 
+-- the reason it's done like this, is because in the future,
+-- will be able to asynchronously exit another thread (using throwTo
+-- under the covers)
+-- and want the monitor message for a thread exiting this way to
+-- record the stack trace where the async exception was injected
+-- it's not a great design, but quick and will hopefully do the job
+-- well enough for now
+-- this is why it's vital not to use bracket
+-- run-task uses the same system to get the stack trace for an exception
+-- possibly a nicer design could be used if it was just synchronous
+-- run-task to support
+withCallstackEntry :: Maybe Text -> Runtime a -> Runtime a
+withCallstackEntry sourcePos f = do
+    st <- ask
+    -- oldCS <- liftIO $ readIORef (rtCallStack st)
+    liftIO $ modifyIORef (rtCallStack st) (sourcePos:)
+    r <- f
+    liftIO $ modifyIORef (rtCallStack st) tail
+    pure r
 
 withScope :: Runtime a -> Runtime a
 withScope f = do

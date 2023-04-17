@@ -1,0 +1,13 @@
+
+
+f123 = lam():  print(get-call-stack()) end
+
+g123 = lam(): f123() end
+
+h123 = lam(): g123() end
+
+f123()
+
+g123()
+
+h123()

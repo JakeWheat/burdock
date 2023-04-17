@@ -1,5 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 module Burdock.DefaultRuntime
     (initRuntime
     ) where
@@ -20,6 +21,8 @@ import Burdock.Runtime
 
     ,debugShowValue
     ,throwValue
+
+    ,getCallStack
 
     ,makeList
     ,extractList
@@ -58,6 +61,7 @@ initRuntime = do
     addBinding "debug-print" =<< makeFunctionValue myDebugPrint
     addBinding "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
     addBinding "raise" =<< makeFunctionValue raise
+    addBinding "get-call-stack" =<< makeFunctionValue myGetCallStack
 
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
@@ -158,7 +162,7 @@ doIsTest :: [Value] -> Runtime Value
 doIsTest [v1,v2, m1, m2] = do
 
     eqm <- getMember v1 "_equals" 
-    res <- app eqm [v2]
+    res <- app Nothing eqm [v2]
     let res' = case extractValue res of
                    Just (y :: Bool) -> y
                    Nothing -> error $ "wrong return type for equals"
@@ -233,7 +237,7 @@ checkVariantsEqual [flds, a, b] = do
                     va <- getMember a f
                     vb <- getMember b f
                     eqx <- getMember va "_equals" 
-                    app eqx [vb]
+                    app Nothing eqx [vb]
                 -- and together all the fsEq
                 let andEm [] = pure $ makeValue "boolean" True
                     andEm (v:vs) = case extractValue v of
@@ -249,3 +253,14 @@ raise :: [Value] -> Runtime Value
 raise [x] = throwValue x
 raise _ = error $ "bad args to raise"
 
+myGetCallStack :: [Value] -> Runtime Value
+myGetCallStack [] = do
+    cs <- getCallStack
+    let cs' = flip map cs $ \case
+            Nothing -> mt "nothing"
+            Just x -> mt x
+    pure $ makeList cs' -- makeValue "string" $ T.intercalate "," cs'
+  where
+    mt :: Text -> Value
+    mt = makeValue "string"
+myGetCallStack _ = error $ "bad args to myGetCallStack"

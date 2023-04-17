@@ -108,20 +108,20 @@ interpExpr (I.RunTask tsk) = do
         -- a left left of a string is an show'n arbitrary haskell exception
         Left (Left e) -> do
             left <- interpExpr (I.Iden "left")
-            app left [makeValue "string" e]
+            app Nothing left [makeValue "string" e]
         -- a left right v is a burdock value that has been raised from burdock
         -- or ffi code
         Left (Right v) -> do
             left <- interpExpr (I.Iden "left")
-            app left [v]
+            app Nothing left [v]
         Right v -> do
             right <- interpExpr (I.Iden "right")
-            app right [v]
+            app Nothing right [v]
 
-interpExpr (I.App ef es) = do
+interpExpr (I.App sp ef es) = do
     vs <- mapM interpExpr es
     f <- interpExpr ef
-    app f vs
+    app sp f vs
 
 interpExpr (I.Lam fvs bs bdy) = do
     env <- captureClosure fvs

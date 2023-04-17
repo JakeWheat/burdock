@@ -19,7 +19,8 @@ data Expr
     = Block [Stmt]
     | If [(Expr,[Stmt])] (Maybe [Stmt])
     | DotExpr Expr Text
-    | App Expr [Expr]
+    -- source pos, fn, args
+    | App (Maybe Text) Expr [Expr]
     | RecordSel [(Text,Expr)]
     -- free vars, param bindings, body
     | Lam [Text] [Binding] [Stmt]

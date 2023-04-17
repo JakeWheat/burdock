@@ -160,8 +160,8 @@ desugarExpr (S.RecordSel _ fs) =
 desugarExpr (S.App _ (S.Iden _ "run-task") [e]) =
     I.RunTask $ desugarExpr e
 
-desugarExpr (S.App _ f es) =
-    I.App (desugarExpr f) $ map desugarExpr es
+desugarExpr (S.App sp f es) =
+    I.App (Just $ T.pack $ show sp) (desugarExpr f) $ map desugarExpr es
 
 desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
     let bdy' = desugarStmts bdy
@@ -235,7 +235,7 @@ freeVarsExpr bs (I.Block sts) = freeVarsStmts bs sts
 
 freeVarsExpr bs (I.DotExpr e _) = freeVarsExpr bs e
 
-freeVarsExpr bs (I.App f es) = freeVarsExpr bs f ++ concatMap (freeVarsExpr bs) es
+freeVarsExpr bs (I.App _ f es) = freeVarsExpr bs f ++ concatMap (freeVarsExpr bs) es
 
 freeVarsExpr bs (I.Iden i) = if i `elem` bs
                              then []
