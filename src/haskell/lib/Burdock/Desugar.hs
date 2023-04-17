@@ -160,7 +160,10 @@ desugarExpr (S.App _ (S.Iden _ "run-task") [e]) =
     I.RunTask $ desugarExpr e
 
 desugarExpr (S.App sp f es) =
-    I.App (Just $ T.pack $ show sp) (desugarExpr f) $ map desugarExpr es
+    let spx = case sp of
+            Nothing -> "nothing"
+            Just (n,i,j) -> "(" <> T.pack n <> "," <> T.pack (show i) <> "," <> T.pack (show j) <> ")"
+    in I.App (Just spx) (desugarExpr f) $ map desugarExpr es
 
 desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
     let bdy' = desugarStmts bdy
