@@ -52,9 +52,12 @@ desugarStmt (S.LetDecl _ b e) =
     in [I.LetDecl nm $ desugarExpr e]
 
 desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
-    let m1 = S.Text Nothing $ prettyExpr e1
-        m2 = S.Text Nothing $ prettyExpr e2
-    in desugarStmt (S.StmtExpr Nothing $ S.App Nothing (S.Iden Nothing "do-is-test") [e1,e2,m1,m2])
+    let m1 = S.Text n $ prettyExpr e1
+        m2 = S.Text n $ prettyExpr e2
+        rt e = S.App n (S.Iden n "run-task") [e]
+    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-test") [rt e1,rt e2,m1,m2])
+  where
+    n = Nothing
 
 desugarStmt (S.StmtExpr _ e) = [I.StmtExpr $ desugarExpr e]
 

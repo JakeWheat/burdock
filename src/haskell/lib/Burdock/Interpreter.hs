@@ -229,6 +229,7 @@ tryApplyBinding (I.VariantBinding vnm flds) v = do
             if vt /= vnm
             then pure Nothing
             else do
+                -- todo: use a single function that gets the tag and the fields as a maybe
                 vfs' <- maybe (error "impossible? tryApplyBinding I.VariantBinding variant fields Nothing") id
                        <$> variantFields v
                 -- dirty hack
