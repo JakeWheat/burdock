@@ -251,6 +251,7 @@ freeVarsExpr bs (I.If ts els) =
 
 freeVarsExpr _bs (I.Lam fv _as _bdy) = fv
 freeVarsExpr bs (I.MethodExpr e) = freeVarsExpr bs e
+freeVarsExpr bs (I.RunTask e) = "left" : "right" : freeVarsExpr bs e
 
 freeVarsExpr _ e = error $ "freeVarsExpr: " ++ show e
 

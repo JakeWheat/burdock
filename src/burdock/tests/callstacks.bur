@@ -1,13 +1,19 @@
 
 
-f123 = lam():  print(get-call-stack()) end
+f = lam(x): get-call-stack().length() is x end
 
-g123 = lam(): f123() end
+g = lam(x): f(x) end
 
-h123 = lam(): g123() end
+h = lam(x): g(x) end
 
-f123()
 
-g123()
+check "get call stack":
+  l = get-call-stack().length()
+  f(l + 1)
+  get-call-stack().length() is l
+  g(l + 2)
+  get-call-stack().length() is l
+  h(l + 3)
+  get-call-stack().length() is l
 
-h123()
+end

@@ -226,6 +226,10 @@ getMember (VList es) "_torepr" = do
         let txt = "[list: " <> T.intercalate ", " strs <> "]"
         pure $ makeValue "string" txt)
 
+getMember (VList es) "length" = do
+    makeFunctionValue (\_ -> do
+        pure $ makeValue "number" ((fromIntegral $ length es) :: Scientific))
+
 getMember v _ = error $ "get member on wrong sort of value: " ++ T.unpack (debugShowValue v)
 
 app :: Maybe Text -> Value -> [Value] -> Runtime Value
