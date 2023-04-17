@@ -12,7 +12,6 @@ checker run
 -}
 
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE QuasiQuotes #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Burdock.Desugar
     (desugar
@@ -26,17 +25,7 @@ import qualified Data.Text as T
 import Burdock.Pretty (prettyExpr)
 import Data.List (nub,sort)
 
-import qualified Text.RawString.QQ as R
-
--- temp hack
-prelude :: Text
-prelude = [R.r|
-data Either:
-  | left(v)
-  | right(v)
-end
-  |]
-
+import Burdock.DefaultRuntime (prelude)
 
 desugar :: S.Script -> [I.Stmt]
 desugar (S.Script ss) = desugarStmts ss
@@ -94,14 +83,19 @@ desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
              in letDecl vnm
                 $ S.App n (S.Iden n "make-variant")
                 [S.Text n vnm
-                , lst [S.Text n "_equals"]
+                , lst [S.Text n "_equals", S.Text n "_torepr"]
                 , let eqm = S.MethodExpr n $ S.Method
                             (fh $ map mnm ["a", "b"])
                             [S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
                                 [S.Construct n ["list"] []
                                 , S.Iden n "a"
                                 , S.Iden n "b"]]
-                  in lst [eqm]
+                      trm = S.MethodExpr n $ S.Method
+                            (fh $ map mnm ["a"])
+                            [S.StmtExpr n $ S.App n (S.Iden n "show-variant")
+                                [S.Iden n "a"]
+                            ]
+                  in lst [eqm,trm]
                 ]
          else let ps = map sbNm bs
               in letDecl vnm
@@ -109,13 +103,18 @@ desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
                  [S.StmtExpr n $
                   S.App n (S.Iden n "make-variant")
                   [S.Text n vnm
-                  , lst $ map (S.Text n) ("_equals" : ps)
+                  , lst $ map (S.Text n) ("_equals" : "_torepr" : ps)
                   , let eqm = S.MethodExpr n $ S.Method
                             (fh $ map mnm ["a", "b"])
                             [letDecl "flds" $ S.Construct n ["list"] $ map (S.Text n) ps
                             ,S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
                                 [S.Iden n "flds", S.Iden n "a", S.Iden n "b"]]
-                    in lst (eqm : map (S.Iden n) ps)]]
+                        trm = S.MethodExpr n $ S.Method
+                            (fh $ map mnm ["a"])
+                            [S.StmtExpr n $ S.App n (S.Iden n "show-variant")
+                                [S.Iden n "a"]
+                            ]    
+                    in lst (eqm : trm : map (S.Iden n) ps)]]
         
                  -- is-my-pt = lam(x): is-variant("my-pt", x) end
         ,letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $

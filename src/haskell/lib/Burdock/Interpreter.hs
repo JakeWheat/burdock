@@ -244,7 +244,7 @@ tryApplyBinding (I.VariantBinding vnm flds) v = do
                        <$> variantFields v
                 -- dirty hack
                 -- todo: generate something internal to be able to get the fields like this
-                let vfs = filter ((/="_equals") . fst) vfs'
+                let vfs = filter ((`notElem` ["_equals", "_torepr"]) . fst) vfs'
                 -- check there's the right number of flds
                 when (length vfs /= length flds) $ error $ "wrong number of args to variant binding " ++ T.unpack vnm ++ " expected " ++ show (length vfs) ++ ", got " ++ show (length flds)
                    ++ "\n" ++ show (flip map vfs $ \(n,v1)-> (n, debugShowValue v1), flds)

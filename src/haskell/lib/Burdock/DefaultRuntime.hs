@@ -1,8 +1,10 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE QuasiQuotes #-}
 module Burdock.DefaultRuntime
     (initRuntime
+    ,prelude
     ) where
 
 --import qualified Burdock.Syntax as S
@@ -22,6 +24,8 @@ import Burdock.Runtime
     ,debugShowValue
     ,throwValue
 
+    ,nothingValue
+
     ,getCallStack
 
     ,makeList
@@ -33,6 +37,7 @@ import Burdock.Runtime
     ,makeValue
     ,makeVariant
     ,variantTag
+    ,variantFields
     ,extractValue
     ,makeFunctionValue
     ,Type(..)
@@ -42,11 +47,25 @@ import Burdock.Runtime
 --import Burdock.Pretty (prettyExpr)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Text.RawString.QQ as R
+
+import Burdock.Scientific (showScientific)
 
 import Control.Monad
     (when
     ,forM
     )
+
+-- temp hack
+prelude :: Text
+prelude = [R.r|
+
+data Either:
+  | left(v)
+  | right(v)
+end
+  |]
+
 
 initRuntime :: Runtime ()
 initRuntime = do
@@ -62,6 +81,10 @@ initRuntime = do
     addBinding "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
     addBinding "raise" =<< makeFunctionValue raise
     addBinding "get-call-stack" =<< makeFunctionValue myGetCallStack
+    addBinding "torepr" =<< makeFunctionValue myToRepr
+    addBinding "tostring" =<< makeFunctionValue myToString
+    addBinding "nothing" nothingValue
+    addBinding "show-variant" =<< makeFunctionValue showVariant
 
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
@@ -74,6 +97,16 @@ _stubType :: Text -> Text -> Value -> Runtime Value
 _stubType nm m _ = error $ "called method " ++ T.unpack m ++ " on type " ++ T.unpack nm
 
 scientificFFI :: Text -> Value -> Runtime Value
+scientificFFI "_torepr" v1 = do
+    let f as = case as of
+                   [] -> do
+                       let n1 :: Scientific
+                           n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
+                       pure $ makeValue "string" $ T.pack $ showScientific n1
+                       --pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
+                   _ -> error $ "bad args to number _torepr"
+    makeFunctionValue f
+
 scientificFFI "_plus" v1 = do
     let f as = case as of
                    [v2] -> do
@@ -102,9 +135,6 @@ scientificFFI "_equals" v1 = do
                            n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
                            mn2 = extractValue v2
                        pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
-
-                       --    n2 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v2)) id $ extractValue v2
-                       --pure $ makeValue "boolean" $ n1 == n2
                    _ -> error $ "bad args to number equals"
     makeFunctionValue f
 scientificFFI m _ = error $ "unsupported field on number: " ++ T.unpack m
@@ -129,9 +159,29 @@ stringFFI "_equals" v1 = do
                        pure $ makeValue "boolean" $ n1 == n2
                    _ -> error $ "bad args to string equals"
     makeFunctionValue f
+stringFFI "_torepr" v1 = do
+    let f as = case as of
+                   [] -> do
+                       let n1 :: Text
+                           n1 = maybe (error $ "not a string " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
+                       pure $ makeValue "string" $ T.pack $ show n1
+                       --pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
+                   _ -> error $ "bad args to number _torepr"
+    makeFunctionValue f
+
 stringFFI m _ = error $ "unsupported field on string: " ++ T.unpack m
 
 booleanFFI :: Text -> Value -> Runtime Value
+booleanFFI "_torepr" v1 = do
+    let f as = case as of
+                   [] -> do
+                       let n1 :: Bool
+                           n1 = maybe (error "not a boolean") id $ extractValue v1
+                       pure $ makeValue "string" $ if n1 then ("true" :: Text) else "false"
+                   _ -> error $ "bad args to boolean equals"
+    makeFunctionValue f
+
+
 booleanFFI "_equals" v1 = do
     let f as = case as of
                    [v2] -> do
@@ -143,18 +193,14 @@ booleanFFI "_equals" v1 = do
     makeFunctionValue f
 booleanFFI m _ = error $ "unsupported field on boolean: " ++ T.unpack m
 
-
-
-
 myPrint :: [Value] -> Runtime Value
 myPrint [v] = do
-    case extractValue v of
+    t <- myToString [v]
+    case extractValue t of
         Nothing -> liftIO $ putStrLn $ T.unpack (debugShowValue v)
         Just s -> liftIO $ putStrLn $ T.unpack s
     pure VNothing
-
 myPrint _ = error $ "bad args to myPrint"
-
 
 -- todo: this needs to be desugared completely differently to catch
 -- exceptions, etc.
@@ -264,3 +310,40 @@ myGetCallStack [] = do
     mt :: Text -> Value
     mt = makeValue "string"
 myGetCallStack _ = error $ "bad args to myGetCallStack"
+
+myToRepr :: [Value] -> Runtime Value
+myToRepr [x] = do
+    tf <- getMember x "_torepr" 
+    app Nothing tf []
+myToRepr _ = error $ "bad args to myToRepr"
+
+myToString :: [Value] -> Runtime Value
+myToString [x] = do
+    case extractValue x of
+        Just (_ :: Text) -> pure x
+        Nothing -> myToRepr[x]
+myToString _ = error $ "bad args to myToString"
+
+showVariant :: [Value] -> Runtime Value
+showVariant [x] = do
+    at <- variantTag x
+    bt <- variantFields x
+    let trm e = do
+            f <- getMember e "_torepr"
+            app Nothing f []
+    case (at,bt) of
+        (Just n, Just fs) -> do
+            -- hack
+            let fs' = map snd $ filter ((`notElem` ["_equals", "_torepr"]) . fst) fs
+            fs'' <- mapM trm fs'
+            let (es :: [Maybe Text]) = map extractValue fs''
+            let es' :: [Text]
+                es' = maybe (error "showvariant non string from torepr") id $ sequence es
+            --liftIO $ putStrLn $ show es'
+            pure $ if null es'
+                   then makeValue "string" $ n
+                   else makeValue "string" $ n <> "(" <> T.intercalate ", " es' <> ")"
+        _ -> error $ "show variant called on non variant " ++ T.unpack (debugShowValue x)
+    
+showVariant _ = error $ "bad args to showVariant"
+

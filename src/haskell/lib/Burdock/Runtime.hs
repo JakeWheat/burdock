@@ -27,7 +27,6 @@ module Burdock.Runtime
     ,emptyRuntimeState
     ,getRuntimeState
     ,addFFIType
-    
 
     ,makeFunctionValue
     ,makeValue
@@ -40,6 +39,9 @@ module Burdock.Runtime
     ,variantFields
     ,catchEither
     ,throwValue
+
+    -- temp, should only be used for the binding in the default env
+    ,nothingValue
 
     ,getCallStack
     
@@ -161,7 +163,10 @@ extractList _ = Nothing
 
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v
-extractValue x = error $ "can't extract value from " ++ T.unpack (debugShowValue x)
+extractValue _x = Nothing -- error $ "can't extract value from " ++ T.unpack (debugShowValue x)
+
+nothingValue :: Value
+nothingValue = VNothing
 
 makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
 makeFunctionValue f = pure $ VFun f
@@ -193,11 +198,35 @@ getMember v@(Value tyNm _ ) fld = do
 
 getMember v@(VariantV _ fs) fld = do
     case lookup fld fs of
-        Nothing -> error $ "field not found:" ++ T.unpack fld
+        Nothing -> error $ "field not found:" ++ T.unpack fld ++ ", " ++ T.unpack (debugShowValue v)
         Just (MethodV v1) -> app Nothing v1 [v]
         Just v1 -> pure v1
 
-getMember _ _ = error $ "get member on wrong sort of value"
+getMember (MethodV {}) "_torepr" = do
+    let v = makeValue "string" ("<method>" :: Text)
+    makeFunctionValue (\_ -> pure v)
+    --pure $ makeValue "string" ("<methodv>" :: Text)
+getMember (VFun {}) "_torepr" = do
+    let v = makeValue "string" ("<function>" :: Text)
+    makeFunctionValue (\_ -> pure v)
+
+getMember (VNothing) "_torepr" = do
+    let v = makeValue "string" ("nothing" :: Text)
+    makeFunctionValue (\_ -> pure v)
+
+
+getMember (VList es) "_torepr" = do
+    let trf e = do
+            f <- getMember e "_torepr"
+            v <- app Nothing f []
+            pure $ maybe (error $ "non string from to _torepr: " ++ T.unpack (debugShowValue e) ++ " " ++ T.unpack (debugShowValue v)) id $ extractValue v
+
+    makeFunctionValue (\_ -> do
+        strs <- mapM trf es
+        let txt = "[list: " <> T.intercalate ", " strs <> "]"
+        pure $ makeValue "string" txt)
+
+getMember v _ = error $ "get member on wrong sort of value: " ++ T.unpack (debugShowValue v)
 
 app :: Maybe Text -> Value -> [Value] -> Runtime Value
 app sourcePos (VFun f) args =
