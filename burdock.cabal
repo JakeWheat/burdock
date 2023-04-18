@@ -39,6 +39,7 @@ executable burdock
                       Burdock.Interpreter
                       Burdock.InterpreterSyntax
                       Burdock.Desugar
+                      Burdock.Utils
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

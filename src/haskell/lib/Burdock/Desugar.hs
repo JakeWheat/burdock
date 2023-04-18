@@ -18,6 +18,10 @@ module Burdock.Desugar
     ,prelude
     ) where
 
+import Prelude hiding (error, putStrLn, show)
+import Burdock.Utils (error, show)
+--import Data.Text.IO (putStrLn)
+
 import qualified Burdock.Syntax as S
 import qualified Burdock.InterpreterSyntax as I
 import Data.Text (Text)
@@ -121,7 +125,7 @@ desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
                                    S.App n (S.Iden n "is-variant")
                                    [S.Text n vnm, S.Iden n "x"]]
         ]
-    varF v = error $ "unsupported variant decl: " ++ show v
+    varF v = error $ "unsupported variant decl: " <> show v
     lst es = S.Construct n ["list"] es
     callIs (S.VariantDecl _ vnm _ _) = S.App n (S.Iden n $ "is-" ++ vnm) [S.Iden n "x"]
     isDat = letDecl ("is-" ++ dnm)
@@ -135,7 +139,7 @@ desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
     orE a b = S.BinOp n a "or" b
     mnm x = S.NameBinding n x
 
-desugarStmt x = error $ "desugarStmt " ++ show x
+desugarStmt x = error $ "desugarStmt " <> show x
 
 desugarExpr :: S.Expr -> I.Expr
 
@@ -162,7 +166,7 @@ desugarExpr (S.App _ (S.Iden _ "run-task") [e]) =
 desugarExpr (S.App sp f es) =
     let spx = case sp of
             Nothing -> "nothing"
-            Just (n,i,j) -> "(" <> T.pack n <> "," <> T.pack (show i) <> "," <> T.pack (show j) <> ")"
+            Just (n,i,j) -> "(" <> T.pack n <> "," <> show i <> "," <> show j <> ")"
     in I.App (Just spx) (desugarExpr f) $ map desugarExpr es
 
 desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
@@ -217,14 +221,14 @@ desugarExpr (S.Cases _ tst _ bs mels) =
 
 --                | Cases Expr [(Binding, [Stmt])]
 
-desugarExpr x = error $ "desugarExpr " ++ show x
+desugarExpr x = error $ "desugarExpr " <> show x
 
 desugarBinding :: S.Binding -> I.Binding
 desugarBinding = \case
     S.NameBinding _ nm -> I.NameBinding $ T.pack nm
     S.ShadowBinding _ nm -> I.NameBinding $ T.pack nm
     S.VariantBinding _ [vnm] bs -> I.VariantBinding (T.pack vnm) $ map desugarBinding bs
-    x -> error $ "unsupported binding: " ++ show x
+    x -> error $ "unsupported binding: " <> show x
     
     
 getBindingNames :: I.Binding -> [Text]
@@ -253,7 +257,7 @@ freeVarsExpr _bs (I.Lam fv _as _bdy) = fv
 freeVarsExpr bs (I.MethodExpr e) = freeVarsExpr bs e
 freeVarsExpr bs (I.RunTask e) = "left" : "right" : freeVarsExpr bs e
 
-freeVarsExpr _ e = error $ "freeVarsExpr: " ++ show e
+freeVarsExpr _ e = error $ "freeVarsExpr: " <> show e
 
 freeVarsStmts :: [Text] -> [I.Stmt] -> [Text]
 freeVarsStmts _bs [] = []

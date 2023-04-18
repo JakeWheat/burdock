@@ -18,6 +18,10 @@ module Burdock.Interpreter
     ,liftIO
     ) where
 
+import Prelude hiding (error, putStrLn, show)
+import Burdock.Utils (error, show)
+--import Data.Text.IO (putStrLn)
+
 --import qualified Burdock.Syntax as S
 import qualified Burdock.InterpreterSyntax as I
 import Burdock.Runtime
@@ -59,7 +63,7 @@ import Burdock.Runtime
 
 --import Burdock.Pretty (prettyExpr)
 import Data.Text (Text)
-import qualified Data.Text as T
+--import qualified Data.Text as T
 
 import Burdock.DefaultRuntime (initRuntime)
 import Control.Monad
@@ -151,7 +155,7 @@ interpExpr (I.IString t) =
 interpExpr (I.Iden nm) = do
     b <- lookupBinding nm
     case b of
-        Nothing -> error $ "binding not found: " ++ T.unpack nm
+        Nothing -> error $ "binding not found: " <> nm
         Just v -> pure v
 
 interpExpr (I.Block sts) = withScope $ interpStmts sts
@@ -207,7 +211,7 @@ letValues :: [(I.Binding, Value)] -> Runtime ()
 letValues bs = forM_ bs $ \(b,v) -> do
     mbs <- tryApplyBinding b v
     case mbs of
-        Nothing -> error $ "couldn't bind " ++ T.unpack (debugShowValue v) ++ " to " ++ show b
+        Nothing -> error $ "couldn't bind " <> debugShowValue v <> " to " <> show b
         Just bs' -> mapM_ (uncurry addBinding) bs'
 
 letSimple :: [(Text, Value)] -> Runtime ()
@@ -246,8 +250,8 @@ tryApplyBinding (I.VariantBinding vnm flds) v = do
                 -- todo: generate something internal to be able to get the fields like this
                 let vfs = filter ((`notElem` ["_equals", "_torepr"]) . fst) vfs'
                 -- check there's the right number of flds
-                when (length vfs /= length flds) $ error $ "wrong number of args to variant binding " ++ T.unpack vnm ++ " expected " ++ show (length vfs) ++ ", got " ++ show (length flds)
-                   ++ "\n" ++ show (flip map vfs $ \(n,v1)-> (n, debugShowValue v1), flds)
+                when (length vfs /= length flds) $ error $ "wrong number of args to variant binding " <> vnm <> " expected " <> show (length vfs) <> ", got " <> show (length flds)
+                   <> "\n" <> show (flip map vfs $ \(n,v1)-> (n, debugShowValue v1), flds)
                 -- gather the tryapplies recursively for the v fields
                 x :: [Maybe [(Text, Value)]] <- mapM (uncurry tryApplyBinding) (zip flds $ map snd vfs)
                 pure (concat <$> sequence x)

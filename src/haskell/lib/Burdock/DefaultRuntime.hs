@@ -7,6 +7,10 @@ module Burdock.DefaultRuntime
     ,prelude
     ) where
 
+import Prelude hiding (error, putStrLn)
+import Burdock.Utils (error)
+import Data.Text.IO (putStrLn)
+
 --import qualified Burdock.Syntax as S
 import Burdock.Runtime
     (Value(..)
@@ -94,14 +98,14 @@ initRuntime = do
     pure ()
 
 _stubType :: Text -> Text -> Value -> Runtime Value
-_stubType nm m _ = error $ "called method " ++ T.unpack m ++ " on type " ++ T.unpack nm
+_stubType nm m _ = error $ "called method " <> m <> " on type " <> nm
 
 scientificFFI :: Text -> Value -> Runtime Value
 scientificFFI "_torepr" v1 = do
     let f as = case as of
                    [] -> do
                        let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
+                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
                        pure $ makeValue "string" $ T.pack $ showScientific n1
                        --pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
                    _ -> error $ "bad args to number _torepr"
@@ -111,8 +115,8 @@ scientificFFI "_plus" v1 = do
     let f as = case as of
                    [v2] -> do
                        let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
-                           n2 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v2)) id $ extractValue v2
+                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
+                           n2 = maybe (error $ "not a number " <> debugShowValue v2) id $ extractValue v2
                        pure $ makeValue "number" $ n1 + n2
                    _ -> error $ "bad args to number plus"
     makeFunctionValue f
@@ -121,8 +125,8 @@ scientificFFI "_times" v1 = do
     let f as = case as of
                    [v2] -> do
                        let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
-                           n2 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v2)) id $ extractValue v2
+                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
+                           n2 = maybe (error $ "not a number " <> debugShowValue v2) id $ extractValue v2
                        pure $ makeValue "number" $ n1 * n2
                    _ -> error $ "bad args to number times"
     makeFunctionValue f
@@ -132,12 +136,12 @@ scientificFFI "_equals" v1 = do
     let f as = case as of
                    [v2] -> do
                        let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
+                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
                            mn2 = extractValue v2
                        pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
                    _ -> error $ "bad args to number equals"
     makeFunctionValue f
-scientificFFI m _ = error $ "unsupported field on number: " ++ T.unpack m
+scientificFFI m _ = error $ "unsupported field on number: " <> m
 
 
 stringFFI :: Text -> Value -> Runtime Value
@@ -163,13 +167,13 @@ stringFFI "_torepr" v1 = do
     let f as = case as of
                    [] -> do
                        let n1 :: Text
-                           n1 = maybe (error $ "not a string " ++ T.unpack (debugShowValue v1)) id $ extractValue v1
+                           n1 = maybe (error $ "not a string " <> debugShowValue v1) id $ extractValue v1
                        pure $ makeValue "string" $ T.pack $ show n1
                        --pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
                    _ -> error $ "bad args to number _torepr"
     makeFunctionValue f
 
-stringFFI m _ = error $ "unsupported field on string: " ++ T.unpack m
+stringFFI m _ = error $ "unsupported field on string: " <> m
 
 booleanFFI :: Text -> Value -> Runtime Value
 booleanFFI "_torepr" v1 = do
@@ -191,14 +195,14 @@ booleanFFI "_equals" v1 = do
                        pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
                    _ -> error $ "bad args to boolean equals"
     makeFunctionValue f
-booleanFFI m _ = error $ "unsupported field on boolean: " ++ T.unpack m
+booleanFFI m _ = error $ "unsupported field on boolean: " <> m
 
 myPrint :: [Value] -> Runtime Value
 myPrint [v] = do
     t <- myToString [v]
     case extractValue t of
-        Nothing -> liftIO $ putStrLn $ T.unpack (debugShowValue v)
-        Just s -> liftIO $ putStrLn $ T.unpack s
+        Nothing -> liftIO $ putStrLn $ debugShowValue v
+        Just s -> liftIO $ putStrLn s
     pure VNothing
 myPrint _ = error $ "bad args to myPrint"
 
@@ -213,7 +217,7 @@ doIsTest [v1,v2, m1, m2] = do
                    Just (y :: Bool) -> y
                    Nothing -> error $ "wrong return type for equals"
     let f Nothing = "nothing"
-        f (Just t) = T.unpack t
+        f (Just t) = t
         m1' = f $ extractValue m1
         m2' = f $ extractValue m2
     
@@ -240,7 +244,7 @@ myMakeVariant [nm, flds, es] = do
         es' = maybe (error $ "bad args to make variant, third arg is not list")
                 id $ extractList es
                                         
-    when (length es' /= length flds') $ error $ "wrong number of args to create variant " ++ T.unpack t
+    when (length es' /= length flds') $ error $ "wrong number of args to create variant " <> t
     makeVariant t $ zip flds'' es'
 myMakeVariant _ = error $ "bad args to makeVariant"
 
@@ -263,7 +267,7 @@ myIsVariant _ = error $ "bad args to myIsVariant"
 
 myDebugPrint :: [Value] -> Runtime Value
 myDebugPrint [x] = do
-    liftIO $ putStrLn $ T.unpack $ debugShowValue x
+    liftIO $ putStrLn $ debugShowValue x
     pure VNothing
 myDebugPrint _ = error $ "bad args to myDebugPrint"
 
@@ -343,7 +347,7 @@ showVariant [x] = do
             pure $ if null es'
                    then makeValue "string" $ n
                    else makeValue "string" $ n <> "(" <> T.intercalate ", " es' <> ")"
-        _ -> error $ "show variant called on non variant " ++ T.unpack (debugShowValue x)
+        _ -> error $ "show variant called on non variant " <> debugShowValue x
     
 showVariant _ = error $ "bad args to showVariant"
 

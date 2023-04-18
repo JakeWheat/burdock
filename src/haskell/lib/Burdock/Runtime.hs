@@ -62,6 +62,10 @@ module Burdock.Runtime
     --,ffimethodapp
     ) where
 
+import Prelude hiding (error, putStrLn)
+import Burdock.Utils (error)
+--import Data.Text.IO (putStrLn)
+
 import Burdock.Scientific
 
 import Control.Monad.Reader (ReaderT
@@ -192,13 +196,13 @@ captureClosure nms = do
 getMember :: Value -> Text -> Runtime Value
 getMember v@(Value tyNm _ ) fld = do
     st <- ask
-    ty <- liftIO ((maybe (error $ "type not found " ++ T.unpack tyNm) id . lookup tyNm)
+    ty <- liftIO ((maybe (error $ "type not found " <> tyNm) id . lookup tyNm)
                   <$> readIORef (rtFFITypes st))
     (tyMemberFn ty) fld v
 
 getMember v@(VariantV _ fs) fld = do
     case lookup fld fs of
-        Nothing -> error $ "field not found:" ++ T.unpack fld ++ ", " ++ T.unpack (debugShowValue v)
+        Nothing -> error $ "field not found:" <> fld <> ", " <> debugShowValue v
         Just (MethodV v1) -> app Nothing v1 [v]
         Just v1 -> pure v1
 
@@ -219,7 +223,7 @@ getMember (VList es) "_torepr" = do
     let trf e = do
             f <- getMember e "_torepr"
             v <- app Nothing f []
-            pure $ maybe (error $ "non string from to _torepr: " ++ T.unpack (debugShowValue e) ++ " " ++ T.unpack (debugShowValue v)) id $ extractValue v
+            pure $ maybe (error $ "non string from to _torepr: " <> debugShowValue e <> " " <> debugShowValue v) id $ extractValue v
 
     makeFunctionValue (\_ -> do
         strs <- mapM trf es
@@ -230,7 +234,7 @@ getMember (VList es) "length" = do
     makeFunctionValue (\_ -> do
         pure $ makeValue "number" ((fromIntegral $ length es) :: Scientific))
 
-getMember v _ = error $ "get member on wrong sort of value: " ++ T.unpack (debugShowValue v)
+getMember v _ = error $ "get member on wrong sort of value: " <> debugShowValue v
 
 app :: Maybe Text -> Value -> [Value] -> Runtime Value
 app sourcePos (VFun f) args =
