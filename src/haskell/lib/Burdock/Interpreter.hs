@@ -14,7 +14,7 @@ module Burdock.Interpreter
     (interpBurdock
     ,createHandle
     ,runBurdock
-    ,getTempTestsPass
+    ,getNumTestsFailed
     ,liftIO
     ) where
 
@@ -30,7 +30,7 @@ import Burdock.Runtime
     ,Runtime
     ,RuntimeState
     ,getRuntimeState
-    ,getTempTestsPass
+    ,getNumTestsFailed
     ,liftIO
 
     --,ffimethodapp

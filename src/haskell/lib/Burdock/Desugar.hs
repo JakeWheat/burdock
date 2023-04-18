@@ -52,6 +52,14 @@ desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
   where
     n = Nothing
 
+desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is-not" e2)) =
+    let m1 = S.Text n $ prettyExpr e1
+        m2 = S.Text n $ prettyExpr e2
+        rt e = S.App n (S.Iden n "run-task") [e]
+    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-not-test") [rt e1,rt e2,m1,m2])
+  where
+    n = Nothing
+
 desugarStmt (S.StmtExpr _ e) = [I.StmtExpr $ desugarExpr e]
 
 {-

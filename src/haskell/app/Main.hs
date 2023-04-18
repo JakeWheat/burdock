@@ -8,6 +8,10 @@ quick fake test runner to bootstrap the code
 {-# LANGUAGE OverloadedStrings #-}
 module Main where
 
+import Prelude hiding (error, putStrLn, show)
+import Burdock.Utils (error, show)
+import Data.Text.IO (putStrLn)
+
 --import Data.Text (Text)
 --import qualified Data.Text as T
 --import Text.Show.Pretty (ppShow)
@@ -19,7 +23,7 @@ import Burdock.Interpreter
     (interpBurdock
     ,createHandle
     ,runBurdock
-    ,getTempTestsPass
+    ,getNumTestsFailed
     ,liftIO
     )
 
@@ -28,7 +32,8 @@ import qualified Data.Text as T
 
 import Control.Monad
     (void
-    ,when)
+    --,when
+    )
 
 import System.Environment (getArgs)
 import Control.Monad (forM_)
@@ -43,18 +48,22 @@ import System.Exit (exitFailure)
 main :: IO ()
 main = do
     args <- getArgs
-    allPassed <- newIORef True
+    numTestsFailed <- newIORef 0
     forM_ args $ \fn -> do
         mySrc <- readFile fn
-        let ast = either error id $ parseScript "" (T.unpack prelude <> mySrc)
+        let ast = either (error . T.pack) id $ parseScript "" (T.unpack prelude <> mySrc)
             dast = desugar ast
         --putStrLn $ ppShow dast
         st <- createHandle
         runBurdock st $ do
             void $ interpBurdock dast
-            p <- getTempTestsPass
-            when (not p) $ liftIO $ writeIORef allPassed False
+            p <- getNumTestsFailed
+            liftIO $ writeIORef numTestsFailed p
             -- get test passed state, update ioref
     -- check passed ioref, if false, then exit with non zero        
-    p <- readIORef allPassed
-    when (not p) exitFailure
+    p <- readIORef numTestsFailed
+    if p == 0
+        then putStrLn "All tests passed"
+        else do
+            putStrLn $ show p <> " tests failed"
+            exitFailure

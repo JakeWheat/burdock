@@ -17,7 +17,7 @@ import Burdock.Runtime
     --,runBurdock
     ,Runtime
     ,liftIO
-    ,setTempTestsPass
+    ,addTestFail
 
     --,ffimethodapp
     --,RuntimeState
@@ -38,6 +38,8 @@ import Burdock.Runtime
     ,getMember
     ,app
 
+    ,catchEither
+    
     ,makeValue
     ,makeVariant
     ,variantTag
@@ -78,6 +80,7 @@ initRuntime = do
     addFFIType "boolean" (Type booleanFFI)
     addBinding "print" =<< makeFunctionValue myPrint
     addBinding "do-is-test" =<< makeFunctionValue doIsTest
+    addBinding "do-is-not-test" =<< makeFunctionValue doIsNotTest
     addBinding "make-list" =<< makeFunctionValue myMakeList
     addBinding "make-variant" =<< makeFunctionValue myMakeVariant
     addBinding "is-variant" =<< makeFunctionValue myIsVariant
@@ -159,8 +162,9 @@ stringFFI "_equals" v1 = do
                    [v2] -> do
                        let n1 :: Text
                            n1 = maybe (error "not a string") id $ extractValue v1
-                           n2 = maybe (error "not a string") id $ extractValue v2
-                       pure $ makeValue "boolean" $ n1 == n2
+                       case extractValue v2 of
+                           Nothing -> pure $ makeValue "boolean" False
+                           Just n2 -> pure $ makeValue "boolean" $ n1 == n2
                    _ -> error $ "bad args to string equals"
     makeFunctionValue f
 stringFFI "_torepr" v1 = do
@@ -210,23 +214,76 @@ myPrint _ = error $ "bad args to myPrint"
 -- exceptions, etc.
 doIsTest :: [Value] -> Runtime Value
 doIsTest [v1,v2, m1, m2] = do
+    eres <- catchEither $ compareValues v1 v2
+    (res,msg) <- case eres of
+        Left e -> do
+            t <- safeRenderException e
+            pure (False, Just $ indent t)
+        Right res -> do
+            -- todo: if false, show the two values
+            pure (res, Nothing)
+    (liftIO . putStrLn) =<< makeResultString "is" res m1 m2
+    case msg of
+        Nothing -> pure ()
+        Just m -> liftIO $ putStrLn m
+    when (not res) addTestFail
+    pure VNothing
+doIsTest _ = error $ "bad args to doIsTest"
 
-    eqm <- getMember v1 "_equals" 
-    res <- app Nothing eqm [v2]
-    let res' = case extractValue res of
-                   Just (y :: Bool) -> y
-                   Nothing -> error $ "wrong return type for equals"
+doIsNotTest :: [Value] -> Runtime Value
+doIsNotTest [v1,v2, m1, m2] = do
+    eres <- catchEither $ compareValues v1 v2
+    (res,msg) <- case eres of
+        Left e -> do
+            t <- safeRenderException e
+            pure (False, Just $ indent t)
+        Right res -> do
+            -- todo: if true, show the value? show both?
+            pure (not res, Nothing)
+    (liftIO . putStrLn) =<< makeResultString "is-not" res m1 m2
+    case msg of
+        Nothing -> pure ()
+        Just m -> liftIO $ putStrLn m
+    when (not res) addTestFail
+    pure VNothing
+doIsNotTest _ = error $ "bad args to doIsNotTest"
+
+
+indent :: Text -> Text
+indent t =
+    let ls = T.lines t
+        ls' = map ("  " <>) ls
+    in T.unlines ls'
+
+safeRenderException :: (Either Text Value) -> Runtime Text
+safeRenderException (Left t) = pure t
+safeRenderException (Right v) = do
+    et <- catchEither $ do
+        t <- myToRepr [v]
+        case extractValue t of
+            Just t' -> pure t'
+            Nothing -> error $ "torepr returned non string: " <> debugShowValue t
+    case et of
+        Right vx -> pure vx
+        Left (Left t) -> pure $ "exception when toexpr exception: " <> t
+        Left (Right e) -> pure $ "exception when toexpr exception: " <> debugShowValue e
+
+makeResultString :: Text -> Bool -> Value -> Value -> Runtime Text
+makeResultString predName res m1 m2 = do
     let f Nothing = "nothing"
         f (Just t) = t
         m1' = f $ extractValue m1
         m2' = f $ extractValue m2
+    pure $ (if res then "PASS" else "FAIL") <> " " <> m1' <> " " <> predName <> " " <> m2'
     
-    liftIO $ putStrLn $ (if res' then "PASS" else "FAIL") <> " " <> m1' <> " is " <> m2'
-    when (not res') $ setTempTestsPass False
-    pure VNothing
 
-
-doIsTest _ = error $ "bad args to doIsTest"
+compareValues :: Value -> Value -> Runtime Bool
+compareValues a b = do
+    eqm <- getMember a "_equals"
+    res <- app Nothing eqm [b]
+    case extractValue res of
+                   Just (y :: Bool) -> pure y
+                   Nothing -> error $ "wrong return type for equals"
 
 myMakeList :: [Value] -> Runtime Value
 myMakeList vs = pure $ makeList vs

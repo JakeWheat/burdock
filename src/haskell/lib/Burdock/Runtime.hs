@@ -56,8 +56,8 @@ module Burdock.Runtime
     ,getMember
     ,app
 
-    ,setTempTestsPass
-    ,getTempTestsPass
+    ,addTestFail
+    ,getNumTestsFailed
 
     --,ffimethodapp
     ) where
@@ -75,6 +75,11 @@ import Control.Monad.Reader (ReaderT
                             ,liftIO
                             --,MonadIO
                             )
+
+import Control.Monad
+    (zipWithM
+    )
+       
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Dynamic
@@ -89,7 +94,7 @@ import Data.IORef
     ,newIORef
     ,modifyIORef
     ,readIORef
-    ,writeIORef
+    --,writeIORef
     )
 
 import Control.Exception.Safe (catch
@@ -105,13 +110,13 @@ data RuntimeState
     = RuntimeState
     {rtFFITypes :: IORef [(Text,Type)]
     ,rtBindings :: IORef [(Text, Value)]
-    ,rtTempTestPass :: IORef Bool
+    ,rtNumTestFailed :: IORef Int
     ,rtCallStack :: IORef [Maybe Text]
     }
 
 emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
-    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef True <*> newIORef []
+    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef []
 
 addFFIType :: Text -> Type -> Runtime ()
 addFFIType nm ty = do
@@ -218,6 +223,12 @@ getMember (VNothing) "_torepr" = do
     let v = makeValue "string" ("nothing" :: Text)
     makeFunctionValue (\_ -> pure v)
 
+getMember (VNothing) "_equals" = do
+    makeFunctionValue $ \case
+        [VNothing] -> pure $ makeValue "boolean" True
+        [_] -> pure $ makeValue "boolean" False
+        _ -> error "bad args to nothing._equals"
+
 
 getMember (VList es) "_torepr" = do
     let trf e = do
@@ -234,7 +245,27 @@ getMember (VList es) "length" = do
     makeFunctionValue (\_ -> do
         pure $ makeValue "number" ((fromIntegral $ length es) :: Scientific))
 
-getMember v _ = error $ "get member on wrong sort of value: " <> debugShowValue v
+getMember (VList es) "_equals" = do
+    makeFunctionValue $ \case
+        [VList fs] ->
+            if length es /= length fs
+            then pure $ makeValue "boolean" False
+            else do
+                let eq a b = do
+                        f <- getMember a "_equals"
+                        r <- app Nothing f [b]
+                        case extractValue r of
+                            Nothing -> error $ "non bool returned from _equals: " <> debugShowValue r <> " on "  <> debugShowValue a
+                            Just x -> pure x
+                        
+                rs <- zipWithM eq es fs
+                pure $ makeValue "boolean" $ and rs
+        
+        [_] -> pure $ makeValue "boolean" False
+        _ -> error "bad args to nothing._equals"
+
+
+getMember v fld = error $ "unrecognised member " <> fld <> " on " <> debugShowValue v
 
 app :: Maybe Text -> Value -> [Value] -> Runtime Value
 app sourcePos (VFun f) args =
@@ -311,15 +342,15 @@ instance Show RuntimeException where
 
 instance Exception RuntimeException
 
-setTempTestsPass :: Bool -> Runtime ()
-setTempTestsPass x = do
+addTestFail :: Runtime ()
+addTestFail = do
     st <- ask
-    liftIO $ writeIORef (rtTempTestPass st) x
+    liftIO $ modifyIORef (rtNumTestFailed st) (+ 1)
     
-getTempTestsPass :: Runtime Bool
-getTempTestsPass = do
+getNumTestsFailed :: Runtime Int
+getNumTestsFailed = do
     st <- ask
-    liftIO $ readIORef (rtTempTestPass st)
+    liftIO $ readIORef (rtNumTestFailed st)
 
 getRuntimeState :: Runtime RuntimeState
 getRuntimeState = ask

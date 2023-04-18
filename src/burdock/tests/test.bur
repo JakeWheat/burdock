@@ -99,3 +99,42 @@ check "torepr":
   torepr(lam(): true end) is "<function>"
 end
 
+check "is and is-not, equals":
+  1 is 1
+  1 is-not 2
+  1 is-not true
+  
+  1.1 is 1.1
+  1.1 is-not 1.12
+  1.1 is-not true
+
+  "a" is "a"
+  "a" is-not "b"
+  "a" is-not 1
+
+  true is true
+  true is-not false
+  true is-not 1
+
+  nothing is nothing
+  nothing is-not 1
+
+  [list: 1,2] is [list: 1,2]
+  [list: 1,2] is-not [list: 2,1]
+  [list: 1,2] is-not 1
+  
+  # data
+  data MyDat:
+    | ctor1
+    | ctor2(a)
+  end
+  ctor1 is ctor1
+  ctor1 is-not ctor2(1)
+  ctor1 is-not 1
+  ctor2(1) is ctor2(1)
+  ctor2(1) is-not ctor1
+  ctor2(1) is-not ctor2(2)
+  ctor2(1) is-not ctor2("a")
+  ctor2(1) is-not 1
+
+end
