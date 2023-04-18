@@ -101,10 +101,10 @@ interpExpr (I.DotExpr e1 fld) = do
     v1 <- interpExpr e1
     getMember v1 fld
 
-interpExpr (I.RecordSel fs) = do
+interpExpr (I.VariantSel nm fs) = do
     vs <- mapM (\(n,e) -> (n,) <$> interpExpr e) fs
-    -- todo: "record" has to be namespaced
-    pure $ VariantV "record" vs
+    -- todo: nm has to be namespaced
+    pure $ VariantV nm vs
 
 interpExpr (I.RunTask tsk) = do
     x <- catchEither $ interpExpr tsk

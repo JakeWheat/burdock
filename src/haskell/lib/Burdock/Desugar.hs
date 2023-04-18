@@ -162,7 +162,34 @@ desugarExpr (S.DotExpr _ e fld) =
     I.DotExpr (desugarExpr e) (T.pack fld)
      
 desugarExpr (S.RecordSel _ fs) =
-    I.RecordSel $ map (\(a,b) -> (T.pack a, desugarExpr b)) fs
+    let trm = ("_torepr"
+              ,desugarExpr $ S.MethodExpr n $ S.Method
+                            (fh $ map mnm ["a"])
+                            [S.StmtExpr n $ S.App n (S.Iden n "show-record")
+                                [S.Iden n "a"]])
+    
+    in I.VariantSel "record" (trm : map (\(a,b) -> (T.pack a, desugarExpr b)) fs)
+  where
+    n = Nothing
+    fh as = S.FunHeader [] as Nothing
+    mnm x = S.NameBinding n x
+
+desugarExpr (S.TupleSel _ fs) =
+    let trm = ("_torepr"
+              ,desugarExpr $ S.MethodExpr n $ S.Method
+                            (fh $ map mnm ["a"])
+                            [S.StmtExpr n $ S.App n (S.Iden n "show-tuple")
+                                [S.Iden n "a"]
+                            ])
+        nms = map show [(0::Int)..]
+    in I.VariantSel "tuple" (trm : zip nms (map desugarExpr fs))
+  where
+    n = Nothing
+    fh as = S.FunHeader [] as Nothing
+    mnm x = S.NameBinding n x
+    
+desugarExpr (S.TupleGet sp v n) =
+    desugarExpr (S.DotExpr sp v (T.unpack $ show n))
 
 -- what's the right way to find run-task, so it can be implemented
 -- differently at runtime from a regular function

@@ -21,7 +21,7 @@ data Expr
     | DotExpr Expr Text
     -- source pos, fn, args
     | App (Maybe Text) Expr [Expr]
-    | RecordSel [(Text,Expr)]
+    | VariantSel Text [(Text,Expr)]
     -- free vars, param bindings, body
     | Lam [Text] [Binding] [Stmt]
     | Num Scientific

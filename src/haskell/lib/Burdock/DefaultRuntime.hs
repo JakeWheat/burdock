@@ -92,6 +92,8 @@ initRuntime = do
     addBinding "tostring" =<< makeFunctionValue myToString
     addBinding "nothing" nothingValue
     addBinding "show-variant" =<< makeFunctionValue showVariant
+    addBinding "show-tuple" =<< makeFunctionValue showTuple
+    addBinding "show-record" =<< makeFunctionValue showRecord
 
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
@@ -408,3 +410,50 @@ showVariant [x] = do
     
 showVariant _ = error $ "bad args to showVariant"
 
+
+showTuple :: [Value] -> Runtime Value
+showTuple [x] = do
+    at <- variantTag x
+    bt <- variantFields x
+    let trm e = do
+            f <- getMember e "_torepr"
+            app Nothing f []
+    case (at,bt) of
+        (Just _n, Just fs) -> do
+            -- hack
+            let fs' = map snd $ filter ((`notElem` ["_equals", "_torepr"]) . fst) fs
+            fs'' <- mapM trm fs'
+            let (es :: [Maybe Text]) = map extractValue fs''
+            let es' :: [Text]
+                es' = maybe (error "showTuple non string from torepr") id $ sequence es
+            --liftIO $ putStrLn $ show es'
+            pure $ if null es'
+                   then makeValue "string" ("{}" :: Text)
+                   else makeValue "string" $ "{" <> T.intercalate ";" es' <> "}"
+        _ -> error $ "showTuple called on non variant " <> debugShowValue x
+showTuple _ = error $ "bad args to showTuple"
+
+showRecord :: [Value] -> Runtime Value
+showRecord [x] = do
+    at <- variantTag x
+    bt <- variantFields x
+    let trm e = do
+            f <- getMember e "_torepr"
+            app Nothing f []
+    case (at,bt) of
+        (Just _n, Just fs) -> do
+            -- hack
+            let fs' = map snd $ filter ((`notElem` ["_equals", "_torepr"]) . fst) fs
+                nms = map fst $ filter ((`notElem` ["_equals", "_torepr"]) . fst) fs
+            fs'' <- mapM trm fs'
+            let (es :: [Maybe Text]) = map extractValue fs''
+            let es' :: [Text]
+                es' = maybe (error "showTuple non string from torepr") id $ sequence es
+                es'' = zip nms es'
+                esx = map (\(a,b) -> a <> ":" <> b) es''
+            --liftIO $ putStrLn $ show es'
+            pure $ if null es''
+                   then makeValue "string" ("{}" :: Text)
+                   else makeValue "string" $ "{" <> T.intercalate "," esx <> "}"
+        _ -> error $ "showRecord called on non variant " <> debugShowValue x
+showRecord _ = error $ "bad args to showRecord"

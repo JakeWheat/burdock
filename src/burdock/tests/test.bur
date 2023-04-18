@@ -71,6 +71,19 @@ check "simple record":
   a.c is 33
 end
 
+check "simple tuple":
+  t = {1;2}
+  #print(t.{0})
+  t.{0} is 1
+  t.{1} is 2
+end
+
+
+check "tuple and record torepr":
+  torepr({4;6}) is "{4;6}"
+  torepr({a:4,b:5}) is "{a:4,b:5}"
+  torepr({}) is "{}"
+end
 
 check "temp prelude with either":
 
