@@ -39,7 +39,7 @@ import Burdock.Runtime
     --,addFFIType
 
     ,variantTag
-    ,variantFields
+    ,variantValueFields
     
     ,getMember
     ,app
@@ -244,11 +244,8 @@ tryApplyBinding (I.VariantBinding vnm flds) v = do
             then pure Nothing
             else do
                 -- todo: use a single function that gets the tag and the fields as a maybe
-                vfs' <- maybe (error "impossible? tryApplyBinding I.VariantBinding variant fields Nothing") id
-                       <$> variantFields v
-                -- dirty hack
-                -- todo: generate something internal to be able to get the fields like this
-                let vfs = filter ((`notElem` ["_equals", "_torepr"]) . fst) vfs'
+                vfs <- maybe (error "impossible? tryApplyBinding I.VariantBinding variantValueFields is Nothing")
+                             id <$> variantValueFields v
                 -- check there's the right number of flds
                 when (length vfs /= length flds) $ error $ "wrong number of args to variant binding " <> vnm <> " expected " <> show (length vfs) <> ", got " <> show (length flds)
                    <> "\n" <> show (flip map vfs $ \(n,v1)-> (n, debugShowValue v1), flds)

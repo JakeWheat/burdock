@@ -167,22 +167,35 @@ desugarExpr (S.RecordSel _ fs) =
                             (fh $ map mnm ["a"])
                             [S.StmtExpr n $ S.App n (S.Iden n "show-record")
                                 [S.Iden n "a"]])
-    
-    in I.VariantSel "record" (trm : map (\(a,b) -> (T.pack a, desugarExpr b)) fs)
+        eqm = ("_equals"
+              ,desugarExpr $ S.MethodExpr n $ S.Method
+                            (fh $ map mnm ["a", "b"])
+                            [S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
+                                [S.Construct n ["list"] (map (S.Text n . fst) fs)
+                                , S.Iden n "a"
+                                , S.Iden n "b"]])
+    in I.VariantSel "record" (trm : eqm : map (\(a,b) -> (T.pack a, desugarExpr b)) fs)
   where
     n = Nothing
     fh as = S.FunHeader [] as Nothing
     mnm x = S.NameBinding n x
 
 desugarExpr (S.TupleSel _ fs) =
-    let trm = ("_torepr"
+    let fs1 = zip (map show [(0::Int)..]) fs
+        trm = ("_torepr"
               ,desugarExpr $ S.MethodExpr n $ S.Method
                             (fh $ map mnm ["a"])
                             [S.StmtExpr n $ S.App n (S.Iden n "show-tuple")
                                 [S.Iden n "a"]
                             ])
-        nms = map show [(0::Int)..]
-    in I.VariantSel "tuple" (trm : zip nms (map desugarExpr fs))
+        eqm = ("_equals"
+              ,desugarExpr $ S.MethodExpr n $ S.Method
+                            (fh $ map mnm ["a", "b"])
+                            [S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
+                                [S.Construct n ["list"] (map (S.Text n . T.unpack . fst) $ fs1)
+                                , S.Iden n "a"
+                                , S.Iden n "b"]])
+    in I.VariantSel "tuple" (trm : eqm : map (\(a,b) -> (a,desugarExpr b)) fs1)
   where
     n = Nothing
     fh as = S.FunHeader [] as Nothing

@@ -7,9 +7,11 @@ module Burdock.DefaultRuntime
     ,prelude
     ) where
 
-import Prelude hiding (error, putStrLn)
-import Burdock.Utils (error)
+import Prelude hiding (error, putStrLn, show)
+import Burdock.Utils (error, show)
 import Data.Text.IO (putStrLn)
+
+import Data.List (sort)
 
 --import qualified Burdock.Syntax as S
 import Burdock.Runtime
@@ -43,7 +45,7 @@ import Burdock.Runtime
     ,makeValue
     ,makeVariant
     ,variantTag
-    ,variantFields
+    ,variantValueFields
     ,extractValue
     ,makeFunctionValue
     ,Type(..)
@@ -174,7 +176,7 @@ stringFFI "_torepr" v1 = do
                    [] -> do
                        let n1 :: Text
                            n1 = maybe (error $ "not a string " <> debugShowValue v1) id $ extractValue v1
-                       pure $ makeValue "string" $ T.pack $ show n1
+                       pure $ makeValue "string" $ show n1
                        --pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
                    _ -> error $ "bad args to number _torepr"
     makeFunctionValue f
@@ -330,31 +332,48 @@ myDebugPrint [x] = do
     pure VNothing
 myDebugPrint _ = error $ "bad args to myDebugPrint"
 
+-- todo: decide if the flds should be passed, or this function should
+-- work them out. Currently, the passed fields are ignored and this
+-- function works them out using the hack auxiliary variantValueFields
 checkVariantsEqual :: [Value] -> Runtime Value
-checkVariantsEqual [flds, a, b] = do
+checkVariantsEqual [_flds, a, b] = do
+    --do 
+    --    x <- myToRepr [makeList [flds,a,b]]
+    --    liftIO $ putStrLn $ "checkVariantsEqual " <> maybe (error $ "f2") id (extractValue x)
     at <- variantTag a
     bt <- variantTag b
-    let flds' = maybe (error "fields arg not list") id $  extractList flds
-    let (mflds'' :: [Maybe Text]) = map extractValue flds'
-        mflds''1 :: Maybe [Text ] = sequence mflds''
-    let flds'' = maybe (error $ "non string in field list for check variants equal") id mflds''1
-    case (at,bt) of
-        (Just at', Just bt') ->
-            if at' == bt'
+    vfldsa <- variantValueFields a
+    vfldsb <- variantValueFields b
+    -- hack for records:
+    let exFlds t l = if t == Just "record"
+                     then sort (map fst l)
+                     else map fst l
+    case (at,bt,vfldsa,vfldsb) of
+        (Just at', Just bt',Just vfldsa', Just vfldsb') ->
+            if at' == bt' &&
+               exFlds at vfldsa' == exFlds bt vfldsb'
             then do
-                fsEq <- forM flds'' $ \f -> do
+                --liftIO $ putStrLn $ "fields equal:" <> show at'
+                fsEq <- forM (map fst vfldsa') $ \f -> do
                     va <- getMember a f
                     vb <- getMember b f
-                    eqx <- getMember va "_equals" 
-                    app Nothing eqx [vb]
+                    eqx <- getMember va "_equals"
+                    x <- app Nothing eqx [vb]
+                    --let balls = makeList [va, vb, x]
+                    --iseq <- myToRepr [balls]
+                    --let iseq1 = maybe (error $ "f3") id $ extractValue iseq
+                    --liftIO $ putStrLn $ f <> " == " <> iseq1
+                    pure x
                 -- and together all the fsEq
                 let andEm [] = pure $ makeValue "boolean" True
                     andEm (v:vs) = case extractValue v of
                         Just True -> andEm vs
                         Just False -> pure $ makeValue "boolean" False
                         _ -> error $ "non boolean returned from _equals method"
-                andEm fsEq        
-            else pure $ makeValue "boolean" False
+                andEm fsEq
+            else do
+                --liftIO $ putStrLn "fields not equal:"
+                pure $ makeValue "boolean" False
         _ -> pure $ makeValue "boolean" False
 checkVariantsEqual _ = error $ "bad args to checkVariantsEqual"
 
@@ -390,14 +409,13 @@ myToString _ = error $ "bad args to myToString"
 showVariant :: [Value] -> Runtime Value
 showVariant [x] = do
     at <- variantTag x
-    bt <- variantFields x
+    bt <- variantValueFields x
     let trm e = do
             f <- getMember e "_torepr"
             app Nothing f []
     case (at,bt) of
         (Just n, Just fs) -> do
-            -- hack
-            let fs' = map snd $ filter ((`notElem` ["_equals", "_torepr"]) . fst) fs
+            let fs' = map snd fs
             fs'' <- mapM trm fs'
             let (es :: [Maybe Text]) = map extractValue fs''
             let es' :: [Text]
@@ -414,14 +432,13 @@ showVariant _ = error $ "bad args to showVariant"
 showTuple :: [Value] -> Runtime Value
 showTuple [x] = do
     at <- variantTag x
-    bt <- variantFields x
+    bt <- variantValueFields x
     let trm e = do
             f <- getMember e "_torepr"
             app Nothing f []
     case (at,bt) of
         (Just _n, Just fs) -> do
-            -- hack
-            let fs' = map snd $ filter ((`notElem` ["_equals", "_torepr"]) . fst) fs
+            let fs' = map snd fs
             fs'' <- mapM trm fs'
             let (es :: [Maybe Text]) = map extractValue fs''
             let es' :: [Text]
@@ -436,15 +453,15 @@ showTuple _ = error $ "bad args to showTuple"
 showRecord :: [Value] -> Runtime Value
 showRecord [x] = do
     at <- variantTag x
-    bt <- variantFields x
+    bt <- variantValueFields x
     let trm e = do
             f <- getMember e "_torepr"
             app Nothing f []
     case (at,bt) of
         (Just _n, Just fs) -> do
             -- hack
-            let fs' = map snd $ filter ((`notElem` ["_equals", "_torepr"]) . fst) fs
-                nms = map fst $ filter ((`notElem` ["_equals", "_torepr"]) . fst) fs
+            let fs' = map snd fs
+                nms = map fst fs
             fs'' <- mapM trm fs'
             let (es :: [Maybe Text]) = map extractValue fs''
             let es' :: [Text]

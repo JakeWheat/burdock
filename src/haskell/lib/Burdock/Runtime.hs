@@ -37,6 +37,7 @@ module Burdock.Runtime
     ,makeVariant
     ,variantTag
     ,variantFields
+    ,variantValueFields
     ,catchEither
     ,throwValue
 
@@ -62,8 +63,9 @@ module Burdock.Runtime
     --,ffimethodapp
     ) where
 
-import Prelude hiding (error, putStrLn)
-import Burdock.Utils (error)
+import Prelude hiding (error, putStrLn, show)
+import qualified Prelude as P
+import Burdock.Utils (error, show)
 --import Data.Text.IO (putStrLn)
 
 import Burdock.Scientific
@@ -138,7 +140,7 @@ data Value = Value Text Dynamic
     --deriving (Show)
 
 debugShowValue :: Value -> Text
-debugShowValue (Value tg dn) = "Value " <> T.pack (show tg) <> " " <> T.pack (show dn)
+debugShowValue (Value tg dn) = "Value " <> show tg <> " " <> show dn
 debugShowValue (VariantV tf fs) =
     "VariantV " <> tf <> " " <> T.concat (map f fs)
     where
@@ -190,6 +192,19 @@ variantTag _ = pure Nothing -- error $ "non variant passed to variant tag"
 variantFields :: Value -> Runtime (Maybe [(Text, Value)])
 variantFields (VariantV _ flds) = pure $ Just flds
 variantFields _ = pure Nothing
+
+{-
+these are the fields used in variant pattern matching,
+and in the default torepr, equals and other generated methods
+maybe will save an explicit list in the future, so can add auxiliary
+non method fields which aren't included in pattern matching e.g.
+-}
+variantValueFields :: Value -> Runtime (Maybe [(Text, Value)])
+variantValueFields (VariantV _ flds) =
+    pure $ Just $ flip filter flds $ \case
+       (_,MethodV {}) -> False
+       _ -> True
+variantValueFields _ = pure Nothing
 
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do
@@ -330,7 +345,7 @@ catchEither f =
     -- first try to catch a specific burdock value that was thrown
     catchValue = flip catch $ \(ValueException v) -> pure $ Left $ Right v
     -- then try to catch any haskell (non async) exception
-    catch' = flip catch $ \(e :: SomeException) -> pure $ Left $ Left $ T.pack $ show e
+    catch' = flip catch $ \(e :: SomeException) -> pure $ Left $ Left $ show e
 
 throwValue :: Value -> Runtime a
 throwValue v = throwM $ ValueException v
