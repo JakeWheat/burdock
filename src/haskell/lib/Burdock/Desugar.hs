@@ -44,6 +44,14 @@ desugarStmt (S.LetDecl _ b e) =
     let nm = desugarBinding b
     in [I.LetDecl nm $ desugarExpr e]
 
+desugarStmt (S.RecDecl _ b e) =
+    desugarStmts $ doLetRec [(b,e)]
+
+desugarStmt (S.FunDecl _ (S.SimpleBinding _ _ nm _) fh _ bdy _) =
+    desugarStmt (S.RecDecl n (S.NameBinding n nm) $ S.Lam n fh bdy)
+  where
+    n = Nothing
+
 desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
     let m1 = S.Text n $ prettyExpr e1
         m2 = S.Text n $ prettyExpr e2
@@ -278,6 +286,25 @@ desugarExpr (S.Cases _ tst _ bs mels) =
 --                | Cases Expr [(Binding, [Stmt])]
 
 desugarExpr x = error $ "desugarExpr " <> show x
+
+
+doLetRec :: [(S.Binding, S.Expr)] -> [S.Stmt]
+doLetRec bs = 
+    let vars = map (makeVar . fst) bs
+        assigned = map makeAssign bs
+    in vars ++ assigned
+  where
+    makeVar (S.NameBinding _ nm) = makeVar1 (S.NoShadow, nm)
+    makeVar x = error $ "unsupported binding in recursive let: " <> show x
+    makeVar1 (sh, nm) =
+        S.VarDecl n (S.SimpleBinding n sh nm Nothing) $ S.Lam n (S.FunHeader [] [] Nothing)
+        [S.StmtExpr n $ S.App n (S.Iden n "raise")
+            [S.Text n "internal error: uninitialized letrec implementation var"]]
+    makeAssign (S.NameBinding _ nm, v) = makeAssign1 (nm,v)
+    makeAssign x = error $ "unsupported binding in recursive let: " <> show x
+    makeAssign1 (nm,v) = S.SetVar n (S.Iden n nm) v
+    n = Nothing
+
 
 desugarBinding :: S.Binding -> I.Binding
 desugarBinding = \case

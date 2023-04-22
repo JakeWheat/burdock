@@ -191,3 +191,33 @@ check "vars":
   a is 3
 
 end
+
+check "rec decl":
+
+  rec fact = lam(x):
+    if x <= 1:  1
+    else: x * fact(x - 1)
+    end
+  end
+
+  fact(1) is 1
+  fact(3) is 6
+  fact(5) is 120
+
+
+end
+
+check "fun decl":
+
+  fun fact(x):
+    if x <= 1:  1
+    else: x * fact(x - 1)
+    end
+  end
+
+  fact(1) is 1
+  fact(3) is 6
+  fact(5) is 120
+
+
+end
