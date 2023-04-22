@@ -14,7 +14,7 @@ module Burdock.Interpreter
     (interpBurdock
     ,createHandle
     ,runBurdock
-    ,getNumTestsFailed
+    ,getTestResults
     ,liftIO
     ) where
 
@@ -30,7 +30,7 @@ import Burdock.Runtime
     ,Runtime
     ,RuntimeState
     ,getRuntimeState
-    ,getNumTestsFailed
+    ,getTestResults
     ,liftIO
 
     --,ffimethodapp
@@ -56,7 +56,7 @@ import Burdock.Runtime
 
     ,debugShowValue
     
-    ,catchEither
+    ,runTask
     --,makeFunctionValue
     --,Type(..)
     --,Scientific
@@ -130,7 +130,7 @@ interpExpr (I.VariantSel nm fs) = do
     pure $ VariantV nm vs
 
 interpExpr (I.RunTask tsk) = do
-    x <- catchEither $ interpExpr tsk
+    x <- runTask $ interpExpr tsk
     case x of
         -- a left left of a string is an show'n arbitrary haskell exception
         Left (Left e) -> do

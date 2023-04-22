@@ -23,7 +23,7 @@ import Burdock.Interpreter
     (interpBurdock
     ,createHandle
     ,runBurdock
-    ,getNumTestsFailed
+    ,getTestResults
     ,liftIO
     )
 
@@ -41,13 +41,14 @@ import Control.Monad (forM_)
 import Data.IORef
     (newIORef
     ,readIORef
-    ,writeIORef
+    ,modifyIORef
     )
 import System.Exit (exitFailure)
 
 main :: IO ()
 main = do
     args <- getArgs
+    numTestsPassed <- newIORef 0
     numTestsFailed <- newIORef 0
     forM_ args $ \fn -> do
         mySrc <- readFile fn
@@ -57,13 +58,16 @@ main = do
         st <- createHandle
         runBurdock st $ do
             void $ interpBurdock dast
-            p <- getNumTestsFailed
-            liftIO $ writeIORef numTestsFailed p
+            (p,f) <- getTestResults
+            liftIO $ modifyIORef numTestsPassed (p+)
+            liftIO $ modifyIORef numTestsFailed (f+)
             -- get test passed state, update ioref
     -- check passed ioref, if false, then exit with non zero        
-    p <- readIORef numTestsFailed
-    if p == 0
-        then putStrLn "All tests passed"
+    p <- readIORef numTestsPassed
+    f <- readIORef numTestsFailed
+    let tot = p + f
+    if f == 0
+        then putStrLn $ show p <> " tests passed"
         else do
-            putStrLn $ show p <> " tests failed"
+            putStrLn $ show f <> "/" <> show tot <> " tests failed"
             exitFailure

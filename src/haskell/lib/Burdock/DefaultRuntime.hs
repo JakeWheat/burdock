@@ -19,6 +19,7 @@ import Burdock.Runtime
     --,runBurdock
     ,Runtime
     ,liftIO
+    ,addTestPass
     ,addTestFail
 
     --,ffimethodapp
@@ -40,7 +41,7 @@ import Burdock.Runtime
     ,getMember
     ,app
 
-    ,catchEither
+    ,runTask
     
     ,makeValue
     ,makeVariant
@@ -86,6 +87,65 @@ _record_equals = method(self, b):
    check-variants-equal([list:],self,b)
  end
 
+data TestResult:
+  | test-pass(name)
+  | test-fail(name,msg)
+end
+
+my-do-bpred-test = lam(bpredf, pred-string, anti-pred-string, m1, m2, ev1, ev2):
+  name = m1 + " " + pred-string + " " + m2
+
+  safe-compare = lam(v1,v2):
+    res = run-task(bpredf(v1,v2))
+    #print(v1)
+    #print(v2)
+    #print(bpredf(v1,v2))
+    cases res:
+      | left(e) => test-fail(name, torepr-debug(v1) + " " + pred-string + " " + torepr-debug(v2) + " raised " + torepr-debug(e))
+      | right(true) => test-pass(name)
+      | right(false) => test-fail(name, torepr-debug(v1) + "\n" + anti-pred-string + "\n" + torepr-debug(v2))
+    end
+  end
+
+  cases {ev1;ev2}:
+    | {left(e1); left(e2)} =>
+      test-fail(name, "LHS error: " + torepr-debug(e1) + "\nRHS error: " + torepr-debug(e2))
+    | {left(e1); right(_)} =>
+      test-fail(name, "LHS error: " + torepr-debug(e1))
+    | {right(_); left(e2)} =>
+      test-fail(name, "RHS error: " + torepr-debug(e2))
+    | {right(v1); right(v2)} => safe-compare(v1,v2)
+  end
+       
+end
+
+format-test = lam(t):
+  cases t:
+    | test-pass(name) => "PASS " + name
+    | test-fail(name,msg) => "FAIL " + name + "\n" + indent(msg)
+  end
+end
+
+log-result = lam(t):
+  cases t:
+    | test-pass(_) => add-test-pass()
+    | test-fail(_,_) => add-test-fail()
+  end
+end
+
+do-is-test = lam(m1,m2,v1,v2):
+  r = my-do-bpred-test(lam(a,b): a == b end, "is", "!=", m1, m2, v1, v2)
+  log-result(r)
+  print(format-test(r))
+end
+
+do-is-not-test = lam(m1,m2,v1,v2):
+  r = my-do-bpred-test(lam(a,b): not(a == b) end, "is-not", "==", m1, m2, v1, v2)
+  log-result(r)
+  print(format-test(r))
+end
+
+
   |]
 
 
@@ -95,8 +155,6 @@ initRuntime = do
     addFFIType "string" (Type stringFFI)
     addFFIType "boolean" (Type booleanFFI)
     addBinding "print" =<< makeFunctionValue myPrint
-    addBinding "do-is-test" =<< makeFunctionValue doIsTest
-    addBinding "do-is-not-test" =<< makeFunctionValue doIsNotTest
     addBinding "make-list" =<< makeFunctionValue myMakeList
     addBinding "make-variant" =<< makeFunctionValue myMakeVariant
     addBinding "is-variant" =<< makeFunctionValue myIsVariant
@@ -117,6 +175,15 @@ initRuntime = do
     addBinding "false" (makeValue "boolean" False)
 
     addBinding "not" =<< makeFunctionValue myNot
+
+
+    addBinding "add-test-pass" =<< makeFunctionValue myAddTestPass
+    addBinding "add-test-fail" =<< makeFunctionValue myAddTestFail
+    addBinding "indent" =<< makeFunctionValue indent
+
+    addBinding "torepr-debug" =<< makeFunctionValue toreprDebug
+
+    addBinding "gremlin" (makeValue "gremlintype" False)
 
     pure ()
 
@@ -199,80 +266,12 @@ myPrint [v] = do
     pure VNothing
 myPrint _ = error $ "bad args to myPrint"
 
--- todo: this needs to be desugared completely differently to catch
--- exceptions, etc.
-doIsTest :: [Value] -> Runtime Value
-doIsTest [v1,v2, m1, m2] = do
-    eres <- catchEither $ compareValues v1 v2
-    (res,msg) <- case eres of
-        Left e -> do
-            t <- safeRenderException e
-            pure (False, Just $ indent t)
-        Right res -> do
-            -- todo: if false, show the two values
-            pure (res, Nothing)
-    (liftIO . putStrLn) =<< makeResultString "is" res m1 m2
-    case msg of
-        Nothing -> pure ()
-        Just m -> liftIO $ putStrLn m
-    when (not res) addTestFail
-    pure VNothing
-doIsTest _ = error $ "bad args to doIsTest"
-
-doIsNotTest :: [Value] -> Runtime Value
-doIsNotTest [v1,v2, m1, m2] = do
-    eres <- catchEither $ compareValues v1 v2
-    (res,msg) <- case eres of
-        Left e -> do
-            t <- safeRenderException e
-            pure (False, Just $ indent t)
-        Right res -> do
-            -- todo: if true, show the value? show both?
-            pure (not res, Nothing)
-    (liftIO . putStrLn) =<< makeResultString "is-not" res m1 m2
-    case msg of
-        Nothing -> pure ()
-        Just m -> liftIO $ putStrLn m
-    when (not res) addTestFail
-    pure VNothing
-doIsNotTest _ = error $ "bad args to doIsNotTest"
-
-
-indent :: Text -> Text
-indent t =
+indent :: [Value] -> Runtime Value
+indent [x] | Just t <- extractValue x = do
     let ls = T.lines t
         ls' = map ("  " <>) ls
-    in T.unlines ls'
-
-safeRenderException :: (Either Text Value) -> Runtime Text
-safeRenderException (Left t) = pure t
-safeRenderException (Right v) = do
-    et <- catchEither $ do
-        t <- myToRepr [v]
-        case extractValue t of
-            Just t' -> pure t'
-            Nothing -> error $ "torepr returned non string: " <> debugShowValue t
-    case et of
-        Right vx -> pure vx
-        Left (Left t) -> pure $ "exception when toexpr exception: " <> t
-        Left (Right e) -> pure $ "exception when toexpr exception: " <> debugShowValue e
-
-makeResultString :: Text -> Bool -> Value -> Value -> Runtime Text
-makeResultString predName res m1 m2 = do
-    let f Nothing = "nothing"
-        f (Just t) = t
-        m1' = f $ extractValue m1
-        m2' = f $ extractValue m2
-    pure $ (if res then "PASS" else "FAIL") <> " " <> m1' <> " " <> predName <> " " <> m2'
-    
-
-compareValues :: Value -> Value -> Runtime Bool
-compareValues a b = do
-    eqm <- getMember a "_equals"
-    res <- app Nothing eqm [b]
-    case extractValue res of
-                   Just (y :: Bool) -> pure y
-                   Nothing -> error $ "wrong return type for equals"
+    pure $ makeValue "string" $ T.unlines ls'
+indent _ = error $ "bad args to indent"
 
 myMakeList :: [Value] -> Runtime Value
 myMakeList vs = pure $ makeList vs
@@ -316,6 +315,14 @@ myDebugPrint [x] = do
     liftIO $ putStrLn $ debugShowValue x
     pure VNothing
 myDebugPrint _ = error $ "bad args to myDebugPrint"
+
+toreprDebug :: [Value] -> Runtime Value
+toreprDebug [x] = do
+    y <- runTask $ myToRepr [x]
+    case y of
+        Left _ -> pure $ makeValue "string" $ debugShowValue x
+        Right v -> pure v
+toreprDebug _ = error $ "bad args to toreprDebug"
 
 -- todo: decide if the flds should be passed, or this function should
 -- work them out. Currently, the passed fields are ignored and this
@@ -466,3 +473,16 @@ myNot [x] = case extractValue x of
     Just False -> pure $ makeValue "boolean" True
     _ -> error $ "bad arg to not"
 myNot _ = error $ "bad args to raise"
+
+
+myAddTestPass :: [Value] -> Runtime Value
+myAddTestPass [] = do
+    addTestPass
+    pure VNothing
+myAddTestPass _ = error $ "bad args to myAddTestPass"
+
+myAddTestFail :: [Value] -> Runtime Value
+myAddTestFail [] = do
+    addTestFail
+    pure VNothing
+myAddTestFail _ = error $ "bad args to myAddTestFail"

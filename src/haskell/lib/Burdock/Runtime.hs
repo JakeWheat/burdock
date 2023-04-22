@@ -43,7 +43,7 @@ module Burdock.Runtime
     ,makeRecord
     ,extractTuple
 
-    ,catchEither
+    ,runTask
     ,throwValue
 
 
@@ -64,7 +64,8 @@ module Burdock.Runtime
     ,app
 
     ,addTestFail
-    ,getNumTestsFailed
+    ,addTestPass
+    ,getTestResults
 
     --,ffimethodapp
     ) where
@@ -119,12 +120,13 @@ data RuntimeState
     {rtFFITypes :: IORef [(Text,Type)]
     ,rtBindings :: IORef [(Text, Value)]
     ,rtNumTestFailed :: IORef Int
+    ,rtNumTestPassed :: IORef Int
     ,rtCallStack :: IORef [Maybe Text]
     }
 
 emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
-    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef []
+    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef 0 <*> newIORef []
 
 addFFIType :: Text -> Type -> Runtime ()
 addFFIType nm ty = do
@@ -365,8 +367,8 @@ data Type
 runBurdock :: RuntimeState -> Runtime a -> IO a
 runBurdock rt f = runReaderT f rt
 
-catchEither:: Runtime a -> Runtime (Either (Either Text Value) a)
-catchEither f =
+runTask:: Runtime a -> Runtime (Either (Either Text Value) a)
+runTask f =
     catch' (catchValue (Right <$> f))
   where
     -- first try to catch a specific burdock value that was thrown
@@ -388,11 +390,17 @@ addTestFail :: Runtime ()
 addTestFail = do
     st <- ask
     liftIO $ modifyIORef (rtNumTestFailed st) (+ 1)
-    
-getNumTestsFailed :: Runtime Int
-getNumTestsFailed = do
+
+addTestPass :: Runtime ()
+addTestPass = do
     st <- ask
-    liftIO $ readIORef (rtNumTestFailed st)
+    liftIO $ modifyIORef (rtNumTestPassed st) (+ 1)
+    
+getTestResults :: Runtime (Int,Int)
+getTestResults = do
+    st <- ask
+    (,) <$> liftIO (readIORef (rtNumTestPassed st))
+        <*> liftIO (readIORef (rtNumTestFailed st))
 
 getRuntimeState :: Runtime RuntimeState
 getRuntimeState = ask

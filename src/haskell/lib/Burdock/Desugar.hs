@@ -56,7 +56,7 @@ desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
     let m1 = S.Text n $ prettyExpr e1
         m2 = S.Text n $ prettyExpr e2
         rt e = S.App n (S.Iden n "run-task") [e]
-    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-test") [rt e1,rt e2,m1,m2])
+    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-test") [m1,m2,rt e1,rt e2])
   where
     n = Nothing
 
@@ -64,7 +64,7 @@ desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is-not" e2)) =
     let m1 = S.Text n $ prettyExpr e1
         m2 = S.Text n $ prettyExpr e2
         rt e = S.App n (S.Iden n "run-task") [e]
-    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-not-test") [rt e1,rt e2,m1,m2])
+    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-not-test") [m1,m2,rt e1,rt e2])
   where
     n = Nothing
 
@@ -339,7 +339,16 @@ freeVarsExpr _bs (I.Lam fv _as _bdy) = fv
 freeVarsExpr bs (I.MethodExpr e) = freeVarsExpr bs e
 freeVarsExpr bs (I.RunTask e) = "left" : "right" : freeVarsExpr bs e
 
-freeVarsExpr _ e = error $ "freeVarsExpr: " <> show e
+freeVarsExpr bs (I.Cases e ts) =
+    freeVarsExpr bs e ++ concatMap fv ts
+  where
+    fv (p,s) = let nbs = getBindingNames p
+               in freeVarsStmts (nbs ++bs) s
+
+freeVarsExpr bs (I.VariantSel _ fs) =
+    concatMap (freeVarsExpr bs . snd) fs
+
+--freeVarsExpr _ e = error $ "freeVarsExpr: " <> show e
 
 freeVarsStmts :: [Text] -> [I.Stmt] -> [Text]
 freeVarsStmts _bs [] = []
