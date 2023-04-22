@@ -77,6 +77,15 @@ data Either:
   | left(v)
   | right(v)
 end
+
+_record_torepr = method(self):
+   show-record(self)
+ end
+
+_record_equals = method(self, b):
+   check-variants-equal([list:],self,b)
+ end
+
   |]
 
 

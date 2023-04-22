@@ -176,23 +176,11 @@ desugarExpr (S.DotExpr _ e fld) =
     I.DotExpr (desugarExpr e) (T.pack fld)
      
 desugarExpr (S.RecordSel _ fs) =
-    let trm = ("_torepr"
-              ,desugarExpr $ S.MethodExpr n $ S.Method
-                            (fh $ map mnm ["a"])
-                            [S.StmtExpr n $ S.App n (S.Iden n "show-record")
-                                [S.Iden n "a"]])
-        eqm = ("_equals"
-              ,desugarExpr $ S.MethodExpr n $ S.Method
-                            (fh $ map mnm ["a", "b"])
-                            [S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
-                                [S.Construct n ["list"] (map (S.Text n . fst) fs)
-                                , S.Iden n "a"
-                                , S.Iden n "b"]])
+    let trm = ("_torepr",desugarExpr $ S.Iden n "_record_torepr")
+        eqm = ("_equals",desugarExpr $ S.Iden n "_record_equals")
     in I.VariantSel "record" (trm : eqm : map (\(a,b) -> (T.pack a, desugarExpr b)) fs)
   where
     n = Nothing
-    fh as = S.FunHeader [] as Nothing
-    mnm x = S.NameBinding n x
 
 desugarExpr (S.TupleSel _ fs) =
     let fs1 = zip (map show [(0::Int)..]) fs
@@ -235,7 +223,9 @@ desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
     let bdy' = desugarStmts bdy
         pnms = map desugarBinding bs
         pnmsx = concatMap getBindingNames pnms
-        fv = nub $ sort $ freeVarsStmts pnmsx bdy'
+        -- adding names as a temp hack before capturing closures properly
+        -- in all the bootstrap and built in code
+        fv = nub $ sort ("_record_torepr" : "_record_equals" : freeVarsStmts pnmsx bdy')
     in I.Lam fv pnms bdy'
 desugarExpr (S.Text _ s) = I.IString $ T.pack s
 desugarExpr (S.Num _ s) = I.Num s

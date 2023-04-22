@@ -31,15 +31,20 @@ module Burdock.Runtime
     ,makeFunctionValue
     ,makeValue
     ,extractValue
+
     ,Type(..)
     ,Env
+
     ,captureClosure
     ,makeVariant
     ,variantTag
     ,variantFields
     ,variantValueFields
+    ,makeRecord
+
     ,catchEither
     ,throwValue
+
 
     -- temp, should only be used for the binding in the default env
     ,nothingValue
@@ -207,6 +212,12 @@ variantValueFields (VariantV _ flds) =
        _ -> True
 variantValueFields _ = pure Nothing
 
+makeRecord :: [(Text,Value)] -> Runtime Value
+makeRecord fs = do
+    req <- maybe (error "_record_equals not found") id <$> lookupBinding "_record_equals"
+    rtr <- maybe (error "_record_torepr not found") id <$> lookupBinding "_record_torepr"
+    makeVariant "record" (("_equals", req) : ("_torepr", rtr) : fs)
+              
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do
     envr <- rtBindings <$> ask
@@ -214,6 +225,9 @@ captureClosure nms = do
     -- todo: check all the nms are found
     pure $ Env $ filter ((`elem` nms) . fst) env
 
+-- todo: maybe the env has a catalog of loaded types
+-- but an ffivalue, the ctor Value currently, should have
+-- a pointer to it's type, not go via any kind of name lookup like this
 getMember :: Value -> Text -> Runtime Value
 getMember v@(Value tyNm _ ) fld = do
     st <- ask
