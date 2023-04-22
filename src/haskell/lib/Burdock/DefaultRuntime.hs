@@ -115,7 +115,9 @@ initRuntime = do
     -- value, or a agdt?
     addBinding "true" (makeValue "boolean" True)
     addBinding "false" (makeValue "boolean" False)
-   
+
+    addBinding "not" =<< makeFunctionValue myNot
+
     pure ()
 
 _stubType :: Text -> Text -> Value -> Runtime Value
@@ -457,3 +459,10 @@ showRecord [x] = do
                    else makeValue "string" $ "{" <> T.intercalate "," esx <> "}"
         _ -> error $ "showRecord called on non variant " <> debugShowValue x
 showRecord _ = error $ "bad args to showRecord"
+
+myNot :: [Value] -> Runtime Value
+myNot [x] = case extractValue x of
+    Just True -> pure $ makeValue "boolean" False
+    Just False -> pure $ makeValue "boolean" True
+    _ -> error $ "bad arg to not"
+myNot _ = error $ "bad args to raise"

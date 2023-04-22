@@ -228,3 +228,16 @@ check "list plus":
   [list: 1,2] + [list: false,true] is [list: 1,2,false,true]
 
 end
+
+check "boolean ops":
+
+  not(true) is false
+  not(false) is true
+
+  true and false is false
+  true or false is true
+  
+  true or raise("broke") is true
+  false and raise("broke") is false
+
+end
