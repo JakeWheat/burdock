@@ -70,6 +70,11 @@ import Control.Monad
     (forM_
     ,when)
 
+import Data.IORef
+    (newIORef
+    ,writeIORef
+    ,readIORef)
+
 createHandle :: IO RuntimeState
 createHandle = do
     st <- emptyRuntimeState
@@ -92,6 +97,21 @@ interpStmt (I.LetDecl b e) = do
     pure VNothing
 
 interpStmt (I.StmtExpr e) = interpExpr e
+
+interpStmt (I.VarDecl nm e) = do
+    v <- interpExpr e
+    vr <- liftIO $ newIORef v
+    letSimple [(nm, BoxV vr)]
+    pure VNothing
+
+interpStmt (I.SetVar nm e) = do
+    v <- interpExpr e
+    vrb <- lookupBinding nm
+    case vrb of
+        Just (BoxV vr) -> liftIO $ writeIORef vr v
+        Nothing -> error $ "iden not found: " <> nm
+        Just x -> error $ "set var on non variable: " <> debugShowValue x
+    pure VNothing
 
 --interpStmt s = error $ "interpStmt: " ++ show s
 
@@ -156,6 +176,7 @@ interpExpr (I.Iden nm) = do
     b <- lookupBinding nm
     case b of
         Nothing -> error $ "binding not found: " <> nm
+        Just (BoxV v) -> liftIO $ readIORef v
         Just v -> pure v
 
 interpExpr (I.Block sts) = withScope $ interpStmts sts

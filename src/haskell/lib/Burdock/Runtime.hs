@@ -137,6 +137,7 @@ data Value = Value Text Dynamic
            -- todo: change to variant, or something?
            | VList [Value]
            | VFun ([Value] -> Runtime Value)
+           | BoxV (IORef Value)
     --deriving (Show)
 
 debugShowValue :: Value -> Text
@@ -152,7 +153,7 @@ debugShowValue (VList vs)
     where
         f v = debugShowValue v <> ","
 debugShowValue (VFun {}) = "VFun {}"
-
+debugShowValue (BoxV {}) = "BoxV {}"
 
 getCallStack :: Runtime [Maybe Text]
 getCallStack = do

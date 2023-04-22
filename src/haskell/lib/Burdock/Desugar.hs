@@ -147,6 +147,12 @@ desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
     orE a b = S.BinOp n a "or" b
     mnm x = S.NameBinding n x
 
+desugarStmt (S.VarDecl _ (S.SimpleBinding _ _ nm _) e) =
+    [I.VarDecl (T.pack nm) $ desugarExpr e]
+
+desugarStmt (S.SetVar _ (S.Iden _ nm) e) =
+    [I.SetVar (T.pack nm) $ desugarExpr e]
+
 desugarStmt x = error $ "desugarStmt " <> show x
 
 desugarExpr :: S.Expr -> I.Expr
@@ -318,4 +324,6 @@ freeVarsStmts bs (I.LetDecl nm e : ss) =
     freeVarsExpr bs e
     ++ let bbs = getBindingNames nm ++ bs
        in freeVarsStmts bbs ss
+
+freeVarsStmts _ (s:_) = error $ "freeVarsStmts: " <> show s
 

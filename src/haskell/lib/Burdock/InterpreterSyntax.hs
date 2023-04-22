@@ -13,6 +13,8 @@ import Data.Data (Data)
 data Stmt
     = LetDecl Binding Expr
     | StmtExpr Expr
+    | VarDecl Text Expr
+    | SetVar Text Expr
     deriving (Eq,Show,Data)
 
 data Expr
