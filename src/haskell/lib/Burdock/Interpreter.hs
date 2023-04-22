@@ -52,6 +52,7 @@ import Burdock.Runtime
     
     ,makeValue
     ,extractValue
+    ,extractTuple
 
     ,debugShowValue
     
@@ -68,7 +69,9 @@ import Data.Text (Text)
 import Burdock.DefaultRuntime (initRuntime)
 import Control.Monad
     (forM_
-    ,when)
+    ,when
+    ,zipWithM
+    )
 
 import Data.IORef
     (newIORef
@@ -260,6 +263,18 @@ tryApplyBinding (I.NameBinding "false") _ = pure Nothing
 
 tryApplyBinding (I.NameBinding nm) v = pure $ Just [(nm,v)]
 tryApplyBinding I.WildcardBinding _ = pure $ Just []
+
+tryApplyBinding (I.TupleBinding bs) v = do
+    vs' <- extractTuple v
+    case vs' of
+        Nothing -> pure Nothing
+        Just vs ->
+            if length bs /= length vs
+            then pure Nothing
+            else do
+                x <- zipWithM tryApplyBinding bs vs
+                pure $ (concat <$> sequence x)
+
 tryApplyBinding (I.VariantBinding vnm flds) v = do
     -- check v is a variant
     vt' <- variantTag v 

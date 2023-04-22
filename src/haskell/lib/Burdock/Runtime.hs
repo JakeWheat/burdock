@@ -41,6 +41,7 @@ module Burdock.Runtime
     ,variantFields
     ,variantValueFields
     ,makeRecord
+    ,extractTuple
 
     ,catchEither
     ,throwValue
@@ -177,6 +178,12 @@ makeList = VList
 extractList :: Value -> Maybe [Value]
 extractList (VList vs) = Just vs
 extractList _ = Nothing
+
+extractTuple :: Value -> Runtime (Maybe [Value])
+extractTuple v@(VariantV "tuple" _) = do
+    x <- variantValueFields v
+    pure $ fmap (map snd) x
+extractTuple _ = pure Nothing
 
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v

@@ -39,5 +39,6 @@ data Binding
     = NameBinding Text
     | WildcardBinding
     | VariantBinding Text [Binding]
+    | TupleBinding [Binding]
     deriving (Eq,Show,Data)
 

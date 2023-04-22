@@ -277,3 +277,16 @@ check "boolean literal patterns":
   end
 
 end
+
+check "tuple patterns":
+  {x; y} = {1; 2}
+  x is 1
+  y is 2
+
+  cases {3;4}:
+    | {a;b} =>
+      a is 3
+      b is 4
+    | _ => {3;4} is false
+  end
+end

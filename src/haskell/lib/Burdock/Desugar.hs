@@ -308,6 +308,7 @@ desugarBinding = \case
     S.ShadowBinding _ nm -> I.NameBinding $ T.pack nm
     S.VariantBinding _ [vnm] bs -> I.VariantBinding (T.pack vnm) $ map desugarBinding bs
     S.WildcardBinding _ -> I.WildcardBinding
+    S.TupleBinding _ bs -> I.TupleBinding $ map desugarBinding bs
     x -> error $ "unsupported binding: " <> show x
     
     
@@ -315,6 +316,7 @@ getBindingNames :: I.Binding -> [Text]
 getBindingNames (I.NameBinding nm) = [nm]
 getBindingNames I.WildcardBinding = []
 getBindingNames (I.VariantBinding _ bs) = concatMap getBindingNames bs
+getBindingNames (I.TupleBinding bs) = concatMap getBindingNames bs
 
 freeVarsExpr :: [Text] -> I.Expr -> [Text]
 freeVarsExpr bs (I.Block sts) = freeVarsStmts bs sts
