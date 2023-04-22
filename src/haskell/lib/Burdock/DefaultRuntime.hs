@@ -63,12 +63,23 @@ import Burdock.Scientific (showScientific)
 import Control.Monad
     (when
     ,forM
+    ,void
     )
 
 import Data.Dynamic
     (Typeable
     )
 
+import Control.Concurrent
+    (threadDelay
+    ,throwTo
+    ,myThreadId
+    )
+
+import Control.Concurrent.Async
+    (async
+    ,AsyncCancelled(AsyncCancelled)
+    )
 
 -- temp hack
 prelude :: Text
@@ -79,6 +90,13 @@ data Either:
   | right(v)
 end
 
+_run-task-fixup = lam(x):
+    cases x:
+      | left(es) => left(es.exception)
+      | _ => x
+    end
+  end
+  
 _record_torepr = method(self):
    show-record(self)
  end
@@ -176,6 +194,8 @@ initRuntime = do
 
     addBinding "not" =<< makeFunctionValue myNot
 
+    addBinding "sleep" =<< makeFunctionValue mySleep
+    addBinding "spawn-sleep-throw-to" =<< makeFunctionValue spawnSleepThrowTo
 
     addBinding "add-test-pass" =<< makeFunctionValue myAddTestPass
     addBinding "add-test-fail" =<< makeFunctionValue myAddTestFail
@@ -318,7 +338,7 @@ myDebugPrint _ = error $ "bad args to myDebugPrint"
 
 toreprDebug :: [Value] -> Runtime Value
 toreprDebug [x] = do
-    y <- runTask $ myToRepr [x]
+    y <- runTask False $ myToRepr [x]
     case y of
         Left _ -> pure $ makeValue "string" $ debugShowValue x
         Right v -> pure v
@@ -474,6 +494,32 @@ myNot [x] = case extractValue x of
     _ -> error $ "bad arg to not"
 myNot _ = error $ "bad args to raise"
 
+mySleep :: [Value] -> Runtime Value
+mySleep [x] = do
+    case extractValue x of
+        Just (n :: Scientific) -> do
+            liftIO $ threadDelay $ floor $ n * 1000 * 1000
+            pure VNothing
+            
+        Nothing -> error $ "bad args to mySleep: " <> debugShowValue x
+mySleep _ = error $ "bad args to mySleep"
+
+-- used before threads implemented to test async stack traces
+-- it will spawn a thread and return immediately
+-- that thread will sleep for the given amount, then asynchronously
+-- throw an exception to the original thread
+spawnSleepThrowTo :: [Value] -> Runtime Value
+spawnSleepThrowTo [x] = do
+    case extractValue x of
+        Just (n :: Scientific) -> do
+            mainTid <- liftIO $ myThreadId
+            void $ liftIO $ async $ do
+                 threadDelay $ floor $ n * 1000 * 1000
+                 throwTo mainTid AsyncCancelled
+            pure VNothing
+            
+        Nothing -> error $ "bad args to spawnSleepThrowTo: " <> debugShowValue x
+spawnSleepThrowTo _ = error $ "bad args to spawnSleepThrowTo"
 
 myAddTestPass :: [Value] -> Runtime Value
 myAddTestPass [] = do

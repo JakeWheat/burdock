@@ -52,6 +52,8 @@ import Burdock.Runtime
     
     ,makeValue
     ,extractValue
+    ,makeList
+    ,makeRecord
     ,extractTuple
 
     ,debugShowValue
@@ -129,18 +131,24 @@ interpExpr (I.VariantSel nm fs) = do
     -- todo: nm has to be namespaced
     pure $ VariantV nm vs
 
-interpExpr (I.RunTask tsk) = do
-    x <- runTask $ interpExpr tsk
+interpExpr (I.RunTask catchAsync tsk) = do
+    x <- runTask catchAsync $ interpExpr tsk
     case x of
         -- a left left of a string is an show'n arbitrary haskell exception
-        Left (Left e) -> do
+        Left (Left e, st) -> do
             left <- interpExpr (I.Iden "left")
-            app Nothing left [makeValue "string" e]
+            let st' = makeList $ map (makeValue "string" . maybe "nothing" id) st
+            ret <- makeRecord [("exception", makeValue "string" e)
+                              ,("callstack", st')]
+            app Nothing left [ret]
         -- a left right v is a burdock value that has been raised from burdock
         -- or ffi code
-        Left (Right v) -> do
+        Left (Right v, st) -> do
             left <- interpExpr (I.Iden "left")
-            app Nothing left [v]
+            let st' = makeList $ map (makeValue "string" . maybe "nothing" id) st
+            ret <- makeRecord [("exception", v)
+                              ,("callstack", st')]
+            app Nothing left [ret]
         Right v -> do
             right <- interpExpr (I.Iden "right")
             app Nothing right [v]

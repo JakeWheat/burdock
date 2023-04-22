@@ -30,7 +30,7 @@ data Expr
     | IString Text
     | Iden Text
     | MethodExpr Expr
-    | RunTask Expr
+    | RunTask Bool Expr
     | Cases Expr [(Binding, [Stmt])]
     deriving (Eq,Show,Data)
 

@@ -216,7 +216,15 @@ desugarExpr (S.TupleGet sp v n) =
 -- it has to be looked up in the environment. the desugarer should have
 -- the info to do this
 desugarExpr (S.App _ (S.Iden _ "run-task") [e]) =
-    I.RunTask $ desugarExpr e
+    desugarExpr $ S.App n (S.Iden n "_run-task-fixup") [S.App n (S.Iden n "run-task-cs") [e]]
+  where
+    n = Nothing
+desugarExpr (S.App _ (S.Iden _ "run-task-cs") [e]) =
+    I.RunTask False $ desugarExpr e
+
+desugarExpr (S.App _ (S.Iden _ "run-task-cs-async") [e]) =
+    I.RunTask True $ desugarExpr e
+
 
 desugarExpr (S.App sp f es) =
     let spx = case sp of
@@ -269,7 +277,6 @@ desugarExpr (S.Parens _ e) = desugarExpr e
 desugarExpr (S.Construct _ ["list"] es) =
     desugarExpr $ S.App Nothing (S.Iden Nothing "make-list") es
 
-
 desugarExpr (S.Cases _ tst _ bs mels) =
     let tst' = desugarExpr tst
         bs' = flip map bs $ \(bm,_,bdy) -> (desugarBinding bm, desugarStmts bdy)
@@ -277,9 +284,6 @@ desugarExpr (S.Cases _ tst _ bs mels) =
                     Nothing -> [] -- todo: insert explicit raise here
                     Just bdy -> [(I.WildcardBinding, desugarStmts bdy)]
     in I.Cases tst' (bs' ++ mels')
-      
-
---                | Cases Expr [(Binding, [Stmt])]
 
 desugarExpr x = error $ "desugarExpr " <> show x
 
@@ -311,7 +315,6 @@ desugarBinding = \case
     S.TupleBinding _ bs -> I.TupleBinding $ map desugarBinding bs
     x -> error $ "unsupported binding: " <> show x
     
-    
 getBindingNames :: I.Binding -> [Text]
 getBindingNames (I.NameBinding nm) = [nm]
 getBindingNames I.WildcardBinding = []
@@ -337,7 +340,7 @@ freeVarsExpr bs (I.If ts els) =
 
 freeVarsExpr _bs (I.Lam fv _as _bdy) = fv
 freeVarsExpr bs (I.MethodExpr e) = freeVarsExpr bs e
-freeVarsExpr bs (I.RunTask e) = "left" : "right" : freeVarsExpr bs e
+freeVarsExpr bs (I.RunTask _ e) = "left" : "right" : freeVarsExpr bs e
 
 freeVarsExpr bs (I.Cases e ts) =
     freeVarsExpr bs e ++ concatMap fv ts

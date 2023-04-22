@@ -52,7 +52,10 @@ executable burdock
                     , mtl
                     , pretty-show
                     , safe-exceptions 
+                    , async
+
     hs-source-dirs:   src/haskell/lib
                     , src/haskell/app
+
     default-language: Haskell2010
     ghc-options:      -Wall

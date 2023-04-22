@@ -28,6 +28,8 @@ module Burdock.Runtime
     ,getRuntimeState
     ,addFFIType
 
+    ,withCallstackEntry
+
     ,makeFunctionValue
     ,makeValue
     ,extractValue
@@ -103,16 +105,18 @@ import Data.IORef
     ,newIORef
     ,modifyIORef
     ,readIORef
-    --,writeIORef
+    ,writeIORef
     )
 
 import Control.Exception.Safe (catch
                               ,SomeException
                               ,Exception
                               ,throwM
+                              ,catchAsync
                               --,catchAny
                               --,fromException
                               --,try
+                              ,bracket
                               )
 
 data RuntimeState
@@ -367,14 +371,36 @@ data Type
 runBurdock :: RuntimeState -> Runtime a -> IO a
 runBurdock rt f = runReaderT f rt
 
-runTask:: Runtime a -> Runtime (Either (Either Text Value) a)
-runTask f =
-    catch' (catchValue (Right <$> f))
+runTask :: Bool -> Runtime a -> Runtime (Either (Either Text Value, [Maybe Text]) a)
+runTask casync f = do
+    --liftIO $ putStrLn $ "catchAsync is " <> show casync
+    bracketCallstack $ catch' (catchValue (Right <$> f))
   where
+    myCatch = if casync
+              then catchAsync
+              else catch
     -- first try to catch a specific burdock value that was thrown
-    catchValue = flip catch $ \(ValueException v) -> pure $ Left $ Right v
+    catchValue = flip catch $ \(ValueException v) -> do
+        st <- doStackTraceStuff
+        pure $ Left (Right v, st)
     -- then try to catch any haskell (non async) exception
-    catch' = flip catch $ \(e :: SomeException) -> pure $ Left $ Left $ show e
+    catch' = flip myCatch $ \(e :: SomeException) -> do
+        st <- doStackTraceStuff
+        pure $ Left (Left $ show e, st)
+    doStackTraceStuff = do
+        rf <- rtCallStack <$> ask
+        st <- liftIO $ readIORef rf
+        pure st
+    bracketCallstack :: Runtime a -> Runtime a
+    bracketCallstack bf = bracket
+        (do
+         rf <- rtCallStack <$> ask
+         save <- liftIO $ readIORef rf
+         pure save)
+        (\save -> do
+           rf <- rtCallStack <$> ask
+           liftIO $ writeIORef rf save)
+        (const bf)
 
 throwValue :: Value -> Runtime a
 throwValue v = throwM $ ValueException v
