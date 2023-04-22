@@ -307,6 +307,7 @@ desugarBinding = \case
     S.NameBinding _ nm -> I.NameBinding $ T.pack nm
     S.ShadowBinding _ nm -> I.NameBinding $ T.pack nm
     S.VariantBinding _ [vnm] bs -> I.VariantBinding (T.pack vnm) $ map desugarBinding bs
+    S.WildcardBinding _ -> I.WildcardBinding
     x -> error $ "unsupported binding: " <> show x
     
     

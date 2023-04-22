@@ -255,3 +255,13 @@ check "when":
   a is 2
 
 end
+
+check "more patterns":
+
+  a = 3
+  cases a:
+    | _ => 1 is 1
+    | else => 1 is 2
+  end
+
+end
