@@ -64,6 +64,11 @@ import Control.Monad
     ,forM
     )
 
+import Data.Dynamic
+    (Typeable
+    )
+
+
 -- temp hack
 prelude :: Text
 prelude = [R.r|
@@ -107,123 +112,69 @@ initRuntime = do
 _stubType :: Text -> Text -> Value -> Runtime Value
 _stubType nm m _ = error $ "called method " <> m <> " on type " <> nm
 
+unaryMember :: Typeable a => Text -> Text -> Text -> (a -> Text) -> Value -> [Value] -> Runtime Value
+unaryMember burName inType outType f v as =
+    case as of
+        [] -> do
+            let v1 = maybe (error $ "u not a " <> inType <> " " <> debugShowValue v) id $ extractValue v
+            pure $ makeValue outType $ f v1
+        _ -> error $ "bad args to " <> inType <> " " <> burName
+
+
+binaryMember :: (Typeable a, Typeable b) =>
+    Text -> Text -> Text -> (a -> a -> b) -> Value -> [Value] -> Runtime Value
+binaryMember burName inType outType f v1 as =
+    case as of
+        [v2] -> do
+            let n1 = maybe (error $ "b0 not a " <> inType <> " " <> debugShowValue v1) id $ extractValue v1
+                n2 = maybe (error $ "b1 not a " <> inType <> " " <> debugShowValue v2) id $ extractValue v2
+            pure $ makeValue outType $ f n1 n2
+        _ -> error $ "bad args to " <> inType <> " " <> burName
+
+binaryMemberLax :: (Typeable a, Typeable b) =>
+    Text -> Text -> Text -> (a -> a -> b) -> Value -> [Value] -> Runtime Value
+binaryMemberLax burName inType outType f v1 as =
+    case as of
+        [v2] -> do
+            let n1 = maybe (error $ "bl not a " <> inType <> " " <> debugShowValue v1) id $ extractValue v1
+                mn2 = extractValue v2
+                -- todo: make false an arg?
+            pure $ maybe (makeValue outType False) (makeValue outType . (f n1)) mn2
+        _ -> error $ "bad args to " <> inType <> " " <> burName
+
+
 scientificFFI :: Text -> Value -> Runtime Value
-scientificFFI "_torepr" v1 = do
-    let f as = case as of
-                   [] -> do
-                       let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
-                       pure $ makeValue "string" $ T.pack $ showScientific n1
-                       --pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
-                   _ -> error $ "bad args to number _torepr"
-    makeFunctionValue f
-
-scientificFFI "_plus" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
-                           n2 = maybe (error $ "not a number " <> debugShowValue v2) id $ extractValue v2
-                       pure $ makeValue "number" $ n1 + n2
-                   _ -> error $ "bad args to number plus"
-    makeFunctionValue f
-
+scientificFFI "_torepr" v =
+    makeFunctionValue $ unaryMember "_torepr" "number" "string" (T.pack . showScientific) v
+scientificFFI "_plus" v1 =
+    makeFunctionValue $ binaryMember "_plus" "number" "number" ((+) :: Scientific -> Scientific -> Scientific) v1
 scientificFFI "_minus" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
-                           n2 = maybe (error $ "not a number " <> debugShowValue v2) id $ extractValue v2
-                       pure $ makeValue "number" $ n1 - n2
-                   _ -> error $ "bad args to number plus"
-    makeFunctionValue f
-
+    makeFunctionValue $ binaryMember "_plus" "number" "number" ((-) :: Scientific -> Scientific -> Scientific) v1
 scientificFFI "_times" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
-                           n2 = maybe (error $ "not a number " <> debugShowValue v2) id $ extractValue v2
-                       pure $ makeValue "number" $ n1 * n2
-                   _ -> error $ "bad args to number times"
-    makeFunctionValue f
-
-
+    makeFunctionValue $ binaryMember "_plus" "number" "number" ((*) :: Scientific -> Scientific -> Scientific) v1
 scientificFFI "_equals" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
-                           mn2 = extractValue v2
-                       pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
-                   _ -> error $ "bad args to number equals"
-    makeFunctionValue f
-
+    makeFunctionValue $ binaryMemberLax "_equals" "number" "boolean" ((==) :: Scientific -> Scientific -> Bool) v1
 scientificFFI "_lessequal" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Scientific
-                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
-                           mn2 = extractValue v2
-                       pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 <=)) mn2
-                   _ -> error $ "bad args to number equals"
-    makeFunctionValue f
-
+    makeFunctionValue $ binaryMember "_lessthan" "number" "boolean" ((<) :: Scientific -> Scientific -> Bool) v1
 scientificFFI m _ = error $ "unsupported field on number: " <> m
 
 
 stringFFI :: Text -> Value -> Runtime Value
-stringFFI "_plus" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Text
-                           n1 = maybe (error "not a string") id $ extractValue v1
-                           n2 = maybe (error "not a string") id $ extractValue v2
-                       pure $ makeValue "string" $ T.concat [n1,n2]
-                   _ -> error $ "bad args to string plus"
-    makeFunctionValue f
-stringFFI "_equals" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Text
-                           n1 = maybe (error "not a string") id $ extractValue v1
-                       case extractValue v2 of
-                           Nothing -> pure $ makeValue "boolean" False
-                           Just n2 -> pure $ makeValue "boolean" $ n1 == n2
-                   _ -> error $ "bad args to string equals"
-    makeFunctionValue f
+stringFFI "_plus" v1 =
+    makeFunctionValue $ binaryMember "_plus" "string" "string" ((<>) :: Text -> Text -> Text) v1
+stringFFI "_equals" v1 =
+    makeFunctionValue $ binaryMemberLax "_equals" "string" "boolean" ((==) :: Text -> Text -> Bool) v1
 stringFFI "_torepr" v1 = do
-    let f as = case as of
-                   [] -> do
-                       let n1 :: Text
-                           n1 = maybe (error $ "not a string " <> debugShowValue v1) id $ extractValue v1
-                       pure $ makeValue "string" $ show n1
-                       --pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
-                   _ -> error $ "bad args to number _torepr"
-    makeFunctionValue f
-
+    makeFunctionValue $ unaryMember "_torepr" "string" "string" (show :: (Text -> Text)) v1
 stringFFI m _ = error $ "unsupported field on string: " <> m
 
 booleanFFI :: Text -> Value -> Runtime Value
 booleanFFI "_torepr" v1 = do
-    let f as = case as of
-                   [] -> do
-                       let n1 :: Bool
-                           n1 = maybe (error "not a boolean") id $ extractValue v1
-                       pure $ makeValue "string" $ if n1 then ("true" :: Text) else "false"
-                   _ -> error $ "bad args to boolean equals"
-    makeFunctionValue f
-
-
+    makeFunctionValue $ unaryMember "_torepr" "boolean" "string" disp v1
+  where
+    disp n1 = if n1 then ("true" :: Text) else "false"
 booleanFFI "_equals" v1 = do
-    let f as = case as of
-                   [v2] -> do
-                       let n1 :: Bool
-                           n1 = maybe (error "not a boolean") id $ extractValue v1
-                           mn2 = extractValue v2
-                       pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
-                   _ -> error $ "bad args to boolean equals"
-    makeFunctionValue f
+    makeFunctionValue $ binaryMemberLax "_equals" "boolean" "boolean" ((==) :: Bool -> Bool -> Bool) v1
 booleanFFI m _ = error $ "unsupported field on boolean: " <> m
 
 myPrint :: [Value] -> Runtime Value
