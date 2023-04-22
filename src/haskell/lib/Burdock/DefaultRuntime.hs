@@ -128,6 +128,16 @@ scientificFFI "_plus" v1 = do
                    _ -> error $ "bad args to number plus"
     makeFunctionValue f
 
+scientificFFI "_minus" v1 = do
+    let f as = case as of
+                   [v2] -> do
+                       let n1 :: Scientific
+                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
+                           n2 = maybe (error $ "not a number " <> debugShowValue v2) id $ extractValue v2
+                       pure $ makeValue "number" $ n1 - n2
+                   _ -> error $ "bad args to number plus"
+    makeFunctionValue f
+
 scientificFFI "_times" v1 = do
     let f as = case as of
                    [v2] -> do
@@ -148,6 +158,17 @@ scientificFFI "_equals" v1 = do
                        pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 ==)) mn2
                    _ -> error $ "bad args to number equals"
     makeFunctionValue f
+
+scientificFFI "_lessequal" v1 = do
+    let f as = case as of
+                   [v2] -> do
+                       let n1 :: Scientific
+                           n1 = maybe (error $ "not a number " <> debugShowValue v1) id $ extractValue v1
+                           mn2 = extractValue v2
+                       pure $ maybe (makeValue "boolean" False) (makeValue "boolean" . (n1 <=)) mn2
+                   _ -> error $ "bad args to number equals"
+    makeFunctionValue f
+
 scientificFFI m _ = error $ "unsupported field on number: " <> m
 
 
