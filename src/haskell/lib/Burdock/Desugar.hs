@@ -68,6 +68,11 @@ desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is-not" e2)) =
   where
     n = Nothing
 
+desugarStmt (S.When _ t b) =
+    desugarStmt $ S.StmtExpr n $ S.If n [(t, b)] (Just [S.StmtExpr n $ S.Iden n "nothing"])
+  where
+    n = Nothing
+
 desugarStmt (S.StmtExpr _ e) = [I.StmtExpr $ desugarExpr e]
 
 {-

@@ -241,3 +241,17 @@ check "boolean ops":
   false and raise("broke") is false
 
 end
+
+check "when":
+
+  var a = 1
+  when true:
+    a = 2
+  end
+  a is 2
+  when false:
+    a = 3
+  end
+  a is 2
+
+end
