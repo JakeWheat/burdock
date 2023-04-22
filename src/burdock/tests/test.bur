@@ -256,12 +256,24 @@ check "when":
 
 end
 
-check "more patterns":
+check "wildcard pattern":
 
   a = 3
   cases a:
     | _ => 1 is 1
     | else => 1 is 2
+  end
+
+end
+
+check "boolean literal patterns":
+  cases true:
+    | true => 1 is 1
+    | false => 1 is 0
+  end
+  cases false:
+    | true =>  1 is 0
+    | false => 0 is 0
   end
 
 end

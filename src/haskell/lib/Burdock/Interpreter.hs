@@ -252,6 +252,12 @@ later it will also return the shadow-age of each binding
 tryApplyBinding :: I.Binding -> Value -> Runtime (Maybe [(Text,Value)])
 
 
+-- temp hack for boolean literals
+tryApplyBinding (I.NameBinding "true") v | Just True <- extractValue v = pure $ Just []
+tryApplyBinding (I.NameBinding "true") _ = pure Nothing
+tryApplyBinding (I.NameBinding "false") v | Just False <- extractValue v = pure $ Just []
+tryApplyBinding (I.NameBinding "false") _ = pure Nothing
+
 tryApplyBinding (I.NameBinding nm) v = pure $ Just [(nm,v)]
 tryApplyBinding I.WildcardBinding _ = pure $ Just []
 tryApplyBinding (I.VariantBinding vnm flds) v = do
