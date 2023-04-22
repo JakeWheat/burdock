@@ -164,6 +164,8 @@ scientificFFI "_times" v1 = do
 scientificFFI "_equals" v1 = do
     makeFunctionValue $ binaryMemberLax "_equals" "number" "boolean" ((==) :: Scientific -> Scientific -> Bool) v1
 scientificFFI "_lessequal" v1 = do
+    makeFunctionValue $ binaryMember "_lessequal" "number" "boolean" ((<=) :: Scientific -> Scientific -> Bool) v1
+scientificFFI "_lessthan" v1 = do
     makeFunctionValue $ binaryMember "_lessthan" "number" "boolean" ((<) :: Scientific -> Scientific -> Bool) v1
 scientificFFI m _ = error $ "unsupported field on number: " <> m
 

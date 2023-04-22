@@ -173,10 +173,11 @@ check "is and is-not, equals":
 
 end
 
-check "more arith":
+check "more arith, comparisons":
 
-   4 - 3 is 1
-   5 <= 4 is false
+  4 - 3 is 1
+  5 <= 4 is false
+  5 < 3 is false
 
 end
 
@@ -219,5 +220,11 @@ check "fun decl":
   fact(3) is 6
   fact(5) is 120
 
+
+end
+
+check "list plus":
+
+  [list: 1,2] + [list: false,true] is [list: 1,2,false,true]
 
 end

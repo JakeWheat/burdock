@@ -251,6 +251,7 @@ desugarExpr (S.BinOp _ e1 op e2) | Just op' <- lookup op methOps =
     methOps =
         [("==", "_equals")
         ,("<=", "_lessequal")
+        ,("<", "_lessthan")
         ,("+", "_plus")
         ,("-", "_minus")
         ,("*", "_times")]

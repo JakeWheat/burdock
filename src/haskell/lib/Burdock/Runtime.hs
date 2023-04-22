@@ -294,6 +294,11 @@ getMember (VList es) "_equals" = do
         [_] -> pure $ makeValue "boolean" False
         _ -> error "bad args to nothing._equals"
 
+getMember (VList es) "_plus" = do
+    makeFunctionValue $ \case
+        [VList fs] -> pure $ VList $ es ++ fs
+        [_] -> pure $ makeValue "boolean" False
+        _ -> error "bad args to nothing._equals"
 
 getMember v fld = error $ "unrecognised member " <> fld <> " on " <> debugShowValue v
 
