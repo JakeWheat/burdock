@@ -44,6 +44,7 @@ module Burdock.Runtime
     ,variantValueFields
     ,makeRecord
     ,extractTuple
+    ,makeTuple
 
     ,runTask
     ,throwValue
@@ -191,6 +192,13 @@ extractTuple v@(VariantV "tuple" _) = do
     pure $ fmap (map snd) x
 extractTuple _ = pure Nothing
 
+makeTuple :: [Value] -> Runtime Value
+makeTuple fs = do
+    let fs1 = zip (map show [(0::Int)..]) fs
+    req <- maybe (error "_tuple_equals not found") id <$> lookupBinding "_record_equals"
+    rtr <- maybe (error "_tuple_torepr not found") id <$> lookupBinding "_record_torepr"
+    makeVariant "tuple" (("_equals", req) : ("_torepr", rtr) : fs1)
+
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v
 extractValue _x = Nothing -- error $ "can't extract value from " ++ T.unpack (debugShowValue x)
@@ -287,6 +295,17 @@ getMember (VList es) "_torepr" = do
 getMember (VList es) "length" = do
     makeFunctionValue (\_ -> do
         pure $ makeValue "number" ((fromIntegral $ length es) :: Scientific))
+
+getMember (VList es) "first" =
+    case es of
+        (e:_) -> pure e
+        [] -> error $ "first called on empty list"
+
+getMember (VList es) "rest" =
+    case es of
+        (_:es') -> pure $ VList es'
+        [] -> error $ "rest called on empty list"
+
 
 getMember (VList es) "_equals" = do
     makeFunctionValue $ \case

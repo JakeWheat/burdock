@@ -26,8 +26,10 @@ check "test the tests - how can this be trusted?":
 
   my-do-bpred-test(lam(a,b): a == b end, "is", "!=", "1", "1", left("a error"), right(1))
     is test-fail("1 is 1", 'LHS error: "a error"')
+
   my-do-bpred-test(lam(a,b): a == b end, "is", "!=", "1", "1", right(1), left("b error"))
     is test-fail("1 is 1", 'RHS error: "b error"')
+
   my-do-bpred-test(lam(a,b): a == b end, "is", "!=", "1", "1", left("a error"), left("b error"))
     is test-fail("1 is 1", 'LHS error: "a error"\nRHS error: "b error"')
 

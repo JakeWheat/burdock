@@ -178,6 +178,7 @@ check "more arith, comparisons":
   4 - 3 is 1
   5 <= 4 is false
   5 < 3 is false
+  5 > 3 is true
 
 end
 
@@ -289,4 +290,16 @@ check "tuple patterns":
       b is 4
     | _ => {3;4} is false
   end
+end
+
+
+check:
+  list-map([list:],lam(a): a end) is [list:]
+  list-map([list: 1],lam(a): a end) is [list: 1]
+  list-map([list: 1,2],lam(a): a end) is [list: 1,2]
+
+  list-map([list:],lam(a): a + 1 end) is [list:]
+  list-map([list: 1],lam(a): a + 1 end) is [list: 2]
+  list-map([list: 1,2],lam(a): a + 1 end) is [list: 2,3]
+
 end

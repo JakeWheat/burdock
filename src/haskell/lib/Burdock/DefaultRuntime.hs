@@ -105,6 +105,15 @@ _record_equals = method(self, b):
    check-variants-equal([list:],self,b)
  end
 
+_tuple_torepr = method(self):
+   show-tuple(self)
+ end
+
+_tuple_equals = method(self, b):
+   check-variants-equal([list:],self,b)
+ end
+
+
 data TestResult:
   | test-pass(name)
   | test-fail(name,msg)
@@ -161,6 +170,13 @@ do-is-not-test = lam(m1,m2,v1,v2):
   r = my-do-bpred-test(lam(a,b): not(a == b) end, "is-not", "==", m1, m2, v1, v2)
   log-result(r)
   print(format-test(r))
+end
+
+fun list-map(l, f):
+  if l == [list:]: [list:]
+  else:
+    [list: f(l.first)] + list-map(l.rest,f)
+  end
 end
 
 
@@ -256,6 +272,8 @@ scientificFFI "_lessequal" v1 = do
     makeFunctionValue $ binaryMember "_lessequal" "number" "boolean" ((<=) :: Scientific -> Scientific -> Bool) v1
 scientificFFI "_lessthan" v1 = do
     makeFunctionValue $ binaryMember "_lessthan" "number" "boolean" ((<) :: Scientific -> Scientific -> Bool) v1
+scientificFFI "_greaterthan" v1 = do
+    makeFunctionValue $ binaryMember "_greaterthan" "number" "boolean" ((>) :: Scientific -> Scientific -> Bool) v1
 scientificFFI m _ = error $ "unsupported field on number: " <> m
 
 

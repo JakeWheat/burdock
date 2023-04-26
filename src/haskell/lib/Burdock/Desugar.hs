@@ -189,25 +189,12 @@ desugarExpr (S.RecordSel _ fs) =
 
 desugarExpr (S.TupleSel _ fs) =
     let fs1 = zip (map show [(0::Int)..]) fs
-        trm = ("_torepr"
-              ,desugarExpr $ S.MethodExpr n $ S.Method
-                            (fh $ map mnm ["a"])
-                            [S.StmtExpr n $ S.App n (S.Iden n "show-tuple")
-                                [S.Iden n "a"]
-                            ])
-        eqm = ("_equals"
-              ,desugarExpr $ S.MethodExpr n $ S.Method
-                            (fh $ map mnm ["a", "b"])
-                            [S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
-                                [S.Construct n ["list"] (map (S.Text n . T.unpack . fst) $ fs1)
-                                , S.Iden n "a"
-                                , S.Iden n "b"]])
-    in I.VariantSel "tuple" (trm : eqm : map (\(a,b) -> (a,desugarExpr b)) fs1)
+        trm = ("_torepr",desugarExpr $ S.Iden n "_tuple_torepr")
+        eqm = ("_equals",desugarExpr $ S.Iden n "_tuple_equals")
+    in I.VariantSel "tuple" (trm : eqm : map (\(a,b) -> (a, desugarExpr b)) fs1)
   where
     n = Nothing
-    fh as = S.FunHeader [] as Nothing
-    mnm x = S.NameBinding n x
-    
+
 desugarExpr (S.TupleGet sp v n) =
     desugarExpr (S.DotExpr sp v (T.unpack $ show n))
 
@@ -265,6 +252,7 @@ desugarExpr (S.BinOp _ e1 op e2) | Just op' <- lookup op methOps =
         [("==", "_equals")
         ,("<=", "_lessequal")
         ,("<", "_lessthan")
+        ,(">", "_greaterthan")
         ,("+", "_plus")
         ,("-", "_minus")
         ,("*", "_times")]
