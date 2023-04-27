@@ -54,7 +54,7 @@ main = do
         mySrc <- readFile fn
         let ast = either (error . T.pack) id $ parseScript "" (T.unpack prelude <> mySrc)
             dast = desugar ast
-        --putStrLn $ ppShow dast
+        --putStrLn $ T.pack $ ppShow dast
         st <- createHandle
         runBurdock st $ do
             void $ interpBurdock dast

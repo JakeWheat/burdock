@@ -21,6 +21,54 @@ check:
   the-m-method-closed-over-o(5) is 27
 end
 
+
+data BTree:
+  | node(value :: Number, left :: BTree, right :: BTree) with:
+    method size(self): 1 + self.left.size() + self.right.size() end
+  | leaf(value :: Number) with:
+    method size(self): 1 end,
+    method increment(self): leaf(self.value + 1) end
+sharing:
+  method values-equal(self, other):
+    self.value == other.value
+  end
+end
+
+check "methods":
+  a-btree = node(1, leaf(2), node(3, leaf(4), leaf(2)))
+  a-btree.values-equal(leaf(1)) is true
+  leaf(1).values-equal(a-btree) is true
+  a-btree.size() is 5
+  leaf(0).size() is 1
+  leaf(1).increment() is leaf(2)
+  #a-btree.increment() # raises error: field increment not found.
+end
+
+
+data MyData:
+  | myd1(a)
+  | myd2(a)
+sharing:
+  method add1(self):
+    cases self:
+      | myd1(a) => a + 1
+      | myd2(a) => a + 1
+    end
+  end
+
+end
+
+check "shared methods":
+  a = myd1(2)
+  b = myd2(3)
+
+  a.add1() is 3
+  b.add1() is 4 
+
+end
+
+
+
 #|
 check "internal - default equals for variants":
 

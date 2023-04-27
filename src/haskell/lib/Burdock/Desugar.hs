@@ -97,56 +97,41 @@ check-variants-equal(on-fields :: list<string>,a,b)
 
 
 -}
-desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
+desugarStmt (S.DataDecl _ dnm _ vs shr Nothing) =
     desugarStmts $ concatMap varF vs ++ [isDat]
   where
-    varF (S.VariantDecl _ vnm bs []) =
-        -- my-pt = lam(ps...) = make-variant("my-pt", [list:vnms...], [list:ps]) end
-        [if null bs
-         then
-             let 
-             in letDecl vnm
-                $ S.App n (S.Iden n "make-variant")
-                [S.Text n vnm
-                , lst [S.Text n "_equals", S.Text n "_torepr"]
-                , let eqm = S.MethodExpr n $ S.Method
-                            (fh $ map mnm ["a", "b"])
-                            [S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
-                                [S.Construct n ["list"] []
-                                , S.Iden n "a"
-                                , S.Iden n "b"]]
-                      trm = S.MethodExpr n $ S.Method
-                            (fh $ map mnm ["a"])
-                            [S.StmtExpr n $ S.App n (S.Iden n "show-variant")
-                                [S.Iden n "a"]
-                            ]
-                  in lst [eqm,trm]
-                ]
-         else let ps = map sbNm bs
-              in letDecl vnm
-                 $ S.Lam n (fh $ map (S.NameBinding n) ps)
-                 [S.StmtExpr n $
-                  S.App n (S.Iden n "make-variant")
-                  [S.Text n vnm
-                  , lst $ map (S.Text n) ("_equals" : "_torepr" : ps)
-                  , let eqm = S.MethodExpr n $ S.Method
+    varF (S.VariantDecl _ vnm bs meths) =
+        let extraMeths ps =
+                [(S.Text n "_equals"
+                 ,S.MethodExpr n $ S.Method
                             (fh $ map mnm ["a", "b"])
                             [letDecl "flds" $ S.Construct n ["list"] $ map (S.Text n) ps
                             ,S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
-                                [S.Iden n "flds", S.Iden n "a", S.Iden n "b"]]
-                        trm = S.MethodExpr n $ S.Method
+                                [S.Iden n "flds", S.Iden n "a", S.Iden n "b"]])
+                ,(S.Text n "_torepr"
+                 , S.MethodExpr n $ S.Method
                             (fh $ map mnm ["a"])
                             [S.StmtExpr n $ S.App n (S.Iden n "show-variant")
                                 [S.Iden n "a"]
-                            ]    
-                    in lst (eqm : trm : map (S.Iden n) ps)]]
-        
-                 -- is-my-pt = lam(x): is-variant("my-pt", x) end
+                            ])
+                ] ++ flip map (meths ++ shr) (\(nm, m) -> (S.Text n nm, S.MethodExpr n m))
+            callMakeVariant ps =
+                S.App n (S.Iden n "make-variant")
+                  [S.Text n vnm
+                  , lst $ map fst (extraMeths ps) ++ map (S.Text n) ps
+                  , lst $ map snd (extraMeths ps) ++ map (S.Iden n) ps]
+        in
+        [if null bs
+         then recDecl vnm $ callMakeVariant []
+         else let ps = map sbNm bs
+              in recDecl vnm
+                 $ S.Lam n (fh $ map (S.NameBinding n) ps)
+                 [S.StmtExpr n $ callMakeVariant ps]
         ,letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
                                    S.App n (S.Iden n "is-variant")
                                    [S.Text n vnm, S.Iden n "x"]]
         ]
-    varF v = error $ "unsupported variant decl: " <> show v
+    --varF v = error $ "unsupported variant decl: " <> show v
     lst es = S.Construct n ["list"] es
     callIs (S.VariantDecl _ vnm _ _) = S.App n (S.Iden n $ "is-" ++ vnm) [S.Iden n "x"]
     isDat = letDecl ("is-" ++ dnm)
@@ -155,6 +140,7 @@ desugarStmt (S.DataDecl _ dnm _ vs [] Nothing) =
     sbNm (_,S.SimpleBinding _ _ nm _) = nm
     n = Nothing
     letDecl nm v = S.LetDecl n (mnm nm) v
+    recDecl nm v = S.RecDecl n (mnm nm) v
     lam as e = S.Lam n (fh $ map mnm as) e
     fh as = S.FunHeader [] as Nothing
     orE a b = S.BinOp n a "or" b
@@ -211,7 +197,6 @@ desugarExpr (S.App _ (S.Iden _ "run-task-cs") [e]) =
 
 desugarExpr (S.App _ (S.Iden _ "run-task-cs-async") [e]) =
     I.RunTask True $ desugarExpr e
-
 
 desugarExpr (S.App sp f es) =
     let spx = case sp of
