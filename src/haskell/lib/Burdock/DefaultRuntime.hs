@@ -56,6 +56,8 @@ import Burdock.Runtime
 --import Burdock.Pretty (prettyExpr)
 import Data.Text (Text)
 import qualified Data.Text as T
+import qualified Data.Text.Lazy as L
+
 import qualified Text.RawString.QQ as R
 
 import Burdock.Scientific (showScientific)
@@ -82,7 +84,7 @@ import Control.Concurrent.Async
     )
 
 -- temp hack
-prelude :: Text
+prelude :: L.Text
 prelude = [R.r|
 
 data Either:

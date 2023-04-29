@@ -16,26 +16,37 @@ import Prettyprinter (pretty
                      ,dquotes
                      ,vsep
                      ,hsep
+                     ,layoutPretty
+                     ,defaultLayoutOptions
                      )
+
+import Prettyprinter.Render.Text (renderLazy)
+
+
 import Data.Maybe (catMaybes)
 
 import Burdock.Scientific (showScientific)
 
 import Burdock.Syntax
 
+import qualified Data.Text.Lazy as L
+import qualified Data.Text as T
 
 ---------------------------------------
 
 -- api
 
-prettyExpr :: Expr -> String
-prettyExpr e = show $ expr e
+prettyExpr :: Expr -> L.Text
+prettyExpr e = render $ expr e
 
-prettyScript :: Script -> String
-prettyScript s = show $ script s
+prettyScript :: Script -> L.Text
+prettyScript s = render $ script s
 
-prettyStmt :: Stmt -> String
-prettyStmt s = show $ stmt s
+prettyStmt :: Stmt -> L.Text
+prettyStmt s = render $ stmt s
+
+render :: Doc a -> L.Text
+render = renderLazy . layoutPretty defaultLayoutOptions
 
 ---------------------------------------
 
@@ -43,11 +54,12 @@ prettyStmt s = show $ stmt s
 
 
 expr :: Expr -> Doc a
+
 expr (Num _ n) = pretty $ showScientific n
 
 -- todo handle parsing and printing escape chars properly
-expr (Text _ s) | '\n' `elem` s = pretty "```" <> pretty s <> pretty "```"
-expr (Text _ s) = dquotes (pretty $ escape s)
+expr (Text _ s) | '\n' `T.elem` s = pretty "```" <> pretty s <> pretty "```"
+expr (Text _ s) = dquotes (pretty $ escape $ T.unpack s)
   where
     escape ('\n':xs) = '\\':'n':escape xs
     escape ('\\':xs) = '\\':'\\':escape xs

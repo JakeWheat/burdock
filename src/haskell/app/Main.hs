@@ -53,8 +53,8 @@ main = do
     numTestsPassed <- newIORef 0
     numTestsFailed <- newIORef 0
     forM_ args $ \fn -> do
-        mySrc <- readFile fn
-        let ast = either (error . T.pack) id $ parseScript "" (T.unpack prelude <> mySrc)
+        mySrc <- L.readFile fn
+        let ast = either error id $ parseScript "" (prelude <> mySrc)
             dast = desugar ast
         when False $ putStrLn $ T.pack $ ppShow dast
         when False $ L.putStrLn $ prettyStmts dast

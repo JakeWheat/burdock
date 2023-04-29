@@ -25,7 +25,9 @@ import Burdock.Utils (error, show)
 import qualified Burdock.Syntax as S
 import qualified Burdock.InterpreterSyntax as I
 import Data.Text (Text)
-import qualified Data.Text as T
+--import qualified Data.Text as T
+import qualified Data.Text.Lazy as L
+
 import Burdock.Pretty (prettyExpr)
 import Data.List (nub,sort)
 
@@ -53,16 +55,16 @@ desugarStmt (S.FunDecl _ (S.SimpleBinding _ _ nm _) fh _ bdy _) =
     n = Nothing
 
 desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
-    let m1 = S.Text n $ prettyExpr e1
-        m2 = S.Text n $ prettyExpr e2
+    let m1 = S.Text n $ L.toStrict $ prettyExpr e1
+        m2 = S.Text n $ L.toStrict $ prettyExpr e2
         rt e = S.App n (S.Iden n "run-task") [e]
     in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-test") [m1,m2,rt e1,rt e2])
   where
     n = Nothing
 
 desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is-not" e2)) =
-    let m1 = S.Text n $ prettyExpr e1
-        m2 = S.Text n $ prettyExpr e2
+    let m1 = S.Text n $ L.toStrict $ prettyExpr e1
+        m2 = S.Text n $ L.toStrict $ prettyExpr e2
         rt e = S.App n (S.Iden n "run-task") [e]
     in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-not-test") [m1,m2,rt e1,rt e2])
   where
@@ -133,8 +135,8 @@ desugarStmt (S.DataDecl _ dnm _ vs shr Nothing) =
         ]
     --varF v = error $ "unsupported variant decl: " <> show v
     lst es = S.Construct n ["list"] es
-    callIs (S.VariantDecl _ vnm _ _) = S.App n (S.Iden n $ "is-" ++ vnm) [S.Iden n "x"]
-    isDat = letDecl ("is-" ++ dnm)
+    callIs (S.VariantDecl _ vnm _ _) = S.App n (S.Iden n $ "is-" <> vnm) [S.Iden n "x"]
+    isDat = letDecl ("is-" <> dnm)
             $ lam ["x"]
            [S.StmtExpr n $ foldl1 orE $ map callIs vs]
     sbNm (_,S.SimpleBinding _ _ nm _) = nm
@@ -147,10 +149,10 @@ desugarStmt (S.DataDecl _ dnm _ vs shr Nothing) =
     mnm x = S.NameBinding n x
 
 desugarStmt (S.VarDecl _ (S.SimpleBinding _ _ nm _) e) =
-    [I.VarDecl (T.pack nm) $ desugarExpr e]
+    [I.VarDecl nm $ desugarExpr e]
 
 desugarStmt (S.SetVar _ (S.Iden _ nm) e) =
-    [I.SetVar (T.pack nm) $ desugarExpr e]
+    [I.SetVar nm $ desugarExpr e]
 
 desugarStmt x = error $ "desugarStmt " <> show x
 
@@ -164,12 +166,12 @@ desugarExpr (S.If _ ts els) =
     f (a,b) = (desugarExpr a, desugarStmts b)
 
 desugarExpr (S.DotExpr _ e fld) =
-    I.DotExpr (desugarExpr e) (T.pack fld)
+    I.DotExpr (desugarExpr e) fld
      
 desugarExpr (S.RecordSel _ fs) =
     let trm = ("_torepr",desugarExpr $ S.Iden n "_record_torepr")
         eqm = ("_equals",desugarExpr $ S.Iden n "_record_equals")
-    in I.VariantSel "record" (trm : eqm : map (\(a,b) -> (T.pack a, desugarExpr b)) fs)
+    in I.VariantSel "record" (trm : eqm : map (\(a,b) -> (a, desugarExpr b)) fs)
   where
     n = Nothing
 
@@ -182,7 +184,7 @@ desugarExpr (S.TupleSel _ fs) =
     n = Nothing
 
 desugarExpr (S.TupleGet sp v n) =
-    desugarExpr (S.DotExpr sp v (T.unpack $ show n))
+    desugarExpr (S.DotExpr sp v $ show n)
 
 -- what's the right way to find run-task, so it can be implemented
 -- differently at runtime from a regular function
@@ -201,7 +203,7 @@ desugarExpr (S.App _ (S.Iden _ "run-task-cs-async") [e]) =
 desugarExpr (S.App sp f es) =
     let spx = case sp of
             Nothing -> "nothing"
-            Just (n,i,j) -> "(" <> T.pack n <> "," <> show i <> "," <> show j <> ")"
+            Just (n,i,j) -> "(" <> n <> "," <> show i <> "," <> show j <> ")"
     in I.App (Just spx) (desugarExpr f) $ map desugarExpr es
 
 desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
@@ -212,11 +214,11 @@ desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
         -- in all the bootstrap and built in code
         fv = nub $ sort ("_record_torepr" : "_record_equals" : freeVarsStmts pnmsx bdy')
     in I.Lam fv pnms bdy'
-desugarExpr (S.Text _ s) = I.IString $ T.pack s
+desugarExpr (S.Text _ s) = I.IString s
 desugarExpr (S.Num _ s) = I.Num s
 
 -- iden
-desugarExpr (S.Iden _ i) = I.Iden $ T.pack i
+desugarExpr (S.Iden _ i) = I.Iden i
 -- methods
 desugarExpr (S.MethodExpr _ (S.Method (S.FunHeader _ts (a:as) _mty) bdy))
     = I.MethodExpr $ desugarExpr (S.Lam Nothing (S.FunHeader [] [a] Nothing)
@@ -281,9 +283,9 @@ doLetRec bs =
 
 desugarBinding :: S.Binding -> I.Binding
 desugarBinding = \case
-    S.NameBinding _ nm -> I.NameBinding $ T.pack nm
-    S.ShadowBinding _ nm -> I.NameBinding $ T.pack nm
-    S.VariantBinding _ [vnm] bs -> I.VariantBinding (T.pack vnm) $ map desugarBinding bs
+    S.NameBinding _ nm -> I.NameBinding nm
+    S.ShadowBinding _ nm -> I.NameBinding nm
+    S.VariantBinding _ [vnm] bs -> I.VariantBinding vnm $ map desugarBinding bs
     S.WildcardBinding _ -> I.WildcardBinding
     S.TupleBinding _ bs -> I.TupleBinding $ map desugarBinding bs
     x -> error $ "unsupported binding: " <> show x

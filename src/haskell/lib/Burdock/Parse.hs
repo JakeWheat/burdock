@@ -2,11 +2,11 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE MultiWayIf #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Burdock.Parse
     (parseExpr
     ,parseStmt
     ,parseScript
-    ,parseLiterateScript
     ) where
 
 
@@ -57,33 +57,34 @@ import Data.Maybe (catMaybes)
 import Data.Void (Void)
 
 import Burdock.Syntax
-import Data.List (isPrefixOf)
 
 import Control.Monad.State.Strict (StateT, evalStateT, put, get)
 import Control.Monad.Identity (Identity)
+
+import qualified Data.Text.Lazy as L
+
+import qualified Data.Text as T
+import Data.Text (Text)
 
 ------------------------------------------------------------------------------
 
 -- api functions
 
-parseExpr :: FilePath -> String -> Either String Expr
+parseExpr :: T.Text -> L.Text -> Either Text (Expr)
 parseExpr fn src = parseHelper expr fn src
 
-parseStmt :: FilePath -> String -> Either String Stmt
+parseStmt :: T.Text -> L.Text -> Either Text (Stmt)
 parseStmt fn src = parseHelper stmt fn src
 
-parseScript :: FilePath -> String -> Either String Script
+parseScript :: T.Text -> L.Text -> Either Text Script
 parseScript fn src = parseHelper script fn src
-
-parseLiterateScript :: FilePath -> String -> Either String Script
-parseLiterateScript fn src = parseHelper script fn $ extractSource src
 
 ---------------------------------------
 
-parseHelper :: Parser a -> FilePath -> String -> Either String a
+parseHelper :: Parser a -> T.Text -> L.Text -> Either T.Text a
 parseHelper parseFn fn src =
-    either (Left . errorBundlePretty) Right $
-    parse (evalStateT ((whiteSpace *> (put SeenNewline *> parseFn) <* myEof)) SeenNewline) fn src
+    either (Left . T.pack . errorBundlePretty) Right $
+    parse (evalStateT ((whiteSpace *> (put SeenNewline *> parseFn) <* myEof)) SeenNewline) (T.unpack fn) src
 
 data ParserState
     = SeenNewline
@@ -95,7 +96,7 @@ data ParserState
 
 -- parser helpers and lexer like things
 
-type Parser = StateT ParserState (ParsecT Void String Identity)
+type Parser = StateT ParserState (ParsecT Void L.Text Identity)
 
 chainl1 :: Alternative m => m a -> m (a -> a -> a) -> m a
 chainl1 p op = scan
@@ -123,7 +124,6 @@ bchoice cs = choice $ addEmpty cs
     addEmpty (x:xs@(_:_)) = (x <?> "") : addEmpty xs
     addEmpty [x] = [x]
     addEmpty [] = []
-
 
 myEof :: Parser ()
 myEof = eof <?> ""
@@ -171,6 +171,7 @@ require whitespace around binary operators:
 
 make the parse error messages better
 -}
+
 whiteSpace :: Parser ()
 whiteSpace = do
     x <- whiteSpace'
@@ -189,47 +190,6 @@ whiteSpace = do
         pure $ sp ++ sp1
     space' = many spaceChar
 
-char_ :: Char -> Parser ()
-char_ x = () <$ char x
-
-symbol :: String -> Parser String
-symbol x = lexeme (string x)
-
-symbol_ :: String -> Parser ()
-symbol_ x = lexeme_ (string x)
-
-keyword :: String -> Parser String
-keyword n = lexeme (try (string n <* notFollowedBy (satisfy (\a -> isAlphaNum a || a `elem` "?-+_"))))
-
-keyword_ :: String -> Parser ()
-keyword_ n = void $ keyword n
-
-reservedKeywords :: [String]
-reservedKeywords =
-    ["end", "lam", "let", "letrec", "if", "else", "ask", "then"
-    ,"otherwise", "block", "cases", "when", "var", "check"
-    ,"where", "fun", "rec", "data"
-    ,"import", "provide", "provide-types"
-    ,"from", "and", "or", "shadow", "as"
-    ,"ref", "table", "row"
-    ,"receive", "after", "method"
-    ]
-
-identifierX :: Parser String
-identifierX =
-    lexeme ((:)
-    <$> (letterChar <|> char '_' <|> char '-')
-    <*> takeWhileP Nothing (\a -> (isAlphaNum a || a `elem` "?-+_")))
-    <?> "identifier"
-
-identifier :: Parser String
-identifier = try $ do
-    i <- identifierX
-    when (i `elem` reservedKeywords)
-        $ fail $ "unexpected keyword: " ++ i
-    guard (i `notElem` reservedKeywords)
-    pure i
-
 lineComment :: Parser ()
 lineComment = () <$ try (string "#" <?> "") <* takeWhileP Nothing (/='\n')
 
@@ -240,33 +200,88 @@ blockComment = startComment *> ctu
     endComment = void $ try (string "|#")
     ctu = endComment <|> ((blockComment <|> void anySingle) *> ctu)
 
-num :: Parser String
+char_ :: Char -> Parser ()
+char_ x = () <$ char x
+
+string' :: T.Text -> Parser T.Text
+string' t =
+    L.toStrict <$> string (L.fromChunks [t])
+
+symbol :: T.Text -> Parser T.Text
+symbol x = lexeme (string' x)
+
+symbol_ :: T.Text -> Parser ()
+symbol_ x = lexeme_ (string' x)
+
+keyword :: T.Text -> Parser T.Text
+keyword n = lexeme (try (string' n
+                         <* notFollowedBy tg))
+  where
+    tg :: Parser Char
+    tg = satisfy (\a -> isAlphaNum a || a `elem` ("?-+_"::String))
+
+keyword_ :: T.Text -> Parser ()
+keyword_ n = void $ keyword n
+
+reservedKeywords :: [T.Text]
+reservedKeywords =
+    ["end", "lam", "let", "letrec", "if", "else", "ask", "then"
+    ,"otherwise", "block", "cases", "when", "var", "check"
+    ,"where", "fun", "rec", "data"
+    ,"import", "provide", "provide-types"
+    ,"from", "and", "or", "shadow", "as"
+    ,"ref", "table", "row"
+    ,"receive", "after", "method"
+    ]
+
+identifierX :: Parser T.Text
+identifierX =
+    lexeme (T.cons
+    <$> (letterChar <|> char '_' <|> char '-')
+    <*> (L.toStrict <$> takeWhileP Nothing (\a -> (isAlphaNum a || a `elem` ("?-+_"::String)))))
+    <?> "identifier"
+
+identifier :: Parser T.Text
+identifier = try $ do
+    i <- identifierX
+    when (i `elem` reservedKeywords)
+        $ fail $ "unexpected keyword: " ++ T.unpack i
+    guard (i `notElem` reservedKeywords)
+    pure i
+
+
+num :: Parser T.Text
 num = lexeme (
+    L.toStrict <$>
     choice [digits <**> bchoice [eSuffix,dotSuffixOnly,pure id]
            ,myChar '.' <**> afterDot
            ]
    -- this is for definitely avoiding possibly ambiguous source
    -- not sure if it is needed
-    <* notFollowedBy (satisfy (`elem` "eE."))) <?> "number"
+    <* notFollowedBy (satisfy (`elem` ("eE." :: String)))) <?> "number"
   where
     -- parse one or more 0-9
+    digits :: Parser L.Text
     digits = takeWhile1P Nothing isDigit
     -- parse .[digits][e[+-]digits]
+    dotSuffixOnly :: Parser (L.Text -> L.Text)
     dotSuffixOnly = appendA <$> (myChar '.' <**> bchoice [afterDot, eSuffix, pure id])
     -- parse digits[e[+-]digits], used after the .
+    afterDot :: Parser (L.Text -> L.Text)
     afterDot = appendA <$> (digits <**> bchoice [eSuffix, pure id])
     -- parse e[+-]digits
+    eSuffix :: Parser (L.Text -> L.Text)
     eSuffix = appendA <$> concatA [myChar 'e', optionalPlusOrMinus,digits]
     optionalPlusOrMinus = boption "" (myChar '+' <|> myChar '-')
     -- parse a char, return it as a string
-    myChar c = [c] <$ char_ c
+    myChar c = L.pack [c] <$ char_ c
     -- concat in applicative
-    concatA xs = concat <$> sequenceA xs
+    concatA xs = L.concat <$> sequenceA xs
     -- not sure if this def pays its way
-    appendA = flip (++)
+    appendA = flip (L.append)
 
 nonNegativeInteger :: Parser Int
-nonNegativeInteger = lexeme (read <$> takeWhile1P Nothing isDigit)
+nonNegativeInteger = lexeme ((read . L.unpack) <$> takeWhile1P Nothing isDigit)
 
 ------------------------------------------------------------------------------
 
@@ -364,7 +379,7 @@ tyParamList = try (symbol_ "<" *> commaSep1 (typ False) <* symbol_ ">")
 sourcePos :: Parser SourcePosition
 sourcePos = do
     x <- getSourcePos
-    pure $ Just (sourceName x, unPos $ sourceLine x, unPos $ sourceColumn x)
+    pure $ Just (T.pack $ sourceName x, unPos $ sourceLine x, unPos $ sourceColumn x)
 
 dotSuffix :: Parser (Expr -> Expr)
 dotSuffix = do
@@ -382,7 +397,7 @@ unboxSuffix = f <$> sourcePos <*> (try (symbol_ "!" *> identifier))
   where
     f a b c = UnboxRef a c b
 
-leftBinOpSym :: Parser String
+leftBinOpSym :: Parser T.Text
 leftBinOpSym = choice ([symbol "+"
                   ,symbol "*"
                   ,try $ symbol "<="
@@ -399,10 +414,10 @@ leftBinOpSym = choice ([symbol "+"
                   ,"or"
                   ])
 
-rightBinOpSym:: Parser String
+rightBinOpSym:: Parser T.Text
 rightBinOpSym = choice ([symbol "|>"])
 
-testPred :: Parser String
+testPred :: Parser T.Text
 testPred = choice (map keyword ["is"
                                ,"is-not"
                                ,"raises"
@@ -485,8 +500,8 @@ binding allowImplicitTypeTuple =
     numLitBinding = do
         sp <- sourcePos
         x <- num
-        maybe (fail $ "parsing number failed: " ++ x)
-          (pure . NumberLitBinding sp) (readMaybe x)
+        maybe (fail $ "parsing number failed: " ++ T.unpack x)
+          (pure . NumberLitBinding sp) (readMaybe $ T.unpack x)
     stringLitBinding = StringLitBinding <$> sourcePos <*> stringRaw
     nameOrVariantBinding = do
         sp <- sourcePos
@@ -678,27 +693,28 @@ numE :: Parser Expr
 numE = do
     sp <- sourcePos
     x <- num
-    maybe (fail $ "parsing number failed: " ++ x)
-          (pure . Num sp) (readMaybe x)
+    maybe (fail $ "parsing number failed: " ++ T.unpack x)
+          (pure . Num sp) (readMaybe $ T.unpack x)
 
 stringE :: Parser Expr
 stringE = Text <$> sourcePos <*> stringRaw
             <?> "string literal"
 
-stringRaw :: Parser String
-stringRaw = (quoted <|> multiline) <?> "string literal"
+stringRaw :: Parser T.Text
+stringRaw = (L.toStrict <$> (quoted <|> multiline)) <?> "string literal"
   where
     quoted = unescape <$>
              choice [char_ '\'' *> takeWhileP Nothing (/='\'') <* lexeme_ (char_ '\'')
                     ,char_ '"' *> takeWhileP Nothing (/='"') <* lexeme_ (char_ '"')]
     multiline = startMultiline *> ctu
-    startMultiline = string "```" <?> ""
+    startMultiline = string' "```" <?> ""
     endMultiline = symbol_ "```"
-    ctu = ([] <$ endMultiline) <|> ((:) <$> anySingle <*> ctu)
-    unescape ('\\':'n':xs) = '\n':unescape xs
-    unescape ('\\':'\\':xs) = '\\':unescape xs
-    unescape (x:xs) = x:unescape xs
-    unescape [] = []
+    ctu = ("" <$ endMultiline) <|> ((L.cons) <$> anySingle <*> ctu)
+    unescape = L.pack . unescape' . L.unpack
+    unescape' ('\\':'n':xs) = '\n':unescape' xs
+    unescape' ('\\':'\\':xs) = '\\':unescape' xs
+    unescape' (x:xs) = x:unescape' xs
+    unescape' [] = []
 
 parensE :: Parser Expr
 parensE = Parens <$> sourcePos <*> parens expr
@@ -713,10 +729,10 @@ tupleOrRecord = do
                                      Iden _ i -> Just i
                                      _ -> Nothing)
 
-tupleOrRecord2 :: ([(String, Expr)] -> a)
+tupleOrRecord2 :: ([(T.Text, Expr)] -> a)
                -> ([a] -> a)
                -> Parser a
-               -> (a -> Maybe String)
+               -> (a -> Maybe T.Text)
                -> Parser a
 tupleOrRecord2 mkRecSel mkTupSel pTupEl extractIden = do
     symbol_ "{"
@@ -857,7 +873,8 @@ dataDecl = (DataDecl
     sharing = keyword_ "sharing" *> symbol_ ":" *> commaSep withMeth
 
 -- todo: remove the try when implement the whitespace rules
-tyNameList :: Parser [String]
+
+tyNameList :: Parser [T.Text]
 tyNameList = try (symbol_ "<" *> (commaSep1 identifier <?> "type parameter") <* symbol_ ">")
 
 checkBlock :: Parser Stmt
@@ -925,7 +942,7 @@ importSource = do
         [do
          symbol_ "."
          b <- identifier
-         ctu (a ++ "." ++ b)
+         ctu (a `T.append` "." `T.append` b)
         ,pure a]
 
 importStmt :: Parser Stmt
@@ -1108,22 +1125,3 @@ typ allowImplicitTuple =
                  i1 <- noarrowctu i
                  ts <- option [] $ symbol_ ";" *> xSep1 ';' noarrow
                  pure $ TTuple sp (i1:ts)]
-
-
-extractSource :: String -> String
-extractSource src =
-    let ls = lines src
-    in unlines $ process [] ls
-  where
-    process acc [] = reverse acc
-    process acc (x:xs)
-        | ".. code:: burdock" `isPrefixOf` x =
-          skipBlankLines acc xs
-        | otherwise = process acc xs
-    skipBlankLines acc ("":xs) = skipBlankLines acc xs
-    skipBlankLines acc xs = processAdd acc xs
-    processAdd acc (x:xs)
-        | "  " `isPrefixOf` x =
-          processAdd (x:acc) xs
-        | otherwise = process acc xs
-    processAdd acc [] = process acc []

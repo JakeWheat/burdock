@@ -6,7 +6,9 @@ import Data.Data (Data)
 
 import Burdock.Scientific
 
-type SourcePosition = Maybe (FilePath, Int, Int)
+import Data.Text (Text)
+
+type SourcePosition = Maybe (Text, Int, Int)
 
 data Script
     = Script [Stmt]
@@ -16,38 +18,38 @@ data Stmt
     = StmtExpr SourcePosition Expr
     | When SourcePosition Expr [Stmt]
     | LetDecl SourcePosition Binding Expr
-    | Check SourcePosition (Maybe String) [Stmt]
+    | Check SourcePosition (Maybe Text) [Stmt]
     | VarDecl SourcePosition SimpleBinding Expr
     | SetVar SourcePosition Expr Expr
-    | SetRef SourcePosition Expr [(String,Expr)]
+    | SetRef SourcePosition Expr [(Text,Expr)]
     -- name, ty params, variants, shared methods, where block
-    | DataDecl SourcePosition String [String] [VariantDecl] [(String,Method)] (Maybe [Stmt])
+    | DataDecl SourcePosition Text [Text] [VariantDecl] [(Text,Method)] (Maybe [Stmt])
     | RecDecl SourcePosition Binding Expr
     | FunDecl
         SourcePosition
         SimpleBinding -- name
         FunHeader -- args and return type
-        (Maybe String) -- doc string
+        (Maybe Text) -- doc string
         [Stmt] -- body
         (Maybe [Stmt]) -- test block
     | TypeStmt SourcePosition TypeDecl
-    | FFITypeStmt SourcePosition String String
-    | Contract SourcePosition String Ann
+    | FFITypeStmt SourcePosition Text Text
+    | Contract SourcePosition Text Ann
     | Provide SourcePosition [ProvideItem]
-    | Import SourcePosition ImportSource String
+    | Import SourcePosition ImportSource Text
     | Include SourcePosition ImportSource
-    | IncludeFrom SourcePosition String [ProvideItem]
+    | IncludeFrom SourcePosition Text [ProvideItem]
     | ImportFrom SourcePosition ImportSource [ProvideItem]
-    | UsePackage SourcePosition FilePath
+    | UsePackage SourcePosition Text
     deriving (Eq,Show,Data)
 
 -- ty params, args, return ann
 data FunHeader
-    = FunHeader [String] [Binding] (Maybe Ann)
+    = FunHeader [Text] [Binding] (Maybe Ann)
     deriving (Eq,Show,Data)
 
 data VariantDecl
-    = VariantDecl SourcePosition String [(Ref,SimpleBinding)] [(String,Method)]
+    = VariantDecl SourcePosition Text [(Ref,SimpleBinding)] [(Text,Method)]
     deriving (Eq,Show,Data) 
 
 data Ref
@@ -56,45 +58,45 @@ data Ref
 
 data ProvideItem
     = ProvideAll SourcePosition 
-    | ProvideAlias SourcePosition String String
-    | ProvideName SourcePosition String
-    | ProvideType SourcePosition String
-    | ProvideData SourcePosition String
+    | ProvideAlias SourcePosition Text Text
+    | ProvideName SourcePosition Text
+    | ProvideType SourcePosition Text
+    | ProvideData SourcePosition Text
     deriving (Eq,Show,Data) 
 
 data ImportSource
-    = ImportSpecial String [String]
-    | ImportName String
+    = ImportSpecial Text [Text]
+    | ImportName Text
     deriving (Eq,Show,Data) 
 
 data Expr
     = Num SourcePosition Scientific
-    | Text SourcePosition String
-    | Iden SourcePosition String
+    | Text SourcePosition Text
+    | Iden SourcePosition Text
     | Parens SourcePosition Expr
     | If SourcePosition [(Expr,[Stmt])] (Maybe [Stmt])
     | Ask SourcePosition [(Expr,[Stmt])] (Maybe [Stmt])
     | App SourcePosition Expr [Expr]
     | InstExpr SourcePosition Expr [Ann]
-    | BinOp SourcePosition Expr String Expr
+    | BinOp SourcePosition Expr Text Expr
     | UnaryMinus SourcePosition Expr
     | Lam SourcePosition FunHeader [Stmt]
     | CurlyLam SourcePosition FunHeader [Stmt]
     | Let SourcePosition [(Binding,Expr)] [Stmt]
     | LetRec SourcePosition [(Binding,Expr)] [Stmt]
     | Block SourcePosition [Stmt]
-    | DotExpr SourcePosition Expr String
+    | DotExpr SourcePosition Expr Text
     | Cases SourcePosition Expr (Maybe Ann) [(Binding, Maybe Expr, [Stmt])] (Maybe [Stmt])
     | TupleSel SourcePosition [Expr]
-    | RecordSel SourcePosition [(String,Expr)]
-    | Extend SourcePosition Expr [(String,Expr)]
-    | TableSel SourcePosition [String] [RowSel]
+    | RecordSel SourcePosition [(Text,Expr)]
+    | Extend SourcePosition Expr [(Text,Expr)]
+    | TableSel SourcePosition [Text] [RowSel]
     | TupleGet SourcePosition Expr Int
-    | Construct SourcePosition [String] [Expr]
+    | Construct SourcePosition [Text] [Expr]
     | AssertTypeCompat SourcePosition Expr Ann
     | TypeLet SourcePosition [TypeDecl] [Stmt]
     | Template SourcePosition
-    | UnboxRef SourcePosition Expr String
+    | UnboxRef SourcePosition Expr Text
     | Receive SourcePosition [(Binding, Maybe Expr, [Stmt])] (Maybe (Expr, [Stmt]))
     | For SourcePosition Expr [(Binding, Expr)] (Maybe Ann) [Stmt]
     | MethodExpr SourcePosition Method
@@ -105,23 +107,23 @@ data Method
     deriving (Eq,Show,Data)
 
 data TypeDecl
-    = TypeDecl String [String] Ann
+    = TypeDecl Text [Text] Ann
     deriving (Eq,Show,Data)
 
 data Binding
-    = NameBinding SourcePosition String
-    | VariantBinding SourcePosition [String] [Binding]
+    = NameBinding SourcePosition Text
+    | VariantBinding SourcePosition [Text] [Binding]
     | TypedBinding SourcePosition Binding Ann
-    | ShadowBinding SourcePosition String
+    | ShadowBinding SourcePosition Text
     | WildcardBinding SourcePosition
-    | AsBinding SourcePosition Binding Shadow String
+    | AsBinding SourcePosition Binding Shadow Text
     | TupleBinding SourcePosition [Binding]
     | NumberLitBinding SourcePosition Scientific
-    | StringLitBinding SourcePosition String
+    | StringLitBinding SourcePosition Text
     deriving (Eq,Show,Data)
 
 data SimpleBinding
-    = SimpleBinding SourcePosition Shadow String (Maybe Ann)
+    = SimpleBinding SourcePosition Shadow Text (Maybe Ann)
     deriving (Eq,Show,Data)
 
 data Shadow
@@ -133,11 +135,11 @@ data RowSel
     deriving (Eq,Show,Data) 
 
 data Ann
-    = TName SourcePosition [String]
+    = TName SourcePosition [Text]
     | TTuple SourcePosition [Ann]
-    | TRecord SourcePosition [(String,Ann)]
-    | TParam SourcePosition [String] [Ann]
+    | TRecord SourcePosition [(Text,Ann)]
+    | TParam SourcePosition [Text] [Ann]
     | TArrow SourcePosition [Ann] Ann
-    | TNamedArrow SourcePosition [(String,Ann)] Ann
+    | TNamedArrow SourcePosition [(Text,Ann)] Ann
     | TParens SourcePosition Ann
     deriving (Eq,Show,Data)
