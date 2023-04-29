@@ -26,6 +26,7 @@ import Burdock.Interpreter
     ,getTestResults
     ,liftIO
     )
+import Burdock.InterpreterPretty (prettyStmts)
 
 import Burdock.Desugar (desugar, prelude)
 import qualified Data.Text as T
@@ -44,6 +45,7 @@ import Data.IORef
     ,modifyIORef
     )
 import System.Exit (exitFailure)
+import qualified Data.Text.Lazy.IO as L
 
 main :: IO ()
 main = do
@@ -55,6 +57,7 @@ main = do
         let ast = either (error . T.pack) id $ parseScript "" (T.unpack prelude <> mySrc)
             dast = desugar ast
         when False $ putStrLn $ T.pack $ ppShow dast
+        when False $ L.putStrLn $ prettyStmts dast
         st <- createHandle
         runBurdock st $ do
             void $ interpBurdock dast

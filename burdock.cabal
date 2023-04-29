@@ -38,6 +38,7 @@ executable burdock
                       Burdock.DefaultRuntime
                       Burdock.Interpreter
                       Burdock.InterpreterSyntax
+                      Burdock.InterpreterPretty
                       Burdock.Desugar
                       Burdock.Utils
 
