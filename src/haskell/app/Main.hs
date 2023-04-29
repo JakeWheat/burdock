@@ -14,7 +14,7 @@ import Data.Text.IO (putStrLn)
 
 --import Data.Text (Text)
 --import qualified Data.Text as T
---import Text.Show.Pretty (ppShow)
+import Text.Show.Pretty (ppShow)
 
 import Burdock.Parse (parseScript)
 --import qualified Burdock.Syntax as S
@@ -32,7 +32,7 @@ import qualified Data.Text as T
 
 import Control.Monad
     (void
-    --,when
+    ,when
     )
 
 import System.Environment (getArgs)
@@ -54,7 +54,7 @@ main = do
         mySrc <- readFile fn
         let ast = either (error . T.pack) id $ parseScript "" (T.unpack prelude <> mySrc)
             dast = desugar ast
-        --putStrLn $ T.pack $ ppShow dast
+        when False $ putStrLn $ T.pack $ ppShow dast
         st <- createHandle
         runBurdock st $ do
             void $ interpBurdock dast

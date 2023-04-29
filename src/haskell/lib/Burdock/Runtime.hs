@@ -338,7 +338,10 @@ app :: Maybe Text -> Value -> [Value] -> Runtime Value
 app sourcePos (VFun f) args =
     withCallstackEntry sourcePos $ f args
 app sp (MethodV f) args = app sp f args
-app _ _ _ = error $ "app called on non function value"
+app sp (BoxV v) args = do
+    v' <- liftIO $ readIORef v
+    app sp v' args
+app _ v _ = error $ "app called on non function value " <> debugShowValue v
 
 -- the reason it's done like this, is because in the future,
 -- will be able to asynchronously exit another thread (using throwTo
