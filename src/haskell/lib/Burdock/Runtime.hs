@@ -345,6 +345,10 @@ getMember (VList es) "_plus" = do
         [_] -> pure $ makeValue "boolean" False
         _ -> error "bad args to nothing._equals"
 
+getMember (BoxV v) fld = do
+    v' <- liftIO $ readIORef v
+    getMember v' fld
+
 getMember v fld = error $ "unrecognised member " <> fld <> " on " <> debugShowValue v
 
 app :: Maybe Text -> Value -> [Value] -> Runtime Value

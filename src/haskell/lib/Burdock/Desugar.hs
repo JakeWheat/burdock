@@ -33,6 +33,8 @@ import Data.List (nub,sort)
 
 import Burdock.DefaultRuntime (prelude)
 
+------------------
+
 desugar :: S.Script -> [I.Stmt]
 desugar (S.Script ss) = desugarStmts ss
 
@@ -40,11 +42,14 @@ desugarStmts :: [S.Stmt] -> [I.Stmt]
 desugarStmts ss = concatMap desugarStmt ss
 
 desugarStmt :: S.Stmt -> [I.Stmt]
-desugarStmt (S.Check _ _ ss) = desugarStmts ss
 
-desugarStmt (S.LetDecl _ b e) =
-    let nm = desugarBinding b
-    in [I.LetDecl nm $ desugarExpr e]
+------------------
+
+-- S -> S for desugarStmt
+-- these are desugaring which only transform the S syntax into
+-- other S syntax and feeds it back into desugar
+
+desugarStmt (S.Check _ _ ss) = desugarStmts ss
 
 desugarStmt (S.RecDecl _ b e) =
     desugarStmts $ doLetRec [(b,e)]
@@ -74,8 +79,6 @@ desugarStmt (S.When _ t b) =
     desugarStmt $ S.StmtExpr n $ S.If n [(t, b)] (Just [S.StmtExpr n $ S.Iden n "nothing"])
   where
     n = Nothing
-
-desugarStmt (S.StmtExpr _ e) = [I.StmtExpr $ desugarExpr e]
 
 {-
 
@@ -148,6 +151,18 @@ desugarStmt (S.DataDecl _ dnm _ vs shr Nothing) =
     orE a b = S.BinOp n a "or" b
     mnm x = S.NameBinding n x
 
+------------------
+-- S -> I desugarStmt
+
+-- these are the functions which contains the code that actually
+-- converts to the I syntax
+
+desugarStmt (S.LetDecl _ b e) =
+    let nm = desugarBinding b
+    in [I.LetDecl nm $ desugarExpr e]
+
+desugarStmt (S.StmtExpr _ e) = [I.StmtExpr $ desugarExpr e]
+
 desugarStmt (S.VarDecl _ (S.SimpleBinding _ _ nm _) e) =
     [I.VarDecl nm $ desugarExpr e]
 
@@ -156,32 +171,13 @@ desugarStmt (S.SetVar _ (S.Iden _ nm) e) =
 
 desugarStmt x = error $ "desugarStmt " <> show x
 
+---------------------------------------
+
 desugarExpr :: S.Expr -> I.Expr
 
-desugarExpr (S.Block _ ss) = I.Block $ desugarStmts ss
+------------------
 
-desugarExpr (S.If _ ts els) =
-    I.If (map f ts) (desugarStmts <$> els)
-  where
-    f (a,b) = (desugarExpr a, desugarStmts b)
-
-desugarExpr (S.DotExpr _ e fld) =
-    I.DotExpr (desugarExpr e) fld
-     
-desugarExpr (S.RecordSel _ fs) =
-    let trm = ("_torepr",desugarExpr $ S.Iden n "_record_torepr")
-        eqm = ("_equals",desugarExpr $ S.Iden n "_record_equals")
-    in I.VariantSel "record" (trm : eqm : map (\(a,b) -> (a, desugarExpr b)) fs)
-  where
-    n = Nothing
-
-desugarExpr (S.TupleSel _ fs) =
-    let fs1 = zip (map show [(0::Int)..]) fs
-        trm = ("_torepr",desugarExpr $ S.Iden n "_tuple_torepr")
-        eqm = ("_equals",desugarExpr $ S.Iden n "_tuple_equals")
-    in I.VariantSel "tuple" (trm : eqm : map (\(a,b) -> (a, desugarExpr b)) fs1)
-  where
-    n = Nothing
+-- S -> S
 
 desugarExpr (S.TupleGet sp v n) =
     desugarExpr (S.DotExpr sp v $ show n)
@@ -194,35 +190,6 @@ desugarExpr (S.App _ (S.Iden _ "run-task") [e]) =
     desugarExpr $ S.App n (S.Iden n "_run-task-fixup") [S.App n (S.Iden n "run-task-cs") [e]]
   where
     n = Nothing
-desugarExpr (S.App _ (S.Iden _ "run-task-cs") [e]) =
-    I.RunTask False $ desugarExpr e
-
-desugarExpr (S.App _ (S.Iden _ "run-task-cs-async") [e]) =
-    I.RunTask True $ desugarExpr e
-
-desugarExpr (S.App sp f es) =
-    let spx = case sp of
-            Nothing -> "nothing"
-            Just (n,i,j) -> "(" <> n <> "," <> show i <> "," <> show j <> ")"
-    in I.App (Just spx) (desugarExpr f) $ map desugarExpr es
-
-desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
-    let bdy' = desugarStmts bdy
-        pnms = map desugarBinding bs
-        pnmsx = concatMap getBindingNames pnms
-        -- adding names as a temp hack before capturing closures properly
-        -- in all the bootstrap and built in code
-        fv = nub $ sort ("_record_torepr" : "_record_equals" : freeVarsStmts pnmsx bdy')
-    in I.Lam fv pnms bdy'
-desugarExpr (S.Text _ s) = I.IString s
-desugarExpr (S.Num _ s) = I.Num s
-
--- iden
-desugarExpr (S.Iden _ i) = I.Iden i
--- methods
-desugarExpr (S.MethodExpr _ (S.Method (S.FunHeader _ts (a:as) _mty) bdy))
-    = I.MethodExpr $ desugarExpr (S.Lam Nothing (S.FunHeader [] [a] Nothing)
-                        [S.StmtExpr Nothing $ S.Lam Nothing (S.FunHeader [] as Nothing) bdy])
 
 -- if e1 then True else e2
 desugarExpr (S.BinOp _ e1 "or" e2) =
@@ -252,6 +219,64 @@ desugarExpr (S.Parens _ e) = desugarExpr e
 desugarExpr (S.Construct _ ["list"] es) =
     desugarExpr $ S.App Nothing (S.Iden Nothing "make-list") es
 
+------------------
+-- S -> I
+
+desugarExpr (S.Block _ ss) = I.Block $ desugarStmts ss
+
+desugarExpr (S.If _ ts els) =
+    I.If (map f ts) (desugarStmts <$> els)
+  where
+    f (a,b) = (desugarExpr a, desugarStmts b)
+
+desugarExpr (S.DotExpr _ e fld) =
+    I.DotExpr (desugarExpr e) fld
+     
+desugarExpr (S.RecordSel _ fs) =
+    let trm = ("_torepr",desugarExpr $ S.Iden n "_record_torepr")
+        eqm = ("_equals",desugarExpr $ S.Iden n "_record_equals")
+    in I.VariantSel "record" (trm : eqm : map (\(a,b) -> (a, desugarExpr b)) fs)
+  where
+    n = Nothing
+
+desugarExpr (S.TupleSel _ fs) =
+    let fs1 = zip (map show [(0::Int)..]) fs
+        trm = ("_torepr",desugarExpr $ S.Iden n "_tuple_torepr")
+        eqm = ("_equals",desugarExpr $ S.Iden n "_tuple_equals")
+    in I.VariantSel "tuple" (trm : eqm : map (\(a,b) -> (a, desugarExpr b)) fs1)
+  where
+    n = Nothing
+
+desugarExpr (S.App _ (S.Iden _ "run-task-cs") [e]) =
+    I.RunTask False $ desugarExpr e
+
+desugarExpr (S.App _ (S.Iden _ "run-task-cs-async") [e]) =
+    I.RunTask True $ desugarExpr e
+
+desugarExpr (S.App sp f es) =
+    let spx = case sp of
+            Nothing -> "nothing"
+            Just (n,i,j) -> "(" <> n <> "," <> show i <> "," <> show j <> ")"
+    in I.App (Just spx) (desugarExpr f) $ map desugarExpr es
+
+desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) =
+    let bdy' = desugarStmts bdy
+        pnms = map desugarBinding bs
+        pnmsx = concatMap getBindingNames pnms
+        -- adding names as a temp hack before capturing closures properly
+        -- in all the bootstrap and built in code
+        fv = nub $ sort ("_record_torepr" : "_record_equals" : freeVarsStmts pnmsx bdy')
+    in I.Lam fv pnms bdy'
+
+desugarExpr (S.Text _ s) = I.IString s
+desugarExpr (S.Num _ s) = I.Num s
+
+desugarExpr (S.Iden _ i) = I.Iden i
+
+desugarExpr (S.MethodExpr _ (S.Method (S.FunHeader _ts (a:as) _mty) bdy))
+    = I.MethodExpr $ desugarExpr (S.Lam Nothing (S.FunHeader [] [a] Nothing)
+                        [S.StmtExpr Nothing $ S.Lam Nothing (S.FunHeader [] as Nothing) bdy])
+
 desugarExpr (S.Cases _ tst _ bs mels) =
     let tst' = desugarExpr tst
         bs' = flip map bs $ \(bm,_,bdy) -> (desugarBinding bm, desugarStmts bdy)
@@ -262,6 +287,10 @@ desugarExpr (S.Cases _ tst _ bs mels) =
 
 desugarExpr x = error $ "desugarExpr " <> show x
 
+---------------------------------------
+
+-- let rec implemented as a macro using variables in the usual scheme
+-- style
 
 doLetRec :: [(S.Binding, S.Expr)] -> [S.Stmt]
 doLetRec bs = 
@@ -280,6 +309,7 @@ doLetRec bs =
     makeAssign1 (nm,v) = S.SetVar n (S.Iden n nm) v
     n = Nothing
 
+---------------------------------------
 
 desugarBinding :: S.Binding -> I.Binding
 desugarBinding = \case
