@@ -20,6 +20,7 @@ import Burdock.Interpreter
     ,runTask
     ,debugShowValue
     ,createHandle
+    ,extractValue
     )
 
 import qualified Data.Text as T
@@ -65,7 +66,10 @@ main = do
         case ee of
             Right {} -> pure ()
             Left (Left t, _) -> doError t
-            Left (Right v, _) -> doError $ debugShowValue v
+            Left (Right v, _) -> do
+                case extractValue v of
+                    Just x -> doError x
+                    _ -> doError $ debugShowValue v
                 
     -- check passed ioref, if false, then exit with non zero        
     p <- readIORef numTestsPassed

@@ -19,6 +19,7 @@ module Burdock.Interpreter
     ,liftIO
     ,runTask
     ,debugShowValue
+    ,extractValue
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -103,7 +104,7 @@ createHandle = do
     st <- emptyRuntimeState
     runBurdock st $ do
         initRuntime
-        void $ runScript "" bootstrap
+        void $ runScript' False "bootstrap" bootstrap
 
         b1 <- maybe (error "bootstrap _tuple_equals not found") id <$> lookupBinding "_tuple_equals"
         b2 <- maybe (error "bootstrap _tuple_torepr not found") id <$> lookupBinding "_tuple_torepr"
@@ -111,16 +112,19 @@ createHandle = do
         b4 <- maybe (error "bootstrap _record_torepr not found") id <$> lookupBinding "_record_torepr"
         setBootstrapRecTup (b1,b2,b3,b4)
         
-        void $ runScript "" prelude
+        void $ runScript' False "prelude" prelude
             -- todo: tests in the prelude?
         getRuntimeState
 
 runScript :: T.Text -> L.Text -> Runtime Value
-runScript fn src = do
+runScript = runScript' False
+
+runScript' :: Bool -> T.Text -> L.Text -> Runtime Value
+runScript' debugPrint fn src = do
     let ast = either error id $ parseScript fn src
         dast = desugar ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
-    when False $ liftIO $ L.putStrLn $ prettyStmts dast
+    when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
         
     interpBurdock dast
     
