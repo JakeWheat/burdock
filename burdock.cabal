@@ -54,6 +54,8 @@ executable burdock
                     , pretty-show
                     , safe-exceptions 
                     , async
+                    , microlens
+                    , microlens-th
 
     hs-source-dirs:   src/haskell/lib
                     , src/haskell/app
