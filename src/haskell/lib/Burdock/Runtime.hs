@@ -28,6 +28,8 @@ module Burdock.Runtime
     ,getRuntimeState
     ,addFFIType
 
+    ,setBootstrapRecTup
+    
     ,withCallstackEntry
 
     ,makeFunctionValue
@@ -90,6 +92,7 @@ import Control.Monad.Reader (ReaderT
 
 import Control.Monad
     (zipWithM
+    --,when
     )
        
 import Data.Text (Text)
@@ -127,11 +130,17 @@ data RuntimeState
     ,rtNumTestFailed :: IORef Int
     ,rtNumTestPassed :: IORef Int
     ,rtCallStack :: IORef [Maybe Text]
+    ,rtBootstrapRecTup :: IORef (Value,Value,Value,Value)
     }
 
 emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
-    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef 0 <*> newIORef []
+    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef 0 <*> newIORef [] <*> newIORef (error "bootstrap for tuples and records not completed")
+
+setBootstrapRecTup :: (Value,Value,Value,Value) -> Runtime ()
+setBootstrapRecTup v = do
+    st <- ask
+    liftIO $ writeIORef (rtBootstrapRecTup st) v
 
 addFFIType :: Text -> Type -> Runtime ()
 addFFIType nm ty = do
@@ -195,8 +204,8 @@ extractTuple _ = pure Nothing
 makeTuple :: [Value] -> Runtime Value
 makeTuple fs = do
     let fs1 = zip (map show [(0::Int)..]) fs
-    req <- maybe (error "_tuple_equals not found") id <$> lookupBinding "_record_equals"
-    rtr <- maybe (error "_tuple_torepr not found") id <$> lookupBinding "_record_torepr"
+    st <- ask
+    (req,rtr,_,_) <- liftIO $ readIORef (rtBootstrapRecTup st)
     makeVariant "tuple" (("_equals", req) : ("_torepr", rtr) : fs1)
 
 extractValue :: Typeable a => Value -> Maybe a
@@ -235,8 +244,8 @@ variantValueFields _ = pure Nothing
 
 makeRecord :: [(Text,Value)] -> Runtime Value
 makeRecord fs = do
-    req <- maybe (error "_record_equals not found") id <$> lookupBinding "_record_equals"
-    rtr <- maybe (error "_record_torepr not found") id <$> lookupBinding "_record_torepr"
+    st <- ask
+    (_,_,req,rtr) <- liftIO $ readIORef (rtBootstrapRecTup st)    
     makeVariant "record" (("_equals", req) : ("_torepr", rtr) : fs)
               
 captureClosure :: [Text] -> Runtime Env
@@ -244,6 +253,10 @@ captureClosure nms = do
     envr <- rtBindings <$> ask
     env <- liftIO $ readIORef envr
     -- todo: check all the nms are found
+    {-let missing = let there = map fst env
+                      in filter (`notElem` there) nms
+    when (not (null missing)) $
+        liftIO $ putStrLn $ "missing closure capture names: " <> show missing-}
     pure $ Env $ filter ((`elem` nms) . fst) env
 
 -- todo: maybe the env has a catalog of loaded types

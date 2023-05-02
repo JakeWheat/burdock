@@ -14,13 +14,16 @@ module Burdock.Interpreter
     (interpBurdock
     ,createHandle
     ,runBurdock
+    ,runScript
     ,getTestResults
     ,liftIO
+    ,runTask
+    ,debugShowValue
     ) where
 
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
---import Data.Text.IO (putStrLn)
+import Data.Text.IO (putStrLn)
 
 --import qualified Burdock.Syntax as S
 import qualified Burdock.InterpreterSyntax as I
@@ -32,6 +35,7 @@ import Burdock.Runtime
     ,getRuntimeState
     ,getTestResults
     ,liftIO
+    ,setBootstrapRecTup
 
     --,ffimethodapp
     --,RuntimeState
@@ -66,13 +70,23 @@ import Burdock.Runtime
 
 --import Burdock.Pretty (prettyExpr)
 import Data.Text (Text)
---import qualified Data.Text as T
+import qualified Data.Text as T
+import qualified Data.Text.Lazy as L
+import qualified Data.Text.Lazy.IO as L
 
-import Burdock.DefaultRuntime (initRuntime)
+import Burdock.Parse (parseScript)
+import Burdock.Desugar (desugar)
+
+import Burdock.DefaultRuntime
+    (initRuntime
+    ,prelude
+    ,bootstrap
+    )
 import Control.Monad
     (forM_
     ,when
     ,zipWithM
+    ,void
     )
 
 import Data.IORef
@@ -80,12 +94,36 @@ import Data.IORef
     ,writeIORef
     ,readIORef)
 
+import Text.Show.Pretty (ppShow)
+import Burdock.InterpreterPretty (prettyStmts)
+
+
 createHandle :: IO RuntimeState
 createHandle = do
     st <- emptyRuntimeState
     runBurdock st $ do
         initRuntime
+        void $ runScript "" bootstrap
+
+        b1 <- maybe (error "bootstrap _tuple_equals not found") id <$> lookupBinding "_tuple_equals"
+        b2 <- maybe (error "bootstrap _tuple_torepr not found") id <$> lookupBinding "_tuple_torepr"
+        b3 <- maybe (error "bootstrap _record_equals not found") id <$> lookupBinding "_record_equals"
+        b4 <- maybe (error "bootstrap _record_torepr not found") id <$> lookupBinding "_record_torepr"
+        setBootstrapRecTup (b1,b2,b3,b4)
+        
+        void $ runScript "" prelude
+            -- todo: tests in the prelude?
         getRuntimeState
+
+runScript :: T.Text -> L.Text -> Runtime Value
+runScript fn src = do
+    let ast = either error id $ parseScript fn src
+        dast = desugar ast
+    when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
+    when False $ liftIO $ L.putStrLn $ prettyStmts dast
+        
+    interpBurdock dast
+    
 
 interpBurdock :: [I.Stmt] -> Runtime Value
 interpBurdock ss = interpStmts ss

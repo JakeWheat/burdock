@@ -34,7 +34,6 @@ data Expr
     | Cases Expr [(Binding, [Stmt])]
     deriving (Eq,Show,Data)
 
-
 data Binding
     = NameBinding Text
     | WildcardBinding

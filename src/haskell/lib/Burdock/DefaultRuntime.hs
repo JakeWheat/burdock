@@ -5,6 +5,7 @@
 module Burdock.DefaultRuntime
     (initRuntime
     ,prelude
+    ,bootstrap
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -84,21 +85,10 @@ import Control.Concurrent.Async
     )
 
 -- temp hack
-prelude :: L.Text
-prelude = [R.r|
 
-data Either:
-  | left(v)
-  | right(v)
-end
+bootstrap :: L.Text
+bootstrap = [R.r|
 
-_run-task-fixup = lam(x):
-    cases x:
-      | left(es) => left(es.exception)
-      | _ => x
-    end
-  end
-  
 _record_torepr = method(self):
    show-record(self)
  end
@@ -114,7 +104,23 @@ _tuple_torepr = method(self):
 _tuple_equals = method(self, b):
    check-variants-equal([list:],self,b)
  end
+             
+             |]
 
+prelude :: L.Text
+prelude = [R.r|
+
+data Either:
+  | left(v)
+  | right(v)
+end
+
+_run-task-fixup = lam(x):
+    cases x:
+      | left(es) => left(es.exception)
+      | _ => x
+    end
+  end
 
 data TestResult:
   | test-pass(name)
