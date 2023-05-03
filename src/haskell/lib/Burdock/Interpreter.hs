@@ -99,12 +99,22 @@ import Text.Show.Pretty (ppShow)
 import Burdock.InterpreterPretty (prettyStmts)
 
 
+debugPrintUserScript :: Bool
+debugPrintUserScript = False
+
+debugPrintBootstrap :: Bool
+debugPrintBootstrap = False
+
+debugPrintPrelude :: Bool
+debugPrintPrelude = False
+
+
 createHandle :: IO RuntimeState
 createHandle = do
     st <- emptyRuntimeState
     runBurdock st $ do
         initRuntime
-        void $ runScript' False "bootstrap" bootstrap
+        void $ runScript' debugPrintBootstrap "bootstrap" bootstrap
 
         b1 <- maybe (error "bootstrap _tuple_equals not found") id <$> lookupBinding "_tuple_equals"
         b2 <- maybe (error "bootstrap _tuple_torepr not found") id <$> lookupBinding "_tuple_torepr"
@@ -112,12 +122,12 @@ createHandle = do
         b4 <- maybe (error "bootstrap _record_torepr not found") id <$> lookupBinding "_record_torepr"
         setBootstrapRecTup (b1,b2,b3,b4)
         
-        void $ runScript' False "prelude" prelude
+        void $ runScript' debugPrintPrelude "prelude" prelude
             -- todo: tests in the prelude?
         getRuntimeState
 
 runScript :: T.Text -> L.Text -> Runtime Value
-runScript = runScript' False
+runScript = runScript' debugPrintUserScript
 
 runScript' :: Bool -> T.Text -> L.Text -> Runtime Value
 runScript' debugPrint fn src = do
