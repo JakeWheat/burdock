@@ -172,6 +172,14 @@ data Value = Value Text Dynamic
     --deriving (Show)
 
 debugShowValue :: Value -> Text
+debugShowValue (Value _tg dn)
+    | Just (dn' :: Scientific) <- fromDynamic dn
+    = "ValueNum " <> showScientific dn'
+
+debugShowValue v
+    | Just ls <- extractBurdockList v
+    = "[list: " <> T.intercalate "," (map debugShowValue ls) <> "]"
+
 debugShowValue (Value tg dn) = "Value " <> show tg <> " " <> show dn
 debugShowValue (VariantV tf fs) =
     "VariantV " <> tf <> " " <> T.concat (map f fs)

@@ -357,3 +357,8 @@ check "recursion for no arg variant matching in methods":
   my-ctor2.what() is "my-ctor2"
 
 end
+
+check:
+  debug-show([list:1,2,3]) is "[list: ValueNum 1,ValueNum 2,ValueNum 3]"
+end
+

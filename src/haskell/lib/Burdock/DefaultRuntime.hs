@@ -201,6 +201,7 @@ initRuntime = do
     addBinding "make-variant" =<< makeFunctionValue myMakeVariant
     addBinding "is-variant" =<< makeFunctionValue myIsVariant
     addBinding "debug-print" =<< makeFunctionValue myDebugPrint
+    addBinding "debug-show" =<< makeFunctionValue myDebugShow
     addBinding "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
     addBinding "raise" =<< makeFunctionValue raise
     addBinding "get-call-stack" =<< makeFunctionValue myGetCallStack
@@ -361,6 +362,10 @@ myDebugPrint [x] = do
     liftIO $ putStrLn $ debugShowValue x
     pure VNothing
 myDebugPrint _ = error $ "bad args to myDebugPrint"
+
+myDebugShow :: [Value] -> Runtime Value
+myDebugShow [x] = pure $ makeValue "string" $ debugShowValue x
+myDebugShow _ = error $ "bad args to myDebugShow"
 
 toreprDebug :: [Value] -> Runtime Value
 toreprDebug [x] = do
