@@ -197,28 +197,25 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
   where
     getvnm (S.VariantDecl _ vnm _ _) = vnm
     makeIt (S.VariantDecl _ vnm bs meths) =
-        let defaultMeths ps =
+        let defaultMeths =
                 [(S.Text n "_equals"
                  ,S.MethodExpr n $ S.Method
                             (fh $ map mnm ["a", "b"])
-                            [letDecl "flds" $ S.Construct n ["list"] $ map (S.Text n) ps
-                            ,S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
-                                [S.Iden n "flds", S.Iden n "a", S.Iden n "b"]])
+                            [S.StmtExpr n $ S.App n (S.Iden n "check-variants-equal")
+                                [S.Iden n "a", S.Iden n "b"]])
                 ,(S.Text n "_torepr"
                  , S.MethodExpr n $ S.Method
                             (fh $ map mnm ["a"])
                             [S.StmtExpr n $ S.App n (S.Iden n "show-variant")
-                                [S.Iden n "a"]
-                            ])
-                ]
+                                [S.Iden n "a"]])]
             suppliedMeths = flip map (meths ++ shr) (\(nm, m) -> (S.Text n nm, S.MethodExpr n m))
             defaultNeeded (nm,_) = nm `notElem` map fst suppliedMeths
-            extraMeths ps = filter defaultNeeded (defaultMeths ps) ++ suppliedMeths
+            extraMeths = filter defaultNeeded defaultMeths ++ suppliedMeths
             callMakeVariant ps =
                 S.App n (S.Iden n "make-variant")
                   [S.Text n vnm
-                  , lst $ map fst (extraMeths ps) ++ map (S.Text n) ps
-                  , lst $ map snd (extraMeths ps) ++ map (S.Iden n) ps]
+                  , lst $ map fst extraMeths ++ map (S.Text n) ps
+                  , lst $ map snd extraMeths ++ map (S.Iden n) ps]
         in if null bs
             then recDecl vnm $ callMakeVariant []
             else let ps = map sbNm bs

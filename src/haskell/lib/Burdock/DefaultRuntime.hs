@@ -94,7 +94,7 @@ _record_torepr = method(self):
  end
 
 _record_equals = method(self, b):
-   check-variants-equal([list:],self,b)
+   check-variants-equal(self,b)
  end
 
 _tuple_torepr = method(self):
@@ -102,7 +102,7 @@ _tuple_torepr = method(self):
  end
 
 _tuple_equals = method(self, b):
-   check-variants-equal([list:],self,b)
+   check-variants-equal(self,b)
  end
              
              |]
@@ -379,7 +379,7 @@ toreprDebug _ = error $ "bad args to toreprDebug"
 -- work them out. Currently, the passed fields are ignored and this
 -- function works them out using the hack auxiliary variantValueFields
 checkVariantsEqual :: [Value] -> Runtime Value
-checkVariantsEqual [_flds, a, b] = do
+checkVariantsEqual [a, b] = do
     at <- variantTag a
     bt <- variantTag b
     vfldsa <- variantValueFields a
