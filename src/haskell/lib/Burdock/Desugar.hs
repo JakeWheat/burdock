@@ -197,7 +197,7 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
   where
     getvnm (S.VariantDecl _ vnm _ _) = vnm
     makeIt (S.VariantDecl _ vnm bs meths) =
-        let extraMeths ps =
+        let defaultMeths ps =
                 [(S.Text n "_equals"
                  ,S.MethodExpr n $ S.Method
                             (fh $ map mnm ["a", "b"])
@@ -210,7 +210,10 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
                             [S.StmtExpr n $ S.App n (S.Iden n "show-variant")
                                 [S.Iden n "a"]
                             ])
-                ] ++ flip map (meths ++ shr) (\(nm, m) -> (S.Text n nm, S.MethodExpr n m))
+                ]
+            suppliedMeths = flip map (meths ++ shr) (\(nm, m) -> (S.Text n nm, S.MethodExpr n m))
+            defaultNeeded (nm,_) = nm `notElem` map fst suppliedMeths
+            extraMeths ps = filter defaultNeeded (defaultMeths ps) ++ suppliedMeths
             callMakeVariant ps =
                 S.App n (S.Iden n "make-variant")
                   [S.Text n vnm

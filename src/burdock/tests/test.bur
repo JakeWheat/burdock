@@ -362,3 +362,14 @@ check:
   debug-show([list:1,2,3]) is "[list: ValueNum 1,ValueNum 2,ValueNum 3]"
 end
 
+data OverrideToRepr:
+  | override(a)
+sharing:
+  method _torepr(self):
+    "override: " + torepr(self.a)
+  end
+end
+
+check "override _torepr default method":
+  torepr(override(2)) is "override: 2"
+end
