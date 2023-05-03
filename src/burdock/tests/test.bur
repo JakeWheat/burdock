@@ -331,3 +331,11 @@ check "no arg ctor matching":
   g(l1a(3)) is 3
   g(l1b) is 1
 end
+
+check "letrec multiple":
+
+  fun addeven(x): if x == 0: 0 else: x + addodd(x - 1) end end
+  fun addodd(x):  if x == 0: 0 else: x + addeven(x - 1) end end
+  addeven(6) is 21
+
+end

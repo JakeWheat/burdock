@@ -25,7 +25,10 @@ module Burdock.Desugar
     ) where
 
 import Prelude hiding (error, putStrLn, show)
-import Burdock.Utils (error, show)
+import Burdock.Utils
+    (error, show
+            --, trace
+    )
 --import Data.Text.IO (putStrLn)
 
 import qualified Burdock.Syntax as S
@@ -125,63 +128,41 @@ mkSyn e = Syn e [] [] []
 ------------------
 
 desugar :: S.Script -> [I.Stmt]
-desugar (S.Script ss) =
-    view synTree $ runReader (desugarStmts ss) (Inh [])
- 
-desugarStmts :: [S.Stmt] -> Desugar (Syn [I.Stmt])
-
-desugarStmts [] = pure $ mkSyn []
-
-desugarStmts (s:ss) = do
-    s' <- desugarStmt s
-    let addVariants = over inhVariants (view synNewVariants s' ++)
-    ss' <- local addVariants $ desugarStmts ss
-
-    -- get the free vars from ss
-    -- remove the newbindings from s
-    -- pass this up the chain
-    let remainingFreeVars = nub $ (view synFreeVars ss' \\ view synNewBindings s') ++ view synFreeVars s'
-
-    pure $ set synFreeVars remainingFreeVars
-         $ combineSynsNoFreeVars [ns s', ns ss']
-         $ mkSyn (_synTree s' ++ _synTree ss')
-
-desugarStmt :: S.Stmt -> Desugar (Syn [I.Stmt])
+desugar (S.Script ss) = view synTree $ runReader (desugarStmts ss) (Inh [])
 
 ------------------
 
--- S -> S for desugarStmt
--- these are desugaring which only transform the S syntax into
--- other S syntax and feeds it back into desugar
+{-
+desugar statements by first desugaring the bits that
+desugar via conversion to recdecl
+then by desugaring the recdecl to non recdecl
+then by doing all the other desugaring
+-}
 
-desugarStmt (S.Check _ _ ss) = desugarStmts ss
+desugarStmts :: [S.Stmt] -> Desugar (Syn [I.Stmt])
+desugarStmts = desugarStmts' . desugarRecs . desugarToRec
 
-desugarStmt (S.RecDecl _ b e) =
-    desugarStmts $ doLetRec [(b,e)]
-
-desugarStmt (S.FunDecl _ (S.SimpleBinding _ _ nm _) fh _ bdy _) =
-    desugarStmt (S.RecDecl n (S.NameBinding n nm) $ S.Lam n fh bdy)
+-- desugar recdecl to non recdecl
+desugarRecs :: [S.Stmt] -> [S.Stmt]
+desugarRecs = \case
+    (s:ss) | Just ri <- getRecInf s
+           -> let (ris, ss') = getRecInfs ss
+              in doLetRec (ri:ris) ++ desugarRecs ss'
+    (s:ss) -> s : desugarRecs ss
+    [] -> []
   where
-    n = Nothing
+    getRecInf (S.RecDecl _ b e) = Just (b,e)
+    getRecInf _ = Nothing
+    getRecInfs (S.RecDecl _ b e : ss) =
+        let (ris,ss') = getRecInfs ss
+        in ((b,e):ris, ss')
+    getRecInfs ss = ([],ss)
 
-desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
-    let m1 = S.Text n $ L.toStrict $ prettyExpr e1
-        m2 = S.Text n $ L.toStrict $ prettyExpr e2
-        rt e = S.App n (S.Iden n "run-task") [e]
-    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-test") [m1,m2,rt e1,rt e2])
-  where
-    n = Nothing
-
-desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is-not" e2)) =
-    let m1 = S.Text n $ L.toStrict $ prettyExpr e1
-        m2 = S.Text n $ L.toStrict $ prettyExpr e2
-        rt e = S.App n (S.Iden n "run-task") [e]
-    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-not-test") [m1,m2,rt e1,rt e2])
-  where
-    n = Nothing
-
-desugarStmt (S.When _ t b) =
-    desugarStmt $ S.StmtExpr n $ S.If n [(t, b)] (Just [S.StmtExpr n $ S.Iden n "nothing"])
+-- desugar syntax which desugars to recdecl:
+-- fundecl and datadecl, later letrec also
+desugarToRec :: [S.Stmt] -> [S.Stmt]
+desugarToRec (S.FunDecl _ (S.SimpleBinding _ _ nm _) fh _ bdy _ : ss) =
+    (S.RecDecl n (S.NameBinding n nm) $ S.Lam n fh bdy) : desugarToRec ss
   where
     n = Nothing
 
@@ -207,12 +188,9 @@ check-variants-equal(on-fields :: list<string>,a,b)
 
 
 -}
-desugarStmt (S.DataDecl _ dnm _ vs shr Nothing) = do
-    let addNewVariants = over synNewVariants (newVariants ++)
-    addNewVariants <$> (desugarStmts $ concatMap varF vs ++ [isDat])
+desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
+    concatMap varF vs ++ [isDat] ++ desugarToRec ss
   where
-    newVariants = flip map vs $ \case
-        S.VariantDecl _ nm _ _ -> nm
     varF (S.VariantDecl _ vnm bs meths) =
         let extraMeths ps =
                 [(S.Text n "_equals"
@@ -259,16 +237,76 @@ desugarStmt (S.DataDecl _ dnm _ vs shr Nothing) = do
     orE a b = S.BinOp n a "or" b
     mnm x = S.NameBinding n x
 
+desugarToRec (s:ss) = s : desugarToRec ss
+desugarToRec [] = []
+
+-- desugar the rest of statements after recursive stuff has been
+-- desugared away
+
+desugarStmts' :: [S.Stmt] -> Desugar (Syn [I.Stmt])
+desugarStmts' (s:ss) = do
+    s' <- desugarStmt s
+    let addVariants = over inhVariants (view synNewVariants s' ++)
+    ss' <- local addVariants $ desugarStmts' ss
+
+    -- get the free vars from ss
+    -- remove the newbindings from s
+    -- pass this up the chain
+    let remainingFreeVars = nub $ (view synFreeVars ss' \\ view synNewBindings s') ++ view synFreeVars s'
+
+    pure $ set synFreeVars remainingFreeVars
+         $ combineSynsNoFreeVars [ns s', ns ss']
+         $ mkSyn (_synTree s' ++ _synTree ss')
+
+desugarStmts' [] = pure $ mkSyn []
+
+
+------------------
+
+desugarStmt :: S.Stmt -> Desugar (Syn [I.Stmt])
+
+-- S -> S for desugarStmt
+-- these are desugaring which only transform the S syntax into
+-- other S syntax and feeds it back into desugar
+
+desugarStmt (S.Check _ _ ss) = desugarStmts ss
+
+desugarStmt (S.RecDecl {}) = error "undesugared recdecl"
+desugarStmt (S.FunDecl {}) = error "undesugared fundecl"
+desugarStmt (S.DataDecl {}) = error "undesugared datadecl"
+
+desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is" e2)) =
+    let m1 = S.Text n $ L.toStrict $ prettyExpr e1
+        m2 = S.Text n $ L.toStrict $ prettyExpr e2
+        rt e = S.App n (S.Iden n "run-task") [e]
+    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-test") [m1,m2,rt e1,rt e2])
+  where
+    n = Nothing
+
+desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is-not" e2)) =
+    let m1 = S.Text n $ L.toStrict $ prettyExpr e1
+        m2 = S.Text n $ L.toStrict $ prettyExpr e2
+        rt e = S.App n (S.Iden n "run-task") [e]
+    in desugarStmt (S.StmtExpr n $ S.App n (S.Iden n "do-is-not-test") [m1,m2,rt e1,rt e2])
+  where
+    n = Nothing
+
+desugarStmt (S.When _ t b) =
+    desugarStmt $ S.StmtExpr n $ S.If n [(t, b)] (Just [S.StmtExpr n $ S.Iden n "nothing"])
+  where
+    n = Nothing
+
 ------------------
 -- S -> I desugarStmt
 
 -- these are the functions which contains the code that actually
 -- converts to the I syntax
 
-desugarStmt (S.LetDecl _ b e) = do
+desugarStmt st@(S.LetDecl _ b e) = do
     nm <- desugarBinding b
     e' <- desugarExpr e
-    pure $ set synNewBindings (view synNewBindings nm)
+    pure $ addNewVariants st
+        $ set synNewBindings (view synNewBindings nm)
         $ combineSyns [ns nm, ns e']
         $ mkSyn [I.LetDecl (_synTree nm) $ _synTree e']
 
@@ -282,12 +320,39 @@ desugarStmt (S.VarDecl _ (S.SimpleBinding _ _ nm _) e) = do
         $ combineSyns [ns e']
         $ mkSyn [I.VarDecl nm $ _synTree e']
 
-desugarStmt (S.SetVar _ (S.Iden _ nm) e) = do
+desugarStmt st@(S.SetVar _ (S.Iden _ nm) e) = do
     e' <- desugarExpr e
-    pure $ combineSyns [ns e'] $ mkSyn [I.SetVar nm $ _synTree e']
+    pure $ addNewVariants st
+        $ combineSyns [ns e'] $ mkSyn [I.SetVar nm $ _synTree e']
 
 desugarStmt x = error $ "desugarStmt " <> show x
 
+-- detect if statement is introducting a variant
+-- slighly hacky
+-- if so, add this to the Syn
+-- after desugaring, this can be from one of:
+-- varName = XX
+-- or varName := XX
+-- and XX can be one of:
+-- make-variant(...)
+---or lam(...) make-variant(...)
+-- depending on if the make variant function needs letrec or not
+addNewVariants :: S.Stmt -> (Syn a -> Syn a)
+-- todo: letdecl branch not tested, needs redundent recdecl removal
+addNewVariants = \case
+    --x | trace "av" x False -> undefined
+    S.LetDecl _ (S.NameBinding _ variantName) e
+        | isMakeVariant e
+        -> over synNewVariants (variantName :)
+    S.SetVar _ (S.Iden _ variantName) e
+        | isMakeVariant e
+        -> over synNewVariants (variantName :)
+    _ -> id
+  where
+    isMakeVariant (S.App _ (S.Iden _ "make-variant") _) = True
+    isMakeVariant (S.Lam _ _ (S.StmtExpr _ (S.App _ (S.Iden _ "make-variant") _):_)) = True
+    isMakeVariant _ = False
+    
 ---------------------------------------
 
 desugarExpr :: S.Expr -> Desugar (Syn I.Expr)
