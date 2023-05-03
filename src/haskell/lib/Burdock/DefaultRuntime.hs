@@ -103,7 +103,48 @@ _tuple_torepr = method(self):
 _tuple_equals = method(self, b):
    check-variants-equal(self,b)
  end
-             
+
+data list:
+  | link(first, rest)
+  | empty
+sharing:
+  method _torepr(self):
+    fun intercalate-items(l):
+      cases l:
+        | empty => ""
+        | link(x, y) =>
+          cases y:
+            | empty => torepr(x)
+            | else => torepr(x) + ", " + intercalate-items(y)
+          end
+      end
+    end
+    cases self:
+      | empty => "[list: ]"
+      | link(x,y) => "[list: "
+          + intercalate-items(self) + "]"
+    end
+  end,
+  method _plus(self,b):
+    cases self:
+      | empty => b
+      | link(x,y) => link(x, y + b)
+    end
+  end,
+  method length(self):
+    cases self:
+      | empty => 0
+      | link(_,b) => 1 + b.length()
+    end
+  end ,
+  method map(self,f):
+    cases self:
+      | empty => empty
+      | link(a,b) => link(f(a), b.map(f))
+    end
+  end
+end
+
              |]
 
 prelude :: L.Text

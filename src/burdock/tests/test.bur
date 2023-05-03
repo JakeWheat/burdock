@@ -374,3 +374,57 @@ end
 check "override _torepr default method":
   torepr(override(2)) is "override: 2"
 end
+
+check "lists":
+
+  is-list(empty) is true
+  is-list(link(1, empty)) is true
+  is-list(1) is false
+
+  [list:] is empty
+  [list: 1] is link(1, empty)
+  [list: 1,2] is link(1,link(2, empty))
+  [list: 1,2] is-not [list: 2,1]
+
+  [list:]._torepr() is "[list: ]"
+  [list:1]._torepr() is "[list: 1]"
+  [list:1,2]._torepr() is "[list: 1, 2]"
+  [list:1,2,3]._torepr() is "[list: 1, 2, 3]"
+
+  torepr([list:]) is "[list: ]"
+  torepr([list:1]) is "[list: 1]"
+  torepr([list:1,2]) is "[list: 1, 2]"
+  torepr([list:1,2,3]) is "[list: 1, 2, 3]"
+
+  
+  fun f(x):
+    cases x:
+      | empty => "mt"
+      | link(a,b) => "link-" + torepr(a) + "-..."
+    end
+  end
+  f(empty) is "mt"
+  f([list: 1,2]) is "link-1-..."
+  
+  [list: 1,2].first is 1
+  [list: 1,2].rest is link(2,empty)
+  
+  [list:] + [list:] is [list:]
+  [list:] + [list: 1] is [list:1]
+  [list:1] + [list:] is [list:1]
+  [list:1] + [list:2] is [list:1,2]
+  [list: 1,2] + [list: false,true] is [list: 1,2,false,true]
+
+  [list:].length() is 0
+  [list:1].length() is 1
+  [list:1,2].length() is 2
+  [list:1,2,3].length() is 3
+
+  add-one = lam(x): x + 1 end
+  
+  [list:].map(add-one) is [list:]
+  [list:1].map(add-one) is [list:2]
+  [list:1,2].map(add-one) is [list:2,3]
+  [list:1,2,3].map(add-one) is [list:2,3,4]
+
+end

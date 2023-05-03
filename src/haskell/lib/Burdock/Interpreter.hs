@@ -115,7 +115,7 @@ createHandle = do
     st <- emptyRuntimeState
     runBurdock st $ do
         initRuntime
-        void $ runScript' debugPrintBootstrap "bootstrap" bootstrap
+        void $ runScript' True debugPrintBootstrap "bootstrap" bootstrap
 
         let lkpf f = maybe (error $ "bootstrap " <> f <> " not found") id <$> lookupBinding f
 
@@ -124,18 +124,20 @@ createHandle = do
             <*> lkpf "_tuple_torepr"
             <*> lkpf "_record_equals"
             <*> lkpf "_record_torepr"
+            <*> lkpf "empty"
+            <*> lkpf "link"
         
-        void $ runScript' debugPrintPrelude "prelude" prelude
+        void $ runScript' False debugPrintPrelude "prelude" prelude
             -- todo: tests in the prelude?
         getRuntimeState
 
 runScript :: T.Text -> L.Text -> Runtime Value
-runScript = runScript' debugPrintUserScript
+runScript = runScript' False debugPrintUserScript
 
-runScript' :: Bool -> T.Text -> L.Text -> Runtime Value
-runScript' debugPrint fn src = do
+runScript' :: Bool -> Bool -> T.Text -> L.Text -> Runtime Value
+runScript' isBootstrap debugPrint fn src = do
     let ast = either error id $ parseScript fn src
-        dast = desugar ast
+        dast = desugar isBootstrap ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
     when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
         

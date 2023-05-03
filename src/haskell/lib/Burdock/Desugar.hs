@@ -127,8 +127,14 @@ mkSyn e = Syn e [] [] []
 
 ------------------
 
-desugar :: S.Script -> [I.Stmt]
-desugar (S.Script ss) = view synTree $ runReader (desugarStmts ss) (Inh [])
+desugar :: Bool -> S.Script -> [I.Stmt]
+desugar isBootstrap (S.Script ss) =
+    let inh = Inh []
+        inh' = if isBootstrap
+               then inh
+                    -- hack until modules and metadata is implemented
+               else set inhVariants ["empty", "link"] inh
+    in view synTree $ runReader (desugarStmts ss) inh'
 
 ------------------
 

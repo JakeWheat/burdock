@@ -91,11 +91,6 @@ import Control.Monad.Reader (ReaderT
                             --,MonadIO
                             )
 
-import Control.Monad
-    (zipWithM
-    --,when
-    )
-       
 import Data.Text (Text)
 import qualified Data.Text as T
 import Data.Dynamic
@@ -140,6 +135,8 @@ data BootstrapValues
     ,btTupToRepr :: Value
     ,btRecEq :: Value
     ,btRecToRepr :: Value
+    ,btListEmpty :: Value
+    ,btListLink :: Value
     }
 
 emptyRuntimeState :: IO RuntimeState
@@ -165,8 +162,6 @@ data Value = Value Text Dynamic
            | MethodV Value
            -- todo: change nothing to a variant
            | VNothing
-           -- todo: change to variant, or something?
-           | VList [Value]
            | VFun ([Value] -> Runtime Value)
            | BoxV (IORef Value)
     --deriving (Show)
@@ -191,10 +186,6 @@ debugShowValue (VariantV tf fs) =
         f (nm,v) = nm <> " " <> debugShowValue v <> ","
 debugShowValue (MethodV v) = "MethodV " <> debugShowValue v
 debugShowValue VNothing = "VNothing"
-debugShowValue (VList vs)
-    = "VList " <> T.concat (map f vs)
-    where
-        f v = debugShowValue v <> ","
 debugShowValue (VFun {}) = "VFun {}"
 debugShowValue (BoxV {}) = "BoxV {}"
 
@@ -210,10 +201,25 @@ makeValue :: Typeable a => Text -> a -> Value
 makeValue nm v = Value nm $ toDyn v
 
 makeBurdockList :: [Value] -> Runtime Value
-makeBurdockList = pure . VList
+makeBurdockList [] = do
+    st <- ask
+    btV <- liftIO $ readIORef (rtBootstrapRecTup st)
+    pure $ btListEmpty btV
+makeBurdockList (v:vs) = do
+    st <- ask
+    btV <- liftIO $ readIORef (rtBootstrapRecTup st)
+    let listLink = btListLink btV
+    vs' <- makeBurdockList vs
+    app Nothing listLink [v,vs']
 
 extractBurdockList :: Value -> Maybe [Value]
-extractBurdockList (VList vs) = Just vs
+extractBurdockList (VariantV "empty" _) = Just []
+extractBurdockList (VariantV "link" fs)
+    | Just f <- lookup "first" fs
+    , Just r <- lookup "rest" fs
+    = do
+         r' <- extractBurdockList r
+         Just (f:r')
 extractBurdockList _ = Nothing
 
 extractTuple :: Value -> Runtime (Maybe [Value])
@@ -311,58 +317,6 @@ getMember (VNothing) "_torepr" = do
 getMember (VNothing) "_equals" = do
     makeFunctionValue $ \case
         [VNothing] -> pure $ makeValue "boolean" True
-        [_] -> pure $ makeValue "boolean" False
-        _ -> error "bad args to nothing._equals"
-
-
-getMember (VList es) "_torepr" = do
-    let trf e = do
-            f <- getMember e "_torepr"
-            v <- app Nothing f []
-            pure $ maybe (error $ "non string from to _torepr: " <> debugShowValue e <> " " <> debugShowValue v) id $ extractValue v
-
-    makeFunctionValue (\_ -> do
-        strs <- mapM trf es
-        let txt = "[list: " <> T.intercalate ", " strs <> "]"
-        pure $ makeValue "string" txt)
-
-getMember (VList es) "length" = do
-    makeFunctionValue (\_ -> do
-        pure $ makeValue "number" ((fromIntegral $ length es) :: Scientific))
-
-getMember (VList es) "first" =
-    case es of
-        (e:_) -> pure e
-        [] -> error $ "first called on empty list"
-
-getMember (VList es) "rest" =
-    case es of
-        (_:es') -> pure $ VList es'
-        [] -> error $ "rest called on empty list"
-
-
-getMember (VList es) "_equals" = do
-    makeFunctionValue $ \case
-        [VList fs] ->
-            if length es /= length fs
-            then pure $ makeValue "boolean" False
-            else do
-                let eq a b = do
-                        f <- getMember a "_equals"
-                        r <- app Nothing f [b]
-                        case extractValue r of
-                            Nothing -> error $ "non bool returned from _equals: " <> debugShowValue r <> " on "  <> debugShowValue a
-                            Just x -> pure x
-                        
-                rs <- zipWithM eq es fs
-                pure $ makeValue "boolean" $ and rs
-        
-        [_] -> pure $ makeValue "boolean" False
-        _ -> error "bad args to nothing._equals"
-
-getMember (VList es) "_plus" = do
-    makeFunctionValue $ \case
-        [VList fs] -> pure $ VList $ es ++ fs
         [_] -> pure $ makeValue "boolean" False
         _ -> error "bad args to nothing._equals"
 
