@@ -37,6 +37,7 @@ import Burdock.Runtime
     ,getTestResults
     ,liftIO
     ,setBootstrapRecTup
+    ,BootstrapValues(..)
 
     --,ffimethodapp
     --,RuntimeState
@@ -116,11 +117,13 @@ createHandle = do
         initRuntime
         void $ runScript' debugPrintBootstrap "bootstrap" bootstrap
 
-        b1 <- maybe (error "bootstrap _tuple_equals not found") id <$> lookupBinding "_tuple_equals"
-        b2 <- maybe (error "bootstrap _tuple_torepr not found") id <$> lookupBinding "_tuple_torepr"
-        b3 <- maybe (error "bootstrap _record_equals not found") id <$> lookupBinding "_record_equals"
-        b4 <- maybe (error "bootstrap _record_torepr not found") id <$> lookupBinding "_record_torepr"
-        setBootstrapRecTup (b1,b2,b3,b4)
+        let lkpf f = maybe (error $ "bootstrap " <> f <> " not found") id <$> lookupBinding f
+
+        setBootstrapRecTup =<< BootstrapValues
+            <$> lkpf "_tuple_equals"
+            <*> lkpf "_tuple_torepr"
+            <*> lkpf "_record_equals"
+            <*> lkpf "_record_torepr"
         
         void $ runScript' debugPrintPrelude "prelude" prelude
             -- todo: tests in the prelude?

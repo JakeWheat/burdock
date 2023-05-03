@@ -29,6 +29,7 @@ module Burdock.Runtime
     ,addFFIType
 
     ,setBootstrapRecTup
+    ,BootstrapValues(..)
     
     ,withCallstackEntry
 
@@ -130,14 +131,22 @@ data RuntimeState
     ,rtNumTestFailed :: IORef Int
     ,rtNumTestPassed :: IORef Int
     ,rtCallStack :: IORef [Maybe Text]
-    ,rtBootstrapRecTup :: IORef (Value,Value,Value,Value)
+    ,rtBootstrapRecTup :: IORef BootstrapValues
+    }
+
+data BootstrapValues
+    = BootstrapValues
+    {btTupEq :: Value
+    ,btTupToRepr :: Value
+    ,btRecEq :: Value
+    ,btRecToRepr :: Value
     }
 
 emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
     RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef 0 <*> newIORef [] <*> newIORef (error "bootstrap for tuples and records not completed")
 
-setBootstrapRecTup :: (Value,Value,Value,Value) -> Runtime ()
+setBootstrapRecTup :: BootstrapValues -> Runtime ()
 setBootstrapRecTup v = do
     st <- ask
     liftIO $ writeIORef (rtBootstrapRecTup st) v
@@ -205,8 +214,8 @@ makeTuple :: [Value] -> Runtime Value
 makeTuple fs = do
     let fs1 = zip (map show [(0::Int)..]) fs
     st <- ask
-    (req,rtr,_,_) <- liftIO $ readIORef (rtBootstrapRecTup st)
-    makeVariant "tuple" (("_equals", req) : ("_torepr", rtr) : fs1)
+    btV <- liftIO $ readIORef (rtBootstrapRecTup st)
+    makeVariant "tuple" (("_equals", btTupEq btV) : ("_torepr", btTupToRepr btV) : fs1)
 
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v
@@ -245,8 +254,8 @@ variantValueFields _ = pure Nothing
 makeRecord :: [(Text,Value)] -> Runtime Value
 makeRecord fs = do
     st <- ask
-    (_,_,req,rtr) <- liftIO $ readIORef (rtBootstrapRecTup st)    
-    makeVariant "record" (("_equals", req) : ("_torepr", rtr) : fs)
+    btV <- liftIO $ readIORef (rtBootstrapRecTup st)    
+    makeVariant "record" (("_equals", btRecEq btV) : ("_torepr", btRecEq btV) : fs)
               
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do
