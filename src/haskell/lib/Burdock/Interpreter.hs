@@ -38,6 +38,7 @@ import Burdock.Runtime
     ,liftIO
     ,setBootstrapRecTup
     ,BootstrapValues(..)
+    ,nothingValue
 
     --,ffimethodapp
     --,RuntimeState
@@ -126,6 +127,7 @@ createHandle = do
             <*> lkpf "_record_torepr"
             <*> lkpf "empty"
             <*> lkpf "link"
+            <*> lkpf "nothing"
         
         void $ runScript' False debugPrintPrelude "prelude" prelude
             -- todo: tests in the prelude?
@@ -156,7 +158,7 @@ interpStmt :: I.Stmt -> Runtime Value
 
 interpStmt (I.LetDecl b e) = do
     letExprs [(b, e)]
-    pure VNothing
+    nothingValue
 
 interpStmt (I.StmtExpr e) = interpExpr e
 
@@ -164,7 +166,7 @@ interpStmt (I.VarDecl nm e) = do
     v <- interpExpr e
     vr <- liftIO $ newIORef v
     letSimple [(nm, BoxV vr)]
-    pure VNothing
+    nothingValue
 
 interpStmt (I.SetVar nm e) = do
     v <- interpExpr e
@@ -173,7 +175,7 @@ interpStmt (I.SetVar nm e) = do
         Just (BoxV vr) -> liftIO $ writeIORef vr v
         Nothing -> error $ "iden not found: " <> nm
         Just x -> error $ "set var on non variable: " <> debugShowValue x
-    pure VNothing
+    nothingValue
 
 --interpStmt s = error $ "interpStmt: " ++ show s
 

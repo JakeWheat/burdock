@@ -104,6 +104,8 @@ _tuple_equals = method(self, b):
    check-variants-equal(self,b)
  end
 
+data Nothing: nothing end
+
 data list:
   | link(first, rest)
   | empty
@@ -248,7 +250,6 @@ initRuntime = do
     addBinding "get-call-stack" =<< makeFunctionValue myGetCallStack
     addBinding "torepr" =<< makeFunctionValue myToRepr
     addBinding "tostring" =<< makeFunctionValue myToString
-    addBinding "nothing" nothingValue
     addBinding "show-variant" =<< makeFunctionValue showVariant
     addBinding "show-tuple" =<< makeFunctionValue showTuple
     addBinding "show-record" =<< makeFunctionValue showRecord
@@ -351,7 +352,7 @@ myPrint [v] = do
     case extractValue t of
         Nothing -> liftIO $ putStrLn $ debugShowValue v
         Just s -> liftIO $ putStrLn s
-    pure VNothing
+    nothingValue
 myPrint _ = error $ "bad args to myPrint"
 
 indent :: [Value] -> Runtime Value
@@ -406,7 +407,7 @@ myIsVariant _ = error $ "bad args to myIsVariant"
 myDebugPrint :: [Value] -> Runtime Value
 myDebugPrint [x] = do
     liftIO $ putStrLn $ debugShowValue x
-    pure VNothing
+    nothingValue
 myDebugPrint _ = error $ "bad args to myDebugPrint"
 
 myDebugShow :: [Value] -> Runtime Value
@@ -569,7 +570,7 @@ mySleep [x] = do
     case extractValue x of
         Just (n :: Scientific) -> do
             liftIO $ threadDelay $ floor $ n * 1000 * 1000
-            pure VNothing
+            nothingValue
             
         Nothing -> error $ "bad args to mySleep: " <> debugShowValue x
 mySleep _ = error $ "bad args to mySleep"
@@ -586,7 +587,7 @@ spawnSleepThrowTo [x] = do
             void $ liftIO $ async $ do
                  threadDelay $ floor $ n * 1000 * 1000
                  throwTo mainTid AsyncCancelled
-            pure VNothing
+            nothingValue
             
         Nothing -> error $ "bad args to spawnSleepThrowTo: " <> debugShowValue x
 spawnSleepThrowTo _ = error $ "bad args to spawnSleepThrowTo"
@@ -594,11 +595,11 @@ spawnSleepThrowTo _ = error $ "bad args to spawnSleepThrowTo"
 myAddTestPass :: [Value] -> Runtime Value
 myAddTestPass [] = do
     addTestPass
-    pure VNothing
+    nothingValue
 myAddTestPass _ = error $ "bad args to myAddTestPass"
 
 myAddTestFail :: [Value] -> Runtime Value
 myAddTestFail [] = do
     addTestFail
-    pure VNothing
+    nothingValue
 myAddTestFail _ = error $ "bad args to myAddTestFail"

@@ -137,6 +137,7 @@ data BootstrapValues
     ,btRecToRepr :: Value
     ,btListEmpty :: Value
     ,btListLink :: Value
+    ,btNothing :: Value
     }
 
 emptyRuntimeState :: IO RuntimeState
@@ -160,8 +161,6 @@ type Runtime = ReaderT RuntimeState IO
 data Value = Value Text Dynamic
            | VariantV Text [(Text, Value)]
            | MethodV Value
-           -- todo: change nothing to a variant
-           | VNothing
            | VFun ([Value] -> Runtime Value)
            | BoxV (IORef Value)
     --deriving (Show)
@@ -185,7 +184,6 @@ debugShowValue (VariantV tf fs) =
     where
         f (nm,v) = nm <> " " <> debugShowValue v <> ","
 debugShowValue (MethodV v) = "MethodV " <> debugShowValue v
-debugShowValue VNothing = "VNothing"
 debugShowValue (VFun {}) = "VFun {}"
 debugShowValue (BoxV {}) = "BoxV {}"
 
@@ -239,8 +237,11 @@ extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v
 extractValue _x = Nothing -- error $ "can't extract value from " ++ T.unpack (debugShowValue x)
 
-nothingValue :: Value
-nothingValue = VNothing
+nothingValue :: Runtime Value
+nothingValue = do
+    st <- ask
+    btV <- liftIO $ readIORef (rtBootstrapRecTup st)
+    pure $ btNothing btV
 
 makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
 makeFunctionValue f = pure $ VFun f
@@ -309,16 +310,6 @@ getMember (MethodV {}) "_torepr" = do
 getMember (VFun {}) "_torepr" = do
     let v = makeValue "string" ("<function>" :: Text)
     makeFunctionValue (\_ -> pure v)
-
-getMember (VNothing) "_torepr" = do
-    let v = makeValue "string" ("nothing" :: Text)
-    makeFunctionValue (\_ -> pure v)
-
-getMember (VNothing) "_equals" = do
-    makeFunctionValue $ \case
-        [VNothing] -> pure $ makeValue "boolean" True
-        [_] -> pure $ makeValue "boolean" False
-        _ -> error "bad args to nothing._equals"
 
 getMember (BoxV v) fld = do
     v' <- liftIO $ readIORef v
