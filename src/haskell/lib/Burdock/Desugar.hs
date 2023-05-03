@@ -189,9 +189,14 @@ check-variants-equal(on-fields :: list<string>,a,b)
 
 -}
 desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
-    concatMap varF vs ++ [isDat] ++ desugarToRec ss
+    -- make sure the is-var are available for the is-dat
+    -- make sure all of these are available for the methods
+    map isIt vs ++ [isDat]
+    ++ [introduceVariantNames $ map getvnm vs]
+    ++ map makeIt vs ++ desugarToRec ss
   where
-    varF (S.VariantDecl _ vnm bs meths) =
+    getvnm (S.VariantDecl _ vnm _ _) = vnm
+    makeIt (S.VariantDecl _ vnm bs meths) =
         let extraMeths ps =
                 [(S.Text n "_equals"
                  ,S.MethodExpr n $ S.Method
@@ -211,18 +216,16 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
                   [S.Text n vnm
                   , lst $ map fst (extraMeths ps) ++ map (S.Text n) ps
                   , lst $ map snd (extraMeths ps) ++ map (S.Iden n) ps]
-        in
-        [if null bs
-         then recDecl vnm $ callMakeVariant []
-         else let ps = map sbNm bs
-              in recDecl vnm
-                 $ S.Lam n (fh $ map (S.NameBinding n) ps)
-                 [S.StmtExpr n $ callMakeVariant ps]
-        ,letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
+        in if null bs
+            then recDecl vnm $ callMakeVariant []
+            else let ps = map sbNm bs
+                 in recDecl vnm
+                    $ S.Lam n (fh $ map (S.NameBinding n) ps)
+                    [S.StmtExpr n $ callMakeVariant ps]
+    isIt (S.VariantDecl _ vnm _ _) =
+        letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
                                    S.App n (S.Iden n "is-variant")
                                    [S.Text n vnm, S.Iden n "x"]]
-        ]
-    --varF v = error $ "unsupported variant decl: " <> show v
     lst es = S.Construct n ["list"] es
     callIs (S.VariantDecl _ vnm _ _) = S.App n (S.Iden n $ "is-" <> vnm) [S.Iden n "x"]
     isDat = letDecl ("is-" <> dnm)
@@ -239,6 +242,31 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
 
 desugarToRec (s:ss) = s : desugarToRec ss
 desugarToRec [] = []
+
+{-
+hacky way to tell the S->I pass that a bunch of names are variant names
+at a certain point a statement list
+this is done by generating some syntax with the names
+then at S->I time, this syntax is spotted, the syn attributes are set,
+and the syntax is converted to nothing
+-}
+
+introduceVariantNames :: [Text] -> S.Stmt
+introduceVariantNames nms =
+    S.StmtExpr n (S.App n (S.Iden n "_INTRODUCE_VARIANTS")
+                     $ map (S.Text n) nms)
+  where
+    n = Nothing
+
+getIntroducedVariants :: S.Stmt -> Maybe [Text]
+getIntroducedVariants
+    (S.StmtExpr _ (S.App _ (S.Iden _ "_INTRODUCE_VARIANTS") as))
+    | Just as' <- mapM getText as
+    = Just as'
+  where
+    getText (S.Text _ t) = Just t
+    getText _ = Nothing
+getIntroducedVariants _ = Nothing
 
 -- desugar the rest of statements after recursive stuff has been
 -- desugared away
@@ -259,7 +287,6 @@ desugarStmts' (s:ss) = do
          $ mkSyn (_synTree s' ++ _synTree ss')
 
 desugarStmts' [] = pure $ mkSyn []
-
 
 ------------------
 
@@ -302,11 +329,14 @@ desugarStmt (S.When _ t b) =
 -- these are the functions which contains the code that actually
 -- converts to the I syntax
 
-desugarStmt st@(S.LetDecl _ b e) = do
+-- the add variant names hack:
+desugarStmt st | Just vnms <- getIntroducedVariants st =
+    pure $ set synNewVariants vnms $ mkSyn []
+
+desugarStmt (S.LetDecl _ b e) = do
     nm <- desugarBinding b
     e' <- desugarExpr e
-    pure $ addNewVariants st
-        $ set synNewBindings (view synNewBindings nm)
+    pure $ set synNewBindings (view synNewBindings nm)
         $ combineSyns [ns nm, ns e']
         $ mkSyn [I.LetDecl (_synTree nm) $ _synTree e']
 
@@ -320,38 +350,11 @@ desugarStmt (S.VarDecl _ (S.SimpleBinding _ _ nm _) e) = do
         $ combineSyns [ns e']
         $ mkSyn [I.VarDecl nm $ _synTree e']
 
-desugarStmt st@(S.SetVar _ (S.Iden _ nm) e) = do
+desugarStmt (S.SetVar _ (S.Iden _ nm) e) = do
     e' <- desugarExpr e
-    pure $ addNewVariants st
-        $ combineSyns [ns e'] $ mkSyn [I.SetVar nm $ _synTree e']
+    pure $ combineSyns [ns e'] $ mkSyn [I.SetVar nm $ _synTree e']
 
 desugarStmt x = error $ "desugarStmt " <> show x
-
--- detect if statement is introducting a variant
--- slighly hacky
--- if so, add this to the Syn
--- after desugaring, this can be from one of:
--- varName = XX
--- or varName := XX
--- and XX can be one of:
--- make-variant(...)
----or lam(...) make-variant(...)
--- depending on if the make variant function needs letrec or not
-addNewVariants :: S.Stmt -> (Syn a -> Syn a)
--- todo: letdecl branch not tested, needs redundent recdecl removal
-addNewVariants = \case
-    --x | trace "av" x False -> undefined
-    S.LetDecl _ (S.NameBinding _ variantName) e
-        | isMakeVariant e
-        -> over synNewVariants (variantName :)
-    S.SetVar _ (S.Iden _ variantName) e
-        | isMakeVariant e
-        -> over synNewVariants (variantName :)
-    _ -> id
-  where
-    isMakeVariant (S.App _ (S.Iden _ "make-variant") _) = True
-    isMakeVariant (S.Lam _ _ (S.StmtExpr _ (S.App _ (S.Iden _ "make-variant") _):_)) = True
-    isMakeVariant _ = False
     
 ---------------------------------------
 

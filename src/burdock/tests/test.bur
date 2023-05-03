@@ -335,7 +335,25 @@ end
 check "letrec multiple":
 
   fun addeven(x): if x == 0: 0 else: x + addodd(x - 1) end end
-  fun addodd(x):  if x == 0: 0 else: x + addeven(x - 1) end end
+  fun addodd(x): if x == 0: 0 else: x + addeven(x - 1) end end
   addeven(6) is 21
+
+end
+
+data MyData:
+  | my-ctor1(xx)
+  | my-ctor2
+sharing:
+  method what(self):
+    cases self:
+      | my-ctor2 =>  "my-ctor2"
+      | my-ctor1(_) => "my-ctor1"
+    end
+  end
+end
+
+check "recursion for no arg variant matching in methods":
+  my-ctor1(1).what() is "my-ctor1"
+  my-ctor2.what() is "my-ctor2"
 
 end
