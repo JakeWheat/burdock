@@ -303,3 +303,31 @@ check:
   list-map([list: 1,2],lam(a): a + 1 end) is [list: 2,3]
 
 end
+
+
+data L1:
+  | l1a(b)
+  | l1b
+end
+
+fun f(x):
+  cases x:
+    | l1b => 1
+    | l1a(a) => a
+  end
+end
+
+fun g(x):
+  cases x:
+    | l1a(a) => a
+    | l1b => 1
+  end
+end
+
+check "no arg ctor matching":
+  #print(1)
+  f(l1a(3)) is 3
+  f(l1b) is 1
+  g(l1a(3)) is 3
+  g(l1b) is 1
+end
