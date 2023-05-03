@@ -226,7 +226,7 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
         letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
                                    S.App n (S.Iden n "is-variant")
                                    [S.Text n vnm, S.Iden n "x"]]
-    lst es = S.Construct n ["list"] es
+    lst es = S.Construct n ["haskell-list"] es
     callIs (S.VariantDecl _ vnm _ _) = S.App n (S.Iden n $ "is-" <> vnm) [S.Iden n "x"]
     isDat = letDecl ("is-" <> dnm)
             $ lam ["x"]
@@ -404,6 +404,10 @@ desugarExpr (S.Parens _ e) = desugarExpr e
 -- temp until construct implemented fully
 desugarExpr (S.Construct _ ["list"] es) =
     desugarExpr $ S.App Nothing (S.Iden Nothing "make-burdock-list") es
+
+-- used to bootstrap the language
+desugarExpr (S.Construct _ ["haskell-list"] es) =
+    desugarExpr $ S.App Nothing (S.Iden Nothing "make-haskell-list") es
 
 ------------------
 -- S -> I

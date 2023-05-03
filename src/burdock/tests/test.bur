@@ -358,8 +358,9 @@ check "recursion for no arg variant matching in methods":
 
 end
 
-check:
+check "debug show for list, haskell-list":
   debug-show([list:1,2,3]) is "[list: ValueNum 1,ValueNum 2,ValueNum 3]"
+  debug-show([haskell-list:1,2,3]) is "[HaskellList: ValueNum 1,ValueNum 2,ValueNum 3]"
 end
 
 data OverrideToRepr:

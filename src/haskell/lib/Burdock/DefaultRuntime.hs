@@ -37,7 +37,6 @@ import Burdock.Runtime
     ,getCallStack
 
     ,makeBurdockList
-    ,extractBurdockList
 
     ,getMember
     ,app
@@ -198,6 +197,7 @@ initRuntime = do
     addFFIType "boolean" (Type booleanFFI)
     addBinding "print" =<< makeFunctionValue myPrint
     addBinding "make-burdock-list" =<< makeFunctionValue myMakeBurdockList
+    addBinding "make-haskell-list" =<< makeFunctionValue makeHaskellList
     addBinding "make-variant" =<< makeFunctionValue myMakeVariant
     addBinding "is-variant" =<< makeFunctionValue myIsVariant
     addBinding "debug-print" =<< makeFunctionValue myDebugPrint
@@ -323,18 +323,23 @@ indent _ = error $ "bad args to indent"
 myMakeBurdockList :: [Value] -> Runtime Value
 myMakeBurdockList vs = makeBurdockList vs
 
+makeHaskellList :: [Value] -> Runtime Value
+makeHaskellList vs = pure $ makeValue "haskell-list" vs
+
 myMakeVariant :: [Value] -> Runtime Value
 myMakeVariant [nm, flds, es] = do
     let t :: Text
         t = maybe (error $ "bad args to make variant, first arg is not text")
             id $ extractValue nm
-        flds' = maybe (error $ "bad args to make variant, second arg is not list")
-                id $ extractBurdockList flds
+        flds' :: [Value]
+        flds' = maybe (error $ "bad args to make variant, second arg is not haskell list")
+                id $ extractValue flds
         flds'' :: [Text]
         flds'' = flip map flds' $ \f -> maybe (error $ "bad args to make variant, second arg has non string in list")
                  id $ extractValue f
+        es' :: [Value]
         es' = maybe (error $ "bad args to make variant, third arg is not list")
-                id $ extractBurdockList es
+                id $ extractValue es
                                         
     when (length es' /= length flds') $ error $ "wrong number of args to create variant " <> t
     makeVariant t $ zip flds'' es'

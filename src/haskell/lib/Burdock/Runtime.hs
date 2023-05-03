@@ -176,6 +176,10 @@ debugShowValue (Value _tg dn)
     | Just (dn' :: Scientific) <- fromDynamic dn
     = "ValueNum " <> showScientific dn'
 
+debugShowValue (Value _tg dn)
+    | Just (ls :: [Value]) <- fromDynamic dn
+    = "[HaskellList: " <> T.intercalate "," (map debugShowValue ls) <> "]"
+
 debugShowValue v
     | Just ls <- extractBurdockList v
     = "[list: " <> T.intercalate "," (map debugShowValue ls) <> "]"
