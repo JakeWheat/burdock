@@ -57,7 +57,7 @@ import Burdock.Runtime
     
     ,makeValue
     ,extractValue
-    ,makeList
+    ,makeBurdockList
     ,makeRecord
     ,extractTuple
 
@@ -189,7 +189,7 @@ interpExpr (I.RunTask catchAsync tsk) = do
         -- a left left of a string is an show'n arbitrary haskell exception
         Left (Left e, st) -> do
             left <- interpExpr (I.Iden "left")
-            let st' = makeList $ map (makeValue "string" . maybe "nothing" id) st
+            st' <- makeBurdockList $ map (makeValue "string" . maybe "nothing" id) st
             ret <- makeRecord [("exception", makeValue "string" e)
                               ,("callstack", st')]
             app Nothing left [ret]
@@ -197,7 +197,7 @@ interpExpr (I.RunTask catchAsync tsk) = do
         -- or ffi code
         Left (Right v, st) -> do
             left <- interpExpr (I.Iden "left")
-            let st' = makeList $ map (makeValue "string" . maybe "nothing" id) st
+            st' <- makeBurdockList $ map (makeValue "string" . maybe "nothing" id) st
             ret <- makeRecord [("exception", v)
                               ,("callstack", st')]
             app Nothing left [ret]

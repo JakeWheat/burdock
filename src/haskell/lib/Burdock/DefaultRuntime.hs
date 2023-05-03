@@ -36,8 +36,8 @@ import Burdock.Runtime
 
     ,getCallStack
 
-    ,makeList
-    ,extractList
+    ,makeBurdockList
+    ,extractBurdockList
 
     ,getMember
     ,app
@@ -197,7 +197,7 @@ initRuntime = do
     addFFIType "string" (Type stringFFI)
     addFFIType "boolean" (Type booleanFFI)
     addBinding "print" =<< makeFunctionValue myPrint
-    addBinding "make-list" =<< makeFunctionValue myMakeList
+    addBinding "make-burdock-list" =<< makeFunctionValue myMakeBurdockList
     addBinding "make-variant" =<< makeFunctionValue myMakeVariant
     addBinding "is-variant" =<< makeFunctionValue myIsVariant
     addBinding "debug-print" =<< makeFunctionValue myDebugPrint
@@ -319,8 +319,8 @@ indent [x] | Just t <- extractValue x = do
     pure $ makeValue "string" $ T.unlines ls'
 indent _ = error $ "bad args to indent"
 
-myMakeList :: [Value] -> Runtime Value
-myMakeList vs = pure $ makeList vs
+myMakeBurdockList :: [Value] -> Runtime Value
+myMakeBurdockList vs = makeBurdockList vs
 
 myMakeVariant :: [Value] -> Runtime Value
 myMakeVariant [nm, flds, es] = do
@@ -328,12 +328,12 @@ myMakeVariant [nm, flds, es] = do
         t = maybe (error $ "bad args to make variant, first arg is not text")
             id $ extractValue nm
         flds' = maybe (error $ "bad args to make variant, second arg is not list")
-                id $ extractList flds
+                id $ extractBurdockList flds
         flds'' :: [Text]
         flds'' = flip map flds' $ \f -> maybe (error $ "bad args to make variant, second arg has non string in list")
                  id $ extractValue f
         es' = maybe (error $ "bad args to make variant, third arg is not list")
-                id $ extractList es
+                id $ extractBurdockList es
                                         
     when (length es' /= length flds') $ error $ "wrong number of args to create variant " <> t
     makeVariant t $ zip flds'' es'
@@ -375,9 +375,6 @@ toreprDebug _ = error $ "bad args to toreprDebug"
 -- function works them out using the hack auxiliary variantValueFields
 checkVariantsEqual :: [Value] -> Runtime Value
 checkVariantsEqual [_flds, a, b] = do
-    --do 
-    --    x <- myToRepr [makeList [flds,a,b]]
-    --    liftIO $ putStrLn $ "checkVariantsEqual " <> maybe (error $ "f2") id (extractValue x)
     at <- variantTag a
     bt <- variantTag b
     vfldsa <- variantValueFields a
@@ -397,10 +394,6 @@ checkVariantsEqual [_flds, a, b] = do
                     vb <- getMember b f
                     eqx <- getMember va "_equals"
                     x <- app Nothing eqx [vb]
-                    --let balls = makeList [va, vb, x]
-                    --iseq <- myToRepr [balls]
-                    --let iseq1 = maybe (error $ "f3") id $ extractValue iseq
-                    --liftIO $ putStrLn $ f <> " == " <> iseq1
                     pure x
                 -- and together all the fsEq
                 let andEm [] = pure $ makeValue "boolean" True
@@ -425,7 +418,7 @@ myGetCallStack [] = do
     let cs' = flip map cs $ \case
             Nothing -> mt "nothing"
             Just x -> mt x
-    pure $ makeList cs' -- makeValue "string" $ T.intercalate "," cs'
+    makeBurdockList cs' -- makeValue "string" $ T.intercalate "," cs'
   where
     mt :: Text -> Value
     mt = makeValue "string"

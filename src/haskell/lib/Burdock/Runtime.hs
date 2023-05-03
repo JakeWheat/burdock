@@ -62,8 +62,8 @@ module Burdock.Runtime
     ,addBinding
     ,lookupBinding
 
-    ,makeList
-    ,extractList
+    ,makeBurdockList
+    ,extractBurdockList
 
     ,getMember
     ,app
@@ -188,12 +188,12 @@ data Env = Env [(Text, Value)]
 makeValue :: Typeable a => Text -> a -> Value
 makeValue nm v = Value nm $ toDyn v
 
-makeList :: [Value] -> Value
-makeList = VList
+makeBurdockList :: [Value] -> Runtime Value
+makeBurdockList = pure . VList
 
-extractList :: Value -> Maybe [Value]
-extractList (VList vs) = Just vs
-extractList _ = Nothing
+extractBurdockList :: Value -> Maybe [Value]
+extractBurdockList (VList vs) = Just vs
+extractBurdockList _ = Nothing
 
 extractTuple :: Value -> Runtime (Maybe [Value])
 extractTuple v@(VariantV "tuple" _) = do
