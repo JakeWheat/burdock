@@ -7,13 +7,14 @@ module Burdock.Scientific
     ) where
 
 import Data.Scientific
+import qualified Data.Text as T
 
 
 extractInt :: Scientific -> Maybe Int
 extractInt n = toBoundedInteger n
 
-showScientific :: Scientific -> String
-showScientific n = case extractInt n of
+showScientific :: Scientific -> T.Text
+showScientific n = T.pack $ case extractInt n of
                              Just x -> show x
                              Nothing ->  show n
 

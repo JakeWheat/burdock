@@ -73,7 +73,7 @@ expr (Lam fv fh e) = prettyBlocklike vsep
      <> nest 2 (brackets (commaSep $ map pretty fv))
      <> parens (commaSep $ map binding fh) <> pretty ":"
     ,stmts e]
-expr (Num n) = pretty $ T.pack $ showScientific n
+expr (Num n) = pretty $ showScientific n
 expr (IString s) | '\n' `T.elem` s = pretty "```" <> pretty s <> pretty "```"
 expr (IString s) = dquotes (pretty s)
   {-where

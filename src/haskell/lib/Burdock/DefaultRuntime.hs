@@ -267,7 +267,7 @@ binaryMemberLax burName inType outType f v1 as =
 
 scientificFFI :: Text -> Value -> Runtime Value
 scientificFFI "_torepr" v =
-    makeFunctionValue $ unaryMember "_torepr" "number" "string" (T.pack . showScientific) v
+    makeFunctionValue $ unaryMember "_torepr" "number" "string" showScientific v
 scientificFFI "_plus" v1 =
     makeFunctionValue $ binaryMember "_plus" "number" "number" ((+) :: Scientific -> Scientific -> Scientific) v1
 scientificFFI "_minus" v1 = do
