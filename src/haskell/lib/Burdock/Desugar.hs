@@ -86,14 +86,14 @@ does this go in the individual nodes
 
 data Inh
     = Inh
-    {_inhCtors :: [Text]}
+    {_inhVariants :: [Text]}
 
 data Syn e
     = Syn
     {_synTree :: e
     ,_synFreeVars :: [Text]
     ,_synNewBindings :: [Text]
-    ,_synNewCtors :: [Text]
+    ,_synNewVariants :: [Text]
     }
     deriving (Show, Functor)
 
@@ -134,8 +134,8 @@ desugarStmts [] = pure $ mkSyn []
 
 desugarStmts (s:ss) = do
     s' <- desugarStmt s
-    let addCtors = over inhCtors (view synNewCtors s' ++)
-    ss' <- local addCtors $ desugarStmts ss
+    let addVariants = over inhVariants (view synNewVariants s' ++)
+    ss' <- local addVariants $ desugarStmts ss
 
     -- get the free vars from ss
     -- remove the newbindings from s
@@ -208,11 +208,10 @@ check-variants-equal(on-fields :: list<string>,a,b)
 
 -}
 desugarStmt (S.DataDecl _ dnm _ vs shr Nothing) = do
-    let --newCtors
-        addNewCtors = over synNewCtors (newCtors ++)
-    addNewCtors <$> (desugarStmts $ concatMap varF vs ++ [isDat])
+    let addNewVariants = over synNewVariants (newVariants ++)
+    addNewVariants <$> (desugarStmts $ concatMap varF vs ++ [isDat])
   where
-    newCtors = flip map vs $ \case
+    newVariants = flip map vs $ \case
         S.VariantDecl _ nm _ _ -> nm
     varF (S.VariantDecl _ vnm bs meths) =
         let extraMeths ps =
@@ -488,8 +487,8 @@ doLetRec bs =
 desugarBinding :: S.Binding -> Desugar (Syn I.Binding)
 desugarBinding = \case
     S.NameBinding _ nm -> do
-        x <- isCtor nm
-        -- if it's a no arg ctor, convert to variant binding
+        x <- isVariant nm
+        -- if it's a no arg variant, convert to variant binding
         if x
             then addName nm $ mkSyn (I.VariantBinding nm [])
             else addName nm $ mkSyn (I.NameBinding nm)
@@ -506,11 +505,11 @@ desugarBinding = \case
     x -> error $ "unsupported binding: " <> show x
   where
     addName nm b = do
-        x <- isCtor nm
-        -- if nm is a ctor add to freevars otherwise add to newbindings
+        x <- isVariant nm
+        -- if nm is a variant add to freevars otherwise add to newbindings
         let l = if x
                 then synFreeVars
                 else synNewBindings
         pure $ over l (nm:) b
-    isCtor :: Text -> Desugar Bool
-    isCtor nm = asks ((nm `elem`) .  view inhCtors)
+    isVariant :: Text -> Desugar Bool
+    isVariant nm = asks ((nm `elem`) .  view inhVariants)
