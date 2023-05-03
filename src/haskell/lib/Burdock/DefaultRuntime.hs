@@ -222,14 +222,6 @@ do-is-not-test = lam(m1,m2,v1,v2):
   print(format-test(r))
 end
 
-fun list-map(l, f):
-  if l == [list:]: [list:]
-  else:
-    [list: f(l.first)] + list-map(l.rest,f)
-  end
-end
-
-
   |]
 
 

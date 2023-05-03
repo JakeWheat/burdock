@@ -294,6 +294,9 @@ end
 
 
 check:
+  fun list-map(lst, f):
+    lst.map(f)
+  end
   list-map([list:],lam(a): a end) is [list:]
   list-map([list: 1],lam(a): a end) is [list: 1]
   list-map([list: 1,2],lam(a): a end) is [list: 1,2]
