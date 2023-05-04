@@ -1,0 +1,81 @@
+
+fun run-plain(script):
+  "cabal run burdock -- " + script
+end
+
+fun run-rts(script):
+  "cabal run burdock -v0 -- " + script + " +RTS -M64M -RTS"
+end
+
+fun run-systemd(script):
+  "systemd-run --user --scope -p MemoryMax=128M -p MemorySwapMax=0 cabal -v0 run burdock -- "  + script
+end
+
+
+data TcTest:
+  | tc-plain(script, works)
+  | tc-rts(script, works)
+  | tc-systemd(script, works)
+end
+
+scripts = [list: "accum-loop.bur", "garbage-loop.bur", "non-tail-call-loop.bur", "tail-call-loop.bur"]
+
+tests = [list:
+  # run a regular loop, fails with both rts and cgroups mem limits
+  tc-plain("accum-loop.bur",true),
+  tc-rts("accum-loop.bur",false),
+  tc-systemd("accum-loop.bur",false),
+
+  # run the garbage loop - ghc can gc the data each loop,
+  # succeeds. this is the sanity check, the tail call optimisation
+  # should be able to match this
+  tc-plain("garbage-loop.bur",true),
+  tc-rts("garbage-loop.bur",true),
+  tc-systemd("garbage-loop.bur",true),
+
+  # demostrate failure with both mem limit types with a non tail call
+  tc-plain("non-tail-call-loop.bur",true),
+  tc-rts("non-tail-call-loop.bur",false),
+  tc-systemd("non-tail-call-loop.bur",false),
+
+  # run with a tail call loop, currently fails, the goal is to get this
+  # working with a tail call hack
+  tc-plain("tail-call-loop.bur",true),
+  # the next one fails with -O0, but passes with regular
+  # ghc optimisations ... possibly ghc can work out the data is garbage
+  # need to work out how to compile with and without -O0 in a script to run
+  # both tests in the test suite
+  # so: definitely should test with systemd (although this is also questionable
+  #  -> a major issue will be: does the ghc runtime get a chance to garbage
+  #  collect if cgroups says no more memory? especially with allocations being
+  #  done in ffi code, but these resources being managed by the ghc garbage
+  #  collector
+  tc-rts("tail-call-loop.bur",true),
+  tc-systemd("tail-call-loop.bur",false)
+  ]
+
+check "tailcalls resource usage":
+  fun test-it(t):
+    fun p(s): "src/burdock/tests/tailcalls/" + s end
+    cmd = cases t:
+        | tc-plain(s,_) => "cabal run burdock -- " + p(s)
+        | tc-rts(s,_) => "cabal run burdock -v0 -- " + p(s) + " +RTS -M64M -RTS"
+        | tc-systemd(s,_) =>"systemd-run --user --scope -p MemoryMax=128M -p MemorySwapMax=0 cabal -v0 run burdock -- "  + p(s)
+      end
+    print(t)
+    cs = split(cmd)
+    #print(cs)
+    x = read-process(cs.first, cs.rest, "")
+    #print(x)
+    # todo: how do you add custom test to a test description? want to
+    # come up with some syntax
+    if t.works:
+      x.{0} is 0
+    else:
+      x.{0} is-not 0
+    end
+  end
+
+  tests.map(test-it)
+
+end

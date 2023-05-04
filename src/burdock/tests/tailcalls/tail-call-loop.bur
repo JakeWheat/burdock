@@ -1,0 +1,11 @@
+my-sz = 64 * 1000 * 1000
+iters = 10
+
+fun tail-call-loop(n,sz):
+  bs = make-bytestring(sz)
+  shadow n = n - 1
+  get-bytestring-byte(bs, 10)
+  when n > 0: tail-call-loop(n,sz) end
+end
+
+tail-call-loop(iters, my-sz)

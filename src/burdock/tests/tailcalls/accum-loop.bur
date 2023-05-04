@@ -1,0 +1,13 @@
+my-sz = 64 * 1000 * 1000
+iters = 10
+
+fun accum-loop(n,sz, lst):
+  bs = make-bytestring(sz)
+  shadow n = n - 1
+  when n > 0:
+    lst1 = [list: bs] + lst
+    accum-loop(n,sz,lst1)
+  end
+end
+
+accum-loop(iters, my-sz, [list:])

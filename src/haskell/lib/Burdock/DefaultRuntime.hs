@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
+{-# LANGUAGE BangPatterns #-}
 module Burdock.DefaultRuntime
     (initRuntime
     ,prelude
@@ -62,7 +63,10 @@ import qualified Data.Text.Lazy as L
 
 import qualified Text.RawString.QQ as R
 
-import Burdock.Scientific (showScientific)
+import Burdock.Scientific
+    (showScientific
+    ,extractInt
+    )
 
 import Control.Monad
     (when
@@ -85,6 +89,8 @@ import Control.Concurrent.Async
     ,AsyncCancelled(AsyncCancelled)
     )
 
+import qualified Data.ByteString as BS
+
 import System.Process
     (readProcessWithExitCode
     
@@ -92,6 +98,8 @@ import System.Process
 import System.Exit
     (ExitCode(..)
     )
+
+------------------------------------------------------------------------------
 
 -- temp hack
 
@@ -275,6 +283,10 @@ initRuntime = do
     addBinding "gremlin" (makeValue "gremlintype" False)
 
     addBinding "read-process" =<< makeFunctionValue myReadProcessWithExitCode
+
+    addBinding "make-bytestring" =<< makeFunctionValue makeBytestring
+    addBinding "get-bytestring-byte" =<< makeFunctionValue getBytestringByte
+    addBinding "split" =<< makeFunctionValue split
 
     pure ()
 
@@ -620,11 +632,6 @@ myCallProcess [x] = do
     pure VNothing
 myCallProcess _ = error $ "bad args to myCallProcess"-}
 
--- readProcessWithExitCode :: FilePath -> [String] -> String -> IO (ExitCode, String, String)	
--- third is stdinput
--- create this
--- don't have tuples, booo
-
 myReadProcessWithExitCode :: [Value] -> Runtime Value
 myReadProcessWithExitCode [prog, args, stdinVal] = do
     let prog' = maybe (error "0: bad args to myReadProcessWithExitCode") T.unpack $ extractValue prog
@@ -643,5 +650,37 @@ myReadProcessWithExitCode [prog, args, stdinVal] = do
     makeTuple [makeValue "number" x1
               ,makeValue "string" $ T.pack so
               ,makeValue "string" $ T.pack se]
-    
 myReadProcessWithExitCode _ = error $ "bad args to myReadProcessWithExitCode"
+
+-- temp testing
+
+-- pass a number, get back a bytestring of that length in bytes
+makeBytestring :: [Value] -> Runtime Value
+makeBytestring [x] = do
+    let y = maybe (error $ "non number passed to make bytestring" <> debugShowValue x) id $ extractValue x
+        z = maybe (error $ "non integer passed to make bytestring: " <> show y) id $ extractInt y
+        !bs = BS.replicate z 0
+    pure $! makeValue "bytestring" $! bs
+makeBytestring _ = error $ "bad args to makeBytestring"
+
+-- pass bytestring, position, returns the byte
+-- value at that position
+getBytestringByte :: [Value] -> Runtime Value
+getBytestringByte [bsv,pos] = do
+    let bs = maybe (error $ "non bytestring passed to get bytestring" <> debugShowValue bsv) id $ extractValue bsv
+        ns = maybe (error $ "non number passed to get bytestring" <> debugShowValue pos) id $ extractValue pos
+        n = maybe (error $ "non integer passed to make bytestring: " <> show ns) id $ extractInt ns
+        b = BS.index bs n
+        sb :: Scientific
+        sb = fromIntegral b
+    pure $ makeValue "number" sb
+getBytestringByte _ = error $ "bad args to getBytestringByte"
+
+split :: [Value] -> Runtime Value
+split [x] = do
+    let t = maybe (error "non string passed to split") id $ extractValue x
+        xs = T.splitOn " " t
+    --liftIO $ putStrLn $ show xs
+    makeBurdockList $ map (makeValue "string") xs
+split _ = error $ "bad args to split"
+
