@@ -37,6 +37,8 @@ import Burdock.Runtime
     ,getCallStack
 
     ,makeBurdockList
+    ,extractBurdockList
+    ,makeTuple
 
     ,getMember
     ,app
@@ -81,6 +83,14 @@ import Control.Concurrent
 import Control.Concurrent.Async
     (async
     ,AsyncCancelled(AsyncCancelled)
+    )
+
+import System.Process
+    (readProcessWithExitCode
+    
+    )
+import System.Exit
+    (ExitCode(..)
     )
 
 -- temp hack
@@ -263,6 +273,8 @@ initRuntime = do
     addBinding "torepr-debug" =<< makeFunctionValue toreprDebug
 
     addBinding "gremlin" (makeValue "gremlintype" False)
+
+    addBinding "read-process" =<< makeFunctionValue myReadProcessWithExitCode
 
     pure ()
 
@@ -595,3 +607,41 @@ myAddTestFail [] = do
     addTestFail
     nothingValue
 myAddTestFail _ = error $ "bad args to myAddTestFail"
+
+{-myCallProcess :: [Value] -> Runtime Value
+myCallProcess [x] = do
+    let as = maybe (error $ "bad args to call-process, arg is not list")
+                id $ extractList x
+        as' :: [Text]
+        as' = flip map as $ \f -> maybe (error $ "bad args to call-process, arg has non string in list")
+              id $ extractValue f
+        (b:bs) = map T.unpack as'
+    liftIO $ callProcess b bs
+    pure VNothing
+myCallProcess _ = error $ "bad args to myCallProcess"-}
+
+-- readProcessWithExitCode :: FilePath -> [String] -> String -> IO (ExitCode, String, String)	
+-- third is stdinput
+-- create this
+-- don't have tuples, booo
+
+myReadProcessWithExitCode :: [Value] -> Runtime Value
+myReadProcessWithExitCode [prog, args, stdinVal] = do
+    let prog' = maybe (error "0: bad args to myReadProcessWithExitCode") T.unpack $ extractValue prog
+        as = maybe (error $ "bad args to call-process, arg is not list")
+                id $ extractBurdockList args
+        args' :: [String]
+        args' = flip map as $ \f -> maybe (error $ "bad args to read-process, arg has non string in list")
+                T.unpack $ extractValue f
+
+        stdinVal' = maybe (error "2: bad args to myReadProcessWithExitCode") T.unpack $ extractValue stdinVal
+    (x, so, se) <- liftIO $ readProcessWithExitCode prog' args' stdinVal'
+    let x1 :: Scientific
+        x1 = fromIntegral $ case x of
+                 ExitSuccess -> 0
+                 ExitFailure n -> n
+    makeTuple [makeValue "number" x1
+              ,makeValue "string" $ T.pack so
+              ,makeValue "string" $ T.pack se]
+    
+myReadProcessWithExitCode _ = error $ "bad args to myReadProcessWithExitCode"

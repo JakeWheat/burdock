@@ -56,6 +56,7 @@ executable burdock
                     , async
                     , microlens
                     , microlens-th
+                    , process
 
     hs-source-dirs:   src/haskell/lib
                     , src/haskell/app

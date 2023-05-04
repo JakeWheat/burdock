@@ -431,3 +431,10 @@ check "lists":
   [list:1,2,3].map(add-one) is [list:2,3,4]
 
 end
+
+check "read-process":
+  read-process("true", empty, "").{0} is 0
+  read-process("false", empty, "").{0} is-not 0
+  read-process("echo", [list: "flipped it"], "").{1} is "flipped it\n"
+  read-process("cat", empty, "flipped it").{1} is "flipped it"
+end
