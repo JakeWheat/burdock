@@ -1,0 +1,42 @@
+nothing
+
+#print(my-thread-id())
+
+check "thread id in haskell callback":
+
+  tid = my-thread-id()
+
+  var log = empty
+
+  fun logit():
+    log := link(my-thread-id(), log)
+  end
+
+  run-callback-n(5, logit)
+
+  log is repeat(5, tid)
+
+end
+
+check "thread id in haskell async callback":
+
+  tid = my-thread-id()
+
+  var log = empty
+
+  fun logit():
+    log := link(my-thread-id(), log)
+  end
+
+  reps = 5
+
+  h = run-callback-async-n(reps, 0.05, logit)
+
+  test-wait(h)
+
+  tid1 = handle-thread-id(h)
+  tid is-not tid1
+
+  log is repeat(reps, tid1)
+
+end

@@ -27,6 +27,9 @@ import Burdock.Runtime
     --,ffimethodapp
     --,RuntimeState
     --,emptyRuntimeState
+    --,getRuntimeState
+    --,runBurdock
+    ,createBurdockRunner
     ,addFFIType
     ,addBinding
 
@@ -72,6 +75,7 @@ import Control.Monad
     (when
     ,forM
     ,void
+    ,replicateM_
     )
 
 import Data.Dynamic
@@ -84,10 +88,7 @@ import Control.Concurrent
     ,myThreadId
     )
 
-import Control.Concurrent.Async
-    (async
-    ,AsyncCancelled(AsyncCancelled)
-    )
+import qualified Control.Concurrent.Async as A
 
 import qualified Data.ByteString as BS
 
@@ -174,6 +175,9 @@ end
 prelude :: L.Text
 prelude = [R.r|
 
+##################
+# built in stuff
+           
 data Either:
   | left(v)
   | right(v)
@@ -185,6 +189,9 @@ _run-task-fixup = lam(x):
       | _ => x
     end
   end
+
+##################
+# testing
 
 data TestResult:
   | test-pass(name)
@@ -244,6 +251,18 @@ do-is-not-test = lam(m1,m2,v1,v2):
   print(format-test(r))
 end
 
+##################
+# more built in stuff
+
+#repeat :: (n :: Number, e :: a) -> List<a>
+fun repeat(n,e):
+  if n > 0:
+    link(e, repeat(n - 1, e))
+  else:
+    empty
+  end
+end
+
   |]
 
 
@@ -298,7 +317,12 @@ initRuntime = do
     addBinding "get-bytestring-byte" =<< makeFunctionValue getBytestringByte
     addBinding "split" =<< makeFunctionValue split
 
-    pure ()
+    addBinding "my-thread-id" =<< makeFunctionValue bmyThreadId
+    addBinding "run-callback-n" =<< makeFunctionValue runCallbackN
+    addBinding "run-callback-async-n" =<< makeFunctionValue runCallbackAsyncN
+    addBinding "test-wait" =<< makeFunctionValue testWait
+    addBinding "handle-thread-id" =<< makeFunctionValue handleThreadId
+    
 
 ------------------------------------------------------------------------------
 
@@ -355,6 +379,8 @@ scientificFFI "_lessthan" v1 = do
     makeFunctionValue $ binaryMember "_lessthan" "number" "boolean" ((<) :: Scientific -> Scientific -> Bool) v1
 scientificFFI "_greaterthan" v1 = do
     makeFunctionValue $ binaryMember "_greaterthan" "number" "boolean" ((>) :: Scientific -> Scientific -> Bool) v1
+scientificFFI "_greaterequal" v1 = do
+    makeFunctionValue $ binaryMember "_greaterequal" "number" "boolean" ((>=) :: Scientific -> Scientific -> Bool) v1
 scientificFFI m _ = error $ "unsupported field on number: " <> m
 
 
@@ -641,13 +667,63 @@ spawnSleepThrowTo [x] = do
     case extractValue x of
         Just (n :: Scientific) -> do
             mainTid <- liftIO $ myThreadId
-            void $ liftIO $ async $ do
+            void $ liftIO $ A.async $ do
                  threadDelay $ floor $ n * 1000 * 1000
-                 throwTo mainTid AsyncCancelled
+                 throwTo mainTid A.AsyncCancelled
             nothingValue
             
         Nothing -> error $ "bad args to spawnSleepThrowTo: " <> debugShowValue x
 spawnSleepThrowTo _ = error $ "bad args to spawnSleepThrowTo"
+
+bmyThreadId :: [Value] -> Runtime Value
+bmyThreadId [] = do
+    i <- liftIO myThreadId
+    pure $ makeValue "string" (show i)
+bmyThreadId _ = error $ "bad args to bmyThreadId"
+
+runCallbackN :: [Value] -> Runtime Value
+runCallbackN [n, fun] = do
+    let n' :: Scientific
+        n' = maybe (error $ "bad first arg to runCallbackN " <> debugShowValue n) id $ extractValue n
+        n'' = maybe (error $ "arg should be int " <> show n') id $ extractInt n'
+    replicateM_ n'' $ app Nothing fun []
+    nothingValue
+runCallbackN _ = error $ "bad args to runCallbackN"
+
+
+runCallbackAsyncN :: [Value] -> Runtime Value
+runCallbackAsyncN [n, t, fun] = do
+    let n' :: Scientific
+        n' = maybe (error $ "bad first arg to runCallbackAsyncN " <> debugShowValue n) id $ extractValue n
+        n'' = maybe (error $ "arg should be int " <> show n') id $ extractInt n'
+        t' :: Scientific
+        t' = maybe (error $ "bad second arg to runCallbackAsyncN " <> debugShowValue t) id $ extractValue t
+
+    (h :: A.Async ()) <- do
+        runIt <- createBurdockRunner
+        liftIO $ A.async $ runIt $ do
+            replicateM_ n'' $ do
+                liftIO $ threadDelay $ floor $ t' * 1000 * 1000
+                app Nothing fun []
+
+    pure $ makeValue "temp-handle" h
+runCallbackAsyncN _ = error $ "bad args to runCallbackAsyncN"
+
+testWait :: [Value] -> Runtime Value
+testWait [h] = do
+    let h' :: A.Async ()
+        h' = maybe (error $ "bad arg to testWait " <> debugShowValue h) id $ extractValue h
+    liftIO $ A.wait h'
+    nothingValue
+testWait _ = error $ "bad args to testWait"
+
+handleThreadId :: [Value] -> Runtime Value
+handleThreadId [h] = do
+    let h' :: A.Async ()
+        h' = maybe (error $ "bad arg to handleThreadId " <> debugShowValue h) id $ extractValue h
+    pure $ makeValue "string" (show $ A.asyncThreadId h')
+handleThreadId _ = error $ "bad args to handleThreadId"
+
 
 ------------------------------------------------------------------------------
 

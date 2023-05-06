@@ -65,6 +65,7 @@ module Burdock.Runtime
 
     ,makeBurdockList
     ,extractBurdockList
+    ,createBurdockRunner
 
     ,getMember
     ,app
@@ -375,6 +376,11 @@ data Type
 
 runBurdock :: RuntimeState -> Runtime a -> IO a
 runBurdock rt f = runReaderT f rt
+
+createBurdockRunner :: Runtime (Runtime a -> IO a)
+createBurdockRunner = do
+    st <- ask
+    pure $ runBurdock st
 
 runTask :: Bool -> Runtime a -> Runtime (Either (Either Text Value, [Maybe Text]) a)
 runTask casync f = do
