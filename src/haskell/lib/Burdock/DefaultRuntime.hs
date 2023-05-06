@@ -101,7 +101,9 @@ import System.Exit
 
 ------------------------------------------------------------------------------
 
--- temp hack
+-- temp hack, before modules implemented, have bootstrap burdock
+-- then prelude burdock, that are run in a handle when it's created
+-- before any user code
 
 bootstrap :: L.Text
 bootstrap = [R.r|
@@ -166,6 +168,8 @@ sharing:
 end
 
              |]
+
+---------------------------------------
 
 prelude :: L.Text
 prelude = [R.r|
@@ -243,6 +247,12 @@ end
   |]
 
 
+------------------------------------------------------------------------------
+
+-- temp hack again - before modules and proper ffi implemented,
+-- make a bunch of quick haskell ffi functions available to burdock code
+-- this includes part of the build in language
+
 initRuntime :: Runtime ()
 initRuntime = do
     addFFIType "number" (Type scientificFFI)
@@ -290,8 +300,9 @@ initRuntime = do
 
     pure ()
 
-_stubType :: Text -> Text -> Value -> Runtime Value
-_stubType nm m _ = error $ "called method " <> m <> " on type " <> nm
+------------------------------------------------------------------------------
+
+-- some helper functions mainly for operators
 
 unaryMember :: Typeable a => Text -> Text -> Text -> (a -> Text) -> Value -> [Value] -> Runtime Value
 unaryMember burName inType outType f v as =
@@ -323,6 +334,9 @@ binaryMemberLax burName inType outType f v1 as =
             pure $ maybe (makeValue outType False) (makeValue outType . (f n1)) mn2
         _ -> error $ "bad args to " <> inType <> " " <> burName
 
+------------------------------------------------------------------------------
+
+-- built in types methods
 
 scientificFFI :: Text -> Value -> Runtime Value
 scientificFFI "_torepr" v =
@@ -362,14 +376,9 @@ booleanFFI "_equals" v1 = do
     makeFunctionValue $ binaryMemberLax "_equals" "boolean" "boolean" ((==) :: Bool -> Bool -> Bool) v1
 booleanFFI m _ = error $ "unsupported field on boolean: " <> m
 
-myPrint :: [Value] -> Runtime Value
-myPrint [v] = do
-    t <- myToString [v]
-    case extractValue t of
-        Nothing -> liftIO $ putStrLn $ debugShowValue v
-        Just s -> liftIO $ putStrLn s
-    nothingValue
-myPrint _ = error $ "bad args to myPrint"
+------------------------------------------------------------------------------
+
+-- helpers for the testing
 
 indent :: [Value] -> Runtime Value
 indent [x] | Just t <- extractValue x = do
@@ -378,8 +387,21 @@ indent [x] | Just t <- extractValue x = do
     pure $ makeValue "string" $ T.unlines ls'
 indent _ = error $ "bad args to indent"
 
-myMakeBurdockList :: [Value] -> Runtime Value
-myMakeBurdockList vs = makeBurdockList vs
+myAddTestPass :: [Value] -> Runtime Value
+myAddTestPass [] = do
+    addTestPass
+    nothingValue
+myAddTestPass _ = error $ "bad args to myAddTestPass"
+
+myAddTestFail :: [Value] -> Runtime Value
+myAddTestFail [] = do
+    addTestFail
+    nothingValue
+myAddTestFail _ = error $ "bad args to myAddTestFail"
+
+------------------------------------------------------------------------------
+
+-- specific language support for agdt
 
 makeHaskellList :: [Value] -> Runtime Value
 makeHaskellList vs = pure $ makeValue "haskell-list" vs
@@ -420,24 +442,6 @@ myIsVariant [nm, x] = do
         
 myIsVariant _ = error $ "bad args to myIsVariant"
 
-myDebugPrint :: [Value] -> Runtime Value
-myDebugPrint [x] = do
-    liftIO $ putStrLn $ debugShowValue x
-    nothingValue
-myDebugPrint _ = error $ "bad args to myDebugPrint"
-
-myDebugShow :: [Value] -> Runtime Value
-myDebugShow [x] = pure $ makeValue "string" $ debugShowValue x
-myDebugShow _ = error $ "bad args to myDebugShow"
-
-toreprDebug :: [Value] -> Runtime Value
-toreprDebug [x] = do
-    y <- runTask False $ myToRepr [x]
-    case y of
-        Left _ -> pure $ makeValue "string" $ debugShowValue x
-        Right v -> pure v
-toreprDebug _ = error $ "bad args to toreprDebug"
-
 -- todo: decide if the flds should be passed, or this function should
 -- work them out. Currently, the passed fields are ignored and this
 -- function works them out using the hack auxiliary variantValueFields
@@ -476,6 +480,62 @@ checkVariantsEqual [a, b] = do
         _ -> pure $ makeValue "boolean" False
 checkVariantsEqual _ = error $ "bad args to checkVariantsEqual"
 
+showVariant :: [Value] -> Runtime Value
+showVariant [x] = do
+    at <- variantTag x
+    bt <- variantValueFields x
+    let trm e = do
+            f <- getMember e "_torepr"
+            app Nothing f []
+    case (at,bt) of
+        (Just n, Just fs) -> do
+            let fs' = map snd fs
+            fs'' <- mapM trm fs'
+            let (es :: [Maybe Text]) = map extractValue fs''
+            let es' :: [Text]
+                es' = maybe (error "showvariant non string from torepr") id $ sequence es
+            --liftIO $ putStrLn $ show es'
+            pure $ if null es'
+                   then makeValue "string" $ n
+                   else makeValue "string" $ n <> "(" <> T.intercalate ", " es' <> ")"
+        _ -> error $ "show variant called on non variant " <> debugShowValue x
+    
+showVariant _ = error $ "bad args to showVariant"
+
+------------------------------------------------------------------------------
+
+-- simple utility functions
+
+myPrint :: [Value] -> Runtime Value
+myPrint [v] = do
+    t <- myToString [v]
+    case extractValue t of
+        Nothing -> liftIO $ putStrLn $ debugShowValue v
+        Just s -> liftIO $ putStrLn s
+    nothingValue
+myPrint _ = error $ "bad args to myPrint"
+
+myMakeBurdockList :: [Value] -> Runtime Value
+myMakeBurdockList vs = makeBurdockList vs
+
+myDebugPrint :: [Value] -> Runtime Value
+myDebugPrint [x] = do
+    liftIO $ putStrLn $ debugShowValue x
+    nothingValue
+myDebugPrint _ = error $ "bad args to myDebugPrint"
+
+myDebugShow :: [Value] -> Runtime Value
+myDebugShow [x] = pure $ makeValue "string" $ debugShowValue x
+myDebugShow _ = error $ "bad args to myDebugShow"
+
+toreprDebug :: [Value] -> Runtime Value
+toreprDebug [x] = do
+    y <- runTask False $ myToRepr [x]
+    case y of
+        Left _ -> pure $ makeValue "string" $ debugShowValue x
+        Right v -> pure v
+toreprDebug _ = error $ "bad args to toreprDebug"
+
 raise :: [Value] -> Runtime Value
 raise [x] = throwValue x
 raise _ = error $ "bad args to raise"
@@ -504,29 +564,6 @@ myToString [x] = do
         Just (_ :: Text) -> pure x
         Nothing -> myToRepr[x]
 myToString _ = error $ "bad args to myToString"
-
-showVariant :: [Value] -> Runtime Value
-showVariant [x] = do
-    at <- variantTag x
-    bt <- variantValueFields x
-    let trm e = do
-            f <- getMember e "_torepr"
-            app Nothing f []
-    case (at,bt) of
-        (Just n, Just fs) -> do
-            let fs' = map snd fs
-            fs'' <- mapM trm fs'
-            let (es :: [Maybe Text]) = map extractValue fs''
-            let es' :: [Text]
-                es' = maybe (error "showvariant non string from torepr") id $ sequence es
-            --liftIO $ putStrLn $ show es'
-            pure $ if null es'
-                   then makeValue "string" $ n
-                   else makeValue "string" $ n <> "(" <> T.intercalate ", " es' <> ")"
-        _ -> error $ "show variant called on non variant " <> debugShowValue x
-    
-showVariant _ = error $ "bad args to showVariant"
-
 
 showTuple :: [Value] -> Runtime Value
 showTuple [x] = do
@@ -581,6 +618,10 @@ myNot [x] = case extractValue x of
     _ -> error $ "bad arg to not"
 myNot _ = error $ "bad args to raise"
 
+------------------------------------------------------------------------------
+
+-- concurrency testing
+
 mySleep :: [Value] -> Runtime Value
 mySleep [x] = do
     case extractValue x of
@@ -608,17 +649,9 @@ spawnSleepThrowTo [x] = do
         Nothing -> error $ "bad args to spawnSleepThrowTo: " <> debugShowValue x
 spawnSleepThrowTo _ = error $ "bad args to spawnSleepThrowTo"
 
-myAddTestPass :: [Value] -> Runtime Value
-myAddTestPass [] = do
-    addTestPass
-    nothingValue
-myAddTestPass _ = error $ "bad args to myAddTestPass"
+------------------------------------------------------------------------------
 
-myAddTestFail :: [Value] -> Runtime Value
-myAddTestFail [] = do
-    addTestFail
-    nothingValue
-myAddTestFail _ = error $ "bad args to myAddTestFail"
+-- running processes
 
 {-myCallProcess :: [Value] -> Runtime Value
 myCallProcess [x] = do
@@ -652,7 +685,9 @@ myReadProcessWithExitCode [prog, args, stdinVal] = do
               ,makeValue "string" $ T.pack se]
 myReadProcessWithExitCode _ = error $ "bad args to myReadProcessWithExitCode"
 
--- temp testing
+------------------------------------------------------------------------------
+
+-- temp testing for tail calls
 
 -- pass a number, get back a bytestring of that length in bytes
 makeBytestring :: [Value] -> Runtime Value
@@ -683,4 +718,3 @@ split [x] = do
     --liftIO $ putStrLn $ show xs
     makeBurdockList $ map (makeValue "string") xs
 split _ = error $ "bad args to split"
-

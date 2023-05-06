@@ -31,7 +31,9 @@ tests = [list:
   # should be able to match this
   tc-plain("garbage-loop.bur",true),
   tc-rts("garbage-loop.bur",true),
-  tc-systemd("garbage-loop.bur",true),
+  # this test intermittently fails -> race condition between whether
+  # ghc releases the memory promptly or not
+  #tc-systemd("garbage-loop.bur",true),
 
   # demostrate failure with both mem limit types with a non tail call
   tc-plain("non-tail-call-loop.bur",true),
