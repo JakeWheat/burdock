@@ -1,0 +1,7 @@
+
+
+trivial-module = load-module("src/burdock/tests/trivial-module.bur")
+
+check:
+  trivial-module.a is 5
+end

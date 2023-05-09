@@ -20,7 +20,9 @@ checker run
 {-# LANGUAGE TemplateHaskell #-}
 
 module Burdock.Desugar
-    (desugar
+    (desugarScript
+    ,desugarModule
+    ,ModuleMetadata
     ,prelude
     ) where
 
@@ -35,6 +37,8 @@ import qualified Burdock.Syntax as S
 import qualified Burdock.InterpreterSyntax as I
 import Data.Text (Text)
 import qualified Data.Text.Lazy as L
+
+import Data.Maybe (mapMaybe)
 
 import Burdock.Pretty (prettyExpr)
 import Data.List
@@ -63,6 +67,19 @@ import Lens.Micro
 
 import Lens.Micro.Extras
     (view)
+
+------------------------------------------------------------------------------
+
+-- stub for the metadata for a compiled module
+-- this will be used for static binding checks, shadow checks, and the type
+-- checker. it represents the info needed to do these things
+-- when you import a module into another module, this is the metadata from
+-- the module you are importing that lets you run these checks on the
+-- module you are importing into
+
+data ModuleMetadata = ModuleMetadata
+    deriving (Eq,Show)
+
 
 ------------------------------------------------------------------------------
 
@@ -103,8 +120,6 @@ data Syn e
 makeLenses ''Inh
 makeLenses ''Syn
 
-type Desugar = Reader Inh
-
 combineSyns :: [Syn ()] -> Syn a -> Syn a
 combineSyns as a =
     set synFreeVars (nub $ concat (view synFreeVars a : map (view synFreeVars) as)) a
@@ -125,8 +140,25 @@ ns = fmap (const ())
 mkSyn :: e -> Syn e
 mkSyn e = Syn e [] [] []
 
-------------------
+------------------------------------------------------------------------------
 
+-- todo: isbootstrap will be replaced with a new handle bootstrap process
+-- after the module system is working
+
+desugarScript :: Bool -> [(Text,ModuleMetadata)] -> S.Script -> [I.Stmt]
+desugarScript isBootstrap _ scr = desugar isBootstrap scr
+
+-- todo: desugaring a module will wrap the statements in a block
+-- and the last element will be a make-module-value which will give the provides
+-- processed exported decls
+
+desugarModule :: [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
+desugarModule _ scr =
+    let scr' = desugarAsModule (getExportedNames scr) scr
+    in (ModuleMetadata, desugar False scr')
+
+-- todo: return the metadata also
+-- handle provides desugaringdwqsdw
 desugar :: Bool -> S.Script -> [I.Stmt]
 desugar isBootstrap (S.Script ss) =
     let inh = Inh []
@@ -136,7 +168,28 @@ desugar isBootstrap (S.Script ss) =
                else set inhVariants ["empty", "link"] inh
     in view synTree $ runReader (desugarStmts ss) inh'
 
-------------------
+type Desugar = Reader Inh
+
+------------------------------------------------------------------------------
+
+-- desugaring modules
+
+-- quick hack, will move to using the ag system in the future
+getExportedNames :: S.Script -> [Text]
+getExportedNames (S.Script ss) = mapMaybe getName ss
+  where
+    getName (S.LetDecl _ (S.NameBinding _ nm) _) = Just nm
+    getName _ = Nothing
+
+desugarAsModule :: [Text] -> S.Script -> S.Script
+desugarAsModule nms (S.Script ss) =
+    let provides = [S.StmtExpr n $ S.RecordSel n (map (\a -> (a, S.Iden n a)) nms)]
+    in S.Script [S.StmtExpr n $ S.Block n (ss ++ provides)]
+  where
+    n = Nothing
+
+------------------------------------------------------------------------------
+
 
 {-
 desugar statements by first desugaring the bits that

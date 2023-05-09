@@ -11,10 +11,10 @@ executes it on the runtime.
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Interpreter
-    (interpBurdock
-    ,createHandle
-    ,runBurdock
+    (createHandle
+    ,runRuntime
     ,runScript
+    ,getModuleValue
     ,getTestResults
     ,liftIO
     ,runTask
@@ -30,7 +30,7 @@ import Data.Text.IO (putStrLn)
 import qualified Burdock.InterpreterSyntax as I
 import Burdock.Runtime
     (Value(..)
-    ,runBurdock
+    ,runRuntime
     ,Runtime
     ,RuntimeState
     ,getRuntimeState
@@ -78,7 +78,10 @@ import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.IO as L
 
 import Burdock.Parse (parseScript)
-import Burdock.Desugar (desugar)
+import Burdock.Desugar
+    (desugarScript
+    ,desugarModule
+    )
 
 import Burdock.DefaultRuntime
     (initRuntime
@@ -100,6 +103,7 @@ import Data.IORef
 import Text.Show.Pretty (ppShow)
 import Burdock.InterpreterPretty (prettyStmts)
 
+------------------------------------------------------------------------------
 
 debugPrintUserScript :: Bool
 debugPrintUserScript = False
@@ -110,12 +114,13 @@ debugPrintBootstrap = False
 debugPrintPrelude :: Bool
 debugPrintPrelude = False
 
+------------------------------------------------------------------------------
 
 createHandle :: IO RuntimeState
 createHandle = do
     st <- emptyRuntimeState
-    runBurdock st $ do
-        initRuntime
+    runRuntime st $ do
+        initRuntime getModuleValue
         void $ runScript' True debugPrintBootstrap "bootstrap" bootstrap
 
         let lkpf f = maybe (error $ "bootstrap " <> f <> " not found") id <$> lookupBinding f
@@ -136,10 +141,12 @@ createHandle = do
 runScript :: T.Text -> L.Text -> Runtime Value
 runScript = runScript' False debugPrintUserScript
 
+------------------------------------------------------------------------------
+
 runScript' :: Bool -> Bool -> T.Text -> L.Text -> Runtime Value
 runScript' isBootstrap debugPrint fn src = do
     let ast = either error id $ parseScript fn src
-        dast = desugar isBootstrap ast
+        dast = desugarScript isBootstrap [] ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
     when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
         
@@ -148,6 +155,18 @@ runScript' isBootstrap debugPrint fn src = do
 
 interpBurdock :: [I.Stmt] -> Runtime Value
 interpBurdock ss = interpStmts ss
+
+getModuleValue :: Text -> Runtime Value
+getModuleValue fn = do
+    liftIO $ putStrLn $ "load " <>  fn
+    -- read file
+    src <- liftIO $ L.readFile (T.unpack fn)
+    -- desugarmodule
+    let ast = either error id $ parseScript fn src
+        (_,dast) = desugarModule [] ast
+    interpBurdock dast
+
+------------------------------------------------------------------------------
 
 interpStmts :: [I.Stmt] -> Runtime Value
 interpStmts [] = error "no statements"
@@ -178,6 +197,8 @@ interpStmt (I.SetVar nm e) = do
     nothingValue
 
 --interpStmt s = error $ "interpStmt: " ++ show s
+
+---------------------------------------
 
 interpExpr :: I.Expr -> Runtime Value
 
@@ -285,6 +306,8 @@ interpExpr (I.MethodExpr e) =
 
 --interpExpr x = error $ "interpExpr: " ++ show x
 
+------------------------------------------------------------------------------
+
 
 letExprs :: [(I.Binding, I.Expr)] -> Runtime ()
 letExprs bs = do
@@ -309,6 +332,7 @@ letSimple :: [(Text, Value)] -> Runtime ()
 letSimple bs = mapM_ (uncurry addBinding) bs
 
 
+------------------------------------------------------------------------------
 
 {-
 

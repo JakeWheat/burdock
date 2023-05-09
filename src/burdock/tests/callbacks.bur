@@ -1,6 +1,7 @@
-nothing
 
-#print(my-thread-id())
+# these two tests show that it looks simple to determine if a callback
+# from haskell to burdock is being run from a "sychronous" call to haskell,
+# or if the callback is being run from another haskell thread
 
 check "thread id in haskell callback":
 

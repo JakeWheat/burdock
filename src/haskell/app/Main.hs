@@ -13,7 +13,7 @@ import Burdock.Utils (show)
 import Data.Text.IO (putStrLn)
 
 import Burdock.Interpreter
-    (runBurdock
+    (runRuntime
     ,getTestResults
     ,liftIO
     ,runScript
@@ -51,7 +51,7 @@ main = do
         mySrc <- L.readFile fn
         st <- createHandle
         
-        ee <- runBurdock st $ runTask False $ do
+        ee <- runRuntime st $ runTask False $ do
             void $ runScript (T.pack fn) mySrc
             --void $ interpBurdock dast
             (p,f) <- getTestResults

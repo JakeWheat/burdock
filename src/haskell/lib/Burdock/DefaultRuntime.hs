@@ -63,6 +63,7 @@ import Burdock.Runtime
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
+--import qualified Data.Text.Lazy.IO as L
 
 import qualified Text.RawString.QQ as R
 
@@ -272,8 +273,8 @@ end
 -- make a bunch of quick haskell ffi functions available to burdock code
 -- this includes part of the build in language
 
-initRuntime :: Runtime ()
-initRuntime = do
+initRuntime :: (Text -> Runtime Value) -> Runtime ()
+initRuntime getModuleValue = do
     addFFIType "number" (Type scientificFFI)
     addFFIType "string" (Type stringFFI)
     addFFIType "boolean" (Type booleanFFI)
@@ -292,6 +293,11 @@ initRuntime = do
     addBinding "show-variant" =<< makeFunctionValue showVariant
     addBinding "show-tuple" =<< makeFunctionValue showTuple
     addBinding "show-record" =<< makeFunctionValue showRecord
+
+    -- loading a module needs the interpreter, but the interpreter depends on this
+    -- module
+    addBinding "load-module" =<< makeFunctionValue (myLoadModule getModuleValue)
+
 
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
@@ -527,6 +533,14 @@ showVariant [x] = do
         _ -> error $ "show variant called on non variant " <> debugShowValue x
     
 showVariant _ = error $ "bad args to showVariant"
+
+------------------------------------------------------------------------------
+
+-- module system support
+
+myLoadModule  :: (Text -> Runtime Value) -> [Value] -> Runtime Value
+myLoadModule getModuleValue [x] | Just (md :: Text) <- extractValue x = getModuleValue md
+myLoadModule _ _ = error $ "bad args to myLoadModule"
 
 ------------------------------------------------------------------------------
 
@@ -794,3 +808,5 @@ split [x] = do
     --liftIO $ putStrLn $ show xs
     makeBurdockList $ map (makeValue "string") xs
 split _ = error $ "bad args to split"
+
+

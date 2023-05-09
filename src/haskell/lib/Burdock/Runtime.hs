@@ -16,7 +16,7 @@ Haskell ffi code uses function in the runtime too.
 module Burdock.Runtime
     (Value(..)
 
-    ,runBurdock
+    ,runRuntime
     ,Runtime
     ,liftIO
     ,Scientific
@@ -374,13 +374,13 @@ data Type
     = Type
     {tyMemberFn :: (Text -> Value -> Runtime Value)}
 
-runBurdock :: RuntimeState -> Runtime a -> IO a
-runBurdock rt f = runReaderT f rt
+runRuntime :: RuntimeState -> Runtime a -> IO a
+runRuntime rt f = runReaderT f rt
 
 createBurdockRunner :: Runtime (Runtime a -> IO a)
 createBurdockRunner = do
     st <- ask
-    pure $ runBurdock st
+    pure $ runRuntime st
 
 runTask :: Bool -> Runtime a -> Runtime (Either (Either Text Value, [Maybe Text]) a)
 runTask casync f = do
