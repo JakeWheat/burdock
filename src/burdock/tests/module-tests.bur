@@ -1,10 +1,19 @@
 
 
-trivial-module = load-module("src/burdock/tests/trivial-module.bur")
+#trivial-module = load-module("src/burdock/tests/trivial-module.bur")
 
-# import file("src/burdock/tests/trivial-module.bur") as trivial-module
+import file("src/burdock/tests/trivial-module.bur") as trivial-module
+
+import file("src/burdock/tests/trivial-module.bur") as trivial-module
+
+import file("src/burdock/tests/trivial-module2.bur") as trivial-module2
+import file("src/burdock/tests/trivial-module2.bur") as trivial-module2
 
 
 check:
   trivial-module.a is 5
+end
+
+check:
+  trivial-module2.a is 7
 end

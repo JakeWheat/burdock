@@ -88,7 +88,10 @@ import Burdock.Parse (parseScript)
 import Burdock.Desugar
     (desugarScript
     ,desugarModule
+    ,getSourceDependencies
     )
+
+import qualified Burdock.Syntax as S
 
 import Burdock.DefaultRuntime
     (initRuntime
@@ -100,6 +103,7 @@ import Control.Monad
     ,when
     ,zipWithM
     ,void
+    ,forM
     )
 
 import Data.IORef
@@ -159,13 +163,28 @@ runScript = runScript' False debugPrintUserScript
 runScript' :: Bool -> Bool -> T.Text -> L.Text -> Runtime Value
 runScript' isBootstrap debugPrint fn src = do
     let ast = either error id $ parseScript fn src
-        dast = desugarScript isBootstrap [] ast
+    ms <- recurseMetadata ast
+    --liftIO $ putStrLn $ "desugar script"
+    let dast = desugarScript isBootstrap "script" ms ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
     when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
     interpBurdock dast
 
-interpBurdock :: [I.Stmt] -> Runtime Value
-interpBurdock ss = interpStmts ss
+loadAndDesugarModule :: Text -> Runtime (ModuleMetadata, [I.Stmt])
+loadAndDesugarModule fn = do
+    --liftIO $ putStrLn $ "load " <>  fn
+    src <- liftIO $ L.readFile (T.unpack fn)
+    let ast = either error id $ parseScript fn src
+    ms <- recurseMetadata ast
+    --liftIO $ putStrLn $ "desugar " <> fn
+    pure $ desugarModule fn ms ast
+
+recurseMetadata :: S.Script -> Runtime [(Text, ModuleMetadata)]
+recurseMetadata ast = do
+    let deps = getSourceDependencies ast
+    forM deps $ \case
+        (nm,args@(fn:_)) -> (fn,) <$> getModuleMetadata (RuntimeImportSource nm args)
+        x -> error $ "desugar unsupported import source: " <> show x
 
 ------------------------------------------------------------------------------
 
@@ -198,22 +217,19 @@ burdockModulePlugin = do
                 Just v' -> pure v'
                 Nothing -> do
                     (_,dast) <- compileCacheModule fn
-                    interpBurdock dast
+                    v' <- interpBurdock dast
+                    liftIO $ modifyIORef (cacheModuleValues pc) ((fn,v'):)
+                    pure v'
     pure $ ModulePlugin getMetadata' getModuleValue'
   where
     getRiFile = \case 
         RuntimeImportSource _ [fn] -> fn
         RuntimeImportSource _ as -> error $ "bad args to burdock module source: " <> show as
         
-loadAndDesugarModule :: Text -> Runtime (ModuleMetadata, [I.Stmt])
-loadAndDesugarModule fn = do
-    liftIO $ putStrLn $ "load " <>  fn
-    src <- liftIO $ L.readFile (T.unpack fn)
-    let ast = either error id $ parseScript fn src
-    -- todo: recursively load metadata deps
-    pure $ desugarModule [] ast
-
 ------------------------------------------------------------------------------
+
+interpBurdock :: [I.Stmt] -> Runtime Value
+interpBurdock ss = interpStmts ss
 
 interpStmts :: [I.Stmt] -> Runtime Value
 interpStmts [] = error "no statements"

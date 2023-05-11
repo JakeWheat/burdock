@@ -135,28 +135,40 @@ mkSyn e = Syn e [] [] []
 -- todo: isbootstrap will be replaced with a new handle bootstrap process
 -- after the module system is working
 
-desugarScript :: Bool -> [(Text,ModuleMetadata)] -> S.Script -> [I.Stmt]
-desugarScript isBootstrap _ scr = desugar isBootstrap scr
+desugarScript :: Bool -> Text -> [(Text,ModuleMetadata)] -> S.Script -> [I.Stmt]
+desugarScript isBootstrap fn mds scr = snd $ desugar isBootstrap fn mds scr
 
 -- todo: desugaring a module will wrap the statements in a block
 -- and the last element will be a make-module-value which will give the provides
 -- processed exported decls
 
-desugarModule :: [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
-desugarModule _ scr =
+desugarModule :: Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
+desugarModule fn mds scr =
     let scr' = desugarAsModule (getExportedNames scr) scr
-    in (ModuleMetadata, desugar False scr')
+    in desugar False fn mds scr'
 
 -- todo: return the metadata also
 -- handle provides desugaringdwqsdw
-desugar :: Bool -> S.Script -> [I.Stmt]
-desugar isBootstrap (S.Script ss) =
-    let inh = Inh []
+desugar :: Bool -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata, [I.Stmt])
+desugar isBootstrap _fn mds sc@(S.Script ss) =
+    let -- temp: check the metadata
+        deps = getSourceDependencies sc
+        ok = let ds = map (\case
+                                  (_,[mfn]) -> mfn
+                                  x -> error $ "desugar: unsupported runtime import source: " <> show x
+                          ) deps
+                 missing = filter (`notElem` map fst mds) $ ds
+                 
+             in if null missing
+                then id
+                else error $ "desugar: module metadata missing: " <> show missing
+                     <> "\n" <> show mds
+        inh = Inh []
         inh' = if isBootstrap
                then inh
                     -- hack until modules and metadata is implemented
                else set inhVariants ["empty", "link"] inh
-    in view synTree $ runReader (desugarStmts ss) inh'
+    in ok (ModuleMetadata, view synTree $ runReader (desugarStmts ss) inh')
 
 type Desugar = Reader Inh
 
@@ -178,10 +190,15 @@ desugarAsModule nms (S.Script ss) =
   where
     n = Nothing
 
+-- a script will have the imports at top level
+-- a module will have them inside a block
 getSourceDependencies :: S.Script -> [(Text, [Text])] -- returns the import sources used with plugin names
-getSourceDependencies (S.Script ss) = mapMaybe getImportSourceInfo ss
+getSourceDependencies (S.Script ss) = concatMap getImportSourceInfo ss
   where
-    getImportSourceInfo x = error $ show x
+    getImportSourceInfo (S.StmtExpr _ (S.Block _ ss')) = concatMap getImportSourceInfo ss'
+    getImportSourceInfo (S.Import _ (S.ImportSpecial nm args) _) =
+        [(nm,args)]
+    getImportSourceInfo _x = [] -- error $ show x
 
 ------------------------------------------------------------------------------
 
@@ -374,6 +391,16 @@ desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is-not" e2)) =
 
 desugarStmt (S.When _ t b) =
     desugarStmt $ S.StmtExpr n $ S.If n [(t, b)] (Just [S.StmtExpr n $ S.Iden n "nothing"])
+  where
+    n = Nothing
+
+--------
+
+-- prelude statements
+
+desugarStmt (S.Import _ (S.ImportSpecial "file" [fn]) al) =
+    desugarStmt $ S.LetDecl n (S.NameBinding n al)
+        $ S.App n (S.Iden n "load-module") [S.Text n fn]
   where
     n = Nothing
 
