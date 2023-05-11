@@ -117,6 +117,15 @@ import Data.IORef
 import Text.Show.Pretty (ppShow)
 import Burdock.InterpreterPretty (prettyStmts)
 
+import System.Directory
+    (canonicalizePath
+    ,getCurrentDirectory
+    )
+import System.FilePath
+    (takeDirectory
+    ,(</>)
+    )
+
 ------------------------------------------------------------------------------
 
 debugPrintUserScript :: Bool
@@ -138,7 +147,7 @@ createHandle = do
         addModulePlugin "file" mp
 
         initRuntime
-        void $ runScript' True debugPrintBootstrap "bootstrap" bootstrap
+        void $ runScript' True debugPrintBootstrap (Just "bootstrap") bootstrap
 
         let lkpf f = maybe (error $ "bootstrap " <> f <> " not found") id <$> lookupBinding f
 
@@ -151,21 +160,23 @@ createHandle = do
             <*> lkpf "link"
             <*> lkpf "nothing"
         
-        void $ runScript' False debugPrintPrelude "prelude" prelude
+        void $ runScript' False debugPrintPrelude (Just "prelude") prelude
             -- todo: tests in the prelude?
         getRuntimeState
 
-runScript :: T.Text -> L.Text -> Runtime Value
+runScript :: Maybe T.Text -> L.Text -> Runtime Value
 runScript = runScript' False debugPrintUserScript
 
 ------------------------------------------------------------------------------
 
-runScript' :: Bool -> Bool -> T.Text -> L.Text -> Runtime Value
-runScript' isBootstrap debugPrint fn src = do
+runScript' :: Bool -> Bool -> Maybe T.Text -> L.Text -> Runtime Value
+runScript' isBootstrap debugPrint fn' src = do
+    -- filename either comes from bootstrap or from user
+    fn <- T.pack <$> liftIO (canonicalizePath $ maybe "unnamed" T.unpack fn')
     let ast = either error id $ parseScript fn src
-    ms <- recurseMetadata ast
+    ms <- recurseMetadata (Just fn) ast
     --liftIO $ putStrLn $ "desugar script"
-    let dast = desugarScript isBootstrap "script" ms ast
+    let dast = desugarScript isBootstrap fn ms ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
     when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
     interpBurdock dast
@@ -175,15 +186,15 @@ loadAndDesugarModule fn = do
     --liftIO $ putStrLn $ "load " <>  fn
     src <- liftIO $ L.readFile (T.unpack fn)
     let ast = either error id $ parseScript fn src
-    ms <- recurseMetadata ast
+    ms <- recurseMetadata (Just fn) ast
     --liftIO $ putStrLn $ "desugar " <> fn
     pure $ desugarModule fn ms ast
 
-recurseMetadata :: S.Script -> Runtime [(Text, ModuleMetadata)]
-recurseMetadata ast = do
+recurseMetadata :: Maybe Text -> S.Script -> Runtime [(Text, ModuleMetadata)]
+recurseMetadata ctx ast = do
     let deps = getSourceDependencies ast
     forM deps $ \case
-        (nm,args@(fn:_)) -> (fn,) <$> getModuleMetadata (RuntimeImportSource nm args)
+        (nm,args@(fn:_)) -> (fn,) <$> getModuleMetadata ctx (RuntimeImportSource nm args)
         x -> error $ "desugar unsupported import source: " <> show x
 
 ------------------------------------------------------------------------------
@@ -198,7 +209,14 @@ burdockModulePlugin :: Runtime ModulePlugin
 burdockModulePlugin = do
     let nx = liftIO $ newIORef []
     pc <- BurdockModulePluginCache <$> nx <*> nx
-    let compileCacheModule fn = do
+    let --resolveModulePath :: Maybe Text -> Text -> Runtime Text
+        resolveModulePath ctx fn = do
+            ctx' <- case ctx of
+                Nothing -> liftIO $ getCurrentDirectory
+                Just x -> pure $ takeDirectory $ T.unpack x
+            liftIO (T.pack <$> (canonicalizePath (ctx' </> T.unpack fn)))
+            
+        compileCacheModule fn = do
             v <- liftIO $ readIORef (cacheCompiled pc)
             case lookup fn v of
                 Just v' -> pure v'
@@ -206,12 +224,12 @@ burdockModulePlugin = do
                     vs <- loadAndDesugarModule fn
                     liftIO $ modifyIORef (cacheCompiled pc) ((fn,vs):)
                     pure vs
-        getMetadata' ri = do
-            let fn = getRiFile ri
+        getMetadata' ctx ri = do
+            fn <- resolveModulePath ctx $ getRiFile ri
             (m,_) <- compileCacheModule fn
             pure m
-        getModuleValue' ri = do
-            let fn = getRiFile ri
+        getModuleValue' ctx ri = do
+            fn <- resolveModulePath ctx $ getRiFile ri
             v <- liftIO $ readIORef (cacheModuleValues pc)
             case lookup fn v of
                 Just v' -> pure v'

@@ -52,7 +52,7 @@ import Burdock.DefaultRuntime (prelude)
 import Control.Monad.Reader
     (runReader
     ,Reader
-    --,ask
+    ,ask
     ,asks
     ,local
     )
@@ -96,7 +96,9 @@ does this go in the individual nodes
 
 data Inh
     = Inh
-    {_inhVariants :: [Text]}
+    {_inhVariants :: [Text]
+    ,inhSourcePath :: Text
+    }
 
 data Syn e
     = Syn
@@ -150,7 +152,7 @@ desugarModule fn mds scr =
 -- todo: return the metadata also
 -- handle provides desugaringdwqsdw
 desugar :: Bool -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata, [I.Stmt])
-desugar isBootstrap _fn mds sc@(S.Script ss) =
+desugar isBootstrap fn mds sc@(S.Script ss) =
     let -- temp: check the metadata
         deps = getSourceDependencies sc
         ok = let ds = map (\case
@@ -163,7 +165,7 @@ desugar isBootstrap _fn mds sc@(S.Script ss) =
                 then id
                 else error $ "desugar: module metadata missing: " <> show missing
                      <> "\n" <> show mds
-        inh = Inh []
+        inh = Inh [] fn
         inh' = if isBootstrap
                then inh
                     -- hack until modules and metadata is implemented
@@ -398,9 +400,10 @@ desugarStmt (S.When _ t b) =
 
 -- prelude statements
 
-desugarStmt (S.Import _ (S.ImportSpecial "file" [fn]) al) =
+desugarStmt (S.Import _ (S.ImportSpecial "file" [fn]) al) = do
+    myfn <- inhSourcePath <$> ask
     desugarStmt $ S.LetDecl n (S.NameBinding n al)
-        $ S.App n (S.Iden n "load-module") [S.Text n fn]
+        $ S.App n (S.Iden n "load-module") [S.Text n myfn, S.Text n fn]
   where
     n = Nothing
 

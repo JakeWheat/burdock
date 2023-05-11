@@ -542,8 +542,10 @@ showVariant _ = error $ "bad args to showVariant"
 -- module system support
 
 myLoadModule  :: [Value] -> Runtime Value
-myLoadModule [x] | Just (md :: Text) <- extractValue x =
-    getModuleValue $ RuntimeImportSource "file" [md]
+myLoadModule [ctx,fn]
+    | Just (ctx' :: Text)  <- extractValue ctx
+    , Just (fn' :: Text) <- extractValue fn =
+    getModuleValue (Just ctx') $ RuntimeImportSource "file" [fn']
 myLoadModule _ = error $ "bad args to myLoadModule"
 
 ------------------------------------------------------------------------------

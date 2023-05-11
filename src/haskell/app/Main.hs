@@ -52,7 +52,7 @@ main = do
         st <- createHandle
         
         ee <- runRuntime st $ runTask False $ do
-            void $ runScript (T.pack fn) mySrc
+            void $ runScript (Just $ T.pack fn) mySrc
             --void $ interpBurdock dast
             (p,f) <- getTestResults
             liftIO $ modifyIORef numTestsPassed (p+)

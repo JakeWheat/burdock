@@ -492,25 +492,25 @@ data RuntimeImportSource
 
 data ModulePlugin
     = ModulePlugin
-    {mpGetMetadata :: RuntimeImportSource -> Runtime ModuleMetadata
-    ,mpGetModuleValue :: RuntimeImportSource -> Runtime Value
+    {mpGetMetadata :: Maybe Text -> RuntimeImportSource -> Runtime ModuleMetadata
+    ,mpGetModuleValue :: Maybe Text -> RuntimeImportSource -> Runtime Value
     }
 
-getModuleMetadata :: RuntimeImportSource -> Runtime ModuleMetadata
-getModuleMetadata ri = do
+getModuleMetadata :: Maybe Text -> RuntimeImportSource -> Runtime ModuleMetadata
+getModuleMetadata ctx ri = do
     st <- ask
     c <- liftIO $ readIORef (rtModulePlugins st)
     case lookup (risImportSourceName ri) c of
         Nothing -> error $ "unrecognised runtime import source: " <> risImportSourceName ri
-        Just p -> (mpGetMetadata p) ri
+        Just p -> (mpGetMetadata p) ctx ri
 
-getModuleValue :: RuntimeImportSource -> Runtime Value
-getModuleValue ri = do
+getModuleValue :: Maybe Text -> RuntimeImportSource -> Runtime Value
+getModuleValue ctx ri = do
     st <- ask
     c <- liftIO $ readIORef (rtModulePlugins st)
     case lookup (risImportSourceName ri) c of
         Nothing -> error $ "unrecognised runtime import source: " <> risImportSourceName ri
-        Just p -> (mpGetModuleValue p) ri
+        Just p -> (mpGetModuleValue p) ctx ri
 
 addModulePlugin :: Text -> ModulePlugin -> Runtime ()
 addModulePlugin nm mp = do
