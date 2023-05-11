@@ -22,7 +22,8 @@ checker run
 module Burdock.Desugar
     (desugarScript
     ,desugarModule
-    ,ModuleMetadata
+    ,getSourceDependencies
+    ,ModuleMetadata(..)
     ,prelude
     ) where
 
@@ -68,18 +69,7 @@ import Lens.Micro
 import Lens.Micro.Extras
     (view)
 
-------------------------------------------------------------------------------
-
--- stub for the metadata for a compiled module
--- this will be used for static binding checks, shadow checks, and the type
--- checker. it represents the info needed to do these things
--- when you import a module into another module, this is the metadata from
--- the module you are importing that lets you run these checks on the
--- module you are importing into
-
-data ModuleMetadata = ModuleMetadata
-    deriving (Eq,Show)
-
+import Burdock.Runtime (ModuleMetadata(..))
 
 ------------------------------------------------------------------------------
 
@@ -187,6 +177,11 @@ desugarAsModule nms (S.Script ss) =
     in S.Script [S.StmtExpr n $ S.Block n (ss ++ provides)]
   where
     n = Nothing
+
+getSourceDependencies :: S.Script -> [(Text, [Text])] -- returns the import sources used with plugin names
+getSourceDependencies (S.Script ss) = mapMaybe getImportSourceInfo ss
+  where
+    getImportSourceInfo x = error $ show x
 
 ------------------------------------------------------------------------------
 

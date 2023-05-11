@@ -33,6 +33,9 @@ import Burdock.Runtime
     ,addFFIType
     ,addBinding
 
+    ,getModuleValue
+    ,RuntimeImportSource(..)
+
     ,debugShowValue
     ,throwValue
 
@@ -273,8 +276,8 @@ end
 -- make a bunch of quick haskell ffi functions available to burdock code
 -- this includes part of the build in language
 
-initRuntime :: (Text -> Runtime Value) -> Runtime ()
-initRuntime getModuleValue = do
+initRuntime :: Runtime ()
+initRuntime = do
     addFFIType "number" (Type scientificFFI)
     addFFIType "string" (Type stringFFI)
     addFFIType "boolean" (Type booleanFFI)
@@ -296,7 +299,7 @@ initRuntime getModuleValue = do
 
     -- loading a module needs the interpreter, but the interpreter depends on this
     -- module
-    addBinding "load-module" =<< makeFunctionValue (myLoadModule getModuleValue)
+    addBinding "load-module" =<< makeFunctionValue myLoadModule
 
 
     -- should true be a built in value (built into the runtime), or an ffi
@@ -538,9 +541,10 @@ showVariant _ = error $ "bad args to showVariant"
 
 -- module system support
 
-myLoadModule  :: (Text -> Runtime Value) -> [Value] -> Runtime Value
-myLoadModule getModuleValue [x] | Just (md :: Text) <- extractValue x = getModuleValue md
-myLoadModule _ _ = error $ "bad args to myLoadModule"
+myLoadModule  :: [Value] -> Runtime Value
+myLoadModule [x] | Just (md :: Text) <- extractValue x =
+    getModuleValue $ RuntimeImportSource "file" [md]
+myLoadModule _ = error $ "bad args to myLoadModule"
 
 ------------------------------------------------------------------------------
 

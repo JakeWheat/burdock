@@ -2,6 +2,9 @@
 
 trivial-module = load-module("src/burdock/tests/trivial-module.bur")
 
+# import file("src/burdock/tests/trivial-module.bur") as trivial-module
+
+
 check:
   trivial-module.a is 5
 end

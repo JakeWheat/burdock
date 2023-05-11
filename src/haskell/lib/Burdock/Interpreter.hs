@@ -40,6 +40,13 @@ import Burdock.Runtime
     ,BootstrapValues(..)
     ,nothingValue
 
+    ,ModuleMetadata(..)
+    ,RuntimeImportSource(..)
+    ,ModulePlugin(..)
+    ,getModuleMetadata
+    ,getModuleValue
+    ,addModulePlugin
+    
     --,ffimethodapp
     --,RuntimeState
     ,emptyRuntimeState
@@ -96,9 +103,12 @@ import Control.Monad
     )
 
 import Data.IORef
-    (newIORef
+    (IORef
+    ,newIORef
     ,writeIORef
-    ,readIORef)
+    ,readIORef
+    ,modifyIORef
+    )
 
 import Text.Show.Pretty (ppShow)
 import Burdock.InterpreterPretty (prettyStmts)
@@ -120,7 +130,10 @@ createHandle :: IO RuntimeState
 createHandle = do
     st <- emptyRuntimeState
     runRuntime st $ do
-        initRuntime getModuleValue
+        mp <- burdockModulePlugin
+        addModulePlugin "file" mp
+
+        initRuntime
         void $ runScript' True debugPrintBootstrap "bootstrap" bootstrap
 
         let lkpf f = maybe (error $ "bootstrap " <> f <> " not found") id <$> lookupBinding f
@@ -149,22 +162,56 @@ runScript' isBootstrap debugPrint fn src = do
         dast = desugarScript isBootstrap [] ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
     when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
-        
     interpBurdock dast
-    
 
 interpBurdock :: [I.Stmt] -> Runtime Value
 interpBurdock ss = interpStmts ss
 
-getModuleValue :: Text -> Runtime Value
-getModuleValue fn = do
+------------------------------------------------------------------------------
+
+data BurdockModulePluginCache
+    = BurdockModulePluginCache
+    {cacheCompiled :: IORef [(Text, (ModuleMetadata, [I.Stmt]))]
+    ,cacheModuleValues :: IORef [(Text, Value)]
+    }
+
+burdockModulePlugin :: Runtime ModulePlugin
+burdockModulePlugin = do
+    let nx = liftIO $ newIORef []
+    pc <- BurdockModulePluginCache <$> nx <*> nx
+    let compileCacheModule fn = do
+            v <- liftIO $ readIORef (cacheCompiled pc)
+            case lookup fn v of
+                Just v' -> pure v'
+                Nothing -> do
+                    vs <- loadAndDesugarModule fn
+                    liftIO $ modifyIORef (cacheCompiled pc) ((fn,vs):)
+                    pure vs
+        getMetadata' ri = do
+            let fn = getRiFile ri
+            (m,_) <- compileCacheModule fn
+            pure m
+        getModuleValue' ri = do
+            let fn = getRiFile ri
+            v <- liftIO $ readIORef (cacheModuleValues pc)
+            case lookup fn v of
+                Just v' -> pure v'
+                Nothing -> do
+                    (_,dast) <- compileCacheModule fn
+                    interpBurdock dast
+    pure $ ModulePlugin getMetadata' getModuleValue'
+  where
+    getRiFile = \case 
+        RuntimeImportSource _ [fn] -> fn
+        RuntimeImportSource _ as -> error $ "bad args to burdock module source: " <> show as
+        
+loadAndDesugarModule :: Text -> Runtime (ModuleMetadata, [I.Stmt])
+loadAndDesugarModule fn = do
     liftIO $ putStrLn $ "load " <>  fn
-    -- read file
     src <- liftIO $ L.readFile (T.unpack fn)
-    -- desugarmodule
     let ast = either error id $ parseScript fn src
-        (_,dast) = desugarModule [] ast
-    interpBurdock dast
+    -- todo: recursively load metadata deps
+    pure $ desugarModule [] ast
 
 ------------------------------------------------------------------------------
 

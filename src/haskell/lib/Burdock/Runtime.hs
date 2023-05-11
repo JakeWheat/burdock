@@ -16,6 +16,14 @@ Haskell ffi code uses function in the runtime too.
 module Burdock.Runtime
     (Value(..)
 
+    ,ModuleMetadata(..)
+    ,ModulePlugin(..)
+    ,RuntimeImportSource(..)
+
+    ,getModuleMetadata
+    ,getModuleValue
+    ,addModulePlugin
+    
     ,runRuntime
     ,Runtime
     ,liftIO
@@ -120,6 +128,8 @@ import Control.Exception.Safe (catch
                               ,bracket
                               )
 
+------------------------------------------------------------------------------
+
 data RuntimeState
     = RuntimeState
     {rtFFITypes :: IORef [(Text,Type)]
@@ -128,6 +138,7 @@ data RuntimeState
     ,rtNumTestPassed :: IORef Int
     ,rtCallStack :: IORef [Maybe Text]
     ,rtBootstrapRecTup :: IORef BootstrapValues
+    ,rtModulePlugins :: IORef [(Text, ModulePlugin)]
     }
 
 data BootstrapValues
@@ -143,7 +154,14 @@ data BootstrapValues
 
 emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
-    RuntimeState <$> newIORef [] <*> newIORef [] <*> newIORef 0 <*> newIORef 0 <*> newIORef [] <*> newIORef (error "bootstrap for tuples and records not completed")
+    RuntimeState
+        <$> newIORef []
+        <*> newIORef []
+        <*> newIORef 0
+        <*> newIORef 0
+        <*> newIORef []
+        <*> newIORef (error "bootstrap for tuples and records not completed")
+        <*> newIORef []
 
 setBootstrapRecTup :: BootstrapValues -> Runtime ()
 setBootstrapRecTup v = do
@@ -441,3 +459,61 @@ getTestResults = do
 
 getRuntimeState :: Runtime RuntimeState
 getRuntimeState = ask
+
+------------------------------------------------------------------------------
+
+-- import plugins
+-- the idea is to create an abstract interface for import plugins
+-- this is used to implemented modules implemented in burdock
+-- but also modules implemented in an ffi system
+-- this includes haskell ffi code
+-- and will include the python auto module system
+-- and some sort of c ffi
+
+-- a plugin should be able to take an import source, and return
+-- the metadata (used for burdock static checks, other plugins
+-- can decide if to do anything with this)
+-- or the loaded module value for that import source
+-- a plugin must cache module values so if asked for one twice,
+-- it returns the same value, and doesn't rerun the module
+
+-- a runtime import source is the name corresponding to the <import-source-name>
+-- in the syntax, and the list of args, in the burdock syntax this is:
+-- import <import-source-name>(args) ...
+
+data ModuleMetadata = ModuleMetadata
+    deriving (Eq,Show)
+
+data RuntimeImportSource
+    = RuntimeImportSource
+    {risImportSourceName :: Text
+    ,risArgs :: [Text]
+    }
+
+data ModulePlugin
+    = ModulePlugin
+    {mpGetMetadata :: RuntimeImportSource -> Runtime ModuleMetadata
+    ,mpGetModuleValue :: RuntimeImportSource -> Runtime Value
+    }
+
+getModuleMetadata :: RuntimeImportSource -> Runtime ModuleMetadata
+getModuleMetadata ri = do
+    st <- ask
+    c <- liftIO $ readIORef (rtModulePlugins st)
+    case lookup (risImportSourceName ri) c of
+        Nothing -> error $ "unrecognised runtime import source: " <> risImportSourceName ri
+        Just p -> (mpGetMetadata p) ri
+
+getModuleValue :: RuntimeImportSource -> Runtime Value
+getModuleValue ri = do
+    st <- ask
+    c <- liftIO $ readIORef (rtModulePlugins st)
+    case lookup (risImportSourceName ri) c of
+        Nothing -> error $ "unrecognised runtime import source: " <> risImportSourceName ri
+        Just p -> (mpGetModuleValue p) ri
+
+addModulePlugin :: Text -> ModulePlugin -> Runtime ()
+addModulePlugin nm mp = do
+    st <- ask
+    liftIO $ modifyIORef (rtModulePlugins st) ((nm,mp):)
+
