@@ -41,6 +41,10 @@ import Data.IORef
 import System.Exit (exitFailure)
 import qualified Data.Text.Lazy.IO as L
 
+import Burdock.TestWrap (doStuff)
+
+---------------------------------------
+
 main :: IO ()
 main = do
     args <- getArgs
@@ -51,7 +55,7 @@ main = do
             mySrc <- liftIO $ L.readFile fn
             void $ runScript (Just $ T.pack fn) mySrc
 
-    let suites = map (\fn -> (fn, runScriptTest fn)) args
+    let suites = ("doStuff", doStuff) : map (\fn -> (fn, runScriptTest fn)) args
 
     forM_ suites $ \(nm,tst) -> do
         putStrLn $ T.pack nm
