@@ -33,10 +33,10 @@ toTasty (TestCase nm t) = Tst.testCase (T.unpack nm) t
 
 
 {-
-todo: if burdock gets the wrong regression, it might be really difficult to debug
-
-via the burdock testing system, so alternatively be able torun the
-tasty tests directly via a haskell main with no burdock
+if the burdock implementation gets the wrong regression, it might be
+really difficult to debug via the burdock testing system, so
+alternatively be able to run the tasty tests directly via a haskell
+main
 -}
 
 allTestsTasty :: Tst.TestTree
