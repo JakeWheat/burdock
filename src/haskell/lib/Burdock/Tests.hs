@@ -43,22 +43,9 @@ allTestsTasty :: Tst.TestTree
 allTestsTasty = toTasty allTests
         
 allTests :: TestTree
-allTests = TestGroup "allTests" [t1,t2,t3, t4]
-
-t1 :: TestTree
-t1 = TestCase "t1" $ do
-    Tst.assertEqual "test" (1 :: Int) 1
-    Tst.assertEqual "test2" (1 :: Int) 2
-
-t2 :: TestTree
-t2 = TestCase "t2" $ do
-    Tst.assertEqual "test2" (1 :: Int) 2
+allTests = TestGroup "allTests" [t3]
 
 t3 :: TestTree
 t3 = TestCase "t3" $ do
     Tst.assertEqual "test" (1 :: Int) 1
     Tst.assertEqual "test2" (2 :: Int) 2
-
-t4 :: TestTree
-t4 = TestCase "t4" $ do
-    undefined
