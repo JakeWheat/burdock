@@ -243,16 +243,19 @@ log-result = lam(t):
   end
 end
 
-do-is-test = lam(m1,m2,v1,v2):
-  r = my-do-bpred-test(lam(a,b): a == b end, "is", "!=", m1, m2, v1, v2)
+fun log-and-print-result(r):
   log-result(r)
   print(format-test(r))
 end
 
+do-is-test = lam(m1,m2,v1,v2):
+  r = my-do-bpred-test(lam(a,b): a == b end, "is", "!=", m1, m2, v1, v2)
+  log-and-print-result(r)
+end
+
 do-is-not-test = lam(m1,m2,v1,v2):
   r = my-do-bpred-test(lam(a,b): not(a == b) end, "is-not", "==", m1, m2, v1, v2)
-  log-result(r)
-  print(format-test(r))
+  log-and-print-result(r)
 end
 
 ##################

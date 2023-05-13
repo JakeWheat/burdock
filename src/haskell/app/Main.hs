@@ -46,6 +46,51 @@ main = do
     args <- getArgs
     numTestsPassed <- newIORef 0
     numTestsFailed <- newIORef 0
+
+    let runScriptTest fn = do
+            mySrc <- liftIO $ L.readFile fn
+            void $ runScript (Just $ T.pack fn) mySrc
+
+    let suites = map (\fn -> (fn, runScriptTest fn)) args
+
+    forM_ suites $ \(nm,tst) -> do
+        putStrLn $ T.pack nm
+        st <- createHandle
+        ee <- runRuntime st $ runTask False $ do
+            tst
+            --void $ interpBurdock dast
+            (p,f) <- getTestResults
+            liftIO $ modifyIORef numTestsPassed (p+)
+            liftIO $ modifyIORef numTestsFailed (f+)
+            -- get test passed state, update ioref
+            
+        let doError t = do
+                -- runs if the script doesn't even complete
+                putStrLn $ "FAIL: " <> T.pack nm <> ": " <> t
+                liftIO $ modifyIORef numTestsFailed (1+)
+        case ee of
+            Right {} -> pure ()
+            Left (Left t, _) -> doError t
+            Left (Right v, _) -> do
+                case extractValue v of
+                    Just x -> doError x
+                    _ -> doError $ debugShowValue v
+       
+    -- check passed ioref, if false, then exit with non zero        
+    p <- readIORef numTestsPassed
+    f <- readIORef numTestsFailed
+    let tot = p + f
+    if f == 0
+        then putStrLn $ show p <> " tests passed"
+        else do
+            putStrLn $ show f <> "/" <> show tot <> " tests failed"
+            exitFailure
+
+runOld = do
+    
+    args <- getArgs
+    numTestsPassed <- newIORef 0
+    numTestsFailed <- newIORef 0
     forM_ args $ \fn -> do
         putStrLn $ T.pack fn
         mySrc <- L.readFile fn
