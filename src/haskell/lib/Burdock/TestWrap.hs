@@ -9,6 +9,11 @@ import Prelude hiding (error, putStrLn, show)
 import Data.Text.IO (putStrLn)
 import Burdock.Utils (show,error)
 
+import GHC.Stack
+    (srcLocFile
+    ,srcLocStartLine
+    )
+
 --import qualified Test.Tasty as Tst
 import qualified Test.Tasty.HUnit as Tst
 
@@ -49,7 +54,6 @@ doStuff = do
         <*> (maybe (error "test-fail not found") id <$> lookupBinding "test-fail")
     runTestTree trc allTests
 
-
 runTestTree :: TestRunClosure -> TestTree -> Runtime ()
 runTestTree cbs (TestGroup nm ts) = do
     liftIO $ putStrLn $ nm <> ":"
@@ -59,21 +63,21 @@ runTestTree cbs (TestCase nm tst) = do
     res <- flip catch catchFailure $ flip catch catchHunitFailure $ do
         liftIO $ tst
         makeTestPass nm
-        -- app Nothing logResult res
-        -- app Nothing formatTest res
-        --liftIO $ putStrLn $ "PASS: " <> nm
     void $ app Nothing (logAndPrintResult cbs) [res]
     pure ()
   where
-    catchHunitFailure (Tst.HUnitFailure _ msg) =
-        --liftIO $ putStrLn $ "FAIL: " <> nm <> " " <> T.pack msg
-        makeTestFail nm (T.pack msg)
+    catchHunitFailure (Tst.HUnitFailure l msg) =
+        let msg' = prependLocation l (T.pack msg)
+        in makeTestFail nm msg'
     catchFailure (e :: SomeException) =
         makeTestFail nm (show e)
-        --liftIO $ putStrLn $ "FAIL: " <> nm <> " " <> show e
     makeTestPass :: Text -> Runtime Value
     makeTestPass t =
         app Nothing (testPass cbs) [makeValue "string" t]
     makeTestFail :: Text -> Text -> Runtime Value
     makeTestFail t msg  =
         app Nothing (testFail cbs) [makeValue "string" t, makeValue "string" msg]
+    prependLocation mbloc s =
+        case mbloc of
+            Nothing -> s
+            Just loc -> T.pack (srcLocFile loc) <> ":" <> show (srcLocStartLine loc) <> ":\n" <> s
