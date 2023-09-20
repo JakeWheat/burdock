@@ -80,6 +80,7 @@ executable burdock
                       Burdock.ParseTests
                       Burdock.RenamerTestParser
                       Burdock.RenamerTests
+                      TempRenamer
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:

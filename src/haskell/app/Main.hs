@@ -44,11 +44,24 @@ import qualified Data.Text.Lazy.IO as L
 import Burdock.TestLib (runHUnitTests)
 import Burdock.Tests (allTests)
 
+import TempRenamer (tempRenamer)
+
 ---------------------------------------
 
 main :: IO ()
 main = do
     args <- getArgs
+
+    -- special case
+    case args of
+        ("rename": as) -> mapM_ (tempRenamer False) (map T.pack as)
+        ("rename-module": as) -> mapM_ (tempRenamer True) (map T.pack as)
+        _ -> runScriptWithTests args
+
+    
+runScriptWithTests :: [String] -> IO ()
+runScriptWithTests args = do
+
     numTestsPassed <- newIORef 0
     numTestsFailed <- newIORef 0
 

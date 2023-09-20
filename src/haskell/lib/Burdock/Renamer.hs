@@ -54,8 +54,13 @@ has just been renamed
 {-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Renamer
     (StaticError(..)
+    ,prettyStaticError
+    ,prettyStaticErrors
+
     ,renameModule
     ,renameScript
+
+    ,ModuleMetadata
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -63,6 +68,8 @@ import Burdock.Utils (error, show)
 
 import Burdock.RenamerEnv
     (StaticError(..)
+    ,prettyStaticError
+    ,prettyStaticErrors
 
     ,ModuleMetadata
     ,RenamerEnv

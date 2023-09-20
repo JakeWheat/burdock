@@ -10,6 +10,8 @@
 {-# LANGUAGE LambdaCase #-}
 module Burdock.RenamerEnv
     (StaticError(..)
+    ,prettyStaticError
+    ,prettyStaticErrors
 
     ,ModuleMetadata
     ,RenamerEnv
@@ -33,9 +35,10 @@ module Burdock.RenamerEnv
     ) where
 
 import Prelude hiding (error, putStrLn, show)
-import Burdock.Utils (error)
+import Burdock.Utils (error, show)
 
 import Data.Text (Text)
+import qualified Data.Text as T
 
 import Data.Data (Data)
 import Burdock.Syntax (SourcePosition)
@@ -47,6 +50,19 @@ import Data.Maybe (mapMaybe)
 data StaticError
     = UnrecognisedIdentifier [(SourcePosition,Text)]
     deriving (Eq,Show, Data)
+
+prettyStaticError :: StaticError -> Text
+prettyStaticError = \case
+    UnrecognisedIdentifier [] -> "internal error with unrecognised identifier"
+    UnrecognisedIdentifier is@((pos,_):_) -> doMsg pos $ icd (map snd is) <> " not found"
+  where
+    doMsg pos msg = case pos of
+        Nothing -> msg
+        Just (fn,l,c) -> fn <> ":" <> show l <> ":" <> show c <> ": " <> msg
+    icd = T.intercalate "."
+
+prettyStaticErrors :: [StaticError] -> Text
+prettyStaticErrors = T.unlines . map prettyStaticError
 
 ------------------------------------------------------------------------------
 
