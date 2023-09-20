@@ -43,6 +43,7 @@ data Stmt
     | FFITypeStmt SourcePosition Text Text
     | Contract SourcePosition Text Ann
     | Provide SourcePosition [ProvideItem]
+    | ProvideFrom SourcePosition Text [ProvideItem]
     | Import SourcePosition ImportSource Text
     | Include SourcePosition ImportSource
     | IncludeFrom SourcePosition Text [ProvideItem]
@@ -64,11 +65,22 @@ data Ref
     deriving (Eq,Show,Data) 
 
 data ProvideItem
-    = ProvideAll SourcePosition 
+    = ProvideName SourcePosition Text
     | ProvideAlias SourcePosition Text Text
-    | ProvideName SourcePosition Text
+    | ProvideAll SourcePosition
+    | ProvideHiding SourcePosition [Text]
+    
     | ProvideType SourcePosition Text
+    | ProvideTypeAlias SourcePosition Text Text
+    | ProvideTypeAll SourcePosition
+    | ProvideTypeHiding SourcePosition [Text]
+    
     | ProvideData SourcePosition Text
+    | ProvideDataHiding SourcePosition Text [Text]
+    | ProvideDataAll SourcePosition
+    
+    | ProvideModule SourcePosition [Text]
+    | ProvideModuleAlias SourcePosition [Text] Text
     deriving (Eq,Show,Data) 
 
 data ImportSource

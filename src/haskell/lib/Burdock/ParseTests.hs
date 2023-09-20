@@ -657,25 +657,52 @@ end|]
     ,("a :: String, String -> String"
      ,Contract np "a" $ TArrow np [TName np ["String"], TName np ["String"]] $ TName np ["String"])
 
-
-    ,("provide: * end"
-     ,Provide np [ProvideAll np])
-                                   
     ,("provide: a end"
      ,Provide np [ProvideName np "a"])
-
+    ,("provide: a as b end"
+     ,Provide np [ProvideAlias np "a" "b"])
+    ,("provide: * end"
+     ,Provide np [ProvideAll np])
+    ,("provide: * hiding (a) end"
+     ,Provide np [ProvideHiding np ["a"]])
+    ,("provide: * hiding (a,b) end"
+     ,Provide np [ProvideHiding np ["a","b"]])
+    ,("provide: * hiding () end"
+     ,Provide np [ProvideHiding np []])
     ,("provide: a,b end"
      ,Provide np [ProvideName np "a", ProvideName np "b"])
 
-    ,("provide: a as b end"
-     ,Provide np [ProvideAlias np "a" "b"])
-
     ,("provide: type A end"
      ,Provide np [ProvideType np "A"])
-
+    ,("provide: type A as B end"
+     ,Provide np [ProvideTypeAlias np "A" "B"])
+    ,("provide: type * end"
+     ,Provide np [ProvideTypeAll np])
+    ,("provide: type * hiding (B) end"
+     ,Provide np [ProvideTypeHiding np ["B"]])
+    
     ,("provide: data A end"
      ,Provide np [ProvideData np "A"])
+    -- data doesn't do rename
+    -- and the hiding version of data has to be named
+    -- you can't do data * hiding ()
+    ,("provide: data a hiding (is-a) end"
+     ,Provide np [ProvideDataHiding np "a" ["is-a"]])
+    ,("provide: data * end"
+     ,Provide np [ProvideDataAll np])
 
+    ,("provide: module A end"
+     ,Provide np [ProvideModule np ["A"]])
+    ,("provide: module A.B end"
+     ,Provide np [ProvideModule np ["A","B"]])
+    ,("provide: module A as B end"
+     ,Provide np [ProvideModuleAlias np ["A"] "B"])
+    ,("provide: module A.B as B end"
+     ,Provide np [ProvideModuleAlias np ["A","B"] "B"])
+
+    ,("provide from a: * end"
+     ,ProvideFrom np "a" [ProvideAll np])
+    
     ,("include file(\"file.tea\")"
      ,Include np (ImportSpecial "file" ["file.tea"]))
 

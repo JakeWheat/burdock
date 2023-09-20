@@ -311,6 +311,11 @@ stmt (Provide _ pis) =
     prettyBlocklike vsep
          [pretty "provide:"
          ,commaSep $ map provideItem pis]
+stmt (ProvideFrom _ al pis) =
+    prettyBlocklike vsep
+         [pretty "provide"<+> pretty "from" <+> pretty al <> pretty ":"
+         ,commaSep $ map provideItem pis]
+
 stmt (Include _ s) = pretty "include" <+> importSource s
 stmt (IncludeFrom _ a pis) =
     prettyBlocklike vsep
@@ -332,17 +337,30 @@ funHeader (FunHeader ts as rt) =
     <> maybe mempty (\t -> pretty " ->" <+> typ t) rt
 
 provideItem :: ProvideItem -> Doc a
-provideItem (ProvideAll _) = pretty "*"
 provideItem (ProvideName _ n) = pretty n
 provideItem (ProvideAlias _ n a) = pretty n <+> pretty "as" <+> pretty a
+provideItem (ProvideAll _) = pretty "*"
+provideItem (ProvideHiding _ ns) =
+    pretty "*" <+> pretty "hiding" <> (parens $ commaSep $ map pretty ns)
+
 provideItem (ProvideType _ n) = pretty "type" <+> pretty n
+provideItem (ProvideTypeAlias _ n a) = pretty "type" <+> pretty n <+> pretty "as" <+> pretty a
+provideItem (ProvideTypeAll _) = pretty "type" <+> pretty "*"
+provideItem (ProvideTypeHiding _ ns) =
+    pretty "type" <+> pretty "*" <+> pretty "hiding" <> (parens $ commaSep $ map pretty ns)
+
 provideItem (ProvideData _ n) = pretty "data" <+> pretty n
+provideItem (ProvideDataHiding _ n ns) =
+    pretty "data" <+> pretty n <+> pretty "hiding" <> (parens $ commaSep $ map pretty ns)
+provideItem (ProvideDataAll _) = pretty "data" <+> pretty "*"
+
+provideItem (ProvideModule _ ns) = pretty "module" <+> xSep "." (map pretty ns)
+provideItem (ProvideModuleAlias _ ns a) =
+    pretty "module" <+> xSep "." (map pretty ns) <+> pretty "as" <+> pretty a
 
 importSource :: ImportSource -> Doc a
 importSource (ImportSpecial nm as) = pretty nm <> parens (commaSep $ map (dquotes . pretty) as)
 importSource (ImportName s) = pretty s
-
-
 
 stmts :: [Stmt] -> Doc a
 stmts = vsep . map stmt

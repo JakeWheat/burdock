@@ -801,7 +801,7 @@ stmt = do
         ,checkBlock
         ,typeStmt
         ,ffiTypeStmt
-        ,provide
+        ,provideOrProvideFrom
         ,include
         ,importStmt
         ,whenStmt
@@ -902,25 +902,63 @@ ffiTypeStmt = FFITypeStmt
     <*> (keyword_ "ffitype" *> identifier)
     <*> (symbol_ "=" *> stringRaw)
 
-provide :: Parser Stmt
-provide = Provide
-          <$> sourcePos
-          <*> (keyword_ "provide"
-                       *> symbol_ ":"
-                       *> commaSep provideItem
-                       <* keyword_ "end")
+provideOrProvideFrom :: Parser Stmt
+provideOrProvideFrom = do
+    sp <- sourcePos
+    keyword_ "provide"
+    choice
+        [do
+         keyword_ "from"
+         al <- identifier
+         symbol_ ":"
+         ProvideFrom sp al <$> (commaSep provideItem <* keyword_ "end")
+        ,do
+         symbol_ ":"
+         Provide sp <$> (commaSep provideItem <* keyword_ "end")
+        ]
 
 provideItem :: Parser ProvideItem
 provideItem = choice
-    [ProvideAll <$> (sourcePos <* symbol_ "*")
-    ,ProvideType <$> sourcePos <*> (keyword_ "type" *> identifier)
-    ,ProvideData <$> sourcePos <*> (keyword_ "data" *> identifier)
-    ,do
-     sp <- sourcePos
-     a <- identifier
-     bchoice [ProvideAlias sp a <$> (keyword_ "as" *> identifier)
-            ,pure $ ProvideName sp a]
-    ]
+    [provideType
+    ,provideData
+    ,provideModule
+    ,provideStar
+    ,aliasedOrName ProvideAlias ProvideName]
+  where
+    provideStar = hidingOrAll ProvideHiding ProvideAll
+    provideType = do
+        keyword_ "type"
+        choice
+            [hidingOrAll ProvideTypeHiding ProvideTypeAll
+            ,aliasedOrName ProvideTypeAlias ProvideType]
+    provideData = do
+        keyword_ "data"
+        choice
+            [ProvideDataAll <$> (sourcePos <* symbol_ "*")
+            ,do
+             sp <- sourcePos
+             a <- identifier
+             choice
+                [ProvideDataHiding sp a <$> hiding
+                ,pure $ ProvideData sp a]]
+    provideModule = do
+        sp <- sourcePos
+        keyword_ "module"
+        a <- xSep1 '.' identifier
+        choice
+            [ProvideModuleAlias sp a <$> (keyword_ "as" *> identifier)
+            ,pure $ ProvideModule sp a]
+    aliasedOrName cAlias cName = do
+        sp <- sourcePos
+        a <- identifier
+        bchoice [cAlias sp a <$> (keyword_ "as" *> identifier)
+                ,pure $ cName sp a]
+    hidingOrAll cHiding cAll = do
+        sp <- sourcePos
+        symbol_ "*" *> choice
+            [cHiding sp <$> hiding
+            ,pure $ cAll sp]
+    hiding = keyword_ "hiding" *> parens (commaSep identifier)
 
 include :: Parser Stmt
 include = do
