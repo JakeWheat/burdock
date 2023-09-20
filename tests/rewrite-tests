@@ -1,0 +1,17 @@
+Test: empty
+Script:
+Result:
+
+Test: Trivial
+Script:
+a = 3
+a
+Result:
+a = 3
+a
+
+Test: unrecognised iden
+Script:
+a
+Errors:
+unrecognised-identifier([list: "a"])
