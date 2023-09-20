@@ -15,3 +15,29 @@ Script:
 a
 Errors:
 unrecognised-identifier([list: "a"])
+
+Test: import
+Module:
+a = 3
+Result:
+a = 3
+make-module({a:a})
+
+Test: import
+File: imported
+a = 3
+Script:
+import file("imported") as i
+i.a
+Result:
+_module-imported = load-module("imported")
+_module-imported.a
+
+Test: import unrec
+File: imported
+a = 3                                                
+Script:
+import file("imported") as i
+i.b
+Errors:
+unrecognised-identifier([list: "i", "b"])

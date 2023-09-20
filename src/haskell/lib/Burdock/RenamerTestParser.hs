@@ -73,7 +73,6 @@ data RenamerTest
       }
       deriving Show
 
-
 -- remove blank lines and comment lines
 -- the test format itself only allows comments at the start of the line
 -- with #, or whitespace then #, it doesn't allow trailing # comments
@@ -82,15 +81,13 @@ data RenamerTest
 prepSource :: L.Text -> [(Int,L.Text)]
 prepSource src = 
     let l1 = L.lines src
-        l2 = zip [0..] l1
+        l2 = zip [1..] l1
     in flip filter l2 $ \(_,l) ->
             let l' = L.dropWhile isSpace l
             in l' /= "" && L.head l' /= '#'
 
-
-
-parseRenamerTestFile :: L.Text -> Either Text [RenamerTest]
-parseRenamerTestFile src = parseAnother $ prepSource src
+parseRenamerTestFile :: Text -> L.Text -> Either Text [RenamerTest]
+parseRenamerTestFile sfn src = parseAnother $ prepSource src
   where
     parseAnother [] = Right []
     parseAnother (l:ls) | Just t <- readField "Test:" l = do
@@ -98,7 +95,7 @@ parseRenamerTestFile src = parseAnother $ prepSource src
         (sc,ls'') <- parseScriptOrModule ls'
         (res,ls''') <- parseResult ls''
         (RenamerTest t fs sc res:) <$> parseAnother ls'''
-    parseAnother ((n,l):_) = error $ "line " <> show n <> ", expected Test:, got " <> L.toStrict l
+    parseAnother ((n,_):_) = error $ formatError n $ "expected Test:"
 
     parseFiles :: [(Int,L.Text)] -> Either Text ([(Text, L.Text)], [(Int,L.Text)])
     parseFiles (l:ls) | Just fn <- readField "File:" l = do
@@ -119,7 +116,7 @@ parseRenamerTestFile src = parseAnother $ prepSource src
         = first Right <$> readBody ls
     parseScriptOrModule (l:ls) | readBlankField "Module:" l
         = first Left <$> readBody ls
-    parseScriptOrModule ((n,l):_) = error $ "line " <> show n <> ", expected script, got " <> L.toStrict l
+    parseScriptOrModule ((n,_):_) = error $ formatError n $ "expected Script: or Module:"
     parseScriptOrModule [] = error $ "expected script, got end of file"
 
     parseResult :: [(Int,L.Text)] -> Either Text (Either [StaticError] L.Text, [(Int,L.Text)])
@@ -132,12 +129,12 @@ parseRenamerTestFile src = parseAnother $ prepSource src
         | readBlankField "Errors:" l
         = let (x,rst) = readErrors ls
           in pure (Left x, rst)
-    parseResult ((n,l):_) = error $ "line " <>  show n <> ", expected Result: or Errors:, but got: " <> L.toStrict l
+    parseResult ((n,_):_) = error $ formatError n $ "expected Result: or Errors:"
     parseResult [] = error $ "expected result, got end of file"
     readErrors :: [(Int,L.Text)] -> ([StaticError], [(Int,L.Text)])
-    readErrors (x@(n,l):_)
+    readErrors (x@(n,_):_)
         | isRecognisedField x
-        = error $ "line " <>  show n <> ", expected some errors but got " <> L.toStrict l
+        = error $ formatError n $ ", expected some errors"
     readErrors []
         = error $ "expected errors, got end of file"
     readErrors (l:ls) =
@@ -151,12 +148,13 @@ parseRenamerTestFile src = parseAnother $ prepSource src
     readErrors' [] = ([],[])
     parseError :: (Int,L.Text) -> StaticError
     parseError (n,l) =
-        let ast = either (\x -> error $ "line " <> show n <> ", " <> x) id $ B.parseScript "" l
+        -- todo: allow passing in a position for parsing errors
+        let ast = either (\x -> error $ formatError n x) id $ B.parseScript sfn l
         in case ast of
             S.Script [S.StmtExpr _ (S.App _ (S.Iden _ "unrecognised-identifier") [S.Construct _ ["list"] fs])]
               | Just fs' <- mapM getNm fs
               -> UnrecognisedIdentifier (map (Nothing,) fs')
-            x -> error $ "couldn't parse error: " <> show x
+            _ -> error $ formatError n $ "couldn't parse error"
     getNm (S.Text _ nm) = Just nm
     getNm _ = Nothing
     isRecognisedField (_,l) =
@@ -166,7 +164,7 @@ parseRenamerTestFile src = parseAnother $ prepSource src
         if L.isPrefixOf nm l
         then let x = L.dropWhile isSpace $ L.drop (L.length nm) l
              in if x == ""
-                then error $ "line " <> show n <> ": empty field"
+                then error $ formatError n "empty field"
                 else Just $ L.toStrict x
         else Nothing
     readBlankField nm (n,l) =
@@ -174,9 +172,10 @@ parseRenamerTestFile src = parseAnother $ prepSource src
         then let x = L.dropWhile isSpace $ L.drop (L.length nm) l
              in if x == ""
                 then True
-                else error $ "line " <> show n <> ": field should be empty"
+                else error $ formatError n "field should be empty"
         else False
-
+    formatError :: Int -> Text -> Text
+    formatError ln msg = sfn <> ":" <> show ln <> ": " <> msg
              
 
 {-

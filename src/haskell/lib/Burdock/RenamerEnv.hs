@@ -7,6 +7,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE LambdaCase #-}
 module Burdock.RenamerEnv
     (StaticError(..)
 
@@ -32,12 +33,14 @@ module Burdock.RenamerEnv
     ) where
 
 import Prelude hiding (error, putStrLn, show)
---import Burdock.Utils (error, show)
+import Burdock.Utils (error)
 
 import Data.Text (Text)
 
 import Data.Data (Data)
 import Burdock.Syntax (SourcePosition)
+
+import Data.Maybe (mapMaybe)
 
 -- todo: this will move to the desugarer or a shared module, since
 -- there are later passes which can produce static errors too
@@ -52,16 +55,22 @@ data StaticError
 -- This represents a renamed module metadata, it contains all the
 -- information to be able to rename a module which imports this module
 
-data ModuleMetadata = ModuleMetadata
+data ModuleMetadata
+    = ModuleMetadata
+    {mmBindings :: [Text]}
     deriving Show
 
 -- this is the env that is used during renaming a single module
 data RenamerEnv
     = RenamerEnv
-    {reEnv :: [Text]}
+    {reCtx :: [(Text, ModuleMetadata)]
+     -- imported module id, canonical alias in this module
+    ,reLoadModules :: [(Text,Text)]
+    -- what the user writes, what it will be rewritten to
+    ,reBindings :: [([Text], [Text])]}
 makeRenamerEnv :: [(Text, ModuleMetadata)] -> RenamerEnv
-makeRenamerEnv _ =
-    RenamerEnv []
+makeRenamerEnv ctx =
+    RenamerEnv ctx [] []
 
 
 ------------------------------------------------------------------------------
@@ -78,8 +87,16 @@ provide = undefined
 provideFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
 provideFrom = undefined
 
-bImport :: RenamerEnv -> ([StaticError], RenamerEnv)
-bImport = undefined
+bImport :: Text -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+bImport nm alias re =
+    -- todo: make a better canonical alias
+    let canonicalAlias = "_module-" <> nm
+        ps = case lookup nm (reCtx re) of
+            Nothing -> error $ "unrecognised module: " <> nm -- todo return staticerror
+            Just m -> flip map (mmBindings m) $ \n -> ([alias,n], [canonicalAlias,n])
+    in ([], re
+       {reLoadModules = (nm,canonicalAlias) : reLoadModules re
+       ,reBindings = ps ++ reBindings re})
 
 include :: RenamerEnv -> ([StaticError], RenamerEnv)
 include = undefined
@@ -95,14 +112,20 @@ importFrom = undefined
 -- so (a,b) here should become b = load-module("a")
 -- this should be called before processing the first non prelude statement
 queryLoadModules :: RenamerEnv -> ([StaticError], [(Text,Text)])
-queryLoadModules = undefined
+queryLoadModules re = ([], reLoadModules re)
 
 -- this applies the provides and returns the final module metadata
 -- for this module, plus the record for the desugared module value
 -- it's module name, alias, so
 -- [(a,b),(c,d)] should become {b:a, d:c}
 applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, [(Text,Text)]))
-applyProvides = undefined
+applyProvides re =
+    -- todo: find a more robust way to track local bindings
+    -- come back to this when doing provide items
+    let localBinds = flip mapMaybe (reBindings re) $ \case
+            ([a],[b]) | a == b -> Just a
+            _ -> Nothing
+    in ([], (ModuleMetadata localBinds, map (\a -> (a,a)) localBinds))
 
 ------------------------------------------------------------------------------
 
@@ -113,17 +136,17 @@ applyProvides = undefined
 -- it will check shadow is used if it needs to be
 addLocalBinding :: Bool -> (SourcePosition,Text) -> RenamerEnv -> ([StaticError], RenamerEnv)
 addLocalBinding _shadow (_,i) re =
-    ([], re {reEnv = (i: reEnv re)})
+    ([], re {reBindings = (([i],[i]): reBindings re)})
 
 -- lookup the identifier
 -- see if it exists
 -- see if it should be renamed, if so, what do
 
 renameIdentifier :: [(SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(SourcePosition,Text)])
-renameIdentifier x@[(_,i)] re =
-    if i `elem` (reEnv re)
-    then ([],x)
-    else ([UnrecognisedIdentifier x], x)
+renameIdentifier x re =
+    case lookup (map snd x) (reBindings re) of
+        Nothing -> ([UnrecognisedIdentifier x], x)
+        Just r -> ([],map (Nothing,) r)
 
 -- same as renameIdentifier, but for type names
 renameType :: [(SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(SourcePosition,Text)])

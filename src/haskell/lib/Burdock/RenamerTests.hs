@@ -25,7 +25,8 @@ import Burdock.RenamerTestParser
 import Burdock.Renamer
     (renameScript
     ,renameModule
-    ,StaticError(..))
+    --,StaticError(..)
+    )
 
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.IO as L
@@ -42,8 +43,9 @@ import Data.List ((\\))
 
 renamerTests :: TestTree
 renamerTests = unsafePerformIO $ do
-    f <- L.readFile "tests/rewrite-tests"
-    let renamerTestData = either error id $ parseRenamerTestFile f
+    let fn = "tests/rewrite-tests"
+    f <- L.readFile fn
+    let renamerTestData = either error id $ parseRenamerTestFile (T.pack fn) f
 
     pure $ TestGroup "renamerTests" $ map makeRenamerTest renamerTestData
 

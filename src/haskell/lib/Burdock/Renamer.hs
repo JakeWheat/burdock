@@ -116,7 +116,7 @@ renameModule ctx (S.Script stmts) =
     errToEither $ runRenamer ctx $ do
             (re, stmts') <- rewritePreludeStmts stmts
             -- get the module value info to create the make-module last statement
-            rs <- wrapIt $ applyProvides re
+            rs <- liftErrs $ applyProvides re
             let ls = makeModuleValue $ snd rs
             -- return the final module metadata along with the renamed source
             pure ((fst rs, S.Script (stmts' ++ [ls])))
@@ -134,8 +134,11 @@ renameScript ctx (S.Script stmts) =
 runRenamer :: [(Text, ModuleMetadata)] -> Renamer a -> (a, [StaticError])
 runRenamer ctx f = runWriter $ flip runReaderT (makeRenamerEnv ctx) f
 
-wrapIt :: ([StaticError], a) -> Renamer a
-wrapIt (es, a) = tell es >> pure a
+callWithEnv :: (RenamerEnv -> ([StaticError], b)) -> Renamer b
+callWithEnv f = liftErrs =<< f <$> ask
+
+liftErrs :: ([StaticError], a) -> Renamer a
+liftErrs (es, a) = tell es >> pure a
 
 errToEither :: (a, [StaticError]) -> Either [StaticError] a
 errToEither (a, []) = Right a
@@ -147,9 +150,19 @@ rewritePreludeStmts :: [S.Stmt] -> Renamer (RenamerEnv, [S.Stmt])
 
 -- catch prelude statements here
 
--- not a prelude statement? fall through to the regular statement handling
+rewritePreludeStmts (S.Import _sp (S.ImportSpecial "file" [nm]) al : ss) = do
+    ctx <- callWithEnv $ bImport nm al
+    local (const ctx) (rewritePreludeStmts ss)
 
-rewritePreludeStmts ss = rewriteStmts ss
+-- not a prelude statement? fall through to the regular statement handling
+-- after outputting the needed load-modules
+
+rewritePreludeStmts ss = do
+    lms <- callWithEnv queryLoadModules
+    second (map (uncurry mlm) lms ++) <$> rewriteStmts ss
+  where
+    mlm nm al = S.LetDecl n (S.NameBinding n al) (S.App n (S.Iden n "load-module") [S.Text n nm])
+    n = Nothing
 
 ---------------------------------------
 
@@ -161,7 +174,7 @@ rewriteStmts (S.StmtExpr sp e : ss) = do
     second (S.StmtExpr sp e':) <$> rewriteStmts ss
 
 rewriteStmts (st@(S.LetDecl _ (S.NameBinding sp nm) _) : ss) = do
-    ctx <- wrapIt =<< addLocalBinding False (sp,nm) <$> ask
+    ctx <- callWithEnv $ addLocalBinding False (sp,nm)
     second (st:) <$> local (const ctx) (rewriteStmts ss)
 rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
 
@@ -169,7 +182,7 @@ rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
 
 rewriteExpr :: S.Expr -> Renamer S.Expr
 rewriteExpr e | Just is <- getIdenList e = do
-    nis <- wrapIt =<< renameIdentifier is <$> ask
+    nis <- callWithEnv $ renameIdentifier is
     pure $ toIdenExpr nis
 rewriteExpr e = error $ "unsupported syntax: " <> show e
 
