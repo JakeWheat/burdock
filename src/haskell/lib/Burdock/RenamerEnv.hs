@@ -141,7 +141,8 @@ applyProvides re =
     let localBinds = flip mapMaybe (reBindings re) $ \case
             ([a],[b]) | a == b -> Just a
             _ -> Nothing
-    in ([], (ModuleMetadata localBinds, map (\a -> (a,a)) localBinds))
+    -- return the provided items in the order they were seen
+    in ([], (ModuleMetadata localBinds, reverse $ map (\a -> (a,a)) localBinds))
 
 ------------------------------------------------------------------------------
 

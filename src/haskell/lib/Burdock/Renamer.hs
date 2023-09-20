@@ -188,9 +188,14 @@ rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
 ---------------------------------------
 
 rewriteExpr :: S.Expr -> Renamer S.Expr
+
 rewriteExpr e | Just is <- getIdenList e = do
     nis <- callWithEnv $ renameIdentifier is
     pure $ toIdenExpr nis
+
+rewriteExpr (S.Block sp ss) =
+    (S.Block sp . snd) <$> rewriteStmts ss
+    
 rewriteExpr e = error $ "unsupported syntax: " <> show e
 
 ---------------------------------------

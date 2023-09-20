@@ -41,3 +41,49 @@ import file("imported") as i
 i.b
 Errors:
 unrecognised-identifier([list: "i", "b"])
+
+Test: block
+Script:
+block:
+  a = 3
+  a
+end
+b = 6
+block:
+  b
+end
+Result:
+block:
+  a = 3
+  a
+end
+b = 6
+block:
+  b
+end
+
+Test: block no escape
+Script:
+block:
+  a = 3
+end
+a
+Errors:
+unrecognised-identifier([list: "a"])
+
+Test: block no escape module version
+Module:
+a = 2
+block:
+  b = 3
+end
+c = 4
+a
+Result:
+a = 2
+block:
+  b = 3
+end
+c = 4
+a
+make-module({a:a,c:c})
