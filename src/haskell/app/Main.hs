@@ -42,6 +42,7 @@ import System.Exit (exitFailure)
 import qualified Data.Text.Lazy.IO as L
 
 import Burdock.TestLib (runHUnitTests)
+import Burdock.Tests (allTests)
 
 ---------------------------------------
 
@@ -55,7 +56,7 @@ main = do
             mySrc <- liftIO $ L.readFile fn
             void $ runScript (Just $ T.pack fn) mySrc
 
-    let suites = ("hunit tests", runHUnitTests) : map (\fn -> (fn, runScriptTest fn)) args
+    let suites = ("hunit tests", runHUnitTests allTests) : map (\fn -> (fn, runScriptTest fn)) args
 
     forM_ suites $ \(nm,tst) -> do
         putStrLn $ T.pack nm
