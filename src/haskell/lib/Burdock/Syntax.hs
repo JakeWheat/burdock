@@ -1,14 +1,21 @@
 
 {-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Syntax where
 
 import Data.Data (Data)
+import Data.Generics.Uniplate.Data (transformBi)
 
 import Burdock.Scientific
 
 import Data.Text (Text)
 
 type SourcePosition = Maybe (Text, Int, Int)
+
+resetSourcePositions :: Data a => a -> a
+resetSourcePositions = transformBi $ \case
+    (_ :: Maybe (Text,Int,Int)) -> Nothing
 
 data Script
     = Script [Stmt]

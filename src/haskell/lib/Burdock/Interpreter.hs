@@ -95,7 +95,7 @@ import qualified Burdock.Syntax as S
 
 import Burdock.DefaultRuntime
     (initRuntime
-    ,prelude
+    ,internals
     ,bootstrap
     )
 import Control.Monad
@@ -134,8 +134,8 @@ debugPrintUserScript = False
 debugPrintBootstrap :: Bool
 debugPrintBootstrap = False
 
-debugPrintPrelude :: Bool
-debugPrintPrelude = False
+debugPrintInternals :: Bool
+debugPrintInternals = False
 
 ------------------------------------------------------------------------------
 
@@ -160,8 +160,8 @@ createHandle = do
             <*> lkpf "link"
             <*> lkpf "nothing"
         
-        void $ runScript' False debugPrintPrelude (Just "prelude") prelude
-            -- todo: tests in the prelude?
+        void $ runScript' False debugPrintInternals (Just "internals") internals
+            -- todo: tests in the internals?
         getRuntimeState
 
 runScript :: Maybe T.Text -> L.Text -> Runtime Value

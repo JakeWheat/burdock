@@ -3,8 +3,9 @@
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Burdock.TestWrap
-    (doStuff) where
+module Burdock.TestLib
+    (runHUnitTests
+    ) where
 import Prelude hiding (error, putStrLn, show)
 import Data.Text.IO (putStrLn)
 import Burdock.Utils (show,error)
@@ -46,8 +47,8 @@ data TestRunClosure
     ,testFail :: Value
     }
 
-doStuff :: Runtime ()
-doStuff = do
+runHUnitTests :: Runtime ()
+runHUnitTests = do
     trc <- TestRunClosure
         <$> (maybe (error "log-and-print-result not found") id <$> lookupBinding "log-and-print-result")
         <*> (maybe (error "test-pass not found") id <$> lookupBinding "test-pass")

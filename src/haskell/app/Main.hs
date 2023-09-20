@@ -41,7 +41,7 @@ import Data.IORef
 import System.Exit (exitFailure)
 import qualified Data.Text.Lazy.IO as L
 
-import Burdock.TestWrap (doStuff)
+import Burdock.TestLib (runHUnitTests)
 
 ---------------------------------------
 
@@ -55,7 +55,7 @@ main = do
             mySrc <- liftIO $ L.readFile fn
             void $ runScript (Just $ T.pack fn) mySrc
 
-    let suites = ("doStuff", doStuff) : map (\fn -> (fn, runScriptTest fn)) args
+    let suites = ("hunit tests", runHUnitTests) : map (\fn -> (fn, runScriptTest fn)) args
 
     forM_ suites $ \(nm,tst) -> do
         putStrLn $ T.pack nm
@@ -70,7 +70,7 @@ main = do
             
         let doError t = do
                 -- runs if the script doesn't even complete
-                putStrLn $ "FAIL: " <> T.pack nm <> ": " <> t
+                putStrLn $ "FAIL: " <> T.pack nm <> ":\n" <> t
                 liftIO $ modifyIORef numTestsFailed (1+)
         case ee of
             Right {} -> pure ()

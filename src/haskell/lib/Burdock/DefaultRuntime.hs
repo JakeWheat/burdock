@@ -5,7 +5,7 @@
 {-# LANGUAGE BangPatterns #-}
 module Burdock.DefaultRuntime
     (initRuntime
-    ,prelude
+    ,internals
     ,bootstrap
     ) where
 
@@ -107,7 +107,7 @@ import System.Exit
 ------------------------------------------------------------------------------
 
 -- temp hack, before modules implemented, have bootstrap burdock
--- then prelude burdock, that are run in a handle when it's created
+-- then internals burdock, that are run in a handle when it's created
 -- before any user code
 
 bootstrap :: L.Text
@@ -176,8 +176,8 @@ end
 
 ---------------------------------------
 
-prelude :: L.Text
-prelude = [R.r|
+internals :: L.Text
+internals = [R.r|
 
 ##################
 # built in stuff

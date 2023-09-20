@@ -57,6 +57,7 @@ common shared-properties
 
                     , tasty
                     , tasty-hunit
+                    , uniplate
 
                     , bytestring
 
@@ -84,7 +85,7 @@ executable burdock
                       Burdock.Desugar
                       Burdock.Utils
                       Burdock.Tests
-                      Burdock.TestWrap
+                      Burdock.TestLib
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -97,4 +98,4 @@ Test-Suite Tests
     main-is:          RunTests.hs
 
     other-Modules:    Burdock.Tests
-                      Burdock.TestWrap
+                      Burdock.TestLib
