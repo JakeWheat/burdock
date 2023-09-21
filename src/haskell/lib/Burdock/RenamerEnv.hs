@@ -48,13 +48,13 @@ import Data.Maybe (mapMaybe)
 -- todo: this will move to the desugarer or a shared module, since
 -- there are later passes which can produce static errors too
 data StaticError
-    = UnrecognisedIdentifier [(SourcePosition,Text)]
+    = UnrecognisedIdentifier SourcePosition [Text]
     deriving (Eq,Show, Data)
 
 prettyStaticError :: StaticError -> Text
 prettyStaticError = \case
-    UnrecognisedIdentifier [] -> "internal error with unrecognised identifier"
-    UnrecognisedIdentifier is@((pos,_):_) -> doMsg pos $ icd (map snd is) <> " not found"
+    UnrecognisedIdentifier _ [] -> "internal error with unrecognised identifier"
+    UnrecognisedIdentifier pos is -> doMsg pos $ icd is <> " not found"
   where
     doMsg pos msg = case pos of
         Nothing -> msg
@@ -79,11 +79,21 @@ data ModuleMetadata
 -- this is the env that is used during renaming a single module
 data RenamerEnv
     = RenamerEnv
-    {reCtx :: [(Text, ModuleMetadata)]
+    { -- the list of modules available to be imported
+     reCtx :: [(Text, ModuleMetadata)]
      -- imported module id, canonical alias in this module
+     -- the id is the same as the one in reCtx
     ,reLoadModules :: [(Text,Text)]
     -- what the user writes, what it will be rewritten to
-    ,reBindings :: [([Text], [Text])]}
+    ,reBindings :: [([Text], BindingEntry)]}
+
+data BindingEntry
+    = BindingEntry
+    {beName :: [Text]
+    -- source position of definition if local
+    -- or the prelude statement that introduces it if not
+    ,beSourcePosition :: SourcePosition}
+
 makeRenamerEnv :: [(Text, ModuleMetadata)] -> RenamerEnv
 makeRenamerEnv ctx =
     RenamerEnv ctx [] []
@@ -103,13 +113,15 @@ provide = undefined
 provideFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
 provideFrom = undefined
 
-bImport :: Text -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-bImport nm alias re =
+bImport :: SourcePosition -> Text -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+bImport sp nm alias re =
     -- todo: make a better canonical alias
     let canonicalAlias = "_module-" <> nm
         ps = case lookup nm (reCtx re) of
             Nothing -> error $ "unrecognised module: " <> nm -- todo return staticerror
-            Just m -> flip map (mmBindings m) $ \n -> ([alias,n], [canonicalAlias,n])
+            Just m -> flip map (mmBindings m)
+                      $ \n -> ([alias,n]
+                              ,BindingEntry [canonicalAlias,n] sp)
     in ([], re
        {reLoadModules = (nm,canonicalAlias) : reLoadModules re
        ,reBindings = ps ++ reBindings re})
@@ -139,7 +151,7 @@ applyProvides re =
     -- todo: find a more robust way to track local bindings
     -- come back to this when doing provide items
     let localBinds = flip mapMaybe (reBindings re) $ \case
-            ([a],[b]) | a == b -> Just a
+            ([a],b) | [a] == beName b -> Just a
             _ -> Nothing
     -- return the provided items in the order they were seen
     in ([], (ModuleMetadata localBinds, reverse $ map (\a -> (a,a)) localBinds))
@@ -151,27 +163,42 @@ applyProvides re =
 -- adds a local binding, user should scope these, the top level
 -- ones will be used in applyProvides
 -- it will check shadow is used if it needs to be
-addLocalBinding :: Bool -> (SourcePosition,Text) -> RenamerEnv -> ([StaticError], RenamerEnv)
-addLocalBinding _shadow (_,i) re =
-    ([], re {reBindings = (([i],[i]): reBindings re)})
+addLocalBinding :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+addLocalBinding _shadow sp i re =
+    ([], re {reBindings = (([i],BindingEntry [i] sp): reBindings re)})
 
 -- lookup the identifier
 -- see if it exists
 -- see if it should be renamed, if so, what do
+{-
+
+TODO:
+maintaining source positions for later error messages and stack traces:
+if there's a field access suffix, these elements keep the source positions
+they had when passed in
+if it's a local identifier -> it isn't changed, the source position isn't changed
+if it's a reference to a imported identifier, then all the renamed components
+take the source position of the first element in what was passed in
+could try to preserve more of the source positions in this case
+
+-}
+
 
 renameIdentifier :: [(SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(SourcePosition,Text)])
-renameIdentifier x re =
+renameIdentifier x@((sp,_):_) re =
     case lookup (map snd x) (reBindings re) of
         Nothing ->
             -- field access - check the prefix
             case x of
-                [_] -> ([UnrecognisedIdentifier x], x)
+                [_] -> ([UnrecognisedIdentifier sp (map snd x)], x)
                 _ -> case renameIdentifier (init x) re of
                     ([], ys) -> ([], ys ++ [last x])
                     -- if the prefix isn't found, return the original error
                     -- later might want to do something different depending on the error?
-                    _ -> ([UnrecognisedIdentifier x], x)
-        Just r -> ([],map (Nothing,) r)
+                    _ -> ([UnrecognisedIdentifier sp (map snd x)], x)
+        Just r -> ([],map (sp,) $ beName r)
+
+renameIdentifier [] _ = error $ "internal error: empty identifier"
 
 -- same as renameIdentifier, but for type names
 renameType :: [(SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(SourcePosition,Text)])

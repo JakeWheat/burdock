@@ -23,6 +23,15 @@ pattern binding
 TODO: maybe every use of a variable in an expression is rewritten to
   explicitly derefence the variable
 
+TODO: this code could also disambiguate qualified names from record
+field access. Not sure if it's worth it with the current implementation,
+qualified names during interpretation are implemented as record field
+access
+
+TODO: this code instead of just doing load-module, could do explicit
+  lists of what it needs from each module, then the loaded value
+  would only have these and nothing else, to reduce unneeded pointers
+
 Something it doesn't currently do is rewrite bindings to be unique within a
 module - even when shadowing happens
 
@@ -157,8 +166,8 @@ rewritePreludeStmts :: [S.Stmt] -> Renamer (RenamerEnv, [S.Stmt])
 
 -- catch prelude statements here
 
-rewritePreludeStmts (S.Import _sp (S.ImportSpecial "file" [nm]) al : ss) = do
-    ctx <- callWithEnv $ bImport nm al
+rewritePreludeStmts (S.Import sp (S.ImportSpecial "file" [nm]) al : ss) = do
+    ctx <- callWithEnv $ bImport sp nm al
     local (const ctx) (rewritePreludeStmts ss)
 
 -- not a prelude statement? fall through to the regular statement handling
@@ -181,7 +190,7 @@ rewriteStmts (S.StmtExpr sp e : ss) = do
     second (S.StmtExpr sp e':) <$> rewriteStmts ss
 
 rewriteStmts (st@(S.LetDecl _ (S.NameBinding sp nm) _) : ss) = do
-    ctx <- callWithEnv $ addLocalBinding False (sp,nm)
+    ctx <- callWithEnv $ addLocalBinding False sp nm
     second (st:) <$> local (const ctx) (rewriteStmts ss)
 rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
 

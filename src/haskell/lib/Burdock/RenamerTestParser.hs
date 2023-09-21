@@ -153,7 +153,7 @@ parseRenamerTestFile sfn src = parseAnother $ prepSource src
         in case ast of
             S.Script [S.StmtExpr _ (S.App _ (S.Iden _ "unrecognised-identifier") [S.Construct _ ["list"] fs])]
               | Just fs' <- mapM getNm fs
-              -> UnrecognisedIdentifier (map (Nothing,) fs')
+              -> UnrecognisedIdentifier Nothing fs'
             _ -> error $ formatError n $ "couldn't parse error"
     getNm (S.Text _ nm) = Just nm
     getNm _ = Nothing
