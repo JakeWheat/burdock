@@ -121,3 +121,18 @@ import file("imported") as i
 i.b.x
 Errors:
 unrecognised-identifier([list: "i", "b", "x"])
+
+Test: trivial shadow
+Script:                                        
+a = 3
+shadow a = 4
+Result:
+a = 3
+shadow a = 4
+
+Test: needs shadow
+Script:                                        
+a = 3
+a = 4
+Errors:
+identifier-redefined("a")

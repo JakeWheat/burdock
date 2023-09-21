@@ -154,7 +154,9 @@ parseRenamerTestFile sfn src = parseAnother $ prepSource src
             S.Script [S.StmtExpr _ (S.App _ (S.Iden _ "unrecognised-identifier") [S.Construct _ ["list"] fs])]
               | Just fs' <- mapM getNm fs
               -> UnrecognisedIdentifier Nothing fs'
-            _ -> error $ formatError n $ "couldn't parse error"
+            S.Script [S.StmtExpr _ (S.App _ (S.Iden _ "identifier-redefined") [S.Text _ nm])]
+              -> IdentifierRedefined Nothing Nothing nm
+            _ -> error $ formatError n $ "couldn't parse error: " <> show ast
     getNm (S.Text _ nm) = Just nm
     getNm _ = Nothing
     isRecognisedField (_,l) =

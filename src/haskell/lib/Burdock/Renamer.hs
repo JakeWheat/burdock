@@ -189,9 +189,14 @@ rewriteStmts (S.StmtExpr sp e : ss) = do
     e' <- rewriteExpr e
     second (S.StmtExpr sp e':) <$> rewriteStmts ss
 
+rewriteStmts (st@(S.LetDecl _ (S.ShadowBinding sp nm) _) : ss) = do
+    ctx <- callWithEnv $ addLocalBinding True sp nm
+    second (st:) <$> local (const ctx) (rewriteStmts ss)
+
 rewriteStmts (st@(S.LetDecl _ (S.NameBinding sp nm) _) : ss) = do
     ctx <- callWithEnv $ addLocalBinding False sp nm
     second (st:) <$> local (const ctx) (rewriteStmts ss)
+
 rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
 
 ---------------------------------------

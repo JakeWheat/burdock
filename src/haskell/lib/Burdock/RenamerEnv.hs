@@ -49,12 +49,18 @@ import Data.Maybe (mapMaybe)
 -- there are later passes which can produce static errors too
 data StaticError
     = UnrecognisedIdentifier SourcePosition [Text]
+    -- current error def, original def
+    | IdentifierRedefined SourcePosition SourcePosition Text
     deriving (Eq,Show, Data)
 
 prettyStaticError :: StaticError -> Text
 prettyStaticError = \case
     UnrecognisedIdentifier _ [] -> "internal error with unrecognised identifier"
     UnrecognisedIdentifier pos is -> doMsg pos $ icd is <> " not found"
+    IdentifierRedefined csp osp i ->
+        T.unlines
+        [doMsg csp $ "identifier redefined: " <> i
+        ,doMsg osp "previous definition here"]
   where
     doMsg pos msg = case pos of
         Nothing -> msg
@@ -164,12 +170,12 @@ applyProvides re =
 -- ones will be used in applyProvides
 -- it will check shadow is used if it needs to be
 addLocalBinding :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-addLocalBinding _shadow sp i re =
-    ([], re {reBindings = (([i],BindingEntry [i] sp): reBindings re)})
+addLocalBinding shadow sp i re =
+    -- check if shadow is needed:
+    case lookup [i] (reBindings re) of
+        Just be | not shadow -> ([IdentifierRedefined sp (beSourcePosition be) i], re)
+        _ -> ([], re {reBindings = (([i],BindingEntry [i] sp): reBindings re)})
 
--- lookup the identifier
--- see if it exists
--- see if it should be renamed, if so, what do
 {-
 
 TODO:
