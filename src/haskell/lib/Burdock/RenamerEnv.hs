@@ -69,7 +69,7 @@ import Control.Monad.State.Class
 import Control.Monad.Writer
     (Writer
     ,runWriter
-    --,tell
+    ,tell
     )
 
 import Control.Monad.Except
@@ -206,6 +206,7 @@ include = undefined
 
 includeFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 includeFrom sp mal _pis re = runRenamerEnv re $ do
+    -- todo: turn these errors into staticerrors
     canonicalAlias <- maybe (throwError [error $ "alias not found: " <> mal]) pure
         $ lookup mal (reAliasedModules re)
     modId <- maybe (throwError
@@ -214,12 +215,22 @@ includeFrom sp mal _pis re = runRenamerEnv re $ do
     modMeta <- maybe (throwError
                   [error $ "internal error: module metadata not found: " <> modId]) pure
         $ lookup modId (reCtx re)
-    ps <- flip mapM (mmBindings modMeta) $ \i -> do
-        -- todo: check each one for already defined
-        -- add each one to the state one by one
-        -- don't bail if there's an issue, log, and skip to the next one
-        pure ([i], BindingEntry [canonicalAlias,i] sp)
-    state (\re1 -> ((), re1 {reBindings = ps ++ reBindings re1}))
+    flip mapM_ (mmBindings modMeta) $ \i -> do
+        case lookup [i] (reBindings re) of
+            Nothing -> addOne ([i], BindingEntry [canonicalAlias,i] sp)
+            -- the issue with this, is you could have a large overlap
+            -- from two include from .. : * end statements
+            -- and you want to combine all the errors for one * into
+            -- one error message for the user, not have like separate 50 errors
+            -- one for each name clash. I think this should only happen
+            -- with *, so it's one error per syntactic element the user
+            -- writes. need a new StaticError variant for this
+            Just p ->
+                tell [IdentifierRedefined sp (beSourcePosition p) i]
+        
+  where
+    addOne :: ([Text], BindingEntry) -> RenamerEnvM ()
+    addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))
 
 importFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
 importFrom = undefined

@@ -158,3 +158,43 @@ a.x
 Result:
 _module-imported = load-module("imported")
 _module-imported.a.x
+
+Test: includefrom * clash
+File: imported1
+a = 3        
+File: imported2
+a = 3        
+Script:                                        
+import file("imported1") as i1
+import file("imported2") as i2
+include from i1: * end
+include from i2: * end
+a.x
+Errors:
+identifier-redefined("a")
+
+Test: include shadow fail
+File: imported
+a = 3
+Script:
+import file("imported") as i
+include from i: * end
+a = 3
+a
+Errors:
+identifier-redefined("a")
+
+Test: include shadow ok
+File: imported
+a = 3
+Script:
+import file("imported") as i
+include from i: * end
+shadow a = 3
+a
+i.a
+Result:
+_module-imported = load-module("imported")
+shadow a = 3
+a
+_module-imported.a
