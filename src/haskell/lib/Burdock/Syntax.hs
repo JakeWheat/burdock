@@ -65,18 +65,18 @@ data Ref
     deriving (Eq,Show,Data) 
 
 data ProvideItem
-    = ProvideName SourcePosition Text
-    | ProvideAlias SourcePosition Text Text
+    = ProvideName SourcePosition [Text]
+    | ProvideAlias SourcePosition [Text] Text
     | ProvideAll SourcePosition
     | ProvideHiding SourcePosition [Text]
     
-    | ProvideType SourcePosition Text
-    | ProvideTypeAlias SourcePosition Text Text
+    | ProvideType SourcePosition [Text]
+    | ProvideTypeAlias SourcePosition [Text] Text
     | ProvideTypeAll SourcePosition
     | ProvideTypeHiding SourcePosition [Text]
     
-    | ProvideData SourcePosition Text
-    | ProvideDataHiding SourcePosition Text [Text]
+    | ProvideData SourcePosition [Text]
+    | ProvideDataHiding SourcePosition [Text] [Text]
     | ProvideDataAll SourcePosition
     
     | ProvideModule SourcePosition [Text]

@@ -937,7 +937,7 @@ provideItem = choice
             [ProvideDataAll <$> (sourcePos <* symbol_ "*")
             ,do
              sp <- sourcePos
-             a <- identifier
+             a <- xSep1 '.' identifier
              choice
                 [ProvideDataHiding sp a <$> hiding
                 ,pure $ ProvideData sp a]]
@@ -950,7 +950,7 @@ provideItem = choice
             ,pure $ ProvideModule sp a]
     aliasedOrName cAlias cName = do
         sp <- sourcePos
-        a <- identifier
+        a <- xSep1 '.' identifier
         bchoice [cAlias sp a <$> (keyword_ "as" *> identifier)
                 ,pure $ cName sp a]
     hidingOrAll cHiding cAll = do

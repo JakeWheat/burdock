@@ -139,7 +139,7 @@ renameModule ctx (S.Script stmts) =
   where
     makeModuleValue rs =
         let n = Nothing
-            r = flip map rs $ \(a,b) -> (b, S.Iden n a)
+            r = flip map rs $ \(as,b) -> (b, toIdenExpr $ map (n,) as)
         in S.StmtExpr n $ S.App n (S.Iden n "make-module") [S.RecordSel n r]
 
 

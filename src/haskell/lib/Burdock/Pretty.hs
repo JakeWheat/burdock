@@ -18,6 +18,7 @@ import Prettyprinter (pretty
                      ,hsep
                      ,layoutPretty
                      ,defaultLayoutOptions
+                     ,Pretty
                      )
 
 import Prettyprinter.Render.Text (renderLazy)
@@ -139,7 +140,7 @@ expr (For _ ex args mrty bdy) =
     f (b,e) = binding b <+> pretty "from" <+> expr e
 expr (TupleGet _ e n) = expr e <> pretty ".{" <> pretty (show n) <> pretty "}"
 expr (Construct _ e as) =
-    pretty "[" <> xSep "." (map pretty e) <> pretty ":"
+    pretty "[" <> dotIden e <> pretty ":"
     <+> nest 2 (commaSep $ map expr as) <> pretty "]"
 expr (AssertTypeCompat _ e ty) =
     pretty "assert-type-compat(" <> nest 2 (expr e <+> pretty "::" <+> typ ty) <> pretty ")"
@@ -175,9 +176,9 @@ bindExpr n e =
 binding :: Binding -> Doc a
 binding (NameBinding _ s) = pretty s
 binding (WildcardBinding _) = pretty "_"
-binding (VariantBinding _ nms []) = xSep "." $ map pretty nms
+binding (VariantBinding _ nms []) = dotIden nms
 binding (VariantBinding _ nms bs) =
-    xSep "." (map pretty nms) <> parens (commaSep $ map binding bs)
+    dotIden nms <> parens (commaSep $ map binding bs)
 binding (TypedBinding _ b t) = binding b <+> pretty "::" <+> typ t
 binding (ShadowBinding _ s) = pretty "shadow" <+> pretty s
 binding (AsBinding _ b s as) =
@@ -214,13 +215,13 @@ whereBlock ts = vsep
 
 
 typ :: Ann -> Doc a
-typ (TName _ nms) = xSep "." $ map pretty nms
+typ (TName _ nms) = dotIden nms
 typ (TTuple _ ts) = pretty "{" <> nest 2 (xSep ";" $ map typ ts) <> pretty "}"
 typ (TRecord _ fs) = pretty "{" <> nest 2 (xSep "," $ map f fs) <> pretty "}"
   where
     f(n,t) = pretty n <+> pretty "::" <+> typ t
 typ (TParam _ t as) =
-    (xSep "." $ map pretty t)
+    dotIden t
     <> pretty "<" <> nest 2 (xSep "," $ map typ as) <> pretty ">"
 typ (TArrow _ ts t) = xSep "," (map typ ts) <+> pretty "->" <+> typ t
 typ (TNamedArrow _ ts t) = pretty "(" <> xSep "," (map f ts) <> pretty ")" <+> pretty "->" <+> typ t
@@ -337,26 +338,26 @@ funHeader (FunHeader ts as rt) =
     <> maybe mempty (\t -> pretty " ->" <+> typ t) rt
 
 provideItem :: ProvideItem -> Doc a
-provideItem (ProvideName _ n) = pretty n
-provideItem (ProvideAlias _ n a) = pretty n <+> pretty "as" <+> pretty a
+provideItem (ProvideName _ n) = dotIden n
+provideItem (ProvideAlias _ n a) = dotIden n <+> pretty "as" <+> pretty a
 provideItem (ProvideAll _) = pretty "*"
 provideItem (ProvideHiding _ ns) =
     pretty "*" <+> pretty "hiding" <> (parens $ commaSep $ map pretty ns)
 
-provideItem (ProvideType _ n) = pretty "type" <+> pretty n
-provideItem (ProvideTypeAlias _ n a) = pretty "type" <+> pretty n <+> pretty "as" <+> pretty a
+provideItem (ProvideType _ n) = pretty "type" <+> dotIden n
+provideItem (ProvideTypeAlias _ n a) = pretty "type" <+> dotIden n <+> pretty "as" <+> pretty a
 provideItem (ProvideTypeAll _) = pretty "type" <+> pretty "*"
 provideItem (ProvideTypeHiding _ ns) =
     pretty "type" <+> pretty "*" <+> pretty "hiding" <> (parens $ commaSep $ map pretty ns)
 
-provideItem (ProvideData _ n) = pretty "data" <+> pretty n
+provideItem (ProvideData _ n) = pretty "data" <+> dotIden n
 provideItem (ProvideDataHiding _ n ns) =
-    pretty "data" <+> pretty n <+> pretty "hiding" <> (parens $ commaSep $ map pretty ns)
+    pretty "data" <+> dotIden n <+> pretty "hiding" <> (parens $ commaSep $ map pretty ns)
 provideItem (ProvideDataAll _) = pretty "data" <+> pretty "*"
 
-provideItem (ProvideModule _ ns) = pretty "module" <+> xSep "." (map pretty ns)
+provideItem (ProvideModule _ ns) = pretty "module" <+> dotIden ns
 provideItem (ProvideModuleAlias _ ns a) =
-    pretty "module" <+> xSep "." (map pretty ns) <+> pretty "as" <+> pretty a
+    pretty "module" <+> dotIden ns <+> pretty "as" <+> pretty a
 
 importSource :: ImportSource -> Doc a
 importSource (ImportSpecial nm as) = pretty nm <> parens (commaSep $ map (dquotes . pretty) as)
@@ -376,3 +377,7 @@ commaSep = sep . punctuate comma
 
 xSep :: String -> [Doc a] -> Doc a
 xSep s = sep . punctuate (pretty s)
+
+dotIden :: Pretty a => [a] -> Doc ann
+dotIden ts = sep $ punctuate (pretty ".") $ map pretty ts
+

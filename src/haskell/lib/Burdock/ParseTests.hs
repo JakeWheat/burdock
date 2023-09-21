@@ -658,9 +658,9 @@ end|]
      ,Contract np "a" $ TArrow np [TName np ["String"], TName np ["String"]] $ TName np ["String"])
 
     ,("provide: a end"
-     ,Provide np [ProvideName np "a"])
+     ,Provide np [ProvideName np ["a"]])
     ,("provide: a as b end"
-     ,Provide np [ProvideAlias np "a" "b"])
+     ,Provide np [ProvideAlias np ["a"] "b"])
     ,("provide: * end"
      ,Provide np [ProvideAll np])
     ,("provide: * hiding (a) end"
@@ -670,24 +670,28 @@ end|]
     ,("provide: * hiding () end"
      ,Provide np [ProvideHiding np []])
     ,("provide: a,b end"
-     ,Provide np [ProvideName np "a", ProvideName np "b"])
-
+     ,Provide np [ProvideName np ["a"], ProvideName np ["b"]])
+    ,("provide: a.b end"
+     ,Provide np [ProvideName np ["a", "b"]])
+    ,("provide: a.c as b end"
+     ,Provide np [ProvideAlias np ["a","c"] "b"])
+    
     ,("provide: type A end"
-     ,Provide np [ProvideType np "A"])
+     ,Provide np [ProvideType np ["A"]])
     ,("provide: type A as B end"
-     ,Provide np [ProvideTypeAlias np "A" "B"])
+     ,Provide np [ProvideTypeAlias np ["A"] "B"])
     ,("provide: type * end"
      ,Provide np [ProvideTypeAll np])
     ,("provide: type * hiding (B) end"
      ,Provide np [ProvideTypeHiding np ["B"]])
     
     ,("provide: data A end"
-     ,Provide np [ProvideData np "A"])
+     ,Provide np [ProvideData np ["A"]])
     -- data doesn't do rename
     -- and the hiding version of data has to be named
     -- you can't do data * hiding ()
     ,("provide: data a hiding (is-a) end"
-     ,Provide np [ProvideDataHiding np "a" ["is-a"]])
+     ,Provide np [ProvideDataHiding np ["a"] ["is-a"]])
     ,("provide: data * end"
      ,Provide np [ProvideDataAll np])
 
@@ -719,16 +723,16 @@ end|]
      ,IncludeFrom np "X" [ProvideAll np])
 
     ,("include from X: a end"
-     ,IncludeFrom np "X" [ProvideName np "a"])
+     ,IncludeFrom np "X" [ProvideName np ["a"]])
 
     ,("include from X: a,b end"
-     ,IncludeFrom np "X" [ProvideName np "a", ProvideName np "b"])
+     ,IncludeFrom np "X" [ProvideName np ["a"], ProvideName np ["b"]])
 
     ,("include from X: a as b end"
-     ,IncludeFrom np "X" [ProvideAlias np "a" "b"])
+     ,IncludeFrom np "X" [ProvideAlias np ["a"] "b"])
 
     ,("import from string-dict: a as b end"
-     ,ImportFrom np (ImportName "string-dict") [ProvideAlias np "a" "b"])
+     ,ImportFrom np (ImportName "string-dict") [ProvideAlias np ["a"] "b"])
 
     -- todo: add optional alias
     ,("use package \"dir/my-package\""

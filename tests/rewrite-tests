@@ -198,3 +198,4 @@ _module-imported = load-module("imported")
 shadow a = 3
 a
 _module-imported.a
+

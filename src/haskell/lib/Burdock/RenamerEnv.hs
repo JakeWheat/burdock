@@ -132,6 +132,8 @@ prettyStaticError = \case
         Just (fn,l,c) -> fn <> ":" <> show l <> ":" <> show c <> ": " <> msg
     icd = T.intercalate "."
 
+-- todo: sort by their primary source position
+-- if there's no source position, should they come last?
 prettyStaticErrors :: [StaticError] -> Text
 prettyStaticErrors = T.unlines . map prettyStaticError
 
@@ -227,7 +229,6 @@ includeFrom sp mal _pis re = runRenamerEnv re $ do
             -- writes. need a new StaticError variant for this
             Just p ->
                 tell [IdentifierRedefined sp (beSourcePosition p) i]
-        
   where
     addOne :: ([Text], BindingEntry) -> RenamerEnvM ()
     addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))
@@ -245,16 +246,17 @@ queryLoadModules re = ([], reLoadModules re)
 -- this applies the provides and returns the final module metadata
 -- for this module, plus the record for the desugared module value
 -- it's module name, alias, so
--- [(a,b),(c,d)] should become {b:a, d:c}
-applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, [(Text,Text)]))
+-- [([a],b),([c],d)] should become {b:a, d:c}
+-- it will check for name clashes and unrecognised identifiers
+applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, [([Text],Text)]))
 applyProvides re =
-    -- todo: find a more robust way to track local bindings
+    -- todo: find a more robust way to track local bindings?
     -- come back to this when doing provide items
     let localBinds = flip mapMaybe (reBindings re) $ \case
             ([a],b) | [a] == beName b -> Just a
             _ -> Nothing
     -- return the provided items in the order they were seen
-    in ([], (ModuleMetadata localBinds, reverse $ map (\a -> (a,a)) localBinds))
+    in ([], (ModuleMetadata localBinds, reverse $ map (\a -> ([a],a)) localBinds))
 
 ------------------------------------------------------------------------------
 
@@ -282,7 +284,6 @@ take the source position of the first element in what was passed in
 could try to preserve more of the source positions in this case
 
 -}
-
 
 renameIdentifier :: [(SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(SourcePosition,Text)])
 renameIdentifier x@((sp,_):_) re =
