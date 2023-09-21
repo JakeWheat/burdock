@@ -48,6 +48,8 @@ import qualified Data.Text as T
 import Data.Data (Data)
 import Burdock.Syntax (SourcePosition)
 
+import Data.List((\\))
+
 import Data.Maybe
     (mapMaybe
     )
@@ -211,7 +213,7 @@ include :: RenamerEnv -> ([StaticError], RenamerEnv)
 include = undefined
 
 includeFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
-includeFrom sp mal _pis re = runRenamerEnv re $ do
+includeFrom sp mal pis re = runRenamerEnv re $ do
     -- todo: turn these errors into staticerrors
     canonicalAlias <- maybe (throwError [error $ "alias not found: " <> mal]) pure
         $ lookup mal (reAliasedModules re)
@@ -221,18 +223,36 @@ includeFrom sp mal _pis re = runRenamerEnv re $ do
     modMeta <- maybe (throwError
                   [error $ "internal error: module metadata not found: " <> modId]) pure
         $ lookup modId (reCtx re)
-    flip mapM_ (mmBindings modMeta) $ \i -> do
-        case lookup [i] (reBindings re) of
-            Nothing -> addOne ([i], BindingEntry [canonicalAlias,i] sp)
-            -- the issue with this, is you could have a large overlap
-            -- from two include from .. : * end statements
-            -- and you want to combine all the errors for one * into
-            -- one error message for the user, not have like separate 50 errors
-            -- one for each name clash. I think this should only happen
-            -- with *, so it's one error per syntactic element the user
-            -- writes. need a new StaticError variant for this
-            Just p ->
-                tell [IdentifierRedefined sp (beSourcePosition p) i]
+    flip mapM_ pis $ \case
+        ProvideAll sp' ->
+            flip mapM_ (mmBindings modMeta) $ \i ->
+            case lookup [i] (reBindings re) of
+                Nothing -> addOne ([i], BindingEntry [canonicalAlias,i] sp)
+                -- the issue with this, is you could have a large overlap
+                -- from two include from .. : * end statements
+                -- and you want to combine all the errors for one * into
+                -- one error message for the user, not have like separate 50 errors
+                -- one for each name clash. I think this should only happen
+                -- with *, so it's one error per syntactic element the user
+                -- writes. need a new StaticError variant for this
+                Just p ->
+                     tell [IdentifierRedefined sp' (beSourcePosition p) i]
+        ProvideHiding sp' hs ->
+            flip mapM_ (mmBindings modMeta \\ hs) $ \i ->
+            case lookup [i] (reBindings re) of
+                Nothing -> addOne ([i], BindingEntry [canonicalAlias,i] sp)
+                Just p ->
+                     tell [IdentifierRedefined sp' (beSourcePosition p) i]
+        ProvideName sp' [i] ->
+            if i `elem` (mmBindings modMeta)
+            then addOne ([i], BindingEntry [canonicalAlias,i] sp')
+            else tell [UnrecognisedIdentifier sp' [i]]
+        ProvideAlias sp' [i] nm ->
+            if i `elem` (mmBindings modMeta)
+            then addOne ([nm], BindingEntry [canonicalAlias,i] sp')
+            else tell [UnrecognisedIdentifier sp' [i]]
+            
+        x -> error $ "unsupported include from provide item: " <> show x
   where
     addOne :: ([Text], BindingEntry) -> RenamerEnvM ()
     addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))

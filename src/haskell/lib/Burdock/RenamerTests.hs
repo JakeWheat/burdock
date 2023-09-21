@@ -81,7 +81,7 @@ makeRenamerTest rt = TestCase (rName rt) $ do
                 L.putStrLn "!="
                 L.putStrLn $ prettyScript eAst
             Tst.assertEqual "" (resetSourcePositions rast) (resetSourcePositions eAst)
-        x -> error $ show x
+        (a,b) -> error $ "results not equal:" <> show a <> "\n!=\n" <> show b
   where
     symDiff (a,b) = (a \\ b, b \\ a)
     strShowLines es = T.unpack $ T.unlines $ map show es

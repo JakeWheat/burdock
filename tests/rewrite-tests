@@ -393,3 +393,78 @@ mymod.b
 Result:
 _module-mymod = load-module("mymod")
 _module-mymod.b
+
+
+Test: includefrom explicit
+File: imported
+a = 3
+b = 4
+d = 5
+Script:
+import file("imported") as i
+include from i: a end
+a
+Result:
+_module-imported = load-module("imported")
+_module-imported.a
+
+Test: includefrom explicit fail
+File: imported
+a = 3
+b = 4
+d = 5
+Script:
+import file("imported") as i
+include from i: a end
+b
+Errors:
+unrecognised-identifier([list: "b"])
+
+Test: includefrom non existent
+File: imported
+a = 3
+b = 4
+d = 5
+Script:
+import file("imported") as i
+include from i: e end
+Errors:
+unrecognised-identifier([list: "e"])
+
+Test: includefrom rename
+File: imported
+a = 3
+b = 4
+d = 5
+Script:
+import file("imported") as i
+include from i: a as b end
+b
+Result:
+_module-imported = load-module("imported")
+_module-imported.a
+
+Test: includefrom hiding
+File: imported
+a = 3
+b = 4
+d = 5
+Script:
+import file("imported") as i
+include from i: * hiding (a) end
+b
+Result:
+_module-imported = load-module("imported")
+_module-imported.b
+
+Test: includefrom hiding fail
+File: imported
+a = 3
+b = 4
+d = 5
+Script:
+import file("imported") as i
+include from i: * hiding (a) end
+a
+Errors:
+unrecognised-identifier([list: "a"])
