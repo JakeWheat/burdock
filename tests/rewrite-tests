@@ -87,3 +87,37 @@ end
 c = 4
 a
 make-module({a:a,c:c})
+
+Test: trivial field access
+Script:
+a = 1
+a.x
+Result:
+a = 1
+a.x
+
+Test: fail field access
+Script:
+a = 1
+b.x
+Errors:
+unrecognised-identifier([list: "b", "x"])
+
+Test: import field access
+File: imported
+a = 3        
+Script:                                        
+import file("imported") as i
+i.a.x
+Result:
+_module-imported = load-module("imported")
+_module-imported.a.x
+
+Test: import field access fail
+File: imported
+a = 3        
+Script:                                        
+import file("imported") as i
+i.b.x
+Errors:
+unrecognised-identifier([list: "i", "b", "x"])

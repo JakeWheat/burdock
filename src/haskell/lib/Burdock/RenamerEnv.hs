@@ -162,7 +162,15 @@ addLocalBinding _shadow (_,i) re =
 renameIdentifier :: [(SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(SourcePosition,Text)])
 renameIdentifier x re =
     case lookup (map snd x) (reBindings re) of
-        Nothing -> ([UnrecognisedIdentifier x], x)
+        Nothing ->
+            -- field access - check the prefix
+            case x of
+                [_] -> ([UnrecognisedIdentifier x], x)
+                _ -> case renameIdentifier (init x) re of
+                    ([], ys) -> ([], ys ++ [last x])
+                    -- if the prefix isn't found, return the original error
+                    -- later might want to do something different depending on the error?
+                    _ -> ([UnrecognisedIdentifier x], x)
         Just r -> ([],map (Nothing,) r)
 
 -- same as renameIdentifier, but for type names
