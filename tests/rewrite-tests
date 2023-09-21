@@ -199,3 +199,197 @@ shadow a = 3
 a
 _module-imported.a
 
+Test: provide all direct
+Module:
+provide:
+  *
+end
+a = 3
+b = 4
+Result:
+a = 3
+b = 4
+make-module({a:a, b:b})
+
+Test: provide explicit
+Module:
+provide:
+  a
+end
+a = 3
+b = 4
+Result:
+a = 3
+b = 4
+make-module({a:a})
+
+Test: provide rename
+Module:
+provide:
+  a as c
+end
+a = 3
+b = 4
+Result:
+a = 3
+b = 4
+make-module({c:a})
+
+Test: provide hiding
+Module:
+provide:
+  * hiding (a)
+end
+a = 3
+b = 4
+Result:
+a = 3
+b = 4
+make-module({b:b})
+
+Test: provide hiding order
+Module:
+provide:
+  * hiding (a)
+end
+a = 3
+b = 4
+c = 5
+Result:
+a = 3
+b = 4
+c = 5
+make-module({b:b,c:c})
+
+Test: provide order
+Module:
+provide:
+  a,
+  b
+end
+provide:
+  c,
+  d
+end
+a = 3
+b = 4
+c = 5
+d = 6
+Result:
+a = 3
+b = 4
+c = 5
+d = 6
+make-module({a:a, b:b,c:c, d:d})
+
+Test: provide all direct
+File: mymod
+provide:
+  *
+end
+a = 3
+b = 4
+Script:
+import file("mymod") as mymod
+mymod.a
+mymod.b
+Result:
+_module-mymod = load-module("mymod")
+_module-mymod.a
+_module-mymod.b
+
+Test: provide explicit
+File: mymod
+provide:
+  a
+end
+a = 3
+b = 4
+Script:
+import file("mymod") as mymod
+mymod.a
+Result:
+_module-mymod = load-module("mymod")
+_module-mymod.a
+
+Test: provide explicit fail
+File: mymod
+provide:
+  a
+end
+a = 3
+b = 4
+Script:
+import file("mymod") as mymod
+mymod.a
+mymod.b
+Errors:
+unrecognised-identifier([list: "mymod", "b"])
+
+Test: provide rename fail 1
+File: mymod
+provide:
+  a as c
+end
+a = 3
+b = 4
+Script:
+import file("mymod") as mymod
+mymod.a
+Errors:
+unrecognised-identifier([list: "mymod", "a"])
+
+
+Test: provide rename fail 2
+File: mymod
+provide:
+  a as c
+end
+a = 3
+b = 4
+Script:
+import file("mymod") as mymod
+mymod.b
+Errors:
+unrecognised-identifier([list: "mymod","b"])
+
+Test: provide rename
+File: mymod
+provide:
+  a as c
+end
+a = 3
+b = 4
+Script:
+import file("mymod") as mymod
+mymod.c
+Result:
+_module-mymod = load-module("mymod")
+_module-mymod.c
+
+Test: provide hiding fail
+File: mymod
+provide:
+  * hiding (a)
+end
+a = 3
+b = 4
+Script:
+import file("mymod") as mymod
+mymod.a
+Errors:
+unrecognised-identifier([list: "mymod", "a"])
+
+Test: provide hiding
+File: mymod
+provide:
+  * hiding (a)
+end
+a = 3
+b = 4
+Script:
+import file("mymod") as mymod
+mymod.b
+Result:
+_module-mymod = load-module("mymod")
+_module-mymod.b

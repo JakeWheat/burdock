@@ -166,6 +166,10 @@ rewritePreludeStmts :: [S.Stmt] -> Renamer (RenamerEnv, [S.Stmt])
 
 -- catch prelude statements here
 
+rewritePreludeStmts (S.Provide sp pis : ss) = do
+    ctx <- callWithEnv $ provide sp pis
+    local (const ctx) (rewritePreludeStmts ss)
+
 rewritePreludeStmts (S.Import sp (S.ImportSpecial "file" [nm]) al : ss) = do
     ctx <- callWithEnv $ bImport sp nm al
     local (const ctx) (rewritePreludeStmts ss)

@@ -160,8 +160,12 @@ data RenamerEnv
     -- user alias, canonical name
     ,reAliasedModules :: [(Text,Text)]
     -- what the user writes, what it will be rewritten to
-    ,reBindings :: [([Text], BindingEntry)]}
+    ,reBindings :: [([Text], BindingEntry)]
+    -- all the provides
+    ,reProvideItems :: [ProvideItem]
+    }
     deriving Show
+
 data BindingEntry
     = BindingEntry
     {beName :: [Text]
@@ -171,9 +175,7 @@ data BindingEntry
     deriving Show
 
 makeRenamerEnv :: [(Text, ModuleMetadata)] -> RenamerEnv
-makeRenamerEnv ctx =
-    RenamerEnv ctx [] [] []
-
+makeRenamerEnv ctx = RenamerEnv ctx [] [] [] []
 
 ------------------------------------------------------------------------------
 
@@ -183,8 +185,10 @@ makeRenamerEnv ctx =
 -- referenced. Then the calling code will find these modules and get their
 -- metadata, before doing the renaming for this module
 
-provide :: RenamerEnv -> ([StaticError], RenamerEnv)
-provide = undefined
+-- todo: check that there are no inconsistencies in the provide items so far
+-- defer this to apply provides if it's easier to check everything onne time
+provide :: SourcePosition -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
+provide _sp pis re = ([], re {reProvideItems = reProvideItems re ++ pis})
 
 provideFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
 provideFrom = undefined
@@ -250,13 +254,27 @@ queryLoadModules re = ([], reLoadModules re)
 -- it will check for name clashes and unrecognised identifiers
 applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, [([Text],Text)]))
 applyProvides re =
-    -- todo: find a more robust way to track local bindings?
-    -- come back to this when doing provide items
-    let localBinds = flip mapMaybe (reBindings re) $ \case
+    let provideItems = if null (reProvideItems re)
+                       then [ProvideAll Nothing]
+                       else reProvideItems re
+        -- todo: find a more robust way to track local bindings?
+        -- come back to this when doing provide items
+        -- care is taken to keep the expansions of * and the
+        -- desugared provide record in the same order as they
+        -- appear in the original source, because this is less
+        -- confusing for tests and debugging
+        localBinds = reverse $ flip mapMaybe (reBindings re) $ \case
             ([a],b) | [a] == beName b -> Just a
             _ -> Nothing
+        ps = flip concatMap provideItems $ \case
+            ProvideAll _ -> map (\a -> ([a],a)) localBinds
+            ProvideName _ as | not (null as) -> [(as, last as)]
+            ProvideAlias _ as n -> [(as, n)]
+            ProvideHiding _ nms ->
+                map (\a -> ([a],a)) $ filter (`notElem` nms) localBinds
+            x -> error $ "unsupported provide item " <> show x
     -- return the provided items in the order they were seen
-    in ([], (ModuleMetadata localBinds, reverse $ map (\a -> ([a],a)) localBinds))
+    in ([], (ModuleMetadata $ map snd ps, ps))
 
 ------------------------------------------------------------------------------
 
