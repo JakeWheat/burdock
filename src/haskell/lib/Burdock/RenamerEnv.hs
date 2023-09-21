@@ -37,13 +37,78 @@ module Burdock.RenamerEnv
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
 
+-- could try to create a custom data type that's the same as provide
+-- items to isolate the syntax from this module, but it seems like
+-- overkill unless there's some specific reason to do it completely correctly
+import Burdock.Syntax (ProvideItem(..))
+
 import Data.Text (Text)
 import qualified Data.Text as T
 
 import Data.Data (Data)
 import Burdock.Syntax (SourcePosition)
 
-import Data.Maybe (mapMaybe)
+import Data.Maybe
+    (mapMaybe
+    )
+
+import Data.Tuple (swap)
+
+import Control.Monad.State
+    (StateT
+    ,runStateT
+    )
+
+import Control.Monad.State.Class
+    (--get
+    --,put
+    --,
+    state
+    )
+
+import Control.Monad.Writer
+    (Writer
+    ,runWriter
+    --,tell
+    )
+
+import Control.Monad.Except
+    (ExceptT
+    ,runExceptT
+    ,throwError
+    )
+
+------------------------------------------------------------------------------
+
+{-
+
+The way some of the more complex functions here work:
+they may produce errors, then continue, and produce a result,
+and a modified RenamerEnv - this is to allow the system to
+produce as much errors as possible on a single run
+
+Sometimes, a function wants to bail early on an error though.
+
+So the design is: have a Writer for the errors,
+  have a state to track the renamerenv as it gets updated
+  and also have exceptt to report an error and bail
+  immediately, preserving the current state and other errors so far
+-}
+
+type RenamerEnvM = ExceptT [StaticError] (StateT RenamerEnv (Writer [StaticError]))
+
+runRenamerEnv :: RenamerEnv -> RenamerEnvM () -> ([StaticError], RenamerEnv)
+runRenamerEnv re f =
+    case runRenamerEnv' re f of
+        ((Left es, re1), es') -> (es ++ es', re1)
+        ((Right (), re1), es') -> (es', re1)
+  where
+    runRenamerEnv' :: RenamerEnv
+                   -> RenamerEnvM a
+                   -> ((Either [StaticError] a, RenamerEnv), [StaticError])
+    runRenamerEnv' r' f' = runWriter $ flip runStateT r' $ runExceptT f'
+
+------------------------------------------------------------------------------
 
 -- todo: this will move to the desugarer or a shared module, since
 -- there are later passes which can produce static errors too
@@ -90,19 +155,22 @@ data RenamerEnv
      -- imported module id, canonical alias in this module
      -- the id is the same as the one in reCtx
     ,reLoadModules :: [(Text,Text)]
+    -- user alias, canonical name
+    ,reAliasedModules :: [(Text,Text)]
     -- what the user writes, what it will be rewritten to
     ,reBindings :: [([Text], BindingEntry)]}
-
+    deriving Show
 data BindingEntry
     = BindingEntry
     {beName :: [Text]
     -- source position of definition if local
     -- or the prelude statement that introduces it if not
     ,beSourcePosition :: SourcePosition}
+    deriving Show
 
 makeRenamerEnv :: [(Text, ModuleMetadata)] -> RenamerEnv
 makeRenamerEnv ctx =
-    RenamerEnv ctx [] []
+    RenamerEnv ctx [] [] []
 
 
 ------------------------------------------------------------------------------
@@ -130,13 +198,28 @@ bImport sp nm alias re =
                               ,BindingEntry [canonicalAlias,n] sp)
     in ([], re
        {reLoadModules = (nm,canonicalAlias) : reLoadModules re
+       ,reAliasedModules = (alias, canonicalAlias) : reAliasedModules re
        ,reBindings = ps ++ reBindings re})
 
 include :: RenamerEnv -> ([StaticError], RenamerEnv)
 include = undefined
 
-includeFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
-includeFrom = undefined
+includeFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
+includeFrom sp mal _pis re = runRenamerEnv re $ do
+    canonicalAlias <- maybe (throwError [error $ "alias not found: " <> mal]) pure
+        $ lookup mal (reAliasedModules re)
+    modId <- maybe (throwError
+                  [error $ "internal error: canonical alias not found in reLoadModules: " <> canonicalAlias]) pure
+        $ lookup canonicalAlias (map swap $ reLoadModules re)
+    modMeta <- maybe (throwError
+                  [error $ "internal error: module metadata not found: " <> modId]) pure
+        $ lookup modId (reCtx re)
+    ps <- flip mapM (mmBindings modMeta) $ \i -> do
+        -- todo: check each one for already defined
+        -- add each one to the state one by one
+        -- don't bail if there's an issue, log, and skip to the next one
+        pure ([i], BindingEntry [canonicalAlias,i] sp)
+    state (\re1 -> ((), re1 {reBindings = ps ++ reBindings re1}))
 
 importFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
 importFrom = undefined

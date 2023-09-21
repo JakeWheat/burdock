@@ -170,6 +170,10 @@ rewritePreludeStmts (S.Import sp (S.ImportSpecial "file" [nm]) al : ss) = do
     ctx <- callWithEnv $ bImport sp nm al
     local (const ctx) (rewritePreludeStmts ss)
 
+rewritePreludeStmts (S.IncludeFrom sp al pis : ss) = do
+    ctx <- callWithEnv $ includeFrom sp al pis
+    local (const ctx) (rewritePreludeStmts ss)
+
 -- not a prelude statement? fall through to the regular statement handling
 -- after outputting the needed load-modules
 

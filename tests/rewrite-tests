@@ -136,3 +136,25 @@ a = 3
 a = 4
 Errors:
 identifier-redefined("a")
+
+Test: includefrom
+File: imported
+a = 3
+Script:
+import file("imported") as i
+include from i: * end
+a
+Result:
+_module-imported = load-module("imported")
+_module-imported.a
+
+Test: includefrom with field access
+File: imported
+a = 3        
+Script:                                        
+import file("imported") as i
+include from i: * end
+a.x
+Result:
+_module-imported = load-module("imported")
+_module-imported.a.x
