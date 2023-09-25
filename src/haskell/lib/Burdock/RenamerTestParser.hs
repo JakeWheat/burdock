@@ -156,6 +156,9 @@ parseRenamerTestFile sfn src = parseAnother $ prepSource src
               -> UnrecognisedIdentifier Nothing fs'
             S.Script [S.StmtExpr _ (S.App _ (S.Iden _ "identifier-redefined") [S.Text _ nm])]
               -> IdentifierRedefined Nothing Nothing nm
+            S.Script [S.StmtExpr _ (S.App _ (S.Iden _ "assign-to-non-var") [S.Construct _ ["list"] fs])]
+              | Just fs' <- mapM getNm fs
+              -> AssignToNonVar Nothing Nothing fs'
             _ -> error $ formatError n $ "couldn't parse error: " <> show ast
     getNm (S.Text _ nm) = Just nm
     getNm _ = Nothing

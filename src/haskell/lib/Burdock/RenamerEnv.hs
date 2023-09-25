@@ -27,6 +27,9 @@ module Burdock.RenamerEnv
     ,applyProvides
 
     ,addLocalBinding
+    ,addLocalType
+    ,addLocalVar
+
     ,renameIdentifier
     ,renameType
     ,renamePattern
@@ -110,6 +113,8 @@ data StaticError
     = UnrecognisedIdentifier SourcePosition [Text]
     -- current error def, original def
     | IdentifierRedefined SourcePosition SourcePosition Text
+    -- current error pos, target def pos
+    | AssignToNonVar SourcePosition SourcePosition [Text]
     deriving (Eq,Show, Data)
 
 prettyStaticError :: StaticError -> Text
@@ -120,6 +125,10 @@ prettyStaticError = \case
         T.unlines
         [doMsg csp $ "identifier redefined: " <> i
         ,doMsg osp "previous definition here"]
+    AssignToNonVar csp osp is ->
+        T.unlines
+        [doMsg csp $ "assign to non var: " <> icd is
+        ,doMsg osp "target defined here"]
   where
     doMsg pos msg = case pos of
         Nothing -> msg
@@ -137,9 +146,9 @@ prettyStaticErrors = T.unlines . map prettyStaticError
 
 data BindingMeta
     = BEIdentifier
-    --  | BEVariant Int
-    --  | BEVariable
-    --  | BEType Int
+    | BEVariant Int
+    | BEVariable
+    | BEType Int
     --  | BEModuleAlias
     -- todo: add module provide items
     --   add error for flagging ambiguous identifier on use
@@ -317,8 +326,30 @@ addLocalBinding shadow sp i re =
     case lookup [i] (reBindings re) of
         Just (_,sp',_) | not shadow -> ([IdentifierRedefined sp sp' i], re)
         _ -> ([], re {reBindings = ([i],([i], sp, BEIdentifier)) : reBindings re
-                     ,reLocalBindings = (i,(sp,BEIdentifier)) : reLocalBindings re
-                     })
+                     ,reLocalBindings = (i,(sp,BEIdentifier)) : reLocalBindings re})
+
+addLocalVar :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+addLocalVar shadow sp i re =
+    -- check if shadow is needed:
+    case lookup [i] (reBindings re) of
+        Just (_,sp',_) | not shadow -> ([IdentifierRedefined sp sp' i], re)
+        _ -> ([], re {reBindings = ([i],([i], sp, BEVariable)) : reBindings re
+                     ,reLocalBindings = (i,(sp,BEVariable)) : reLocalBindings re})
+
+addLocalType :: SourcePosition
+             -> Text
+             -> Int
+             -> [(SourcePosition, Text)] -- variant names
+             -> RenamerEnv
+             -> ([StaticError], RenamerEnv)
+addLocalType sp i numParams vs re =
+    case lookup [i] (reBindings re) of
+        Just (_,sp',_) -> ([IdentifierRedefined sp sp' i], re)
+        _ ->
+            let bs = (i,(sp,BEType numParams))
+                      : flip map vs (\(vsp,vnm) -> (vnm, (vsp,BEVariant 0)))
+            in ([], re {reBindings = flip map bs (\(nm,(sp',be)) -> ([nm],([nm], sp', be))) ++ reBindings re
+                       ,reLocalBindings = bs ++ reLocalBindings re})
 
 {-
 
@@ -350,8 +381,12 @@ renameIdentifier x@((sp,_):_) re =
 renameIdentifier [] _ = error $ "internal error: empty identifier"
 
 -- same as renameIdentifier, but for type names
-renameType :: [(SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(SourcePosition,Text)])
-renameType = undefined
+renameType :: SourcePosition -> [Text] -> RenamerEnv -> ([StaticError], (SourcePosition,[Text]))
+renameType sp x re =
+    case lookup x (reBindings re) of
+        Nothing -> ([UnrecognisedIdentifier sp x], (sp,x))
+        -- todo: check if type
+        Just (cn, _, _) -> ([], (sp, cn))
 
 -- disambiguate a zero arg pattern to see if it's a variant
 -- or not
@@ -361,7 +396,8 @@ renameType = undefined
 -- if the name is not a variant, this function will also do the addLocalBinding stuff
 -- for patterns which irrefutably introduce bindings, use addLocalBinding:
 --   shadowbinding, asbinding
-renamePattern :: [Text] -- name components
+renamePattern :: SourcePosition
+              -> [Text] -- name components
               -> Maybe Int -- number of args if explicit variant pattern
                  -- if this amount doesn't match the definition of the
                  -- variant, this function will produce an error
@@ -370,10 +406,26 @@ renamePattern :: [Text] -- name components
               -> RenamerEnv
               -- return: left means it's a namebinding
               -- right means it's a variant binding (possibly 0 arg)
-              -> ([StaticError], (Either Text [Text]))
-renamePattern = undefined
+              -> ([StaticError], Either Text [Text])
+renamePattern sp x numArgs re =
+    case lookup x (reBindings re) of
+        Nothing | [x'] <- x
+                , Nothing <- numArgs ->
+          -- it's just a binding, tdo: check the args are Nothing
+          -- then return unchanged
+            ([], Left x')
+        -- todo: check if variant, check num args if given
+        -- return it as an explicit variant
+        Just (cn, _, _) -> ([], Right cn)
+        _ -> ([UnrecognisedIdentifier sp x], Right x)
+
 
 -- check if the target of the assign is a variable
 -- plus rename the target if it needs it
-renameAssign :: [(SourcePosition,Text)] -> RenamerEnv -> ([StaticError], [(SourcePosition,Text)])
-renameAssign = undefined
+renameAssign :: SourcePosition -> [Text] -> RenamerEnv -> ([StaticError], [Text])
+renameAssign sp nm re = 
+    case lookup nm (reBindings re) of
+        Nothing -> ([UnrecognisedIdentifier sp nm], nm)
+        -- todo: check if type
+        Just (cn, _, BEVariable) -> ([], cn)
+        Just (_, sp1, _) -> ([AssignToNonVar sp sp1 nm], nm)

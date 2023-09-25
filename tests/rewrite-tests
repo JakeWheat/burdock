@@ -468,3 +468,148 @@ include from i: * hiding (a) end
 a
 Errors:
 unrecognised-identifier([list: "a"])
+
+Test: trivial type
+Script:
+data Test: test(a) end
+a = test(3)
+assert-type-compat(a :: Test)
+Result:
+data Test: test(a) end
+a = test(3)
+assert-type-compat(a :: Test)
+
+Test: type not found
+Script:
+a = 3
+assert-type-compat(a :: Test)
+Errors:
+unrecognised-identifier([list: "Test"])
+
+Test: import type
+File: imported
+data Test: test(a) end
+Script:
+import file("imported") as i
+a = 3
+assert-type-compat(a :: i.Test)
+Result:
+_module-imported = load-module("imported")
+a = 3
+assert-type-compat(a :: _module-imported.Test)
+
+Test: trivial variant
+Script:
+data Test: test(a) end
+a = test(3)
+cases a:
+  | test(_) => 1
+end
+Result:
+data Test: test(a) end
+a = test(3)
+cases a:
+  | test(_) => 1
+end
+
+Test: variant not found
+Script:
+data Test: test(a) end
+a = test(3)
+cases a:
+  | test1(_) => 5
+end
+Errors:
+unrecognised-identifier([list: "test1"])
+
+# test disabled because it fails, because the rewrite
+# gives a pattern of a 0 arg variant
+# but parsing the expected value gives a name pattern
+# it's a limitation of the testing framework
+# Test: no arg variant OK
+# Script:
+# data Test: test() end
+# a = test
+# cases a:
+#   | test => 1
+# end
+# Result:
+# data Test: test() end
+# a = test
+# cases a:
+#   | test => 1
+# end
+
+Test: no arg variant not found OK
+Script:
+data Test: test() end
+a = test
+cases a:
+  | test1 => 1
+end
+Result:
+data Test: test() end
+a = test
+cases a:
+  | test1 => 1
+end
+
+Test: import variant
+File: imported
+data Test:
+  | test(a)
+  | test2
+end
+Script:
+import file("imported") as m
+include from m:
+  *
+end
+a = test(3)
+cases a:
+  | test(_) => 4
+  | test2 => 5
+  | el => 6
+end
+Result:
+_module-imported = load-module("imported")
+a = _module-imported.test(3)
+cases a:
+  | _module-imported.test(_) => 4
+  | _module-imported.test2 => 5
+  | el => 6
+end
+
+Test: local var assign
+Script:
+var a = 4
+a := 5
+Result:
+var a = 4
+a := 5
+
+Test: local var assign fail
+Script:
+a = 4
+a := 5
+Errors:
+assign-to-non-var([list: "a"])
+
+Test: import var assign
+File: imported
+var a = 4
+Script:
+import file("imported") as i
+i.a := 5
+Result:
+_module-imported = load-module("imported")
+_module-imported.a := 5
+
+Test: import assign fail
+File: imported
+a = 4
+Script:
+import file("imported") as i
+i.a := 5
+Errors:
+assign-to-non-var([list: "i", "a"])

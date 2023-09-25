@@ -94,6 +94,9 @@ import Burdock.RenamerEnv
     ,applyProvides
 
     ,addLocalBinding
+    ,addLocalType
+    ,addLocalVar
+    
     ,renameIdentifier
     ,renameType
     ,renamePattern
@@ -197,13 +200,36 @@ rewriteStmts (S.StmtExpr sp e : ss) = do
     e' <- rewriteExpr e
     second (S.StmtExpr sp e':) <$> rewriteStmts ss
 
-rewriteStmts (st@(S.LetDecl _ (S.ShadowBinding sp nm) _) : ss) = do
-    ctx <- callWithEnv $ addLocalBinding True sp nm
+rewriteStmts ((S.LetDecl sp (S.ShadowBinding sp' nm) e) : ss) = do
+    ctx <- callWithEnv $ addLocalBinding True sp' nm
+    e' <- rewriteExpr e
+    let st = S.LetDecl sp (S.ShadowBinding sp' nm) e'
     second (st:) <$> local (const ctx) (rewriteStmts ss)
 
-rewriteStmts (st@(S.LetDecl _ (S.NameBinding sp nm) _) : ss) = do
-    ctx <- callWithEnv $ addLocalBinding False sp nm
+rewriteStmts ((S.LetDecl sp (S.NameBinding sp' nm) e) : ss) = do
+    ctx <- callWithEnv $ addLocalBinding False sp' nm
+    e' <- rewriteExpr e
+    let st = S.LetDecl sp (S.NameBinding sp' nm) e'
     second (st:) <$> local (const ctx) (rewriteStmts ss)
+
+rewriteStmts ((S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e) : ss) = do
+    ctx <- callWithEnv $ addLocalVar False sp' nm
+    e' <- rewriteExpr e
+    let st = S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e'
+    second (st:) <$> local (const ctx) (rewriteStmts ss)
+
+rewriteStmts (S.SetVar sp tgt e : ss)
+    | Just tgt' <- getIdenList tgt = do
+          tgt'' <- callWithEnv $ renameAssign sp $ map snd tgt'
+          e' <- rewriteExpr e
+          let st = S.SetVar sp (toIdenExpr $ map (sp,) tgt'') e'
+          second (st:) <$> rewriteStmts ss
+    | otherwise = error $ "bad target of assign " <> show tgt
+
+rewriteStmts (s@(S.DataDecl sp nm ps vs _ _) : ss) = do
+    let vs' = flip map vs $ \(S.VariantDecl _sp vnm _ _) -> (sp,vnm)
+    ctx <- callWithEnv $ addLocalType sp nm (length ps) vs'
+    second (s:) <$> local (const ctx) (rewriteStmts ss)
 
 rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
 
@@ -215,10 +241,62 @@ rewriteExpr e | Just is <- getIdenList e = do
     nis <- callWithEnv $ renameIdentifier is
     pure $ toIdenExpr nis
 
+rewriteExpr (S.App sp f as) = do
+    f' <- rewriteExpr f
+    as' <- mapM rewriteExpr as
+    pure $ S.App sp f' as'
+
 rewriteExpr (S.Block sp ss) =
     (S.Block sp . snd) <$> rewriteStmts ss
+
+rewriteExpr (S.AssertTypeCompat sp e ann) = do
+    ann' <- rewriteAnn ann
+    pure $ S.AssertTypeCompat sp e ann'
+
+rewriteExpr (S.Cases sp e ma ts el) = do
+    e' <- rewriteExpr e
+    -- todo: rewrite ma
+    ts' <- mapM rewriteThen ts
+    el' <- case el of
+        Nothing -> pure Nothing
+        Just elx -> Just . snd <$> rewriteStmts elx
+    pure $ S.Cases sp e' ma ts' el'
+  where
+    rewriteThen (bm, wh, bdy) = do
+        bm' <- rewritePattern bm
+        wh' <- case wh of
+            Nothing -> pure wh
+            Just whx -> Just <$> rewriteExpr whx
+        bdy' <- snd <$> rewriteStmts bdy
+        pure (bm', wh', bdy')
+
+rewriteExpr x@(S.Num{}) = pure x
     
 rewriteExpr e = error $ "unsupported syntax: " <> show e
+
+rewriteAnn :: S.Ann -> Renamer S.Ann
+rewriteAnn (S.TName tsp tnm) = do
+    (_,nt) <- callWithEnv $ renameType tsp tnm
+    pure (S.TName tsp nt)
+rewriteAnn x = error $ "unsupported ann: " <> show x
+
+-- todo: return the new bindings introduced in the pattern
+rewritePattern :: S.Binding -> Renamer S.Binding
+rewritePattern (S.VariantBinding sp nm as) = do
+    -- todo: recurse into as
+    p1 <- callWithEnv $ renamePattern sp nm (Just $ length as)
+    case p1 of
+        Left p1' -> error $ "got non variant from variant rename" <> show (nm, p1')
+        Right nmx -> pure $ S.VariantBinding sp nmx as
+
+rewritePattern (S.NameBinding sp nm) = do
+    p1 <- callWithEnv $ renamePattern sp [nm] Nothing
+    case p1 of
+        Left nmx -> pure $ S.NameBinding sp nmx
+        Right nmx -> pure $ S.VariantBinding sp nmx []
+
+    
+rewritePattern x = error $ "unsupported binding: " <> show x
 
 ---------------------------------------
 

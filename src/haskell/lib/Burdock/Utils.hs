@@ -15,7 +15,9 @@ import Data.Text as T
 
 import qualified Debug.Trace as DT
 
-error :: T.Text -> a
+import GHC.Stack (HasCallStack)
+
+error :: HasCallStack => T.Text -> a
 error = P.error . T.unpack
 
 show :: Show a => a -> T.Text
