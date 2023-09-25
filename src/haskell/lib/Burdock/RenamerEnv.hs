@@ -48,14 +48,6 @@ import qualified Data.Text as T
 import Data.Data (Data)
 import Burdock.Syntax (SourcePosition)
 
-import Data.List((\\))
-
-import Data.Maybe
-    (mapMaybe
-    )
-
-import Data.Tuple (swap)
-
 import Control.Monad.State
     (StateT
     ,runStateT
@@ -143,41 +135,57 @@ prettyStaticErrors = T.unlines . map prettyStaticError
 
 -- main types
 
--- This represents a renamed module metadata, it contains all the
--- information to be able to rename a module which imports this module
+data BindingMeta
+    = BEIdentifier
+    --  | BEVariant Int
+    --  | BEVariable
+    --  | BEType Int
+    --  | BEModuleAlias
+    -- todo: add module provide items
+    --   add error for flagging ambiguous identifier on use
+    --   when the ambiguity is introduced with two * provide items
 
+
+-- represents the bindings available in a module
 data ModuleMetadata
     = ModuleMetadata
-    {mmBindings :: [Text]}
-    deriving Show
+      {mmBindings :: [(Text,(SourcePosition, BindingMeta))]}
 
--- this is the env that is used during renaming a single module
+
+-- represents the env needed to rename within a module, for prelude
+-- and regular statements
+-- there's a lot of redundancy here, this is aimed to make it
+-- easier to use it
+
 data RenamerEnv
     = RenamerEnv
-    { -- the list of modules available to be imported
-     reCtx :: [(Text, ModuleMetadata)]
-     -- imported module id, canonical alias in this module
-     -- the id is the same as the one in reCtx
-    ,reLoadModules :: [(Text,Text)]
-    -- user alias, canonical name
-    ,reAliasedModules :: [(Text,Text)]
-    -- what the user writes, what it will be rewritten to
-    ,reBindings :: [([Text], BindingEntry)]
-    -- all the provides
-    ,reProvideItems :: [ProvideItem]
-    }
-    deriving Show
+    { -- available modules to import, the key is the identifier of the module
+      -- for burdock modules for now, this will be the unique path to the module source
 
-data BindingEntry
-    = BindingEntry
-    {beName :: [Text]
-    -- source position of definition if local
-    -- or the prelude statement that introduces it if not
-    ,beSourcePosition :: SourcePosition}
-    deriving Show
+     reCtx :: [(Text, ModuleMetadata)]
+    -- all the local bindings so far, this is used to process the provide items
+    -- and create a module metadata for the current module at the end of renaming
+    ,reLocalBindings :: [(Text, (SourcePosition, BindingMeta))]
+    -- tally of all the load modules needed in the renamed source
+    -- it's the module id that matches the key in reCtx, and the local canonical
+    -- alias for that module
+    ,reLoadModules :: [(Text,Text)]
+    -- modules brought into user scope using a prelude statement, the key is the user
+    -- alias. this is only used by other prelude statements
+    -- the value is the canonical name and the module metadata
+    ,reAliasedModules :: [(Text, (Text, ModuleMetadata))]
+    -- running tally of the provide items in prelude statements seen so far
+    ,reProvideItems :: [ProvideItem]
+    -- all the identifiers in scope that can be used in user code
+    -- the key is what the user writes, and the value is the renamed
+    -- qiden, and the metadata for that entry
+    -- this mirrors the reLocalBindings, and includes all the aliased
+    -- and included identifiers from prelude statements that are in scope
+    ,reBindings :: [([Text], ([Text], SourcePosition, BindingMeta))]
+    }
 
 makeRenamerEnv :: [(Text, ModuleMetadata)] -> RenamerEnv
-makeRenamerEnv ctx = RenamerEnv ctx [] [] [] []
+makeRenamerEnv ctx = RenamerEnv ctx [] [] [] [] []
 
 ------------------------------------------------------------------------------
 
@@ -192,42 +200,39 @@ makeRenamerEnv ctx = RenamerEnv ctx [] [] [] []
 provide :: SourcePosition -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 provide _sp pis re = ([], re {reProvideItems = reProvideItems re ++ pis})
 
+-- provide items from an imported module
 provideFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
 provideFrom = undefined
 
+-- load the module, and include all the bindings in it with the alias
 bImport :: SourcePosition -> Text -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
 bImport sp nm alias re =
     -- todo: make a better canonical alias
     let canonicalAlias = "_module-" <> nm
-        ps = case lookup nm (reCtx re) of
+        moduleMetadata = case lookup nm (reCtx re) of
             Nothing -> error $ "unrecognised module: " <> nm -- todo return staticerror
-            Just m -> flip map (mmBindings m)
-                      $ \n -> ([alias,n]
-                              ,BindingEntry [canonicalAlias,n] sp)
+            Just m -> m
+        ps = flip map (mmBindings moduleMetadata) $ \(i, (_sp, be)) ->
+             ([alias,i], ([canonicalAlias,i], sp, be))
     in ([], re
        {reLoadModules = (nm,canonicalAlias) : reLoadModules re
-       ,reAliasedModules = (alias, canonicalAlias) : reAliasedModules re
+       ,reAliasedModules = (alias, (canonicalAlias, moduleMetadata)) : reAliasedModules re
        ,reBindings = ps ++ reBindings re})
 
 include :: RenamerEnv -> ([StaticError], RenamerEnv)
 include = undefined
 
 includeFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
-includeFrom sp mal pis re = runRenamerEnv re $ do
-    -- todo: turn these errors into staticerrors
-    canonicalAlias <- maybe (throwError [error $ "alias not found: " <> mal]) pure
+includeFrom sp mal pis re =
+    runRenamerEnv re $ do
+    (canonicalAlias,modMeta) <- maybe (throwError
+                  [error $ "module alias not found: " <> mal]) pure
         $ lookup mal (reAliasedModules re)
-    modId <- maybe (throwError
-                  [error $ "internal error: canonical alias not found in reLoadModules: " <> canonicalAlias]) pure
-        $ lookup canonicalAlias (map swap $ reLoadModules re)
-    modMeta <- maybe (throwError
-                  [error $ "internal error: module metadata not found: " <> modId]) pure
-        $ lookup modId (reCtx re)
     flip mapM_ pis $ \case
         ProvideAll sp' ->
-            flip mapM_ (mmBindings modMeta) $ \i ->
+            flip mapM_ (mmBindings modMeta) $ \(i,(_sp,be)) ->
             case lookup [i] (reBindings re) of
-                Nothing -> addOne ([i], BindingEntry [canonicalAlias,i] sp)
+                Nothing -> addOne ([i], ([canonicalAlias,i], sp, be))
                 -- the issue with this, is you could have a large overlap
                 -- from two include from .. : * end statements
                 -- and you want to combine all the errors for one * into
@@ -235,26 +240,26 @@ includeFrom sp mal pis re = runRenamerEnv re $ do
                 -- one for each name clash. I think this should only happen
                 -- with *, so it's one error per syntactic element the user
                 -- writes. need a new StaticError variant for this
-                Just p ->
-                     tell [IdentifierRedefined sp' (beSourcePosition p) i]
+                Just (_,sp'',_) -> tell [IdentifierRedefined sp' sp'' i]
         ProvideHiding sp' hs ->
-            flip mapM_ (mmBindings modMeta \\ hs) $ \i ->
-            case lookup [i] (reBindings re) of
-                Nothing -> addOne ([i], BindingEntry [canonicalAlias,i] sp)
-                Just p ->
-                     tell [IdentifierRedefined sp' (beSourcePosition p) i]
+            flip mapM_ (mmBindings modMeta) $ \(i,(sp'',be)) ->
+            if i `elem` hs
+            then pure ()
+            else case lookup [i] (reBindings re) of
+                Nothing -> addOne ([i], ([canonicalAlias,i], sp', be))
+                Just (_,sp''',_) -> tell [IdentifierRedefined sp'' sp''' i]
         ProvideName sp' [i] ->
-            if i `elem` (mmBindings modMeta)
-            then addOne ([i], BindingEntry [canonicalAlias,i] sp')
-            else tell [UnrecognisedIdentifier sp' [i]]
+            case lookup i (mmBindings modMeta) of
+                Nothing -> tell [UnrecognisedIdentifier sp' [i]]
+                Just (sp'',be) -> addOne ([i], ([canonicalAlias,i], sp'', be))
         ProvideAlias sp' [i] nm ->
-            if i `elem` (mmBindings modMeta)
-            then addOne ([nm], BindingEntry [canonicalAlias,i] sp')
-            else tell [UnrecognisedIdentifier sp' [i]]
+            case lookup i (mmBindings modMeta) of
+                Nothing -> tell [UnrecognisedIdentifier sp' [i]]
+                Just (sp'',be) -> addOne ([nm], ([canonicalAlias,i], sp'', be))
             
         x -> error $ "unsupported include from provide item: " <> show x
   where
-    addOne :: ([Text], BindingEntry) -> RenamerEnvM ()
+    addOne :: ([Text], ([Text], SourcePosition, BindingMeta)) -> RenamerEnvM ()
     addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))
 
 importFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
@@ -274,27 +279,30 @@ queryLoadModules re = ([], reLoadModules re)
 -- it will check for name clashes and unrecognised identifiers
 applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, [([Text],Text)]))
 applyProvides re =
-    let provideItems = if null (reProvideItems re)
+    let -- todo: no provides doesn't default to this, it defaults
+        -- to providing nothing
+        provideItems = if null (reProvideItems re)
                        then [ProvideAll Nothing]
                        else reProvideItems re
-        -- todo: find a more robust way to track local bindings?
-        -- come back to this when doing provide items
-        -- care is taken to keep the expansions of * and the
-        -- desugared provide record in the same order as they
-        -- appear in the original source, because this is less
-        -- confusing for tests and debugging
-        localBinds = reverse $ flip mapMaybe (reBindings re) $ \case
-            ([a],b) | [a] == beName b -> Just a
-            _ -> Nothing
+        -- return the provided items in the order they were seen
+        localBindings = reverse $ reLocalBindings re
+        ps :: [((Text,(SourcePosition, BindingMeta)), [Text])]
         ps = flip concatMap provideItems $ \case
-            ProvideAll _ -> map (\a -> ([a],a)) localBinds
-            ProvideName _ as | not (null as) -> [(as, last as)]
-            ProvideAlias _ as n -> [(as, n)]
+            -- todo: filter by type of binding
+            ProvideAll _ -> map (\e@(nm,_) -> (e, [nm])) localBindings
+            ProvideName _ as -> case lookup as (reBindings re) of
+                Nothing -> error $ "identifier not found: " <> show as
+                Just (cn,sp,be) -> [((last as,(sp,be)), cn)]
+            ProvideAlias _ as n -> case lookup as (reBindings re) of
+                Nothing -> error $ "identifier not found: " <> show as
+                Just (cn,sp,be) -> [((n,(sp,be)), cn)]
             ProvideHiding _ nms ->
-                map (\a -> ([a],a)) $ filter (`notElem` nms) localBinds
+                map (\e@(nm,_) -> (e, [nm]))
+                $ filter ((`notElem` nms) . fst)
+                $ localBindings
             x -> error $ "unsupported provide item " <> show x
-    -- return the provided items in the order they were seen
-    in ([], (ModuleMetadata $ map snd ps, ps))
+        (ms,rs) = unzip $ flip map ps $ \(a@(nm,_), cn) -> (a,(cn,nm))
+    in ([], (ModuleMetadata ms, rs))
 
 ------------------------------------------------------------------------------
 
@@ -307,8 +315,10 @@ addLocalBinding :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError
 addLocalBinding shadow sp i re =
     -- check if shadow is needed:
     case lookup [i] (reBindings re) of
-        Just be | not shadow -> ([IdentifierRedefined sp (beSourcePosition be) i], re)
-        _ -> ([], re {reBindings = (([i],BindingEntry [i] sp): reBindings re)})
+        Just (_,sp',_) | not shadow -> ([IdentifierRedefined sp sp' i], re)
+        _ -> ([], re {reBindings = ([i],([i], sp, BEIdentifier)) : reBindings re
+                     ,reLocalBindings = (i,(sp,BEIdentifier)) : reLocalBindings re
+                     })
 
 {-
 
@@ -335,8 +345,8 @@ renameIdentifier x@((sp,_):_) re =
                     -- if the prefix isn't found, return the original error
                     -- later might want to do something different depending on the error?
                     _ -> ([UnrecognisedIdentifier sp (map snd x)], x)
-        Just r -> ([],map (sp,) $ beName r)
-
+        -- todo: if this is a type or module alias, then error
+        Just (cn, _, _) -> ([], map (sp,) cn)
 renameIdentifier [] _ = error $ "internal error: empty identifier"
 
 -- same as renameIdentifier, but for type names
