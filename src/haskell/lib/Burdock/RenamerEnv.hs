@@ -26,9 +26,9 @@ module Burdock.RenamerEnv
     ,queryLoadModules
     ,applyProvides
 
-    ,addLocalBinding
-    ,addLocalType
-    ,addLocalVar
+    ,createBinding
+    ,createType
+    ,createVar
 
     ,renameIdentifier
     ,renameType
@@ -154,12 +154,10 @@ data BindingMeta
     --   add error for flagging ambiguous identifier on use
     --   when the ambiguity is introduced with two * provide items
 
-
 -- represents the bindings available in a module
 data ModuleMetadata
     = ModuleMetadata
       {mmBindings :: [(Text,(SourcePosition, BindingMeta))]}
-
 
 -- represents the env needed to rename within a module, for prelude
 -- and regular statements
@@ -210,8 +208,8 @@ provide :: SourcePosition -> [ProvideItem] -> RenamerEnv -> ([StaticError], Rena
 provide _sp pis re = ([], re {reProvideItems = reProvideItems re ++ pis})
 
 -- provide items from an imported module
-provideFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
-provideFrom = undefined
+provideFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
+provideFrom = error $ "provide from not implemented yet"
 
 -- load the module, and include all the bindings in it with the alias
 bImport :: SourcePosition -> Text -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
@@ -228,8 +226,8 @@ bImport sp nm alias re =
        ,reAliasedModules = (alias, (canonicalAlias, moduleMetadata)) : reAliasedModules re
        ,reBindings = ps ++ reBindings re})
 
-include :: RenamerEnv -> ([StaticError], RenamerEnv)
-include = undefined
+include :: SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+include sp nm = error $ "include not implemented yet"
 
 includeFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 includeFrom sp mal pis re =
@@ -271,8 +269,8 @@ includeFrom sp mal pis re =
     addOne :: ([Text], ([Text], SourcePosition, BindingMeta)) -> RenamerEnvM ()
     addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))
 
-importFrom :: RenamerEnv -> ([StaticError], RenamerEnv)
-importFrom = undefined
+importFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
+importFrom = error $ "import from not implemented yet"
 
 -- get the load-modules info needed for the desugaring
 -- the result is id for the module, local alias for the module
@@ -320,29 +318,29 @@ applyProvides re =
 -- adds a local binding, user should scope these, the top level
 -- ones will be used in applyProvides
 -- it will check shadow is used if it needs to be
-addLocalBinding :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-addLocalBinding shadow sp i re =
+createBinding :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+createBinding shadow sp i re =
     -- check if shadow is needed:
     case lookup [i] (reBindings re) of
         Just (_,sp',_) | not shadow -> ([IdentifierRedefined sp sp' i], re)
         _ -> ([], re {reBindings = ([i],([i], sp, BEIdentifier)) : reBindings re
                      ,reLocalBindings = (i,(sp,BEIdentifier)) : reLocalBindings re})
 
-addLocalVar :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-addLocalVar shadow sp i re =
+createVar :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+createVar shadow sp i re =
     -- check if shadow is needed:
     case lookup [i] (reBindings re) of
         Just (_,sp',_) | not shadow -> ([IdentifierRedefined sp sp' i], re)
         _ -> ([], re {reBindings = ([i],([i], sp, BEVariable)) : reBindings re
                      ,reLocalBindings = (i,(sp,BEVariable)) : reLocalBindings re})
 
-addLocalType :: SourcePosition
+createType :: SourcePosition
              -> Text
              -> Int
              -> [(SourcePosition, Text)] -- variant names
              -> RenamerEnv
              -> ([StaticError], RenamerEnv)
-addLocalType sp i numParams vs re =
+createType sp i numParams vs re =
     case lookup [i] (reBindings re) of
         Just (_,sp',_) -> ([IdentifierRedefined sp sp' i], re)
         _ ->
@@ -416,7 +414,7 @@ renamePattern sp x numArgs re =
             ([], Left x')
         -- todo: check if variant, check num args if given
         -- return it as an explicit variant
-        Just (cn, _, _) -> ([], Right cn)
+        Just (cn, _, BEVariant _) -> ([], Right cn)
         _ -> ([UnrecognisedIdentifier sp x], Right x)
 
 

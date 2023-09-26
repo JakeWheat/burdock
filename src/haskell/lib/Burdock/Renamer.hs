@@ -93,9 +93,9 @@ import Burdock.RenamerEnv
     ,queryLoadModules
     ,applyProvides
 
-    ,addLocalBinding
-    ,addLocalType
-    ,addLocalVar
+    ,createBinding
+    ,createType
+    ,createVar 
     
     ,renameIdentifier
     ,renameType
@@ -181,6 +181,18 @@ rewritePreludeStmts (S.IncludeFrom sp al pis : ss) = do
     ctx <- callWithEnv $ includeFrom sp al pis
     local (const ctx) (rewritePreludeStmts ss)
 
+rewritePreludeStmts (S.Include sp (S.ImportSpecial "file" [nm]) : ss) = do
+    ctx <- callWithEnv $ include sp nm
+    local (const ctx) (rewritePreludeStmts ss)
+
+rewritePreludeStmts (S.ImportFrom sp (S.ImportSpecial "file" [nm]) pis : ss) = do
+    ctx <- callWithEnv $ importFrom sp nm pis
+    local (const ctx) (rewritePreludeStmts ss)
+
+rewritePreludeStmts (S.ProvideFrom sp al pis : ss) = do
+    ctx <- callWithEnv $ provideFrom sp al pis
+    local (const ctx) (rewritePreludeStmts ss)
+
 -- not a prelude statement? fall through to the regular statement handling
 -- after outputting the needed load-modules
 
@@ -201,19 +213,19 @@ rewriteStmts (S.StmtExpr sp e : ss) = do
     second (S.StmtExpr sp e':) <$> rewriteStmts ss
 
 rewriteStmts ((S.LetDecl sp (S.ShadowBinding sp' nm) e) : ss) = do
-    ctx <- callWithEnv $ addLocalBinding True sp' nm
+    ctx <- callWithEnv $ createBinding True sp' nm
     e' <- rewriteExpr e
     let st = S.LetDecl sp (S.ShadowBinding sp' nm) e'
     second (st:) <$> local (const ctx) (rewriteStmts ss)
 
 rewriteStmts ((S.LetDecl sp (S.NameBinding sp' nm) e) : ss) = do
-    ctx <- callWithEnv $ addLocalBinding False sp' nm
+    ctx <- callWithEnv $ createBinding False sp' nm
     e' <- rewriteExpr e
     let st = S.LetDecl sp (S.NameBinding sp' nm) e'
     second (st:) <$> local (const ctx) (rewriteStmts ss)
 
 rewriteStmts ((S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e) : ss) = do
-    ctx <- callWithEnv $ addLocalVar False sp' nm
+    ctx <- callWithEnv $ createVar False sp' nm
     e' <- rewriteExpr e
     let st = S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e'
     second (st:) <$> local (const ctx) (rewriteStmts ss)
@@ -228,7 +240,7 @@ rewriteStmts (S.SetVar sp tgt e : ss)
 
 rewriteStmts (s@(S.DataDecl sp nm ps vs _ _) : ss) = do
     let vs' = flip map vs $ \(S.VariantDecl _sp vnm _ _) -> (sp,vnm)
-    ctx <- callWithEnv $ addLocalType sp nm (length ps) vs'
+    ctx <- callWithEnv $ createType sp nm (length ps) vs'
     second (s:) <$> local (const ctx) (rewriteStmts ss)
 
 rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
