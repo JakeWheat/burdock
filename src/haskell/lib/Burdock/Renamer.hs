@@ -147,7 +147,6 @@ renameModule ctx (S.Script stmts) =
             r = flip map rs $ \(as,b) -> (b, toIdenExpr $ map (n,) as)
         in S.StmtExpr n $ S.App n (S.Iden n "make-module") [S.RecordSel n r]
 
-
 renameScript :: [(Text, ModuleMetadata)] -> S.Script -> Either [StaticError] S.Script
 renameScript ctx (S.Script stmts) =
     errToEither $ runRenamer ctx (S.Script . snd <$> rewritePreludeStmts stmts)
@@ -220,10 +219,20 @@ rewriteStmts (S.LetDecl sp b e : ss) = do
     let st = S.LetDecl sp b' e'
     second (st:) <$> rn (rewriteStmts ss)
 
-rewriteStmts ((S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e) : ss) = do
+rewriteStmts (S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e : ss) = do
     ctx <- callWithEnv $ createVar False sp' nm
     e' <- rewriteExpr e
     let st = S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e'
+    second (st:) <$> local (const ctx) (rewriteStmts ss)
+
+rewriteStmts (S.FunDecl sp nm@(S.SimpleBinding fsp _ fnm _) fh mdoc bdy tsts : ss) = do
+    -- todo: lots of bits being missed
+    ctx <- callWithEnv $ createBinding False fsp fnm
+    (fh', rn) <- rewriteHeader fh
+    -- check the body with the function name in scope
+    st <- local (const ctx) $ rn $ do
+        bdy' <- snd <$> rewriteStmts bdy
+        pure (S.FunDecl sp nm fh' mdoc bdy' tsts)
     second (st:) <$> local (const ctx) (rewriteStmts ss)
 
 rewriteStmts (S.SetVar sp tgt e : ss)
@@ -284,11 +293,6 @@ rewriteExpr (S.Lam sp fh bdy) = do
     rn $ do
         bdy' <- snd <$> rewriteStmts bdy
         pure (S.Lam sp fh' bdy')
-  where
-    -- todo: rewrite ps (types), ma (ann)
-    rewriteHeader (S.FunHeader ps bs ma) = do
-        (bs', rn) <- rewriteBindings bs
-        pure (S.FunHeader ps bs' ma, rn)
 
 rewriteExpr x@(S.Num{}) = pure x
 rewriteExpr (S.BinOp sp e0 op e1) = do
@@ -297,6 +301,13 @@ rewriteExpr (S.BinOp sp e0 op e1) = do
     pure $ S.BinOp sp e0' op e1'
     
 rewriteExpr e = error $ "unsupported syntax: " <> show e
+
+-- todo: rewrite ps (types), ma (ann)
+rewriteHeader :: S.FunHeader -> Renamer (S.FunHeader, Renamer a -> Renamer a)
+rewriteHeader (S.FunHeader ps bs ma) = do
+        (bs', rn) <- rewriteBindings bs
+        pure (S.FunHeader ps bs' ma, rn)
+
 
 rewriteAnn :: S.Ann -> Renamer S.Ann
 rewriteAnn (S.TName tsp tnm) = do

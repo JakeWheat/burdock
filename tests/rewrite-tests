@@ -642,15 +642,17 @@ x = lam(x,y): x + y end
 Result:
 x = lam(x,y): x + y end
 
-#Test: function syntax
+Test: function syntax
+Script:
+fun f(x): x + 1 end
+Result:
+fun f(x): x + 1 end
 
-
-
-# Test: simple recursive
-# Script:
-# rec f = lam(a): a + f(a - 1) end
-# Result:
-# rec f = lam(a): a + f(a - 1) end
+Test: recursive fun
+Script:
+fun f(x): 1 + f(x - 1) end
+Result:
+fun f(x): 1 + f(x - 1) end
 
 # Test: mutual recursive
 # Script:
