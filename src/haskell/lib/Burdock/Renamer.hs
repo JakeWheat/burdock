@@ -213,6 +213,11 @@ rewriteStmts (S.StmtExpr sp e : ss) = do
     e' <- rewriteExpr e
     second (S.StmtExpr sp e':) <$> rewriteStmts ss
 
+rewriteStmts (S.When sp e bdy : ss) = do
+    e' <- rewriteExpr e
+    bdy' <- snd <$> rewriteStmts bdy
+    second (S.When sp e' bdy' :) <$> rewriteStmts ss
+
 rewriteStmts (S.LetDecl sp b e : ss) = do
     (b', rn) <- rewriteBinding b
     e' <- rewriteExpr e
@@ -220,10 +225,27 @@ rewriteStmts (S.LetDecl sp b e : ss) = do
     second (st:) <$> rn (rewriteStmts ss)
 
 rewriteStmts (S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e : ss) = do
-    ctx <- callWithEnv $ createVar False sp' nm
+    ctx <- callWithEnv $ createVar (sh == S.Shadow) sp' nm
     e' <- rewriteExpr e
-    let st = S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e'
+    ann' <- maybe (pure Nothing) (\a -> Just <$> rewriteAnn a) ann
+    let st = S.VarDecl sp (S.SimpleBinding sp' sh nm ann') e'
     second (st:) <$> local (const ctx) (rewriteStmts ss)
+
+rewriteStmts (s@(S.DataDecl sp nm ps vs _ _) : ss) = do
+    -- todo: check the type parameters - they go into scope
+    --   and if other parts of the decl use type params
+    --   some of them need to match or they are unrecognised identifier
+    -- rename the variantdecls: check for name conflicts
+    --    simple bindings: name conflicts don't apply
+    --      except with each other in the same variantdecl
+    --    rename the maybe ann
+    -- rename the methods: check for name conflicts
+    --   make them recursive too
+    -- rename the test block
+    let vs' = flip map vs $ \(S.VariantDecl _sp vnm _ _) -> (sp,vnm)
+    ctx <- callWithEnv $ createType sp nm (length ps) vs'
+    second (s:) <$> local (const ctx) (rewriteStmts ss)
+
 {-
 renaming mutually recursive decls:
 gather all adjacent rec and fun decls
@@ -236,7 +258,6 @@ order reversed. Could do a hack to patch this up
 
 todo: there must be a much cleaner way to implement this function
 -}
-
 rewriteStmts ss | (rs,ss') <- getRecs ss
                 , not (null rs) = do
     let doBs [] = doDs (map snd rs)
@@ -250,7 +271,8 @@ rewriteStmts ss | (rs,ss') <- getRecs ss
     doBs (map fst rs)
   where
     rewriteFunRec (S.FunDecl sp nm fh mdoc bdy tsts) = do
-        -- todo: lots of bits being missed
+        -- todo: rename the type in the nm
+        -- rename the test block
         (fh', rn) <- rewriteHeader fh
         -- check the body with the function name in scope
         rn $ do
@@ -270,18 +292,25 @@ rewriteStmts ss | (rs,ss') <- getRecs ss
                      | otherwise = ([],ss1)
     getRecs [] = ([],[])
 
+-- todo: typestmt
+--   adds a new name
+--   checks the type parameters are in scope?
+-- todo: contract - rename the ann
+-- todo: ffitypestmt - this will probably change
+
 rewriteStmts (S.SetVar sp tgt e : ss)
     | Just tgt' <- getIdenList tgt = do
           tgt'' <- callWithEnv $ renameAssign sp $ map snd tgt'
           e' <- rewriteExpr e
           let st = S.SetVar sp (toIdenExpr $ map (sp,) tgt'') e'
           second (st:) <$> rewriteStmts ss
+      -- todo: fix this error to use tell and return the original
     | otherwise = error $ "bad target of assign " <> show tgt
 
-rewriteStmts (s@(S.DataDecl sp nm ps vs _ _) : ss) = do
-    let vs' = flip map vs $ \(S.VariantDecl _sp vnm _ _) -> (sp,vnm)
-    ctx <- callWithEnv $ createType sp nm (length ps) vs'
-    second (s:) <$> local (const ctx) (rewriteStmts ss)
+-- todo: setref, rename the expressions
+-- check: rename the body
+-- provide from - returning to this later, along with module provide items
+-- use package: will probably change
 
 rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
 
@@ -289,30 +318,62 @@ rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
 
 rewriteExpr :: S.Expr -> Renamer S.Expr
 
+rewriteExpr x@(S.Num{}) = pure x
+
+rewriteExpr x@(S.Text{}) = pure x
+
+-- covers iden and iden only dotexprs
 rewriteExpr e | Just is <- getIdenList e = do
     nis <- callWithEnv $ renameIdentifier is
     pure $ toIdenExpr nis
+
+rewriteExpr (S.Parens sp e) = S.Parens sp <$> rewriteExpr e
+
+-- todo: if
+-- todo: ask
 
 rewriteExpr (S.App sp f as) = do
     f' <- rewriteExpr f
     as' <- mapM rewriteExpr as
     pure $ S.App sp f' as'
 
+-- todo: instexpr
+
+-- because this is later desugared to e0.op'(e1)
+-- op cannot be checked until a type checker is implemented
+-- but op will partially be checked in the later desugaring statically
+-- if it matches a possible operator
+rewriteExpr (S.BinOp sp e0 op e1) = do
+    e0' <- rewriteExpr e0
+    e1' <- rewriteExpr e1
+    pure $ S.BinOp sp e0' op e1'
+
+rewriteExpr (S.UnaryMinus sp e) = S.UnaryMinus sp <$> rewriteExpr e
+
+rewriteExpr (S.Lam sp fh bdy) = do
+    (fh', rn) <- rewriteHeader fh
+    rn $ do
+        bdy' <- snd <$> rewriteStmts bdy
+        pure (S.Lam sp fh' bdy')
+
+-- todo: curly lam
+
+-- todo: let
+-- todo: letrec
+
 rewriteExpr (S.Block sp ss) =
     (S.Block sp . snd) <$> rewriteStmts ss
 
-rewriteExpr (S.AssertTypeCompat sp e ann) = do
-    ann' <- rewriteAnn ann
-    pure $ S.AssertTypeCompat sp e ann'
+-- todo: general dotexpr
 
 rewriteExpr (S.Cases sp e ma ts el) = do
     e' <- rewriteExpr e
-    -- todo: rewrite ma
+    ma' <- maybe (pure Nothing) (\a -> Just <$> rewriteAnn a) ma
     ts' <- mapM rewriteThen ts
     el' <- case el of
         Nothing -> pure Nothing
         Just elx -> Just . snd <$> rewriteStmts elx
-    pure $ S.Cases sp e' ma ts' el'
+    pure $ S.Cases sp e' ma' ts' el'
   where
     rewriteThen (bm, wh, bdy) = do
         (bm', rn) <- rewriteBinding bm
@@ -323,33 +384,46 @@ rewriteExpr (S.Cases sp e ma ts el) = do
             bdy' <- snd <$> rewriteStmts bdy
             pure (bm', wh', bdy')
 
-rewriteExpr (S.Lam sp fh bdy) = do
-    (fh', rn) <- rewriteHeader fh
-    rn $ do
-        bdy' <- snd <$> rewriteStmts bdy
-        pure (S.Lam sp fh' bdy')
+-- todo: tuplesel
+-- todo: recordsel
+-- todo: extend
+-- todo: tablesel
+-- todo: tupleget
+-- todo: construct
 
-rewriteExpr (S.BinOp sp e0 op e1) = do
-    e0' <- rewriteExpr e0
-    e1' <- rewriteExpr e1
-    pure $ S.BinOp sp e0' op e1'
+rewriteExpr (S.AssertTypeCompat sp e ann) = do
+    ann' <- rewriteAnn ann
+    pure $ S.AssertTypeCompat sp e ann'
 
-rewriteExpr x@(S.Num{}) = pure x
+-- todo: typelet
 
-rewriteExpr x@(S.Text{}) = pure x
+rewriteExpr x@(S.Template{}) = pure x
+
+-- todo: unboxref
+-- todo: receive
+
+-- todo: for
+-- todo methodexpr (overlap with inline methods in data decls)
 
 rewriteExpr e = error $ "unsupported syntax: " <> show e
 
 -- todo: rewrite ps (types), ma (ann)
+-- where does functionheader appear? when does it need to check or introduce
+--   type names
 rewriteHeader :: S.FunHeader -> Renamer (S.FunHeader, Renamer a -> Renamer a)
 rewriteHeader (S.FunHeader ps bs ma) = do
-        (bs', rn) <- rewriteBindings bs
-        pure (S.FunHeader ps bs' ma, rn)
+    (bs', rn) <- rewriteBindings bs
+    pure (S.FunHeader ps bs' ma, rn)
 
 rewriteAnn :: S.Ann -> Renamer S.Ann
 rewriteAnn (S.TName tsp tnm) = do
     (_,nt) <- callWithEnv $ renameType tsp tnm
     pure (S.TName tsp nt)
+-- todo: the rest of the Ann variations
+-- I think there are two contexts: one where unrecognised type names
+--   are treated as introduced type parameters
+--   and one where the local type parameters have to have already
+--   been declared in the local env
 rewriteAnn x = error $ "unsupported ann: " <> show x
 
 rewriteBinding :: S.Binding -> Renamer (S.Binding, Renamer a -> Renamer a)

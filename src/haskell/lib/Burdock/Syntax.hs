@@ -25,10 +25,7 @@ data Stmt
     = StmtExpr SourcePosition Expr
     | When SourcePosition Expr [Stmt]
     | LetDecl SourcePosition Binding Expr
-    | Check SourcePosition (Maybe Text) [Stmt]
     | VarDecl SourcePosition SimpleBinding Expr
-    | SetVar SourcePosition Expr Expr
-    | SetRef SourcePosition Expr [(Text,Expr)]
     -- name, ty params, variants, shared methods, where block
     | DataDecl SourcePosition Text [Text] [VariantDecl] [(Text,Method)] (Maybe [Stmt])
     | RecDecl SourcePosition Binding Expr
@@ -40,8 +37,11 @@ data Stmt
         [Stmt] -- body
         (Maybe [Stmt]) -- test block
     | TypeStmt SourcePosition TypeDecl
-    | FFITypeStmt SourcePosition Text Text
     | Contract SourcePosition Text Ann
+    | FFITypeStmt SourcePosition Text Text
+    | SetVar SourcePosition Expr Expr
+    | SetRef SourcePosition Expr [(Text,Expr)]
+    | Check SourcePosition (Maybe Text) [Stmt]
     | Provide SourcePosition [ProvideItem]
     | ProvideFrom SourcePosition Text [ProvideItem]
     | Import SourcePosition ImportSource Text
