@@ -654,10 +654,16 @@ fun f(x): 1 + f(x - 1) end
 Result:
 fun f(x): 1 + f(x - 1) end
 
-# Test: mutual recursive
-# Script:
-# rec f = lam(a): a + g(a - 1) end
-# rec g = lam(a): a + f(a - 1) end
-# Result:
-# rec f = lam(a): a + g(a - 1) end
-# rec g = lam(a): a + f(a - 1) end
+Test: recursive fun sanity
+Script:
+fun f(x): y end
+Errors:
+unrecognised-identifier([list: "y"])
+
+Test: mutual recursive
+Script:
+rec f = lam(a): a + g(a - 1) end
+rec g = lam(a): a + f(a - 1) end
+Result:
+rec f = lam(a): a + g(a - 1) end
+rec g = lam(a): a + f(a - 1) end

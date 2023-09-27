@@ -126,7 +126,7 @@ import Control.Monad.Writer
     ,tell
     )
 
-import Control.Arrow (second)
+import Control.Arrow (first, second)
 
 ------------------------------------------------------------------------------
 
@@ -224,16 +224,52 @@ rewriteStmts (S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e : ss) = do
     e' <- rewriteExpr e
     let st = S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e'
     second (st:) <$> local (const ctx) (rewriteStmts ss)
+{-
+renaming mutually recursive decls:
+gather all adjacent rec and fun decls
+create the bindings for all their names
+then do each of the bodies in turn
+the only slight issue, is you might prefer to have a redefinition error
+on the second lexical occurance of a binding, in this system, when
+a function arg conflicts with a later function name, you'll get this
+order reversed. Could do a hack to patch this up
 
-rewriteStmts (S.FunDecl sp nm@(S.SimpleBinding fsp _ fnm _) fh mdoc bdy tsts : ss) = do
-    -- todo: lots of bits being missed
-    ctx <- callWithEnv $ createBinding False fsp fnm
-    (fh', rn) <- rewriteHeader fh
-    -- check the body with the function name in scope
-    st <- local (const ctx) $ rn $ do
-        bdy' <- snd <$> rewriteStmts bdy
-        pure (S.FunDecl sp nm fh' mdoc bdy' tsts)
-    second (st:) <$> local (const ctx) (rewriteStmts ss)
+todo: there must be a much cleaner way to implement this function
+-}
+
+rewriteStmts ss | (rs,ss') <- getRecs ss
+                , not (null rs) = do
+    let doBs [] = doDs (map snd rs)
+        doBs ((sp,nm):bs) = do
+            ctx <- callWithEnv $ createBinding False sp nm
+            local (const ctx) $ doBs bs
+        doDs [] = rewriteStmts ss'
+        doDs (d:ds) = do
+            st <- rewriteFunRec d
+            second (st:) <$> doDs ds
+    doBs (map fst rs)
+  where
+    rewriteFunRec st@(S.FunDecl sp nm@(S.SimpleBinding fsp _ fnm _) fh mdoc bdy tsts) = do
+        -- todo: lots of bits being missed
+        (fh', rn) <- rewriteHeader fh
+        -- check the body with the function name in scope
+        rn $ do
+            bdy' <- snd <$> rewriteStmts bdy
+            pure (S.FunDecl sp nm fh' mdoc bdy' tsts)
+    rewriteFunRec st@(S.RecDecl sp (S.NameBinding fsp fnm) e) = do
+        pure st
+        e' <- rewriteExpr e
+        pure $ S.RecDecl sp (S.NameBinding fsp fnm) e'
+    rewriteFunRec s = error $ "internal error: wrong kind of statement: " <> show s
+    getRec st@(S.FunDecl sp nm@(S.SimpleBinding fsp _ fnm _) fh mdoc bdy tsts) = Just ((fsp,fnm),st)
+    -- todo: maybe need to match some other kinds of names in a rec?
+    -- possibly typed? definitely shadow
+    getRec st@(S.RecDecl sp (S.NameBinding fsp fnm) _) = Just ((fsp,fnm),st)
+    getRec _ = Nothing
+    --getRecs :: [S.Stmt] -> ([((S.SourcePosition, Text),S.Stmt)], [S.Stmt])
+    getRecs (s1:ss1) | Just s1' <- getRec s1 = first (s1' :) $ getRecs ss1
+                     | otherwise = ([],ss1)
+    getRecs [] = ([],[])
 
 rewriteStmts (S.SetVar sp tgt e : ss)
     | Just tgt' <- getIdenList tgt = do
