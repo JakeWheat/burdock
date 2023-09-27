@@ -279,7 +279,22 @@ rewriteExpr (S.Cases sp e ma ts el) = do
             bdy' <- snd <$> rewriteStmts bdy
             pure (bm', wh', bdy')
 
+rewriteExpr (S.Lam sp fh bdy) = do
+    (fh', rn) <- rewriteHeader fh
+    rn $ do
+        bdy' <- snd <$> rewriteStmts bdy
+        pure (S.Lam sp fh' bdy')
+  where
+    -- todo: rewrite ps (types), ma (ann)
+    rewriteHeader (S.FunHeader ps bs ma) = do
+        (bs', rn) <- rewriteBindings bs
+        pure (S.FunHeader ps bs' ma, rn)
+
 rewriteExpr x@(S.Num{}) = pure x
+rewriteExpr (S.BinOp sp e0 op e1) = do
+    e0' <- rewriteExpr e0
+    e1' <- rewriteExpr e1
+    pure $ S.BinOp sp e0' op e1'
     
 rewriteExpr e = error $ "unsupported syntax: " <> show e
 
@@ -317,6 +332,16 @@ rewriteBinding = \case
                 pure (S.VariantBinding sp nmx bs, id)
         
     x -> error $ "rewriteBinding " <> show x
+
+-- this renames the bindings "in parallel", so they don't see each other
+-- then applies the bindings in serial
+-- maybe there are situations where you want to rename in serial too?
+rewriteBindings :: [S.Binding] -> Renamer ([S.Binding], Renamer a -> Renamer a)
+rewriteBindings [] = pure ([], id)
+rewriteBindings (b:bs) = do
+    (b',rn) <- rewriteBinding b
+    (bs',rn') <- rewriteBindings bs
+    pure (b':bs', rn' . rn)
 
 ---------------------------------------
 

@@ -617,3 +617,45 @@ import file("imported") as i
 i.a := 5
 Errors:
 assign-to-non-var([list: "i", "a"])
+
+Test: functions1
+Script:
+a = lam(x): x + 1 end
+Result:
+a = lam(x): x + 1 end
+
+Test: functions2
+Script:
+a = lam(x,y): x + y end
+Result:
+a = lam(x,y): x + y end
+
+Test: redefined function arg
+Script:
+a = lam(x,x): x + x end
+Errors:
+identifier-redefined("x")
+
+Test: functions careful scoping
+Script:
+x = lam(x,y): x + y end
+Result:
+x = lam(x,y): x + y end
+
+#Test: function syntax
+
+
+
+# Test: simple recursive
+# Script:
+# rec f = lam(a): a + f(a - 1) end
+# Result:
+# rec f = lam(a): a + f(a - 1) end
+
+# Test: mutual recursive
+# Script:
+# rec f = lam(a): a + g(a - 1) end
+# rec g = lam(a): a + f(a - 1) end
+# Result:
+# rec f = lam(a): a + g(a - 1) end
+# rec g = lam(a): a + f(a - 1) end
