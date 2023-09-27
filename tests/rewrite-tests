@@ -125,10 +125,14 @@ unrecognised-identifier([list: "i", "b", "x"])
 Test: trivial shadow
 Script:                                        
 a = 3
+a
 shadow a = 4
+a
 Result:
 a = 3
+a
 shadow a = 4
+a
 
 Test: needs shadow
 Script:                                        

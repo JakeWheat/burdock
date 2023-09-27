@@ -30,9 +30,10 @@ module Burdock.RenamerEnv
     ,createType
     ,createVar
 
+    ,RenameBinding(..)
     ,renameIdentifier
     ,renameType
-    ,renamePattern
+    ,renameBinding
     ,renameAssign
 
     ) where
@@ -153,6 +154,7 @@ data BindingMeta
     -- todo: add module provide items
     --   add error for flagging ambiguous identifier on use
     --   when the ambiguity is introduced with two * provide items
+    deriving Show
 
 -- represents the bindings available in a module
 data ModuleMetadata
@@ -227,7 +229,7 @@ bImport sp nm alias re =
        ,reBindings = ps ++ reBindings re})
 
 include :: SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-include sp nm = error $ "include not implemented yet"
+include _sp _nm = error $ "include not implemented yet"
 
 includeFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 includeFrom sp mal pis re =
@@ -394,29 +396,30 @@ renameType sp x re =
 -- if the name is not a variant, this function will also do the addLocalBinding stuff
 -- for patterns which irrefutably introduce bindings, use addLocalBinding:
 --   shadowbinding, asbinding
-renamePattern :: SourcePosition
-              -> [Text] -- name components
-              -> Maybe Int -- number of args if explicit variant pattern
-                 -- if this amount doesn't match the definition of the
-                 -- variant, this function will produce an error
-                 -- if it's Nothing, it will check that it's either
-                 -- a zero arg variant, or an actual name introducing binding
-              -> RenamerEnv
-              -- return: left means it's a namebinding
-              -- right means it's a variant binding (possibly 0 arg)
-              -> ([StaticError], Either Text [Text])
-renamePattern sp x numArgs re =
-    case lookup x (reBindings re) of
-        Nothing | [x'] <- x
-                , Nothing <- numArgs ->
-          -- it's just a binding, tdo: check the args are Nothing
-          -- then return unchanged
-            ([], Left x')
-        -- todo: check if variant, check num args if given
-        -- return it as an explicit variant
-        Just (cn, _, BEVariant _) -> ([], Right cn)
-        _ -> ([UnrecognisedIdentifier sp x], Right x)
 
+data RenameBinding
+    = NameBinding SourcePosition Text
+    | VariantBinding SourcePosition [Text] Int
+
+-- see if the binding matches a variant, if so, rename it
+-- doesn't check for identifier renamed, for this function,
+-- you create bindings in a separate step (todo: reconsider this inconsistency)
+renameBinding :: RenameBinding -> RenamerEnv -> ([StaticError], RenameBinding)
+renameBinding b re =
+    case b of
+        NameBinding sp nm ->
+            case lookup [nm] (reBindings re) of
+                -- todo: check number of args, if it isn't 0, it should be
+                -- an error
+                Just (cn, _, BEVariant numP) -> ([], VariantBinding sp cn numP)
+                Nothing -> ([], b)
+                -- error: should be caught when attempt to apply the binding
+                Just (_, _, _) -> ([], b)
+        VariantBinding sp nm _numP ->
+            -- todo: check number of args match
+            case lookup nm (reBindings re) of
+                Just (cn, _, BEVariant numP) -> ([], VariantBinding sp cn numP)
+                _ -> ([UnrecognisedIdentifier sp nm], b)
 
 -- check if the target of the assign is a variable
 -- plus rename the target if it needs it

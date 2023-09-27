@@ -61,6 +61,7 @@ has just been renamed
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE LambdaCase #-}
 module Burdock.Renamer
     (StaticError(..)
     ,prettyStaticError
@@ -99,10 +100,11 @@ import Burdock.RenamerEnv
     
     ,renameIdentifier
     ,renameType
-    ,renamePattern
+    ,renameBinding
     ,renameAssign
     )
 
+import qualified Burdock.RenamerEnv as R
 
 import qualified Burdock.Syntax as S
 
@@ -212,17 +214,11 @@ rewriteStmts (S.StmtExpr sp e : ss) = do
     e' <- rewriteExpr e
     second (S.StmtExpr sp e':) <$> rewriteStmts ss
 
-rewriteStmts ((S.LetDecl sp (S.ShadowBinding sp' nm) e) : ss) = do
-    ctx <- callWithEnv $ createBinding True sp' nm
+rewriteStmts (S.LetDecl sp b e : ss) = do
+    (b', rn) <- rewriteBinding b
     e' <- rewriteExpr e
-    let st = S.LetDecl sp (S.ShadowBinding sp' nm) e'
-    second (st:) <$> local (const ctx) (rewriteStmts ss)
-
-rewriteStmts ((S.LetDecl sp (S.NameBinding sp' nm) e) : ss) = do
-    ctx <- callWithEnv $ createBinding False sp' nm
-    e' <- rewriteExpr e
-    let st = S.LetDecl sp (S.NameBinding sp' nm) e'
-    second (st:) <$> local (const ctx) (rewriteStmts ss)
+    let st = S.LetDecl sp b' e'
+    second (st:) <$> rn (rewriteStmts ss)
 
 rewriteStmts ((S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e) : ss) = do
     ctx <- callWithEnv $ createVar False sp' nm
@@ -275,12 +271,13 @@ rewriteExpr (S.Cases sp e ma ts el) = do
     pure $ S.Cases sp e' ma ts' el'
   where
     rewriteThen (bm, wh, bdy) = do
-        bm' <- rewritePattern bm
-        wh' <- case wh of
-            Nothing -> pure wh
-            Just whx -> Just <$> rewriteExpr whx
-        bdy' <- snd <$> rewriteStmts bdy
-        pure (bm', wh', bdy')
+        (bm', rn) <- rewriteBinding bm
+        rn $ do
+            wh' <- case wh of
+                Nothing -> pure wh
+                Just whx -> Just <$> rewriteExpr whx
+            bdy' <- snd <$> rewriteStmts bdy
+            pure (bm', wh', bdy')
 
 rewriteExpr x@(S.Num{}) = pure x
     
@@ -292,23 +289,34 @@ rewriteAnn (S.TName tsp tnm) = do
     pure (S.TName tsp nt)
 rewriteAnn x = error $ "unsupported ann: " <> show x
 
--- todo: return the new bindings introduced in the pattern
-rewritePattern :: S.Binding -> Renamer S.Binding
-rewritePattern (S.VariantBinding sp nm as) = do
-    -- todo: recurse into as
-    p1 <- callWithEnv $ renamePattern sp nm (Just $ length as)
-    case p1 of
-        Left p1' -> error $ "got non variant from variant rename" <> show (nm, p1')
-        Right nmx -> pure $ S.VariantBinding sp nmx as
-
-rewritePattern (S.NameBinding sp nm) = do
-    p1 <- callWithEnv $ renamePattern sp [nm] Nothing
-    case p1 of
-        Left nmx -> pure $ S.NameBinding sp nmx
-        Right nmx -> pure $ S.VariantBinding sp nmx []
-
-    
-rewritePattern x = error $ "unsupported binding: " <> show x
+rewriteBinding :: S.Binding -> Renamer (S.Binding, Renamer a -> Renamer a)
+rewriteBinding = \case
+    S.NameBinding sp nm -> do
+        p1 <- callWithEnv $ renameBinding (R.NameBinding sp nm)
+        case p1 of
+            R.NameBinding {} -> do
+                let f1 f = do
+                        ctx <- callWithEnv (createBinding False sp nm)
+                        local (const ctx) f
+                pure (S.NameBinding sp nm, f1)
+            R.VariantBinding _ nmx _ -> do
+                pure (S.VariantBinding sp nmx [], id)
+    b@(S.ShadowBinding sp nm) -> do
+        let f1 f = do
+                ctx <- callWithEnv (createBinding True sp nm)
+                local (const ctx) f
+        pure (b, f1)
+    b@(S.VariantBinding sp nm bs) -> do
+        p1 <- callWithEnv $ renameBinding (R.VariantBinding sp nm (length bs))
+        case p1 of
+            R.NameBinding {} -> do
+                tell [UnrecognisedIdentifier sp nm]
+                pure (b,id)
+            R.VariantBinding _ nmx _ -> do
+                -- todo: recurse on the bs
+                pure (S.VariantBinding sp nmx bs, id)
+        
+    x -> error $ "rewriteBinding " <> show x
 
 ---------------------------------------
 
