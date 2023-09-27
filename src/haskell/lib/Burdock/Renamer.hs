@@ -249,22 +249,21 @@ rewriteStmts ss | (rs,ss') <- getRecs ss
             second (st:) <$> doDs ds
     doBs (map fst rs)
   where
-    rewriteFunRec st@(S.FunDecl sp nm@(S.SimpleBinding fsp _ fnm _) fh mdoc bdy tsts) = do
+    rewriteFunRec (S.FunDecl sp nm fh mdoc bdy tsts) = do
         -- todo: lots of bits being missed
         (fh', rn) <- rewriteHeader fh
         -- check the body with the function name in scope
         rn $ do
             bdy' <- snd <$> rewriteStmts bdy
             pure (S.FunDecl sp nm fh' mdoc bdy' tsts)
-    rewriteFunRec st@(S.RecDecl sp (S.NameBinding fsp fnm) e) = do
-        pure st
+    rewriteFunRec (S.RecDecl sp (S.NameBinding fsp fnm) e) = do
         e' <- rewriteExpr e
         pure $ S.RecDecl sp (S.NameBinding fsp fnm) e'
     rewriteFunRec s = error $ "internal error: wrong kind of statement: " <> show s
-    getRec st@(S.FunDecl sp nm@(S.SimpleBinding fsp _ fnm _) fh mdoc bdy tsts) = Just ((fsp,fnm),st)
+    getRec st@(S.FunDecl _ (S.SimpleBinding fsp _ fnm _) _ _ _ _) = Just ((fsp,fnm),st)
     -- todo: maybe need to match some other kinds of names in a rec?
     -- possibly typed? definitely shadow
-    getRec st@(S.RecDecl sp (S.NameBinding fsp fnm) _) = Just ((fsp,fnm),st)
+    getRec st@(S.RecDecl _ (S.NameBinding fsp fnm) _) = Just ((fsp,fnm),st)
     getRec _ = Nothing
     --getRecs :: [S.Stmt] -> ([((S.SourcePosition, Text),S.Stmt)], [S.Stmt])
     getRecs (s1:ss1) | Just s1' <- getRec s1 = first (s1' :) $ getRecs ss1
@@ -330,12 +329,15 @@ rewriteExpr (S.Lam sp fh bdy) = do
         bdy' <- snd <$> rewriteStmts bdy
         pure (S.Lam sp fh' bdy')
 
-rewriteExpr x@(S.Num{}) = pure x
 rewriteExpr (S.BinOp sp e0 op e1) = do
     e0' <- rewriteExpr e0
     e1' <- rewriteExpr e1
     pure $ S.BinOp sp e0' op e1'
-    
+
+rewriteExpr x@(S.Num{}) = pure x
+
+rewriteExpr x@(S.Text{}) = pure x
+
 rewriteExpr e = error $ "unsupported syntax: " <> show e
 
 -- todo: rewrite ps (types), ma (ann)
@@ -343,7 +345,6 @@ rewriteHeader :: S.FunHeader -> Renamer (S.FunHeader, Renamer a -> Renamer a)
 rewriteHeader (S.FunHeader ps bs ma) = do
         (bs', rn) <- rewriteBindings bs
         pure (S.FunHeader ps bs' ma, rn)
-
 
 rewriteAnn :: S.Ann -> Renamer S.Ann
 rewriteAnn (S.TName tsp tnm) = do
@@ -375,10 +376,25 @@ rewriteBinding = \case
                 tell [UnrecognisedIdentifier sp nm]
                 pure (b,id)
             R.VariantBinding _ nmx _ -> do
+                (bs',rn) <- rewriteBindings bs
                 -- todo: recurse on the bs
-                pure (S.VariantBinding sp nmx bs, id)
-        
-    x -> error $ "rewriteBinding " <> show x
+                pure (S.VariantBinding sp nmx bs', rn)
+    S.TypedBinding sp b' a -> do
+        a' <- rewriteAnn a
+        (b'',rn) <- rewriteBinding b'
+        pure (S.TypedBinding sp b'' a', rn)
+    S.TupleBinding sp bs -> do
+        (bs',rn) <- rewriteBindings bs
+        pure (S.TupleBinding sp bs', rn)
+    S.AsBinding sp b' sh nm -> do
+        (b'',rn) <- rewriteBinding b'
+        let f1 f = rn $ do
+                ctx <- callWithEnv (createBinding (sh == S.Shadow) sp nm)
+                local (const ctx) f
+        pure (S.AsBinding sp b'' sh nm, f1)
+    b@(S.WildcardBinding {}) -> pure (b, id)
+    b@(S.NumberLitBinding {}) -> pure (b, id)
+    b@(S.StringLitBinding {}) -> pure (b, id)
 
 -- this renames the bindings "in parallel", so they don't see each other
 -- then applies the bindings in serial

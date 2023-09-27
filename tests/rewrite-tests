@@ -667,3 +667,80 @@ rec g = lam(a): a + f(a - 1) end
 Result:
 rec f = lam(a): a + g(a - 1) end
 rec g = lam(a): a + f(a - 1) end
+
+Test: variant args
+Script:
+data Test:
+  | ctor2(a,b)
+end
+z = 3
+cases z:
+  | x => x
+  | ctor2(a,b) => a + b
+end
+Result:
+data Test:
+  | ctor2(a,b)
+end
+z = 3
+cases z:
+  | x => x
+  | ctor2(a,b) => a + b
+end
+
+Test: nested patterns
+File: imported
+data Test:
+  | ctor0
+  | ctor2(a,b)
+end
+Script:
+include file("imported")
+z = 3
+cases z:
+  | ctor2(a,ctor2(ctor0,d)) => a + d
+end
+Result:
+_module-imported = load-module("imported")
+z = 3
+cases z:
+  | _module-imported.ctor2(a,_module-imported.ctor2(_module-imported.ctor0,d)) => a + d
+end
+
+Test: check more patterns
+File: imported
+data Test:
+  | ctor0
+  | ctor2(a,b)
+end
+Script:
+include file("imported")
+z = 3
+cases z:
+  | a => a
+  | ctor2(a,ctor2(ctor0,d)) => a + d
+  | b :: Test => b
+  | shadow c => c
+  | _ => 0
+  | {a;b} => a + b
+  | {a;ctor0} => a
+  | {_;_} as c => c
+  | 4 => 5
+  | 'test' => 'test1'
+end
+Result:
+_module-imported = load-module("imported")
+z = 3
+cases z:
+  | a => a
+  | _module-imported.ctor2(a,_module-imported.ctor2(_module-imported.ctor0,d)) => a + d
+  | b :: _module-imported.Test => b
+  | shadow c => c
+  | _ => 0
+  | {a;b} => a + b
+  | {a;_module-imported.ctor0} => a
+  | {_;_} as c => c
+  | 4 => 5
+  | 'test' => 'test1'
+end
+

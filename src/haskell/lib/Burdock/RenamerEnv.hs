@@ -229,7 +229,21 @@ bImport sp nm alias re =
        ,reBindings = ps ++ reBindings re})
 
 include :: SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-include _sp _nm = error $ "include not implemented yet"
+include sp nm re =
+    runRenamerEnv re $ do
+    let canonicalAlias = "_module-" <> nm
+        moduleMetadata = case lookup nm (reCtx re) of
+            Nothing -> error $ "unrecognised module: " <> nm -- todo return staticerror
+            Just m -> m
+    state (\re1 -> ((), re1 {reLoadModules = (nm,canonicalAlias) : reLoadModules re}))
+    flip mapM_ (mmBindings moduleMetadata) $ \(i,(_sp,be)) ->
+            case lookup [i] (reBindings re) of
+                Nothing -> addOne ([i], ([canonicalAlias,i], sp, be))
+                Just (_,sp'',_) -> tell [IdentifierRedefined sp sp'' i]
+  where
+    addOne :: ([Text], ([Text], SourcePosition, BindingMeta)) -> RenamerEnvM ()
+    addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))
+
 
 includeFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 includeFrom sp mal pis re =

@@ -131,12 +131,12 @@ data TypeDecl
 
 data Binding
     = NameBinding SourcePosition Text
+    | ShadowBinding SourcePosition Text
     | VariantBinding SourcePosition [Text] [Binding]
     | TypedBinding SourcePosition Binding Ann
-    | ShadowBinding SourcePosition Text
-    | WildcardBinding SourcePosition
-    | AsBinding SourcePosition Binding Shadow Text
     | TupleBinding SourcePosition [Binding]
+    | AsBinding SourcePosition Binding Shadow Text
+    | WildcardBinding SourcePosition
     | NumberLitBinding SourcePosition Scientific
     | StringLitBinding SourcePosition Text
     deriving (Eq,Show,Data)
