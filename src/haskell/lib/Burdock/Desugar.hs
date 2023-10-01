@@ -39,8 +39,6 @@ import qualified Burdock.InterpreterSyntax as I
 import Data.Text (Text)
 import qualified Data.Text.Lazy as L
 
-import Data.Maybe (mapMaybe)
-
 import Burdock.Pretty (prettyExpr)
 import Data.List
     (nub
@@ -71,10 +69,14 @@ import Lens.Micro.Extras
 
 import Burdock.Renamer
     (ModuleMetadata
+    ,renameScript
+    ,renameModule
+    ,prettyStaticErrors
     )
 
 import Burdock.ModuleMetadata
-    (tempEmptyModuleMetata)
+    (tempEmptyModuleMetata
+    )
 
 ------------------------------------------------------------------------------
 
@@ -143,7 +145,10 @@ mkSyn e = Syn e [] [] []
 -- after the module system is working
 
 desugarScript :: Bool -> Text -> [(Text,ModuleMetadata)] -> S.Script -> [I.Stmt]
-desugarScript isBootstrap fn mds scr = snd $ desugar isBootstrap fn mds scr
+desugarScript isBootstrap fn mds scr =
+    let deps = getSourceDependencies scr
+        renamed = either (error . prettyStaticErrors) id $ renameScript mds scr
+    in snd $ desugar isBootstrap fn mds deps tempEmptyModuleMetata renamed
 
 -- todo: desugaring a module will wrap the statements in a block
 -- and the last element will be a make-module-value which will give the provides
@@ -151,16 +156,21 @@ desugarScript isBootstrap fn mds scr = snd $ desugar isBootstrap fn mds scr
 
 desugarModule :: Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
 desugarModule fn mds scr =
-    let scr' = desugarAsModule (getExportedNames scr) scr
-    in desugar False fn mds scr'
+    let deps = getSourceDependencies scr
+        (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule mds scr
+    in desugar False fn mds deps mm renamed
 
 -- todo: return the metadata also
 -- handle provides desugaringdwqsdw
-desugar :: Bool -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata, [I.Stmt])
-desugar isBootstrap fn mds sc@(S.Script ss) =
-    let -- temp: check the metadata
-        deps = getSourceDependencies sc
-        ok = let ds = map (\case
+desugar :: Bool
+        -> Text
+        -> [(Text,ModuleMetadata)]
+        -> [(Text, [Text])]
+        -> ModuleMetadata
+        -> S.Script
+        -> (ModuleMetadata, [I.Stmt])
+desugar isBootstrap fn mds deps mm (S.Script ss) =
+    let ok = let ds = map (\case
                                   (_,[mfn]) -> mfn
                                   x -> error $ "desugar: unsupported runtime import source: " <> show x
                           ) deps
@@ -175,30 +185,12 @@ desugar isBootstrap fn mds sc@(S.Script ss) =
                then inh
                     -- hack until modules and metadata is implemented
                else set inhVariants ["empty", "link"] inh
-    in ok (tempEmptyModuleMetata, view synTree $ runReader (desugarStmts ss) inh')
+    in ok (mm, view synTree $ runReader (desugarStmts ss) inh')
 
 type Desugar = Reader Inh
 
 ------------------------------------------------------------------------------
 
--- desugaring modules
-
--- quick hack, will move to using the ag system in the future
-getExportedNames :: S.Script -> [Text]
-getExportedNames (S.Script ss) = mapMaybe getName ss
-  where
-    getName (S.LetDecl _ (S.NameBinding _ nm) _) = Just nm
-    getName _ = Nothing
-
-desugarAsModule :: [Text] -> S.Script -> S.Script
-desugarAsModule nms (S.Script ss) =
-    let provides = [S.StmtExpr n $ S.RecordSel n (map (\a -> (a, S.Iden n a)) nms)]
-    in S.Script [S.StmtExpr n $ S.Block n (ss ++ provides)]
-  where
-    n = Nothing
-
--- a script will have the imports at top level
--- a module will have them inside a block
 getSourceDependencies :: S.Script -> [(Text, [Text])] -- returns the import sources used with plugin names
 getSourceDependencies (S.Script ss) = concatMap getImportSourceInfo ss
   where
