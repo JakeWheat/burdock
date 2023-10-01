@@ -744,3 +744,30 @@ cases z:
   | 'test' => 'test1'
 end
 
+Test: fun decl bug
+Script:
+fun f(x): x end
+y = 3
+y
+Result:
+fun f(x): x end
+y = 3
+y
+
+Test: fun decl bug 2
+Script:
+y = 3
+fun f(x): x end
+y
+Result:
+y = 3
+fun f(x): x end
+y
+
+Test: fun decl bug 3
+Script:
+fun f(x): x end
+f(3)
+Result:
+fun f(x): x end
+f(3)

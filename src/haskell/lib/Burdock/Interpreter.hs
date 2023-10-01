@@ -277,7 +277,10 @@ interpStmt (I.LetDecl b e) = do
     letExprs [(b, e)]
     nothingValue
 
-interpStmt (I.StmtExpr e) = interpExpr e
+-- not sure about the withScope - if there are bindings nested in e,
+-- they can escape without this, but maybe the withscope needs to be
+-- moved to more precise places (e.g. in if branch bodies)
+interpStmt (I.StmtExpr e) = withScope $ interpExpr e
 
 interpStmt (I.VarDecl nm e) = do
     v <- interpExpr e

@@ -293,6 +293,8 @@ initRuntime :: Runtime ModuleMetadata
 initRuntime = do
 
     hackMM <- liftIO $ newIORef [("run-task", (Nothing,BEIdentifier))
+                                ,("run-task-cs", (Nothing,BEIdentifier))
+                                ,("run-task-cs-async", (Nothing,BEIdentifier))
                                 ,("true", (Nothing, BEVariant 0))
                                 ,("false", (Nothing, BEVariant 0))
                                 ]
@@ -577,6 +579,10 @@ myLoadModule [ctx,fn]
     | Just (ctx' :: Text)  <- extractValue ctx
     , Just (fn' :: Text) <- extractValue fn =
     getModuleValue (Just ctx') $ RuntimeImportSource "file" [fn']
+-- temp for new system in progress of being implemented
+myLoadModule [fn]
+    | Just (fn' :: Text) <- extractValue fn =
+    getModuleValue Nothing $ RuntimeImportSource "file" [fn']
 myLoadModule _ = error $ "bad args to myLoadModule"
 
 ------------------------------------------------------------------------------

@@ -213,6 +213,7 @@ rewritePreludeStmts ss = do
     lms <- callWithEnv queryLoadModules
     second (map (uncurry mlm) lms ++) <$> rewriteStmts ss
   where
+      -- temp extra arg to load module from the old system
     mlm nm al = S.LetDecl n (S.NameBinding n al) (S.App n (S.Iden n "load-module") [S.Text n nm])
     n = Nothing
 
@@ -256,7 +257,18 @@ rewriteStmts (s@(S.DataDecl sp nm ps vs _ _) : ss) = do
     -- rename the test block
     let vs' = flip map vs $ \(S.VariantDecl _sp vnm _ _) -> (sp,vnm)
     ctx <- callWithEnv $ createType sp nm (length ps) vs'
-    second (s:) <$> local (const ctx) (rewriteStmts ss)
+    second (s:) <$> local (const ctx) (do
+        -- quick hack add extra is- functions, later I think it needs
+        -- to add the type, the is-functions, and the variants,
+        -- and the standalone methods all in one letrec
+        -- todo: implement a createBindings
+        --   and a createRecBindings, to use here and in fun+recdecl
+        let isBs = (sp,"is-" <> nm) : flip map vs (\(S.VariantDecl vsp vnm _ _) -> (vsp,"is-" <> vnm))
+            f ((xsp,xnm):bs) = do
+                ctx1 <- callWithEnv $ createBinding False xsp xnm
+                local (const ctx1) $ f bs
+            f [] = rewriteStmts ss
+        f isBs)
 
 {-
 renaming mutually recursive decls:
@@ -300,8 +312,8 @@ rewriteStmts ss | (rs,ss') <- getRecs ss
     getRec st@(S.RecDecl _ (S.NameBinding fsp fnm) _) = Just ((fsp,fnm),st)
     getRec _ = Nothing
     --getRecs :: [S.Stmt] -> ([((S.SourcePosition, Text),S.Stmt)], [S.Stmt])
-    getRecs (s1:ss1) | Just s1' <- getRec s1 = first (s1' :) $ getRecs ss1
-                     | otherwise = ([],ss1)
+    getRecs ssall@(s1:ss1) | Just s1' <- getRec s1 = first (s1' :) $ getRecs ss1
+                     | otherwise = ([],ssall)
     getRecs [] = ([],[])
 
 -- todo: typestmt
@@ -320,7 +332,12 @@ rewriteStmts (S.SetVar sp tgt e : ss)
     | otherwise = error $ "bad target of assign " <> show tgt
 
 -- todo: setref, rename the expressions
--- check: rename the body
+
+rewriteStmts (S.Check sp mnm bdy : ss) = do
+    bdy' <- snd <$> rewriteStmts bdy
+    let s = S.Check sp mnm bdy'
+    second (s:) <$> rewriteStmts ss
+
 -- provide from - returning to this later, along with module provide items
 -- use package: will probably change
 
@@ -379,12 +396,24 @@ rewriteExpr (S.Lam sp fh bdy) = do
 -- todo: curly lam
 
 -- todo: let
+rewriteExpr (S.Let sp bs bdy) = do
+    let dob acc [] = do
+            bdy' <- snd <$> rewriteStmts bdy
+            pure $ S.Let sp (reverse acc) bdy'
+        dob acc ((b,e):bs') = do
+            (b',rn) <- rewriteBinding b
+            e' <- rewriteExpr e
+            rn $ dob ((b',e'):acc) bs'
+    dob [] bs
 -- todo: letrec
 
 rewriteExpr (S.Block sp ss) =
     (S.Block sp . snd) <$> rewriteStmts ss
 
--- todo: general dotexpr
+-- make sure this comes after the getidens version above
+rewriteExpr (S.DotExpr sp e nm) =
+    (\e1 -> S.DotExpr sp e1 nm) <$> rewriteExpr e
+    
 
 rewriteExpr (S.Cases sp e ma ts el) = do
     e' <- rewriteExpr e
@@ -407,10 +436,18 @@ rewriteExpr (S.Cases sp e ma ts el) = do
 rewriteExpr (S.TupleSel sp es) = S.TupleSel sp <$> mapM rewriteExpr es
     
 -- todo: recordsel
+rewriteExpr (S.RecordSel sp fs) =
+    S.RecordSel sp <$> mapM rf fs
+  where
+    rf (nm,e) = (nm,) <$> rewriteExpr e
+
 -- todo: extend
 -- todo: tablesel
 -- todo: tupleget
--- todo: construct
+rewriteExpr (S.TupleGet sp e i) =
+    (\e' -> S.TupleGet sp e' i) <$> rewriteExpr e
+
+rewriteExpr (S.Construct sp nm es) = S.Construct sp nm <$> mapM rewriteExpr es
 
 rewriteExpr (S.AssertTypeCompat sp e ann) = do
     ann' <- rewriteAnn ann

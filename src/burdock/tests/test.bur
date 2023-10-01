@@ -247,13 +247,23 @@ check "when":
 
   var a = 1
   when true:
-    a = 2
+    a := 2
   end
   a is 2
   when false:
-    a = 3
+    a := 3
   end
   a is 2
+
+end
+
+check "when bug":
+
+  var a = 1
+  when true:
+    shadow a = 2
+  end
+  a is 1
 
 end
 
@@ -313,7 +323,7 @@ data L1:
   | l1b
 end
 
-fun f(x):
+fun f1(x):
   cases x:
     | l1b => 1
     | l1a(a) => a
@@ -329,8 +339,8 @@ end
 
 check "no arg ctor matching":
   #print(1)
-  f(l1a(3)) is 3
-  f(l1b) is 1
+  f1(l1a(3)) is 3
+  f1(l1b) is 1
   g(l1a(3)) is 3
   g(l1b) is 1
 end
