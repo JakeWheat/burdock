@@ -23,7 +23,7 @@ module Burdock.Desugar
     (desugarScript
     ,desugarModule
     ,getSourceDependencies
-    ,ModuleMetadata(..)
+    ,ModuleMetadata
     ,internals
     ) where
 
@@ -69,7 +69,12 @@ import Lens.Micro
 import Lens.Micro.Extras
     (view)
 
-import Burdock.Runtime (ModuleMetadata(..))
+import Burdock.Renamer
+    (ModuleMetadata
+    )
+
+import Burdock.ModuleMetadata
+    (tempEmptyModuleMetata)
 
 ------------------------------------------------------------------------------
 
@@ -170,7 +175,7 @@ desugar isBootstrap fn mds sc@(S.Script ss) =
                then inh
                     -- hack until modules and metadata is implemented
                else set inhVariants ["empty", "link"] inh
-    in ok (ModuleMetadata, view synTree $ runReader (desugarStmts ss) inh')
+    in ok (tempEmptyModuleMetata, view synTree $ runReader (desugarStmts ss) inh')
 
 type Desugar = Reader Inh
 

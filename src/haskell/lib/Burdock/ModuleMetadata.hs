@@ -6,6 +6,7 @@
 module Burdock.ModuleMetadata
     (ModuleMetadata(..)
     ,BindingMeta(..)
+    ,tempEmptyModuleMetata
     ) where
     
 
@@ -27,3 +28,8 @@ data BindingMeta
 data ModuleMetadata
     = ModuleMetadata
       {mmBindings :: [(Text,(SourcePosition, BindingMeta))]}
+    deriving Show
+
+tempEmptyModuleMetata :: ModuleMetadata
+tempEmptyModuleMetata = ModuleMetadata []
+

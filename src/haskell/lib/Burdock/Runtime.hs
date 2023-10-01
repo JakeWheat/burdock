@@ -16,7 +16,7 @@ Haskell ffi code uses function in the runtime too.
 module Burdock.Runtime
     (Value(..)
 
-    ,ModuleMetadata(..)
+    ,ModuleMetadata
     ,ModulePlugin(..)
     ,RuntimeImportSource(..)
 
@@ -91,6 +91,7 @@ import Burdock.Utils (error, show)
 --import Data.Text.IO (putStrLn)
 
 import Burdock.Scientific
+import Burdock.ModuleMetadata (ModuleMetadata)
 
 import Control.Monad.Reader (ReaderT
                             ,runReaderT
@@ -481,8 +482,8 @@ getRuntimeState = ask
 -- in the syntax, and the list of args, in the burdock syntax this is:
 -- import <import-source-name>(args) ...
 
-data ModuleMetadata = ModuleMetadata
-    deriving (Eq,Show)
+--data ModuleMetadata = ModuleMetadata
+--   deriving (Eq,Show)
 
 data RuntimeImportSource
     = RuntimeImportSource

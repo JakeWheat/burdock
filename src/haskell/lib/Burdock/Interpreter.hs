@@ -40,7 +40,7 @@ import Burdock.Runtime
     ,BootstrapValues(..)
     ,nothingValue
 
-    ,ModuleMetadata(..)
+    ,ModuleMetadata
     ,RuntimeImportSource(..)
     ,ModulePlugin(..)
     ,getModuleMetadata
