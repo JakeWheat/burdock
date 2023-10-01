@@ -83,6 +83,9 @@ module Burdock.Runtime
     ,getTestResults
 
     --,ffimethodapp
+    -- temp
+    ,getTempEnvStage
+    ,setTempEnvStage
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -91,7 +94,9 @@ import Burdock.Utils (error, show)
 --import Data.Text.IO (putStrLn)
 
 import Burdock.Scientific
-import Burdock.ModuleMetadata (ModuleMetadata)
+import Burdock.ModuleMetadata
+    (ModuleMetadata
+    ,tempEmptyModuleMetadata)
 
 import Control.Monad.Reader (ReaderT
                             ,runReaderT
@@ -140,7 +145,19 @@ data RuntimeState
     ,rtCallStack :: IORef [Maybe Text]
     ,rtBootstrapRecTup :: IORef BootstrapValues
     ,rtModulePlugins :: IORef [(Text, ModulePlugin)]
+    -- hack used by the renamer temporarily
+    ,rtTempEnvStage :: IORef ModuleMetadata
     }
+
+getTempEnvStage :: Runtime ModuleMetadata
+getTempEnvStage = do
+    x <- ask
+    liftIO $ readIORef (rtTempEnvStage x)
+
+setTempEnvStage :: ModuleMetadata -> Runtime ()
+setTempEnvStage v = do
+    x <- ask
+    liftIO $ writeIORef (rtTempEnvStage x) v
 
 data BootstrapValues
     = BootstrapValues
@@ -163,6 +180,7 @@ emptyRuntimeState =
         <*> newIORef []
         <*> newIORef (error "bootstrap for tuples and records not completed")
         <*> newIORef []
+        <*> newIORef tempEmptyModuleMetadata
 
 setBootstrapRecTup :: BootstrapValues -> Runtime ()
 setBootstrapRecTup v = do

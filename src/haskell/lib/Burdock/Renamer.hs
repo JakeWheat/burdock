@@ -132,27 +132,39 @@ import Control.Arrow (first, second)
 
 type Renamer = ReaderT RenamerEnv (Writer [StaticError])
 
-renameModule :: [(Text, ModuleMetadata)] -> S.Script -> Either [StaticError] (ModuleMetadata, S.Script)
-renameModule ctx (S.Script stmts) =
-    errToEither $ runRenamer ctx $ do
-            (re, stmts') <- rewritePreludeStmts stmts
-            -- get the module value info to create the make-module last statement
-            rs <- liftErrs $ applyProvides re
-            let ls = makeModuleValue $ snd rs
-            -- return the final module metadata along with the renamed source
-            pure ((fst rs, S.Script (stmts' ++ [ls])))
+renameModule :: ModuleMetadata -> [(Text, ModuleMetadata)] -> S.Script -> Either [StaticError] (ModuleMetadata, S.Script)
+renameModule tmpHack ctx (S.Script stmts) =
+    errToEither $ runRenamer tmpHack ctx $ do
+        (re, stmts') <- rewritePreludeStmts stmts
+        -- get the module value info to create the make-module last statement
+        rs <- liftErrs $ applyProvides re
+        let ls = makeModuleValue $ snd rs
+        -- return the final module metadata along with the renamed source
+        pure ((fst rs, S.Script (stmts' ++ [ls])))
   where
     makeModuleValue rs =
         let n = Nothing
             r = flip map rs $ \(as,b) -> (b, toIdenExpr $ map (n,) as)
         in S.StmtExpr n $ S.App n (S.Iden n "make-module") [S.RecordSel n r]
 
-renameScript :: [(Text, ModuleMetadata)] -> S.Script -> Either [StaticError] S.Script
-renameScript ctx (S.Script stmts) =
-    errToEither $ runRenamer ctx (S.Script . snd <$> rewritePreludeStmts stmts)
+renameScript :: ModuleMetadata
+             -> [(Text, ModuleMetadata)]
+             -> S.Script
+             -> Either [StaticError] (ModuleMetadata, S.Script)
+renameScript tmpHack ctx (S.Script stmts) =
+    errToEither $ runRenamer tmpHack ctx $ do
+        (re, stmts') <- rewritePreludeStmts stmts
+        -- todo: use a new function which puts in a default provide all
+        -- the motivation to return module metadata from this is for a
+        -- user of this function to get info on the top level bindings in this script
+        rs <- liftErrs $ applyProvides re
+        pure ((fst rs, S.Script stmts'))
+    
+    -- errToEither $ runRenamer tmpHack ctx (S.Script . snd <$> rewritePreludeStmts stmts)
 
-runRenamer :: [(Text, ModuleMetadata)] -> Renamer a -> (a, [StaticError])
-runRenamer ctx f = runWriter $ flip runReaderT (makeRenamerEnv ctx) f
+-- tmpHack used to shoehorn in definitions from pre module initRuntime, bootstrap and internals hacks
+runRenamer :: ModuleMetadata -> [(Text, ModuleMetadata)] -> Renamer a -> (a, [StaticError])
+runRenamer tmpHack ctx f = runWriter $ flip runReaderT (makeRenamerEnv tmpHack ctx) f
 
 callWithEnv :: (RenamerEnv -> ([StaticError], b)) -> Renamer b
 callWithEnv f = liftErrs =<< f <$> ask
@@ -312,7 +324,7 @@ rewriteStmts (S.SetVar sp tgt e : ss)
 -- provide from - returning to this later, along with module provide items
 -- use package: will probably change
 
-rewriteStmts (s:_) = error $ "unsupported syntax " <> show s
+rewriteStmts (s:_) = error $ "unsupported stmt syntax " <> show s
 
 ---------------------------------------
 
@@ -329,7 +341,15 @@ rewriteExpr e | Just is <- getIdenList e = do
 
 rewriteExpr (S.Parens sp e) = S.Parens sp <$> rewriteExpr e
 
--- todo: if
+rewriteExpr (S.If sp ts els) = do
+    ts' <- mapM rewriteB ts
+    els' <- case els of
+        Nothing -> pure Nothing
+        Just eb -> Just <$> (snd <$> rewriteStmts eb)
+    pure $ S.If sp ts' els'
+  where
+    rewriteB (e,bdy) = (,) <$> rewriteExpr e <*> (snd <$> rewriteStmts bdy)
+        
 -- todo: ask
 
 rewriteExpr (S.App sp f as) = do
@@ -384,7 +404,8 @@ rewriteExpr (S.Cases sp e ma ts el) = do
             bdy' <- snd <$> rewriteStmts bdy
             pure (bm', wh', bdy')
 
--- todo: tuplesel
+rewriteExpr (S.TupleSel sp es) = S.TupleSel sp <$> mapM rewriteExpr es
+    
 -- todo: recordsel
 -- todo: extend
 -- todo: tablesel
@@ -403,9 +424,16 @@ rewriteExpr x@(S.Template{}) = pure x
 -- todo: receive
 
 -- todo: for
--- todo methodexpr (overlap with inline methods in data decls)
+rewriteExpr (S.MethodExpr sp m) = S.MethodExpr sp <$> rewriteMethod m
 
-rewriteExpr e = error $ "unsupported syntax: " <> show e
+rewriteExpr e = error $ "unsupported expr syntax: " <> show e
+
+rewriteMethod :: S.Method -> Renamer S.Method
+rewriteMethod (S.Method fh bdy) = do
+    (fh',rn) <- rewriteHeader fh
+    rn $ do
+        bdy' <- snd <$> rewriteStmts bdy
+        pure (S.Method fh' bdy')
 
 -- todo: rewrite ps (types), ma (ann)
 -- where does functionheader appear? when does it need to check or introduce
@@ -424,7 +452,7 @@ rewriteAnn (S.TName tsp tnm) = do
 --   are treated as introduced type parameters
 --   and one where the local type parameters have to have already
 --   been declared in the local env
-rewriteAnn x = error $ "unsupported ann: " <> show x
+rewriteAnn x = error $ "unsupported ann syntax: " <> show x
 
 rewriteBinding :: S.Binding -> Renamer (S.Binding, Renamer a -> Renamer a)
 rewriteBinding = \case

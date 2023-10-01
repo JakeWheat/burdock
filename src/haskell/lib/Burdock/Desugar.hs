@@ -74,10 +74,6 @@ import Burdock.Renamer
     ,prettyStaticErrors
     )
 
-import Burdock.ModuleMetadata
-    (tempEmptyModuleMetata
-    )
-
 ------------------------------------------------------------------------------
 
 {-
@@ -144,20 +140,20 @@ mkSyn e = Syn e [] [] []
 -- todo: isbootstrap will be replaced with a new handle bootstrap process
 -- after the module system is working
 
-desugarScript :: Bool -> Text -> [(Text,ModuleMetadata)] -> S.Script -> [I.Stmt]
-desugarScript isBootstrap fn mds scr =
+desugarScript :: ModuleMetadata -> Bool -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
+desugarScript tmpHack isBootstrap fn mds scr =
     let deps = getSourceDependencies scr
-        renamed = either (error . prettyStaticErrors) id $ renameScript mds scr
-    in snd $ desugar isBootstrap fn mds deps tempEmptyModuleMetata renamed
+        (mm,renamed) = either (error . prettyStaticErrors) id $ renameScript tmpHack mds scr
+    in desugar isBootstrap fn mds deps mm renamed
 
 -- todo: desugaring a module will wrap the statements in a block
 -- and the last element will be a make-module-value which will give the provides
 -- processed exported decls
 
-desugarModule :: Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
-desugarModule fn mds scr =
+desugarModule :: ModuleMetadata -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
+desugarModule tmpHack fn mds scr =
     let deps = getSourceDependencies scr
-        (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule mds scr
+        (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule tmpHack mds scr
     in desugar False fn mds deps mm renamed
 
 -- todo: return the metadata also

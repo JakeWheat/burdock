@@ -29,6 +29,7 @@ import Burdock.Renamer
 
 import Burdock.Renamer
     (ModuleMetadata)
+import Burdock.ModuleMetadata (tempEmptyModuleMetadata)
 
     
 import Burdock.Pretty (prettyScript)
@@ -52,10 +53,10 @@ tempRenamer isModule fn = do
     -- so can show renamed files that import stuff
     --let ctx = []
     case if isModule
-         then either Left (Right . snd) $ renameModule ctx ast
-         else renameScript ctx ast of
-        Left e -> error $ prettyStaticErrors e
-        Right res -> L.putStrLn $ prettyScript res
+         then renameModule tempEmptyModuleMetadata ctx ast
+         else renameScript tempEmptyModuleMetadata ctx ast of
+        Left  e -> error $ prettyStaticErrors e
+        Right (_,res) -> L.putStrLn $ prettyScript res
   where
     processImport :: Text -> IO [(Text, ModuleMetadata)]
     processImport mfn = do
@@ -66,7 +67,7 @@ tempRenamer isModule fn = do
         let imps = hackGetImports ast
         -- todo: need to memoize and share and stuff
         ctx <- concat <$> mapM processImport imps
-        let x = renameModule ctx ast
+        let x = renameModule tempEmptyModuleMetadata ctx ast
         case x of
             Left e -> error $ prettyStaticErrors e
             Right (m,_) -> pure ((mfn,m) : ctx)

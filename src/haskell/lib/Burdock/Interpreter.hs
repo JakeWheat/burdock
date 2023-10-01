@@ -76,6 +76,9 @@ import Burdock.Runtime
     --,makeFunctionValue
     --,Type(..)
     --,Scientific
+
+    ,getTempEnvStage
+    ,setTempEnvStage
     )
 
 --import Burdock.Pretty (prettyExpr)
@@ -98,11 +101,11 @@ import Burdock.DefaultRuntime
     ,internals
     ,bootstrap
     )
+    
 import Control.Monad
     (forM_
     ,when
     ,zipWithM
-    ,void
     ,forM
     )
 
@@ -126,6 +129,9 @@ import System.FilePath
     ,(</>)
     )
 
+import Burdock.ModuleMetadata
+    (ModuleMetadata(..))
+
 ------------------------------------------------------------------------------
 
 debugPrintUserScript :: Bool
@@ -146,10 +152,12 @@ createHandle = do
         mp <- burdockModulePlugin
         addModulePlugin "file" mp
 
-        initRuntime
-        void $ runScript' True debugPrintBootstrap (Just "bootstrap") bootstrap
+        tmpHackMetadata <- initRuntime
 
-        let lkpf f = maybe (error $ "bootstrap " <> f <> " not found") id <$> lookupBinding f
+        setTempEnvStage tmpHackMetadata
+        (bmm,_) <- runScript' True debugPrintBootstrap (Just "_bootstrap") bootstrap
+
+        let lkpf f = maybe (error $ "_bootstrap " <> f <> " not found") id <$> lookupBinding f
 
         setBootstrapRecTup =<< BootstrapValues
             <$> lkpf "_tuple_equals"
@@ -160,26 +168,34 @@ createHandle = do
             <*> lkpf "link"
             <*> lkpf "nothing"
         
-        void $ runScript' False debugPrintInternals (Just "internals") internals
+        -- temp: add the stuff in initRuntime + bootstrap
+        let tempCombineModuleMetadata (ModuleMetadata a) (ModuleMetadata b) = ModuleMetadata (a ++ b)
+        setTempEnvStage $ tempCombineModuleMetadata tmpHackMetadata bmm
+        (imm,_) <- runScript' False debugPrintInternals (Just "_internals") internals
+
+        -- temp: add the stuff in initRuntime + bootstrap + internals
+        setTempEnvStage $ tempCombineModuleMetadata (tempCombineModuleMetadata tmpHackMetadata bmm) imm
+
             -- todo: tests in the internals?
         getRuntimeState
 
 runScript :: Maybe T.Text -> L.Text -> Runtime Value
-runScript = runScript' False debugPrintUserScript
+runScript fn src = snd <$> runScript' False debugPrintUserScript fn src
 
 ------------------------------------------------------------------------------
 
-runScript' :: Bool -> Bool -> Maybe T.Text -> L.Text -> Runtime Value
+runScript' :: Bool -> Bool -> Maybe T.Text -> L.Text -> Runtime (ModuleMetadata, Value)
 runScript' isBootstrap debugPrint fn' src = do
     -- filename either comes from bootstrap or from user
     fn <- T.pack <$> liftIO (canonicalizePath $ maybe "unnamed" T.unpack fn')
     let ast = either error id $ parseScript fn src
     ms <- recurseMetadata (Just fn) ast
     --liftIO $ putStrLn $ "desugar script"
-    let dast = desugarScript isBootstrap fn ms ast
+    tmpHack <- getTempEnvStage
+    let (mm,dast) = desugarScript tmpHack isBootstrap fn ms ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
     when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
-    interpBurdock dast
+    (mm,) <$> interpBurdock dast
 
 loadAndDesugarModule :: Text -> Runtime (ModuleMetadata, [I.Stmt])
 loadAndDesugarModule fn = do
@@ -188,7 +204,8 @@ loadAndDesugarModule fn = do
     let ast = either error id $ parseScript fn src
     ms <- recurseMetadata (Just fn) ast
     --liftIO $ putStrLn $ "desugar " <> fn
-    pure $ desugarModule fn ms ast
+    tmpHack <- getTempEnvStage
+    pure $ desugarModule tmpHack fn ms ast
 
 recurseMetadata :: Maybe Text -> S.Script -> Runtime [(Text, ModuleMetadata)]
 recurseMetadata ctx ast = do
@@ -429,8 +446,10 @@ tryApplyBinding :: I.Binding -> Value -> Runtime (Maybe [(Text,Value)])
 
 -- temp hack for boolean literals
 tryApplyBinding (I.NameBinding "true") v | Just True <- extractValue v = pure $ Just []
+tryApplyBinding (I.VariantBinding "true" []) v | Just True <- extractValue v = pure $ Just []
 tryApplyBinding (I.NameBinding "true") _ = pure Nothing
 tryApplyBinding (I.NameBinding "false") v | Just False <- extractValue v = pure $ Just []
+tryApplyBinding (I.VariantBinding "false" []) v | Just False <- extractValue v = pure $ Just []
 tryApplyBinding (I.NameBinding "false") _ = pure Nothing
 
 tryApplyBinding (I.NameBinding nm) v = pure $ Just [(nm,v)]

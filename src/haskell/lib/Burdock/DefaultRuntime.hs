@@ -104,6 +104,16 @@ import System.Exit
     (ExitCode(..)
     )
 
+import Burdock.ModuleMetadata
+    (ModuleMetadata(..)
+    ,BindingMeta(..)
+    )
+
+import Data.IORef
+    (newIORef
+    ,modifyIORef
+    ,readIORef)
+
 ------------------------------------------------------------------------------
 
 -- temp hack, before modules implemented, have bootstrap burdock
@@ -279,62 +289,80 @@ end
 -- make a bunch of quick haskell ffi functions available to burdock code
 -- this includes part of the build in language
 
-initRuntime :: Runtime ()
+initRuntime :: Runtime ModuleMetadata
 initRuntime = do
-    addFFIType "number" (Type scientificFFI)
-    addFFIType "string" (Type stringFFI)
-    addFFIType "boolean" (Type booleanFFI)
-    addBinding "print" =<< makeFunctionValue myPrint
-    addBinding "make-burdock-list" =<< makeFunctionValue myMakeBurdockList
-    addBinding "make-haskell-list" =<< makeFunctionValue makeHaskellList
-    addBinding "make-variant" =<< makeFunctionValue myMakeVariant
-    addBinding "is-variant" =<< makeFunctionValue myIsVariant
-    addBinding "debug-print" =<< makeFunctionValue myDebugPrint
-    addBinding "debug-show" =<< makeFunctionValue myDebugShow
-    addBinding "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
-    addBinding "raise" =<< makeFunctionValue raise
-    addBinding "get-call-stack" =<< makeFunctionValue myGetCallStack
-    addBinding "torepr" =<< makeFunctionValue myToRepr
-    addBinding "tostring" =<< makeFunctionValue myToString
-    addBinding "show-variant" =<< makeFunctionValue showVariant
-    addBinding "show-tuple" =<< makeFunctionValue showTuple
-    addBinding "show-record" =<< makeFunctionValue showRecord
+
+    hackMM <- liftIO $ newIORef [("run-task", (Nothing,BEIdentifier))
+                                ,("true", (Nothing, BEVariant 0))
+                                ,("false", (Nothing, BEVariant 0))
+                                ]
+    let addFFIType' nm ty = do
+            liftIO $ modifyIORef hackMM ((nm, (Nothing, BEType 0)) : )
+            addFFIType nm ty
+        addBinding' nm f = do
+            liftIO $ modifyIORef hackMM ((nm, (Nothing, BEIdentifier)) : )
+            addBinding nm f
+    
+    addFFIType' "number" (Type scientificFFI)
+    addFFIType' "string" (Type stringFFI)
+    addFFIType' "boolean" (Type booleanFFI)
+    addBinding' "print" =<< makeFunctionValue myPrint
+    addBinding' "make-burdock-list" =<< makeFunctionValue myMakeBurdockList
+    addBinding' "make-haskell-list" =<< makeFunctionValue makeHaskellList
+    addBinding' "make-variant" =<< makeFunctionValue myMakeVariant
+    addBinding' "is-variant" =<< makeFunctionValue myIsVariant
+    addBinding' "debug-print" =<< makeFunctionValue myDebugPrint
+    addBinding' "debug-show" =<< makeFunctionValue myDebugShow
+    addBinding' "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
+    addBinding' "raise" =<< makeFunctionValue raise
+    addBinding' "get-call-stack" =<< makeFunctionValue myGetCallStack
+    addBinding' "torepr" =<< makeFunctionValue myToRepr
+    addBinding' "tostring" =<< makeFunctionValue myToString
+    addBinding' "show-variant" =<< makeFunctionValue showVariant
+    addBinding' "show-tuple" =<< makeFunctionValue showTuple
+    addBinding' "show-record" =<< makeFunctionValue showRecord
 
     -- loading a module needs the interpreter, but the interpreter depends on this
     -- module
-    addBinding "load-module" =<< makeFunctionValue myLoadModule
+    addBinding' "load-module" =<< makeFunctionValue myLoadModule
 
 
     -- should true be a built in value (built into the runtime), or an ffi
     -- value, or a agdt?
-    addBinding "true" (makeValue "boolean" True)
-    addBinding "false" (makeValue "boolean" False)
+    addBinding' "true" (makeValue "boolean" True)
+    addBinding' "false" (makeValue "boolean" False)
 
-    addBinding "not" =<< makeFunctionValue myNot
+    addBinding' "not" =<< makeFunctionValue myNot
 
-    addBinding "sleep" =<< makeFunctionValue mySleep
-    addBinding "spawn-sleep-throw-to" =<< makeFunctionValue spawnSleepThrowTo
+    addBinding' "sleep" =<< makeFunctionValue mySleep
+    addBinding' "spawn-sleep-throw-to" =<< makeFunctionValue spawnSleepThrowTo
 
-    addBinding "add-test-pass" =<< makeFunctionValue myAddTestPass
-    addBinding "add-test-fail" =<< makeFunctionValue myAddTestFail
-    addBinding "indent" =<< makeFunctionValue indent
+    addBinding' "add-test-pass" =<< makeFunctionValue myAddTestPass
+    addBinding' "add-test-fail" =<< makeFunctionValue myAddTestFail
+    addBinding' "indent" =<< makeFunctionValue indent
 
-    addBinding "torepr-debug" =<< makeFunctionValue toreprDebug
+    addBinding' "torepr-debug" =<< makeFunctionValue toreprDebug
 
-    addBinding "gremlin" (makeValue "gremlintype" False)
+    addBinding' "gremlin" (makeValue "gremlintype" False)
 
-    addBinding "read-process" =<< makeFunctionValue myReadProcessWithExitCode
+    addBinding' "read-process" =<< makeFunctionValue myReadProcessWithExitCode
 
-    addBinding "make-bytestring" =<< makeFunctionValue makeBytestring
-    addBinding "get-bytestring-byte" =<< makeFunctionValue getBytestringByte
-    addBinding "split" =<< makeFunctionValue split
+    addBinding' "make-bytestring" =<< makeFunctionValue makeBytestring
+    addBinding' "get-bytestring-byte" =<< makeFunctionValue getBytestringByte
+    addBinding' "split" =<< makeFunctionValue split
 
-    addBinding "my-thread-id" =<< makeFunctionValue bmyThreadId
-    addBinding "run-callback-n" =<< makeFunctionValue runCallbackN
-    addBinding "run-callback-async-n" =<< makeFunctionValue runCallbackAsyncN
-    addBinding "test-wait" =<< makeFunctionValue testWait
-    addBinding "handle-thread-id" =<< makeFunctionValue handleThreadId
-    
+    addBinding' "my-thread-id" =<< makeFunctionValue bmyThreadId
+    addBinding' "run-callback-n" =<< makeFunctionValue runCallbackN
+    addBinding' "run-callback-async-n" =<< makeFunctionValue runCallbackAsyncN
+    addBinding' "test-wait" =<< makeFunctionValue testWait
+    addBinding' "handle-thread-id" =<< makeFunctionValue handleThreadId
+
+    -- well hacky, use reverse to shoehorn in the true and false variants
+    -- before the binding
+    -- all this mess will be fixed after the module system and basic haskell
+    -- ffi modules are implemented for user code, before replacing the system
+    -- bootstrap with the new approach
+    ModuleMetadata <$> reverse <$> liftIO (readIORef hackMM)
 
 ------------------------------------------------------------------------------
 

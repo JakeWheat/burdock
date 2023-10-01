@@ -137,7 +137,7 @@ prettyStaticError = \case
         ,doMsg osp "target defined here"]
   where
     doMsg pos msg = case pos of
-        Nothing -> msg
+        Nothing -> "<unknown>:" <> msg
         Just (fn,l,c) -> fn <> ":" <> show l <> ":" <> show c <> ": " <> msg
     icd = T.intercalate "."
 
@@ -181,8 +181,11 @@ data RenamerEnv
     ,reBindings :: [([Text], ([Text], SourcePosition, BindingMeta))]
     }
 
-makeRenamerEnv :: [(Text, ModuleMetadata)] -> RenamerEnv
-makeRenamerEnv ctx = RenamerEnv ctx [] [] [] [] []
+makeRenamerEnv :: ModuleMetadata -> [(Text, ModuleMetadata)] -> RenamerEnv
+makeRenamerEnv (ModuleMetadata tmpHack) ctx =
+    let b = flip map tmpHack $ \(nm,(sp,bm)) ->
+            ([nm],([nm], sp, bm))
+    in RenamerEnv ctx [] [] [] [] b
 
 ------------------------------------------------------------------------------
 

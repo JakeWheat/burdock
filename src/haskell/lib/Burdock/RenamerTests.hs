@@ -28,6 +28,8 @@ import Burdock.Renamer
     --,StaticError(..)
     )
 
+import Burdock.ModuleMetadata (tempEmptyModuleMetadata)
+
 import qualified Data.Text as T
 import qualified Data.Text.Lazy.IO as L
 import Burdock.Parse (parseScript)
@@ -57,15 +59,15 @@ makeRenamerTest rt = TestCase (rName rt) $ do
     let f acc [] = pure acc
         f acc ((fn,src):srcs) = do
             let ast = either (error . show) id $ parseScript fn src
-            (mmeta, _) <- renameModule acc ast
+            (mmeta, _) <- renameModule tempEmptyModuleMetadata acc ast
             f ((fn,mmeta):acc) srcs
     let ctx = either (error . show) id $ f [] (rSources rt)
     -- parse the script, rename it
     let res = case rScript rt of
             Left m -> let ast = either (error . show) id $ parseScript (rName rt) m
-                      in either Left (Right . snd) $ renameModule ctx ast
+                      in either Left (Right . snd) $ renameModule tempEmptyModuleMetadata ctx ast
             Right s -> let ast = either (error . show) id $ parseScript (rName rt) s
-                      in renameScript ctx ast
+                      in either Left (Right .  snd) $ renameScript tempEmptyModuleMetadata ctx ast
     -- check if it matches the expected, or the expected errors
     case (res, rResult rt) of
         (Left errs, Left expErrs) ->
