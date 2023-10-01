@@ -76,6 +76,11 @@ import Control.Monad.Except
     ,throwError
     )
 
+import Burdock.ModuleMetadata
+    (ModuleMetadata(..)
+    ,BindingMeta(..)
+    )
+
 ------------------------------------------------------------------------------
 
 {-
@@ -145,22 +150,6 @@ prettyStaticErrors = T.unlines . map prettyStaticError
 
 -- main types
 
-data BindingMeta
-    = BEIdentifier
-    | BEVariant Int
-    | BEVariable
-    | BEType Int
-    --  | BEModuleAlias
-    -- todo: add module provide items
-    --   add error for flagging ambiguous identifier on use
-    --   when the ambiguity is introduced with two * provide items
-    deriving Show
-
--- represents the bindings available in a module
-data ModuleMetadata
-    = ModuleMetadata
-      {mmBindings :: [(Text,(SourcePosition, BindingMeta))]}
-
 -- represents the env needed to rename within a module, for prelude
 -- and regular statements
 -- there's a lot of redundancy here, this is aimed to make it
@@ -170,7 +159,6 @@ data RenamerEnv
     = RenamerEnv
     { -- available modules to import, the key is the identifier of the module
       -- for burdock modules for now, this will be the unique path to the module source
-
      reCtx :: [(Text, ModuleMetadata)]
     -- all the local bindings so far, this is used to process the provide items
     -- and create a module metadata for the current module at the end of renaming
@@ -237,9 +225,9 @@ include sp nm re =
             Just m -> m
     state (\re1 -> ((), re1 {reLoadModules = (nm,canonicalAlias) : reLoadModules re}))
     flip mapM_ (mmBindings moduleMetadata) $ \(i,(_sp,be)) ->
-            case lookup [i] (reBindings re) of
-                Nothing -> addOne ([i], ([canonicalAlias,i], sp, be))
-                Just (_,sp'',_) -> tell [IdentifierRedefined sp sp'' i]
+        case lookup [i] (reBindings re) of
+            Nothing -> addOne ([i], ([canonicalAlias,i], sp, be))
+            Just (_,sp'',_) -> tell [IdentifierRedefined sp sp'' i]
   where
     addOne :: ([Text], ([Text], SourcePosition, BindingMeta)) -> RenamerEnvM ()
     addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))
