@@ -217,7 +217,7 @@ bImport sp nm alias re =
     -- todo: make a better canonical alias
     let canonicalAlias = "_module-" <> nm
         moduleMetadata = case lookup nm (reCtx re) of
-            Nothing -> error $ "unrecognised module: " <> nm -- todo return staticerror
+            Nothing -> error $ "renamerenv bimport unrecognised module: " <> nm -- todo return staticerror
             Just m -> m
         ps = flip map (mmBindings moduleMetadata) $ \(i, (_sp, be)) ->
              ([alias,i], ([canonicalAlias,i], sp, be))
@@ -231,7 +231,8 @@ include sp nm re =
     runRenamerEnv re $ do
     let canonicalAlias = "_module-" <> nm
         moduleMetadata = case lookup nm (reCtx re) of
-            Nothing -> error $ "unrecognised module: " <> nm -- todo return staticerror
+            Nothing -> error $ "renamerenv include unrecognised module: " <> nm -- todo return staticerror
+                       <> " " <> show (map fst (reCtx re))
             Just m -> m
     state (\re1 -> ((), re1 {reLoadModules = (nm,canonicalAlias) : reLoadModules re}))
     flip mapM_ (mmBindings moduleMetadata) $ \(i,(_sp,be)) ->

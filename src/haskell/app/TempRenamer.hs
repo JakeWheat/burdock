@@ -52,8 +52,9 @@ import Burdock.Runtime
 import Burdock.Interpreter
     (createHandle)
 import Burdock.Desugar
-    (desugarScript)
-
+    (desugarScript
+    ,desugarModule
+    )
 
 tempRenamer :: Bool -> Text -> IO ()
 tempRenamer isModule fn = do
@@ -97,14 +98,12 @@ tempDesugar isModule fn = do
             Left e -> error e
             Right ast' -> ast'
 
-    if isModule
-      then do
-        undefined
-      else do
-        mm <- hackGetPreexistingEnv
-        let (_,stmts) = desugarScript mm fn [] ast
-        P.putStrLn $ ppShow stmts
-    
+    mm <- hackGetPreexistingEnv
+    let stmts =
+            snd $ (if isModule
+                   then desugarModule
+                   else desugarScript) mm fn [] ast
+    P.putStrLn $ ppShow stmts
         
 hackGetImports :: S.Script -> [Text]
 hackGetImports (S.Script stmts) = nub $ flip mapMaybe stmts $ \case

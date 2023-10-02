@@ -184,6 +184,10 @@ getSourceDependencies (S.Script ss) = concatMap getImportSourceInfo ss
     getImportSourceInfo (S.StmtExpr _ (S.Block _ ss')) = concatMap getImportSourceInfo ss'
     getImportSourceInfo (S.Import _ (S.ImportSpecial nm args) _) =
         [(nm,args)]
+    getImportSourceInfo (S.Include _ (S.ImportSpecial nm args)) =
+        [(nm,args)]
+    getImportSourceInfo (S.ImportFrom _ (S.ImportSpecial nm args) _) =
+        [(nm,args)]
     getImportSourceInfo _x = [] -- error $ show x
 
 ------------------------------------------------------------------------------
@@ -248,9 +252,10 @@ check-variants-equal(on-fields :: list<string>,a,b)
 desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
     -- make sure the is-var are available for the is-dat
     -- make sure all of these are available for the methods
-    map isIt vs ++ [isDat]
+    [typeStub] ++ map isIt vs ++ [isDat]
     ++ map makeIt vs ++ desugarToRec ss
   where
+    typeStub = recDecl dnm $ S.Num Nothing 0
     makeIt (S.VariantDecl _ vnm bs meths) =
         let defaultMeths =
                 [(S.Text n "_equals"
