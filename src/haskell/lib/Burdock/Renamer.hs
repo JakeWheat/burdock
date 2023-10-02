@@ -95,6 +95,7 @@ import Burdock.RenamerEnv
     ,applyProvides
 
     ,createBinding
+    ,createBindings
     ,createType
     ,createVar 
     
@@ -244,31 +245,38 @@ rewriteStmts (S.VarDecl sp (S.SimpleBinding sp' sh nm ann) e : ss) = do
     let st = S.VarDecl sp (S.SimpleBinding sp' sh nm ann') e'
     second (st:) <$> local (const ctx) (rewriteStmts ss)
 
-rewriteStmts (s@(S.DataDecl sp nm ps vs _ _) : ss) = do
-    -- todo: check the type parameters - they go into scope
-    --   and if other parts of the decl use type params
-    --   some of them need to match or they are unrecognised identifier
-    -- rename the variantdecls: check for name conflicts
-    --    simple bindings: name conflicts don't apply
-    --      except with each other in the same variantdecl
-    --    rename the maybe ann
-    -- rename the methods: check for name conflicts
-    --   make them recursive too
-    -- rename the test block
+{-
+
+data decl, getting the scoping right
+in the bodies of the variant definitions
+and in any method definitions
+all the variants, the type, and the is-type and is-variant functions
+are in scope
+I don't think anything else needs to be done
+
+-}
+rewriteStmts (S.DataDecl sp nm ps vs ms whr : ss) = do
+
+    -- todo: check the type parameters - they should not conflict
+    -- with in scope types, but will automatically shadow any other
+    -- name such as identifier or module
+    -- they go into scope for checking the bits of the data decl
+
+    -- create entries for: type, variant names, is-type, is-variant
     let vs' = flip map vs $ \(S.VariantDecl _sp vnm _ _) -> (sp,vnm)
     ctx <- callWithEnv $ createType sp nm (length ps) vs'
-    second (s:) <$> local (const ctx) (do
-        -- quick hack add extra is- functions, later I think it needs
-        -- to add the type, the is-functions, and the variants,
-        -- and the standalone methods all in one letrec
-        -- todo: implement a createBindings
-        --   and a createRecBindings, to use here and in fun+recdecl
-        let isBs = (sp,"is-" <> nm) : flip map vs (\(S.VariantDecl vsp vnm _ _) -> (vsp,"is-" <> vnm))
-            f ((xsp,xnm):bs) = do
-                ctx1 <- callWithEnv $ createBinding False xsp xnm
-                local (const ctx1) $ f bs
-            f [] = rewriteStmts ss
-        f isBs)
+    local (const ctx) $ do
+        let isBs = (False, sp,"is-" <> nm) : flip map vs' (\(vsp,vnm) -> (False, vsp,"is-" <> vnm))
+        ctx1 <- callWithEnv $ createBindings isBs
+        -- rename the components
+        -- todo: check for name conflicts
+        local (const ctx1) $ do
+            ms' <- flip mapM ms $ \(mnm,m) -> (mnm,) <$> rewriteMethod m
+            whr' <- case whr of
+                Nothing -> pure Nothing
+                Just bdy -> Just . snd <$> rewriteStmts bdy
+            let st = S.DataDecl sp nm ps vs ms' whr'
+            second (st:) <$> rewriteStmts ss
 
 {-
 renaming mutually recursive decls:

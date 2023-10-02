@@ -27,6 +27,7 @@ module Burdock.RenamerEnv
     ,applyProvides
 
     ,createBinding
+    ,createBindings
     ,createType
     ,createVar
 
@@ -80,6 +81,8 @@ import Burdock.ModuleMetadata
     (ModuleMetadata(..)
     ,BindingMeta(..)
     )
+
+import Control.Arrow (first)
 
 ------------------------------------------------------------------------------
 
@@ -180,6 +183,7 @@ data RenamerEnv
     -- and included identifiers from prelude statements that are in scope
     ,reBindings :: [([Text], ([Text], SourcePosition, BindingMeta))]
     }
+    deriving Show
 
 makeRenamerEnv :: ModuleMetadata -> [(Text, ModuleMetadata)] -> RenamerEnv
 makeRenamerEnv (ModuleMetadata tmpHack) ctx =
@@ -332,6 +336,12 @@ createBinding shadow sp i re =
         Just (_,sp',_) | not shadow -> ([IdentifierRedefined sp sp' i], re)
         _ -> ([], re {reBindings = ([i],([i], sp, BEIdentifier)) : reBindings re
                      ,reLocalBindings = (i,(sp,BEIdentifier)) : reLocalBindings re})
+
+createBindings :: [(Bool, SourcePosition, Text)] -> RenamerEnv -> ([StaticError], RenamerEnv)
+createBindings [] re = ([],re)
+createBindings ((sh,sp,nm):bs) re =
+    let (es,re') = createBinding sh sp nm re
+    in first (es++) $ createBindings bs re'
 
 createVar :: Bool -> SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
 createVar shadow sp i re =

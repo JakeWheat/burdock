@@ -11,10 +11,14 @@ to check both manually
 {-# LANGUAGE LambdaCase #-}
 module TempRenamer
     (tempRenamer
+    ,tempDesugar
     ) where
 
 import Prelude hiding (error, putStrLn, show)
+import qualified Prelude as P
 import Burdock.Utils (error)
+
+import Text.Show.Pretty (ppShow)
 
 import Burdock.Parse (parseScript)
 import qualified Burdock.Syntax as S
@@ -29,7 +33,9 @@ import Burdock.Renamer
 
 import Burdock.Renamer
     (ModuleMetadata)
-import Burdock.ModuleMetadata (tempEmptyModuleMetadata)
+import Burdock.ModuleMetadata
+    (tempEmptyModuleMetadata
+    )
 
     
 import Burdock.Pretty (prettyScript)
@@ -38,6 +44,16 @@ import qualified Data.Text.Lazy.IO as L
 import qualified Data.Text as T
 
 import Data.Text (Text)
+
+import Burdock.Runtime
+    (runRuntime
+    ,getTempEnvStage
+    )
+import Burdock.Interpreter
+    (createHandle)
+import Burdock.Desugar
+    (desugarScript)
+
 
 tempRenamer :: Bool -> Text -> IO ()
 tempRenamer isModule fn = do
@@ -52,9 +68,10 @@ tempRenamer isModule fn = do
     -- todo: use function to extract the imported files, and recurse
     -- so can show renamed files that import stuff
     --let ctx = []
+    mm <- hackGetPreexistingEnv
     case if isModule
-         then renameModule tempEmptyModuleMetadata ctx ast
-         else renameScript tempEmptyModuleMetadata ctx ast of
+         then renameModule mm ctx ast
+         else renameScript mm ctx ast of
         Left  e -> error $ prettyStaticErrors e
         Right (_,res) -> L.putStrLn $ prettyScript res
   where
@@ -71,6 +88,23 @@ tempRenamer isModule fn = do
         case x of
             Left e -> error $ prettyStaticErrors e
             Right (m,_) -> pure ((mfn,m) : ctx)
+
+tempDesugar :: Bool -> Text -> IO ()
+tempDesugar isModule fn = do
+
+    src <- L.readFile (T.unpack fn)
+    let ast = case parseScript fn src of
+            Left e -> error e
+            Right ast' -> ast'
+
+    if isModule
+      then do
+        undefined
+      else do
+        mm <- hackGetPreexistingEnv
+        let (_,stmts) = desugarScript mm fn [] ast
+        P.putStrLn $ ppShow stmts
+    
         
 hackGetImports :: S.Script -> [Text]
 hackGetImports (S.Script stmts) = nub $ flip mapMaybe stmts $ \case
@@ -78,3 +112,8 @@ hackGetImports (S.Script stmts) = nub $ flip mapMaybe stmts $ \case
     -- todo: cover the rest of the statements, update to built ins when these exist
     -- unless the main interpreter can do this at that point
     _ -> Nothing
+
+hackGetPreexistingEnv :: IO ModuleMetadata
+hackGetPreexistingEnv = do
+    h <- createHandle
+    runRuntime h getTempEnvStage

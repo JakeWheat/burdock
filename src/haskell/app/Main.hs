@@ -44,7 +44,9 @@ import qualified Data.Text.Lazy.IO as L
 import Burdock.TestLib (runHUnitTests)
 import Burdock.Tests (allTests)
 
-import TempRenamer (tempRenamer)
+import TempRenamer
+    (tempRenamer
+    ,tempDesugar)
 
 ---------------------------------------
 
@@ -56,6 +58,8 @@ main = do
     case args of
         ("rename": as) -> mapM_ (tempRenamer False) (map T.pack as)
         ("rename-module": as) -> mapM_ (tempRenamer True) (map T.pack as)
+        ("desugar": as) -> mapM_ (tempDesugar False) (map T.pack as)
+        ("desugar-module": as) -> mapM_ (tempDesugar True) (map T.pack as)
         _ -> runScriptWithTests args
 
     

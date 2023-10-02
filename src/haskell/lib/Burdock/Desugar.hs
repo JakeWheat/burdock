@@ -51,8 +51,8 @@ import Control.Monad.Reader
     (runReader
     ,Reader
     ,ask
-    ,asks
-    ,local
+    --,asks
+    --,local
     )
 
 import Lens.Micro.TH
@@ -99,8 +99,7 @@ does this go in the individual nodes
 
 data Inh
     = Inh
-    {_inhVariants :: [Text]
-    ,inhSourcePath :: Text
+    {inhSourcePath :: Text
     }
 
 data Syn e
@@ -108,7 +107,6 @@ data Syn e
     {_synTree :: e
     ,_synFreeVars :: [Text]
     ,_synNewBindings :: [Text]
-    ,_synNewVariants :: [Text]
     }
     deriving (Show, Functor)
 
@@ -133,18 +131,18 @@ ns :: Syn a -> Syn ()
 ns = fmap (const ())
 
 mkSyn :: e -> Syn e
-mkSyn e = Syn e [] [] []
+mkSyn e = Syn e [] []
 
 ------------------------------------------------------------------------------
 
 -- todo: isbootstrap will be replaced with a new handle bootstrap process
 -- after the module system is working
 
-desugarScript :: ModuleMetadata -> Bool -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
-desugarScript tmpHack isBootstrap fn mds scr =
+desugarScript :: ModuleMetadata -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
+desugarScript tmpHack fn mds scr =
     let deps = getSourceDependencies scr
         (mm,renamed) = either (error . prettyStaticErrors) id $ renameScript tmpHack mds scr
-    in desugar isBootstrap fn mds deps mm renamed
+    in desugar fn mds deps mm renamed
 
 -- todo: desugaring a module will wrap the statements in a block
 -- and the last element will be a make-module-value which will give the provides
@@ -154,18 +152,17 @@ desugarModule :: ModuleMetadata -> Text -> [(Text,ModuleMetadata)] -> S.Script -
 desugarModule tmpHack fn mds scr =
     let deps = getSourceDependencies scr
         (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule tmpHack mds scr
-    in desugar False fn mds deps mm renamed
+    in desugar fn mds deps mm renamed
 
 -- todo: return the metadata also
 -- handle provides desugaringdwqsdw
-desugar :: Bool
-        -> Text
+desugar :: Text
         -> [(Text,ModuleMetadata)]
         -> [(Text, [Text])]
         -> ModuleMetadata
         -> S.Script
         -> (ModuleMetadata, [I.Stmt])
-desugar isBootstrap fn mds deps mm (S.Script ss) =
+desugar fn mds deps mm (S.Script ss) =
     let ok = let ds = map (\case
                                   (_,[mfn]) -> mfn
                                   x -> error $ "desugar: unsupported runtime import source: " <> show x
@@ -176,12 +173,7 @@ desugar isBootstrap fn mds deps mm (S.Script ss) =
                 then id
                 else error $ "desugar: module metadata missing: " <> show missing
                      <> "\n" <> show mds
-        inh = Inh [] fn
-        inh' = if isBootstrap
-               then inh
-                    -- hack until modules and metadata is implemented
-               else set inhVariants ["empty", "link"] inh
-    in ok (mm, view synTree $ runReader (desugarStmts ss) inh')
+    in ok (mm, view synTree $ runReader (desugarStmts ss) (Inh fn))
 
 type Desugar = Reader Inh
 
@@ -258,10 +250,8 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
     -- make sure the is-var are available for the is-dat
     -- make sure all of these are available for the methods
     map isIt vs ++ [isDat]
-    ++ [introduceVariantNames $ map getvnm vs]
     ++ map makeIt vs ++ desugarToRec ss
   where
-    getvnm (S.VariantDecl _ vnm _ _) = vnm
     makeIt (S.VariantDecl _ vnm bs meths) =
         let defaultMeths =
                 [(S.Text n "_equals"
@@ -309,39 +299,13 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
 desugarToRec (s:ss) = s : desugarToRec ss
 desugarToRec [] = []
 
-{-
-hacky way to tell the S->I pass that a bunch of names are variant names
-at a certain point a statement list
-this is done by generating some syntax with the names
-then at S->I time, this syntax is spotted, the syn attributes are set,
-and the syntax is converted to nothing
--}
-
-introduceVariantNames :: [Text] -> S.Stmt
-introduceVariantNames nms =
-    S.StmtExpr n (S.App n (S.Iden n "_INTRODUCE_VARIANTS")
-                     $ map (S.Text n) nms)
-  where
-    n = Nothing
-
-getIntroducedVariants :: S.Stmt -> Maybe [Text]
-getIntroducedVariants
-    (S.StmtExpr _ (S.App _ (S.Iden _ "_INTRODUCE_VARIANTS") as))
-    | Just as' <- mapM getText as
-    = Just as'
-  where
-    getText (S.Text _ t) = Just t
-    getText _ = Nothing
-getIntroducedVariants _ = Nothing
-
 -- desugar the rest of statements after recursive stuff has been
 -- desugared away
 
 desugarStmts' :: [S.Stmt] -> Desugar (Syn [I.Stmt])
 desugarStmts' (s:ss) = do
     s' <- desugarStmt s
-    let addVariants = over inhVariants (view synNewVariants s' ++)
-    ss' <- local addVariants $ desugarStmts' ss
+    ss' <- desugarStmts' ss
 
     -- get the free vars from ss
     -- remove the newbindings from s
@@ -405,10 +369,6 @@ desugarStmt (S.Import _ (S.ImportSpecial "file" [fn]) al) = do
 
 -- these are the functions which contains the code that actually
 -- converts to the I syntax
-
--- the add variant names hack:
-desugarStmt st | Just vnms <- getIntroducedVariants st =
-    pure $ set synNewVariants vnms $ mkSyn []
 
 desugarStmt (S.LetDecl _ b e) = do
     nm <- desugarBinding b
@@ -637,17 +597,11 @@ doLetRec bs =
 
 desugarBinding :: S.Binding -> Desugar (Syn I.Binding)
 desugarBinding = \case
-    S.NameBinding _ nm -> do
-        x <- isVariant nm
-        -- if it's a no arg variant, convert to variant binding
-        if x
-            then addName nm $ mkSyn (I.VariantBinding nm [])
-            else addName nm $ mkSyn (I.NameBinding nm)
-        --addName nm $ mkSyn (I.NameBinding nm)
-    S.ShadowBinding _ nm -> addName nm $ mkSyn (I.NameBinding nm)
+    S.NameBinding _ nm -> addName False nm $ mkSyn (I.NameBinding nm)
+    S.ShadowBinding _ nm -> addName False nm $ mkSyn (I.NameBinding nm)
     S.VariantBinding _ [vnm] bs -> do
         bs' <- mapM desugarBinding bs
-        addName vnm $ combineSynsWithNewBindings (map ns bs') $ mkSyn $ I.VariantBinding vnm $ map _synTree bs'
+        addName True vnm $ combineSynsWithNewBindings (map ns bs') $ mkSyn $ I.VariantBinding vnm $ map _synTree bs'
     S.WildcardBinding _ -> pure $ mkSyn $ I.WildcardBinding
     S.TupleBinding _ bs -> do
         -- combine the subbindings
@@ -655,12 +609,8 @@ desugarBinding = \case
         pure $ combineSynsWithNewBindings (map ns bs') $ mkSyn $ I.TupleBinding $ map _synTree bs'
     x -> error $ "unsupported binding: " <> show x
   where
-    addName nm b = do
-        x <- isVariant nm
-        -- if nm is a variant add to freevars otherwise add to newbindings
-        let l = if x
+    addName isVariant nm b = do
+        let l = if isVariant
                 then synFreeVars
                 else synNewBindings
         pure $ over l (nm:) b
-    isVariant :: Text -> Desugar Bool
-    isVariant nm = asks ((nm `elem`) .  view inhVariants)

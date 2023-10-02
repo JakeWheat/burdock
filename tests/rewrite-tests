@@ -771,3 +771,76 @@ f(3)
 Result:
 fun f(x): x end
 f(3)
+
+
+# same issue with 0 arg ctor matches ...
+# Test: scoping in data decl
+# Script:
+# data my-list:
+#   | my-link(first, rest)
+#   | my-empty
+# sharing:
+#   method length(self):
+#     cases self:
+#       | my-empty => 0
+#       | my-link(_,b) => 1 + b.length()
+#     end
+#   end
+# end
+# Result:
+# data my-list:
+#   | my-link(first, rest)
+#   | my-empty
+# sharing:
+#   method length(self):
+#     cases self:
+#       | my-empty => 0
+#       | my-link(_,b) => 1 + b.length()
+#     end
+#   end
+# end
+
+Test: scoping in data decl error
+Script:
+data my-list:
+  | my-link(first, rest)
+  | my-empty
+sharing:
+  method length(self):
+    cases self:
+      | my-empty => 0
+      | my-link(_,b) => 1 + b.length()
+      | my-bogus-link(a) => a
+    end
+  end
+end
+Errors:
+unrecognised-identifier([list: "my-bogus-link"])
+
+Test: scoping in data decl extras
+Script:
+data my-list:
+  | my-link(first, rest)
+  | my-empty
+sharing:
+  method length(self):
+    is-my-list(self)
+    is-my-empty(self)
+    is-my-link(self)
+    self.rest
+  end
+end
+Result:
+data my-list:
+  | my-link(first, rest)
+  | my-empty
+sharing:
+  method length(self):
+    is-my-list(self)
+    is-my-empty(self)
+    is-my-link(self)
+    self.rest
+  end
+end
+
+

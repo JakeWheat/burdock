@@ -155,7 +155,7 @@ createHandle = do
         tmpHackMetadata <- initRuntime
 
         setTempEnvStage tmpHackMetadata
-        (bmm,_) <- runScript' True debugPrintBootstrap (Just "_bootstrap") bootstrap
+        (bmm,_) <- runScript' debugPrintBootstrap (Just "_bootstrap") bootstrap
 
         let lkpf f = maybe (error $ "_bootstrap " <> f <> " not found") id <$> lookupBinding f
 
@@ -171,7 +171,7 @@ createHandle = do
         -- temp: add the stuff in initRuntime + bootstrap
         let tempCombineModuleMetadata (ModuleMetadata a) (ModuleMetadata b) = ModuleMetadata (a ++ b)
         setTempEnvStage $ tempCombineModuleMetadata tmpHackMetadata bmm
-        (imm,_) <- runScript' False debugPrintInternals (Just "_internals") internals
+        (imm,_) <- runScript' debugPrintInternals (Just "_internals") internals
 
         -- temp: add the stuff in initRuntime + bootstrap + internals
         setTempEnvStage $ tempCombineModuleMetadata (tempCombineModuleMetadata tmpHackMetadata bmm) imm
@@ -180,19 +180,19 @@ createHandle = do
         getRuntimeState
 
 runScript :: Maybe T.Text -> L.Text -> Runtime Value
-runScript fn src = snd <$> runScript' False debugPrintUserScript fn src
+runScript fn src = snd <$> runScript' debugPrintUserScript fn src
 
 ------------------------------------------------------------------------------
 
-runScript' :: Bool -> Bool -> Maybe T.Text -> L.Text -> Runtime (ModuleMetadata, Value)
-runScript' isBootstrap debugPrint fn' src = do
+runScript' :: Bool -> Maybe T.Text -> L.Text -> Runtime (ModuleMetadata, Value)
+runScript' debugPrint fn' src = do
     -- filename either comes from bootstrap or from user
     fn <- T.pack <$> liftIO (canonicalizePath $ maybe "unnamed" T.unpack fn')
     let ast = either error id $ parseScript fn src
     ms <- recurseMetadata (Just fn) ast
     --liftIO $ putStrLn $ "desugar script"
     tmpHack <- getTempEnvStage
-    let (mm,dast) = desugarScript tmpHack isBootstrap fn ms ast
+    let (mm,dast) = desugarScript tmpHack fn ms ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
     when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
     (mm,) <$> interpBurdock dast
