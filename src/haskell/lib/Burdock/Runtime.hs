@@ -159,6 +159,8 @@ setTempEnvStage v = do
     x <- ask
     liftIO $ writeIORef (rtTempEnvStage x) v
 
+-- todo: see if this can be refactored to work with the ffi closure
+-- system
 data BootstrapValues
     = BootstrapValues
     {btTupEq :: Value
@@ -329,7 +331,7 @@ captureClosure nms = do
 -- but an ffivalue, the ctor Value currently, should have
 -- a pointer to it's type, not go via any kind of name lookup like this
 getMember :: Value -> Text -> Runtime Value
-getMember v@(Value tyNm _ ) fld = do
+getMember v@(Value tyNm _) fld = do
     st <- ask
     ty <- liftIO ((maybe (error $ "type not found " <> tyNm) id . lookup tyNm)
                   <$> readIORef (rtFFITypes st))
