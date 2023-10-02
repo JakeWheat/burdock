@@ -16,6 +16,7 @@ module Burdock.RenamerEnv
     ,ModuleMetadata
     ,RenamerEnv
     ,makeRenamerEnv
+    ,rePath
 
     ,provide
     ,provideFrom
@@ -182,14 +183,16 @@ data RenamerEnv
     -- this mirrors the reLocalBindings, and includes all the aliased
     -- and included identifiers from prelude statements that are in scope
     ,reBindings :: [([Text], ([Text], SourcePosition, BindingMeta))]
+    ,rePath :: Text -- path of the current module, used for desugaring relative
+      -- paths in prelude statements
     }
     deriving Show
 
-makeRenamerEnv :: ModuleMetadata -> [(Text, ModuleMetadata)] -> RenamerEnv
-makeRenamerEnv (ModuleMetadata tmpHack) ctx =
+makeRenamerEnv :: Text -> ModuleMetadata -> [(Text, ModuleMetadata)] -> RenamerEnv
+makeRenamerEnv fn (ModuleMetadata tmpHack) ctx =
     let b = flip map tmpHack $ \(nm,(sp,bm)) ->
             ([nm],([nm], sp, bm))
-    in RenamerEnv ctx [] [] [] [] b
+    in RenamerEnv ctx [] [] [] [] b fn
 
 ------------------------------------------------------------------------------
 

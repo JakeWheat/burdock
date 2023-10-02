@@ -50,7 +50,7 @@ import Burdock.DefaultRuntime (internals)
 import Control.Monad.Reader
     (runReader
     ,Reader
-    ,ask
+    --,ask
     --,asks
     --,local
     )
@@ -99,7 +99,7 @@ does this go in the individual nodes
 
 data Inh
     = Inh
-    {inhSourcePath :: Text
+    {
     }
 
 data Syn e
@@ -141,8 +141,8 @@ mkSyn e = Syn e [] []
 desugarScript :: ModuleMetadata -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
 desugarScript tmpHack fn mds scr =
     let deps = getSourceDependencies scr
-        (mm,renamed) = either (error . prettyStaticErrors) id $ renameScript tmpHack mds scr
-    in desugar fn mds deps mm renamed
+        (mm,renamed) = either (error . prettyStaticErrors) id $ renameScript fn tmpHack mds scr
+    in desugar mds deps mm renamed
 
 -- todo: desugaring a module will wrap the statements in a block
 -- and the last element will be a make-module-value which will give the provides
@@ -151,18 +151,17 @@ desugarScript tmpHack fn mds scr =
 desugarModule :: ModuleMetadata -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
 desugarModule tmpHack fn mds scr =
     let deps = getSourceDependencies scr
-        (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule tmpHack mds scr
-    in desugar fn mds deps mm renamed
+        (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule fn tmpHack mds scr
+    in desugar mds deps mm renamed
 
 -- todo: return the metadata also
 -- handle provides desugaringdwqsdw
-desugar :: Text
-        -> [(Text,ModuleMetadata)]
+desugar :: [(Text,ModuleMetadata)]
         -> [(Text, [Text])]
         -> ModuleMetadata
         -> S.Script
         -> (ModuleMetadata, [I.Stmt])
-desugar fn mds deps mm (S.Script ss) =
+desugar mds deps mm (S.Script ss) =
     let ok = let ds = map (\case
                                   (_,[mfn]) -> mfn
                                   x -> error $ "desugar: unsupported runtime import source: " <> show x
@@ -173,7 +172,7 @@ desugar fn mds deps mm (S.Script ss) =
                 then id
                 else error $ "desugar: module metadata missing: " <> show missing
                      <> "\n" <> show mds
-    in ok (mm, view synTree $ runReader (desugarStmts ss) (Inh fn))
+    in ok (mm, view synTree $ runReader (desugarStmts ss) Inh)
 
 type Desugar = Reader Inh
 
@@ -350,17 +349,6 @@ desugarStmt (S.StmtExpr _ (S.BinOp _ e1 "is-not" e2)) =
 
 desugarStmt (S.When _ t b) =
     desugarStmt $ S.StmtExpr n $ S.If n [(t, b)] (Just [S.StmtExpr n $ S.Iden n "nothing"])
-  where
-    n = Nothing
-
---------
-
--- prelude statements
-
-desugarStmt (S.Import _ (S.ImportSpecial "file" [fn]) al) = do
-    myfn <- inhSourcePath <$> ask
-    desugarStmt $ S.LetDecl n (S.NameBinding n al)
-        $ S.App n (S.Iden n "load-module") [S.Text n myfn, S.Text n fn]
   where
     n = Nothing
 

@@ -280,6 +280,11 @@ fun repeat(n,e):
   end
 end
 
+# temp
+fun make-module(m):
+  m
+end
+
   |]
 
 

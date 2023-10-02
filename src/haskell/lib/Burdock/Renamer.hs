@@ -133,9 +133,9 @@ import Control.Arrow (first, second)
 
 type Renamer = ReaderT RenamerEnv (Writer [StaticError])
 
-renameModule :: ModuleMetadata -> [(Text, ModuleMetadata)] -> S.Script -> Either [StaticError] (ModuleMetadata, S.Script)
-renameModule tmpHack ctx (S.Script stmts) =
-    errToEither $ runRenamer tmpHack ctx $ do
+renameModule :: Text -> ModuleMetadata -> [(Text, ModuleMetadata)] -> S.Script -> Either [StaticError] (ModuleMetadata, S.Script)
+renameModule fn tmpHack ctx (S.Script stmts) =
+    errToEither $ runRenamer fn tmpHack ctx $ do
         (re, stmts') <- rewritePreludeStmts stmts
         -- get the module value info to create the make-module last statement
         rs <- liftErrs $ applyProvides re
@@ -148,12 +148,13 @@ renameModule tmpHack ctx (S.Script stmts) =
             r = flip map rs $ \(as,b) -> (b, toIdenExpr $ map (n,) as)
         in S.StmtExpr n $ S.App n (S.Iden n "make-module") [S.RecordSel n r]
 
-renameScript :: ModuleMetadata
+renameScript :: Text
+             -> ModuleMetadata
              -> [(Text, ModuleMetadata)]
              -> S.Script
              -> Either [StaticError] (ModuleMetadata, S.Script)
-renameScript tmpHack ctx (S.Script stmts) =
-    errToEither $ runRenamer tmpHack ctx $ do
+renameScript fn tmpHack ctx (S.Script stmts) =
+    errToEither $ runRenamer fn tmpHack ctx $ do
         (re, stmts') <- rewritePreludeStmts stmts
         -- todo: use a new function which puts in a default provide all
         -- the motivation to return module metadata from this is for a
@@ -164,8 +165,8 @@ renameScript tmpHack ctx (S.Script stmts) =
     -- errToEither $ runRenamer tmpHack ctx (S.Script . snd <$> rewritePreludeStmts stmts)
 
 -- tmpHack used to shoehorn in definitions from pre module initRuntime, bootstrap and internals hacks
-runRenamer :: ModuleMetadata -> [(Text, ModuleMetadata)] -> Renamer a -> (a, [StaticError])
-runRenamer tmpHack ctx f = runWriter $ flip runReaderT (makeRenamerEnv tmpHack ctx) f
+runRenamer :: Text -> ModuleMetadata -> [(Text, ModuleMetadata)] -> Renamer a -> (a, [StaticError])
+runRenamer fn tmpHack ctx f = runWriter $ flip runReaderT (makeRenamerEnv fn tmpHack ctx) f
 
 callWithEnv :: (RenamerEnv -> ([StaticError], b)) -> Renamer b
 callWithEnv f = liftErrs =<< f <$> ask
@@ -211,11 +212,13 @@ rewritePreludeStmts (S.ProvideFrom sp al pis : ss) = do
 -- after outputting the needed load-modules
 
 rewritePreludeStmts ss = do
+    fn <- R.rePath <$> ask
     lms <- callWithEnv queryLoadModules
-    second (map (uncurry mlm) lms ++) <$> rewriteStmts ss
+    second (map (uncurry (mlm fn)) lms ++) <$> rewriteStmts ss
   where
       -- temp extra arg to load module from the old system
-    mlm nm al = S.LetDecl n (S.NameBinding n al) (S.App n (S.Iden n "load-module") [S.Text n nm])
+    mlm fn nm al = S.LetDecl n (S.NameBinding n al)
+                (S.App n (S.Iden n "load-module") [S.Text n fn, S.Text n nm])
     n = Nothing
 
 ---------------------------------------

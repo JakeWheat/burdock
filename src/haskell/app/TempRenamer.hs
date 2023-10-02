@@ -70,8 +70,8 @@ tempRenamer isModule fn = do
     --let ctx = []
     mm <- hackGetPreexistingEnv
     case if isModule
-         then renameModule mm ctx ast
-         else renameScript mm ctx ast of
+         then renameModule fn mm ctx ast
+         else renameScript fn mm ctx ast of
         Left  e -> error $ prettyStaticErrors e
         Right (_,res) -> L.putStrLn $ prettyScript res
   where
@@ -84,7 +84,7 @@ tempRenamer isModule fn = do
         let imps = hackGetImports ast
         -- todo: need to memoize and share and stuff
         ctx <- concat <$> mapM processImport imps
-        let x = renameModule tempEmptyModuleMetadata ctx ast
+        let x = renameModule mfn tempEmptyModuleMetadata ctx ast
         case x of
             Left e -> error $ prettyStaticErrors e
             Right (m,_) -> pure ((mfn,m) : ctx)
