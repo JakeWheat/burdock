@@ -5,6 +5,10 @@ quick hack to take files on the command line, and rename them
 and print the nice error messages if there are any
 to check both manually
 
+todo: put this functionality inside the interpreter
+  then more chance of it working exactly the same as
+  when it attempts to run the code
+
 -}
 
 {-# LANGUAGE OverloadedStrings #-}
@@ -15,16 +19,10 @@ module TempRenamer
     ) where
 
 import Prelude hiding (error, putStrLn, show)
-import qualified Prelude as P
 import Burdock.Utils (error)
-
-import Text.Show.Pretty (ppShow)
 
 import Burdock.Parse (parseScript)
 import qualified Burdock.Syntax as S
-
-import Data.List (nub)
-import Data.Maybe (mapMaybe)
 
 import Burdock.Renamer
     (renameScript
@@ -36,7 +34,6 @@ import Burdock.Renamer
 import Burdock.ModuleMetadata
     (tempEmptyModuleMetadata
     )
-
     
 import Burdock.Pretty (prettyScript)
 
@@ -54,7 +51,11 @@ import Burdock.Interpreter
 import Burdock.Desugar
     (desugarScript
     ,desugarModule
+    ,getSourceDependencies
     )
+
+import Burdock.InterpreterPretty
+    (prettyStmts)
 
 tempRenamer :: Bool -> Text -> IO ()
 tempRenamer isModule fn = do
@@ -68,16 +69,15 @@ tempRenamer isModule fn = do
     ctx <- concat <$> mapM processImport imps
     -- todo: use function to extract the imported files, and recurse
     -- so can show renamed files that import stuff
-    --let ctx = []
     mm <- hackGetPreexistingEnv
     case if isModule
          then renameModule fn mm ctx ast
          else renameScript fn mm ctx ast of
         Left  e -> error $ prettyStaticErrors e
         Right (_,res) -> L.putStrLn $ prettyScript res
-  where
-    processImport :: Text -> IO [(Text, ModuleMetadata)]
-    processImport mfn = do
+
+processImport :: Text -> IO [(Text, ModuleMetadata)]
+processImport mfn = do
         src <- L.readFile (T.unpack mfn)
         let ast = case parseScript mfn src of
                 Left e -> error e
@@ -97,20 +97,16 @@ tempDesugar isModule fn = do
     let ast = case parseScript fn src of
             Left e -> error e
             Right ast' -> ast'
-
+    let imps = hackGetImports ast
+    ctx <- concat <$> mapM processImport imps
     mm <- hackGetPreexistingEnv
-    let stmts =
-            snd $ (if isModule
-                   then desugarModule
-                   else desugarScript) mm fn [] ast
-    P.putStrLn $ ppShow stmts
+    let stmts = snd $ (if isModule
+                       then desugarModule
+                       else desugarScript) mm fn ctx ast
+    L.putStrLn $ prettyStmts stmts
         
 hackGetImports :: S.Script -> [Text]
-hackGetImports (S.Script stmts) = nub $ flip mapMaybe stmts $ \case
-    S.Import _ (S.ImportSpecial "file" [fn]) _ -> Just fn
-    -- todo: cover the rest of the statements, update to built ins when these exist
-    -- unless the main interpreter can do this at that point
-    _ -> Nothing
+hackGetImports ast = map (head . snd) $ getSourceDependencies ast
 
 hackGetPreexistingEnv :: IO ModuleMetadata
 hackGetPreexistingEnv = do
