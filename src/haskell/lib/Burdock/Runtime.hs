@@ -46,7 +46,7 @@ module Burdock.Runtime
     ,extractValue
 
     ,Type(..)
-    ,VariantTypeTag(..)
+    ,DataDeclTypeTag(..)
     ,ValueTypeTag(..)
     ,Env
     
@@ -202,14 +202,14 @@ type Runtime = ReaderT RuntimeState IO
 -- todo: make this abstract
 -- don't use the eq and show except for debugging
 data Value = Value ValueTypeTag Dynamic
-           | VariantV VariantTypeTag Text [(Text, Value)]
+           | VariantV DataDeclTypeTag Text [(Text, Value)]
            | MethodV Value
            | VFun ([Value] -> Runtime Value)
            | BoxV (IORef Value)
     --deriving (Show)
 
 -- todo: use something more robust
-data VariantTypeTag = VariantTypeTag Text
+data DataDeclTypeTag = DataDeclTypeTag Text
 data ValueTypeTag = ValueTypeTag Text
 
 debugShowValue :: Value -> Text
@@ -282,7 +282,7 @@ makeTuple fs = do
     st <- ask
     btV <- liftIO $ readIORef (rtBootstrapRecTup st)
     -- todo: lookup the proper tuple type tag
-    makeVariant (VariantTypeTag "tuple") "tuple" (("_equals", btTupEq btV) : ("_torepr", btTupToRepr btV) : fs1)
+    makeVariant (DataDeclTypeTag "tuple") "tuple" (("_equals", btTupEq btV) : ("_torepr", btTupToRepr btV) : fs1)
 
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v
@@ -297,7 +297,7 @@ nothingValue = do
 makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
 makeFunctionValue f = pure $ VFun f
 
-makeVariant :: VariantTypeTag -> Text -> [(Text,Value)] -> Runtime Value
+makeVariant :: DataDeclTypeTag -> Text -> [(Text,Value)] -> Runtime Value
 makeVariant ty n fs = pure $ VariantV ty n fs
 
 variantName :: Value -> Runtime (Maybe Text)
@@ -326,7 +326,7 @@ makeRecord fs = do
     st <- ask
     btV <- liftIO $ readIORef (rtBootstrapRecTup st)
     -- todo: lookup the proper tag
-    makeVariant (VariantTypeTag "record") "record" (("_equals", btRecEq btV) : ("_torepr", btRecEq btV) : fs)
+    makeVariant (DataDeclTypeTag "record") "record" (("_equals", btRecEq btV) : ("_torepr", btRecEq btV) : fs)
               
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do

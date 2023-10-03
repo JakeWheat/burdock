@@ -74,18 +74,17 @@ main = do
         -- run scripts without tests (needs work)
         _ -> runScripts args
 
-
+-- this will bail on the first script that fails
 runScripts :: [String] -> IO ()
 runScripts args = do
     let runScriptx fn = do
             mySrc <- liftIO $ L.readFile fn
-            void $ runScript (Just $ T.pack fn) mySrc
-
+            runScript (Just $ T.pack fn) mySrc
     forM_ args $ \fn -> do
         putStrLn $ T.pack fn
         st <- createHandle
-        _ <- runRuntime st $ runTask False $ runScriptx fn
-        pure ()
+        v <- runRuntime st $ runScriptx fn
+        putStrLn $ debugShowValue v
     
 runScriptWithTests :: Bool -> [String] -> IO ()
 runScriptWithTests runInternal args = do

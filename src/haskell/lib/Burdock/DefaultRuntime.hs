@@ -59,7 +59,7 @@ import Burdock.Runtime
     ,extractValue
     ,makeFunctionValue
     ,Type(..)
-    ,VariantTypeTag(..)
+    ,DataDeclTypeTag(..)
     ,ValueTypeTag(..)
     ,Scientific
     )
@@ -497,7 +497,7 @@ myMakeVariant [nm, flds, es] = do
                 id $ extractValue es
                                         
     when (length es' /= length flds') $ error $ "wrong number of args to create variant " <> t
-    makeVariant (VariantTypeTag $ error "mymakevariant: fixme") t $ zip flds'' es'
+    makeVariant (DataDeclTypeTag $ error "mymakevariant: fixme") t $ zip flds'' es'
 myMakeVariant _ = error $ "bad args to makeVariant"
 
 myIsVariant :: [Value] -> Runtime Value

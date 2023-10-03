@@ -69,7 +69,7 @@ import Burdock.Runtime
     ,makeBurdockList
     ,makeRecord
     ,extractTuple
-    ,VariantTypeTag(..)
+    ,DataDeclTypeTag(..)
     ,ValueTypeTag(..)
 
     ,debugShowValue
@@ -312,7 +312,7 @@ interpExpr (I.DotExpr e1 fld) = do
 interpExpr (I.VariantSel nm fs) = do
     vs <- mapM (\(n,e) -> (n,) <$> interpExpr e) fs
     -- todo: type tag
-    pure $ VariantV (VariantTypeTag $ error "interpExpr VariantSel: fixmenm") nm vs
+    pure $ VariantV (DataDeclTypeTag $ error "interpExpr VariantSel: fixmenm") nm vs
 
 interpExpr (I.RunTask catchAsync tsk) = do
     x <- runTask catchAsync $ interpExpr tsk
