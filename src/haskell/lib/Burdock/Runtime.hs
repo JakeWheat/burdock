@@ -47,6 +47,7 @@ module Burdock.Runtime
 
     ,Type(..)
     ,VariantTypeTag(..)
+    ,ValueTypeTag(..)
     ,Env
     
 
@@ -200,7 +201,7 @@ type Runtime = ReaderT RuntimeState IO
 
 -- todo: make this abstract
 -- don't use the eq and show except for debugging
-data Value = Value Text Dynamic
+data Value = Value ValueTypeTag Dynamic
            | VariantV VariantTypeTag Text [(Text, Value)]
            | MethodV Value
            | VFun ([Value] -> Runtime Value)
@@ -209,6 +210,7 @@ data Value = Value Text Dynamic
 
 -- todo: use something more robust
 data VariantTypeTag = VariantTypeTag Text
+data ValueTypeTag = ValueTypeTag Text
 
 debugShowValue :: Value -> Text
 debugShowValue (Value _tg dn)
@@ -223,7 +225,7 @@ debugShowValue v
     | Just ls <- extractBurdockList v
     = "[list: " <> T.intercalate "," (map debugShowValue ls) <> "]"
 
-debugShowValue (Value tg dn) = "Value " <> show tg <> " " <> show dn
+debugShowValue (Value (ValueTypeTag tg) dn) = "Value " <> show tg <> " " <> show dn
 debugShowValue (VariantV _ tf fs) =
     -- todo: show the tag also?
     "VariantV " <> tf <> " " <> T.concat (map f fs)
@@ -241,8 +243,8 @@ getCallStack = do
 data Env = Env [(Text, Value)]
     --deriving Show
 
-makeValue :: Typeable a => Text -> a -> Value
-makeValue nm v = Value nm $ toDyn v
+makeValue :: Typeable a => ValueTypeTag -> a -> Value
+makeValue tg v = Value tg $ toDyn v
 
 makeBurdockList :: [Value] -> Runtime Value
 makeBurdockList [] = do
@@ -341,7 +343,7 @@ captureClosure nms = do
 -- but an ffivalue, the ctor Value currently, should have
 -- a pointer to it's type, not go via any kind of name lookup like this
 getMember :: Value -> Text -> Runtime Value
-getMember v@(Value tyNm _) fld = do
+getMember v@(Value (ValueTypeTag tyNm) _) fld = do
     st <- ask
     ty <- liftIO ((maybe (error $ "type not found " <> tyNm) id . lookup tyNm)
                   <$> readIORef (rtFFITypes st))
@@ -354,11 +356,11 @@ getMember v@(VariantV _ _ fs) fld = do
         Just v1 -> pure v1
 
 getMember (MethodV {}) "_torepr" = do
-    let v = makeValue "string" ("<method>" :: Text)
+    let v = makeValue (ValueTypeTag "string") ("<method>" :: Text)
     makeFunctionValue (\_ -> pure v)
     --pure $ makeValue "string" ("<methodv>" :: Text)
 getMember (VFun {}) "_torepr" = do
-    let v = makeValue "string" ("<function>" :: Text)
+    let v = makeValue (ValueTypeTag "string") ("<function>" :: Text)
     makeFunctionValue (\_ -> pure v)
 
 getMember (BoxV v) fld = do

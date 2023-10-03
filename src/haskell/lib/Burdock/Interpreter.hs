@@ -70,6 +70,7 @@ import Burdock.Runtime
     ,makeRecord
     ,extractTuple
     ,VariantTypeTag(..)
+    ,ValueTypeTag(..)
 
     ,debugShowValue
     
@@ -319,15 +320,15 @@ interpExpr (I.RunTask catchAsync tsk) = do
         -- a left left of a string is an show'n arbitrary haskell exception
         Left (Left e, st) -> do
             left <- interpExpr (I.Iden "left")
-            st' <- makeBurdockList $ map (makeValue "string" . maybe "nothing" id) st
-            ret <- makeRecord [("exception", makeValue "string" e)
+            st' <- makeBurdockList $ map (makeValue (ValueTypeTag "string") . maybe "nothing" id) st
+            ret <- makeRecord [("exception", makeValue (ValueTypeTag "string") e)
                               ,("callstack", st')]
             app Nothing left [ret]
         -- a left right v is a burdock value that has been raised from burdock
         -- or ffi code
         Left (Right v, st) -> do
             left <- interpExpr (I.Iden "left")
-            st' <- makeBurdockList $ map (makeValue "string" . maybe "nothing" id) st
+            st' <- makeBurdockList $ map (makeValue (ValueTypeTag "string") . maybe "nothing" id) st
             ret <- makeRecord [("exception", v)
                               ,("callstack", st')]
             app Nothing left [ret]
@@ -360,10 +361,10 @@ interpExpr (I.Num n) =
        names are namespaced and scoped, e.g. if you have two modules which have
        a type with the same name as each other
     -}
-    pure $ makeValue "number" n
+    pure $ makeValue (ValueTypeTag "number") n
 
 interpExpr (I.IString t) =
-    pure $ makeValue "string" t
+    pure $ makeValue (ValueTypeTag "string") t
 
 interpExpr (I.Iden nm) = do
     b <- lookupBinding nm
