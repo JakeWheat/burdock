@@ -54,17 +54,41 @@ main :: IO ()
 main = do
     args <- getArgs
 
-    -- special case
+    -- todo: work on proper command line args
+    -- output filename before each desugar/rename if there is more than one
+    -- get the interpreter to do rename, desugar debug options
+    -- implement the non test run version
     case args of
+        -- output renamed scripts
         ("rename": as) -> mapM_ (tempRenamer False) (map T.pack as)
+        -- output renamed modules
         ("rename-module": as) -> mapM_ (tempRenamer True) (map T.pack as)
+        -- output desugared scripts
         ("desugar": as) -> mapM_ (tempDesugar False) (map T.pack as)
+        -- output desugared modules
         ("desugar-module": as) -> mapM_ (tempDesugar True) (map T.pack as)
-        _ -> runScriptWithTests args
+        -- run tests, including the internal hunit tests
+        ("test-all": as) -> runScriptWithTests True as
+        -- run the scripts with their tests
+        ("test": as) -> runScriptWithTests False as
+        -- run scripts without tests (needs work)
+        _ -> runScripts args
 
+
+runScripts :: [String] -> IO ()
+runScripts args = do
+    let runScriptx fn = do
+            mySrc <- liftIO $ L.readFile fn
+            void $ runScript (Just $ T.pack fn) mySrc
+
+    forM_ args $ \fn -> do
+        putStrLn $ T.pack fn
+        st <- createHandle
+        _ <- runRuntime st $ runTask False $ runScriptx fn
+        pure ()
     
-runScriptWithTests :: [String] -> IO ()
-runScriptWithTests args = do
+runScriptWithTests :: Bool -> [String] -> IO ()
+runScriptWithTests runInternal args = do
 
     numTestsPassed <- newIORef 0
     numTestsFailed <- newIORef 0
@@ -73,7 +97,9 @@ runScriptWithTests args = do
             mySrc <- liftIO $ L.readFile fn
             void $ runScript (Just $ T.pack fn) mySrc
 
-    let suites = ("hunit tests", runHUnitTests allTests) : map (\fn -> (fn, runScriptTest fn)) args
+    let suites = (if runInternal
+                     then (("hunit tests", runHUnitTests allTests) :)
+                     else id) $ map (\fn -> (fn, runScriptTest fn)) args
 
     forM_ suites $ \(nm,tst) -> do
         putStrLn $ T.pack nm
