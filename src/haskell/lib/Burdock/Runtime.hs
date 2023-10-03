@@ -45,9 +45,10 @@ module Burdock.Runtime
     ,makeValue
     ,extractValue
 
-    ,Type(..)
     ,DataDeclTypeTag(..)
     ,ValueTypeTag(..)
+    ,FFITypeTag
+    ,tyName
     ,Env
     
 
@@ -141,7 +142,7 @@ import Control.Exception.Safe (catch
 
 data RuntimeState
     = RuntimeState
-    {rtFFITypes :: IORef [(Text,Type)]
+    {rtFFITypes :: IORef [(Text,FFITypeTag)]
     ,rtBindings :: IORef [(Text, Value)]
     ,rtNumTestFailed :: IORef Int
     ,rtNumTestPassed :: IORef Int
@@ -192,9 +193,11 @@ setBootstrapRecTup v = do
     st <- ask
     liftIO $ writeIORef (rtBootstrapRecTup st) v
 
-addFFIType :: Text -> Type -> Runtime ()
-addFFIType nm ty = do
+addFFIType :: Text -> (Text -> Value -> Runtime Value) -> Runtime ()
+addFFIType nm memfn = do
     x <- rtFFITypes <$> ask
+    let ty = FFITypeTag nm memfn
+    addBinding nm $ makeValue (ValueTypeTag "ffitypetag") ty
     liftIO $ modifyIORef x ((nm,ty) :)
 
 type Runtime = ReaderT RuntimeState IO
@@ -209,7 +212,7 @@ data Value = Value ValueTypeTag Dynamic
     --deriving (Show)
 
 -- todo: use something more robust
-data DataDeclTypeTag = DataDeclTypeTag Text
+data DataDeclTypeTag = DataDeclTypeTag {dtyName :: Text}
 data ValueTypeTag = ValueTypeTag Text
 
 debugShowValue :: Value -> Text
@@ -421,9 +424,10 @@ lookupBinding nm = do
     x1 <- liftIO $ readIORef x
     pure $ lookup nm x1
 
-data Type
-    = Type
-    {tyMemberFn :: (Text -> Value -> Runtime Value)}
+data FFITypeTag
+    = FFITypeTag
+    {tyName :: Text
+    ,tyMemberFn :: (Text -> Value -> Runtime Value)}
 
 runRuntime :: RuntimeState -> Runtime a -> IO a
 runRuntime rt f = runReaderT f rt

@@ -255,7 +255,7 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
     [typeStub] ++ map isIt vs ++ [isDat]
     ++ map makeIt vs ++ desugarToRec ss
   where
-    typeStub = letDecl dnm $ S.Num Nothing 0
+    typeStub = letDecl dnm $ S.App n (S.Iden n "make-datadecltag") [S.Text n dnm]
     makeIt (S.VariantDecl _ vnm bs meths) =
         let defaultMeths =
                 [(S.Text n "_equals"

@@ -58,10 +58,10 @@ import Burdock.Runtime
     ,variantValueFields
     ,extractValue
     ,makeFunctionValue
-    ,Type(..)
     ,DataDeclTypeTag(..)
     ,ValueTypeTag(..)
     ,Scientific
+    ,tyName
     )
 
 --import Burdock.Pretty (prettyExpr)
@@ -311,10 +311,16 @@ initRuntime = do
         addBinding' nm f = do
             liftIO $ modifyIORef hackMM ((nm, (Nothing, BEIdentifier)) : )
             addBinding nm f
+
+    addFFIType' "ffitypetag" ffitypetagFFI
+    addFFIType' "datadecltag" datadecltagFFI
     
-    addFFIType' "number" (Type scientificFFI)
-    addFFIType' "string" (Type stringFFI)
-    addFFIType' "boolean" (Type booleanFFI)
+    addFFIType' "number" scientificFFI
+    addFFIType' "string" stringFFI
+    addFFIType' "boolean" booleanFFI
+
+    addBinding' "make-datadecltag" =<< makeFunctionValue makeDataDeclTag
+
     addBinding' "print" =<< makeFunctionValue myPrint
     addBinding' "make-burdock-list" =<< makeFunctionValue myMakeBurdockList
     addBinding' "make-haskell-list" =<< makeFunctionValue makeHaskellList
@@ -407,6 +413,27 @@ binaryMemberLax burName inType outType f v1 as =
             pure $ maybe (makeValue (ValueTypeTag outType) False) (makeValue (ValueTypeTag outType) . (f n1)) mn2
         _ -> error $ "bad args to " <> inType <> " " <> burName
 
+
+------------------------------------------------------------------------------
+
+ffitypetagFFI :: Text -> Value -> Runtime Value
+ffitypetagFFI "_torepr" v = makeFunctionValue $ \case
+    [] -> do
+        let y = maybe (error $ "toreprnot a ffitypetag " <> debugShowValue v) id $ extractValue v
+        pure $ makeValue (ValueTypeTag "string") $ tyName y
+    xs -> error $ "unsupported args to torepr: " <> T.intercalate "," (map debugShowValue xs)
+          <> debugShowValue v
+ffitypetagFFI m _ = error $ "unsupported field on ffitypetag: " <> m
+
+datadecltagFFI :: Text -> Value -> Runtime Value
+datadecltagFFI "_torepr" v = makeFunctionValue $ \case
+    [] -> do
+        let y = maybe (error $ "toreprnot a datadecltag" <> debugShowValue v) id $ extractValue v
+        pure $ makeValue (ValueTypeTag "string") $ dtyName y
+    xs -> error $ "unsupported args to torepr: " <> T.intercalate "," (map debugShowValue xs)
+          <> debugShowValue v
+datadecltagFFI m _ = error $ "unsupported field on datadecltag: " <> m
+
 ------------------------------------------------------------------------------
 
 -- built in types methods
@@ -477,6 +504,11 @@ myAddTestFail _ = error $ "bad args to myAddTestFail"
 ------------------------------------------------------------------------------
 
 -- specific language support for agdt
+
+makeDataDeclTag :: [Value] -> Runtime Value
+makeDataDeclTag [v] | Just v' <- extractValue v =
+    pure $ makeValue (ValueTypeTag "datadecltag") $ DataDeclTypeTag v'
+makeDataDeclTag _ = error $ "bad args to makeDataDeclTag"
 
 makeHaskellList :: [Value] -> Runtime Value
 makeHaskellList vs = pure $ makeValue (ValueTypeTag "haskell-list") vs
