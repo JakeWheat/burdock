@@ -54,11 +54,12 @@ import Burdock.Runtime
     
     ,makeValue
     ,makeVariant
-    ,variantTag
+    ,variantName
     ,variantValueFields
     ,extractValue
     ,makeFunctionValue
     ,Type(..)
+    ,VariantTypeTag(..)
     ,Scientific
     )
 
@@ -495,7 +496,7 @@ myMakeVariant [nm, flds, es] = do
                 id $ extractValue es
                                         
     when (length es' /= length flds') $ error $ "wrong number of args to create variant " <> t
-    makeVariant t $ zip flds'' es'
+    makeVariant (VariantTypeTag $ error "mymakevariant: fixme") t $ zip flds'' es'
 myMakeVariant _ = error $ "bad args to makeVariant"
 
 myIsVariant :: [Value] -> Runtime Value
@@ -504,7 +505,7 @@ myIsVariant [nm, x] = do
     let nm' :: Text
         nm' = maybe (error $ "bad args to is variant, first arg is not text")
             id $ extractValue nm
-    x' <- variantTag x
+    x' <- variantName x
     case x' of
         Nothing -> do
             --liftIO $ putStrLn "wrong type"
@@ -520,8 +521,8 @@ myIsVariant _ = error $ "bad args to myIsVariant"
 -- function works them out using the hack auxiliary variantValueFields
 checkVariantsEqual :: [Value] -> Runtime Value
 checkVariantsEqual [a, b] = do
-    at <- variantTag a
-    bt <- variantTag b
+    at <- variantName a
+    bt <- variantName b
     vfldsa <- variantValueFields a
     vfldsb <- variantValueFields b
     -- hack for records:
@@ -555,7 +556,7 @@ checkVariantsEqual _ = error $ "bad args to checkVariantsEqual"
 
 showVariant :: [Value] -> Runtime Value
 showVariant [x] = do
-    at <- variantTag x
+    at <- variantName x
     bt <- variantValueFields x
     let trm e = do
             f <- getMember e "_torepr"
@@ -655,7 +656,7 @@ myToString _ = error $ "bad args to myToString"
 
 showTuple :: [Value] -> Runtime Value
 showTuple [x] = do
-    at <- variantTag x
+    at <- variantName x
     bt <- variantValueFields x
     let trm e = do
             f <- getMember e "_torepr"
@@ -676,7 +677,7 @@ showTuple _ = error $ "bad args to showTuple"
 
 showRecord :: [Value] -> Runtime Value
 showRecord [x] = do
-    at <- variantTag x
+    at <- variantName x
     bt <- variantValueFields x
     let trm e = do
             f <- getMember e "_torepr"

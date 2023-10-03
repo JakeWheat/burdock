@@ -46,11 +46,13 @@ module Burdock.Runtime
     ,extractValue
 
     ,Type(..)
+    ,VariantTypeTag(..)
     ,Env
+    
 
     ,captureClosure
     ,makeVariant
-    ,variantTag
+    ,variantName
     ,variantFields
     ,variantValueFields
     ,makeRecord
@@ -199,11 +201,14 @@ type Runtime = ReaderT RuntimeState IO
 -- todo: make this abstract
 -- don't use the eq and show except for debugging
 data Value = Value Text Dynamic
-           | VariantV Text [(Text, Value)]
+           | VariantV VariantTypeTag Text [(Text, Value)]
            | MethodV Value
            | VFun ([Value] -> Runtime Value)
            | BoxV (IORef Value)
     --deriving (Show)
+
+-- todo: use something more robust
+data VariantTypeTag = VariantTypeTag Text
 
 debugShowValue :: Value -> Text
 debugShowValue (Value _tg dn)
@@ -219,7 +224,8 @@ debugShowValue v
     = "[list: " <> T.intercalate "," (map debugShowValue ls) <> "]"
 
 debugShowValue (Value tg dn) = "Value " <> show tg <> " " <> show dn
-debugShowValue (VariantV tf fs) =
+debugShowValue (VariantV _ tf fs) =
+    -- todo: show the tag also?
     "VariantV " <> tf <> " " <> T.concat (map f fs)
     where
         f (nm,v) = nm <> " " <> debugShowValue v <> ","
@@ -251,8 +257,9 @@ makeBurdockList (v:vs) = do
     app Nothing listLink [v,vs']
 
 extractBurdockList :: Value -> Maybe [Value]
-extractBurdockList (VariantV "empty" _) = Just []
-extractBurdockList (VariantV "link" fs)
+-- todo: check the tag is the tag for list type
+extractBurdockList (VariantV _ "empty" _) = Just []
+extractBurdockList (VariantV _ "link" fs)
     | Just f <- lookup "first" fs
     , Just r <- lookup "rest" fs
     = do
@@ -261,7 +268,8 @@ extractBurdockList (VariantV "link" fs)
 extractBurdockList _ = Nothing
 
 extractTuple :: Value -> Runtime (Maybe [Value])
-extractTuple v@(VariantV "tuple" _) = do
+-- todo: check the tag is tuple
+extractTuple v@(VariantV _ "tuple" _) = do
     x <- variantValueFields v
     pure $ fmap (map snd) x
 extractTuple _ = pure Nothing
@@ -271,7 +279,8 @@ makeTuple fs = do
     let fs1 = zip (map show [(0::Int)..]) fs
     st <- ask
     btV <- liftIO $ readIORef (rtBootstrapRecTup st)
-    makeVariant "tuple" (("_equals", btTupEq btV) : ("_torepr", btTupToRepr btV) : fs1)
+    -- todo: lookup the proper tuple type tag
+    makeVariant (VariantTypeTag "tuple") "tuple" (("_equals", btTupEq btV) : ("_torepr", btTupToRepr btV) : fs1)
 
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (Value _ v) = fromDynamic v
@@ -286,15 +295,15 @@ nothingValue = do
 makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
 makeFunctionValue f = pure $ VFun f
 
-makeVariant :: Text -> [(Text,Value)] -> Runtime Value
-makeVariant n fs = pure $ VariantV n fs
+makeVariant :: VariantTypeTag -> Text -> [(Text,Value)] -> Runtime Value
+makeVariant ty n fs = pure $ VariantV ty n fs
 
-variantTag :: Value -> Runtime (Maybe Text)
-variantTag (VariantV nm _) = pure $ Just nm
-variantTag _ = pure Nothing -- error $ "non variant passed to variant tag"
+variantName :: Value -> Runtime (Maybe Text)
+variantName (VariantV _ nm _) = pure $ Just nm
+variantName _ = pure Nothing -- error $ "non variant passed to variant tag"
 
 variantFields :: Value -> Runtime (Maybe [(Text, Value)])
-variantFields (VariantV _ flds) = pure $ Just flds
+variantFields (VariantV _ _ flds) = pure $ Just flds
 variantFields _ = pure Nothing
 
 {-
@@ -304,7 +313,7 @@ maybe will save an explicit list in the future, so can add auxiliary
 non method fields which aren't included in pattern matching e.g.
 -}
 variantValueFields :: Value -> Runtime (Maybe [(Text, Value)])
-variantValueFields (VariantV _ flds) =
+variantValueFields (VariantV _ _ flds) =
     pure $ Just $ flip filter flds $ \case
        (_,MethodV {}) -> False
        _ -> True
@@ -313,8 +322,9 @@ variantValueFields _ = pure Nothing
 makeRecord :: [(Text,Value)] -> Runtime Value
 makeRecord fs = do
     st <- ask
-    btV <- liftIO $ readIORef (rtBootstrapRecTup st)    
-    makeVariant "record" (("_equals", btRecEq btV) : ("_torepr", btRecEq btV) : fs)
+    btV <- liftIO $ readIORef (rtBootstrapRecTup st)
+    -- todo: lookup the proper tag
+    makeVariant (VariantTypeTag "record") "record" (("_equals", btRecEq btV) : ("_torepr", btRecEq btV) : fs)
               
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do
@@ -337,7 +347,7 @@ getMember v@(Value tyNm _) fld = do
                   <$> readIORef (rtFFITypes st))
     (tyMemberFn ty) fld v
 
-getMember v@(VariantV _ fs) fld = do
+getMember v@(VariantV _ _ fs) fld = do
     case lookup fld fs of
         Nothing -> error $ "field not found:" <> fld <> ", " <> debugShowValue v
         Just (MethodV v1) -> app Nothing v1 [v]

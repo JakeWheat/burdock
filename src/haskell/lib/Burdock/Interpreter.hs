@@ -52,7 +52,7 @@ import Burdock.Runtime
     ,emptyRuntimeState
     --,addFFIType
 
-    ,variantTag
+    ,variantName
     ,variantValueFields
     
     ,getMember
@@ -69,6 +69,7 @@ import Burdock.Runtime
     ,makeBurdockList
     ,makeRecord
     ,extractTuple
+    ,VariantTypeTag(..)
 
     ,debugShowValue
     
@@ -309,8 +310,8 @@ interpExpr (I.DotExpr e1 fld) = do
 
 interpExpr (I.VariantSel nm fs) = do
     vs <- mapM (\(n,e) -> (n,) <$> interpExpr e) fs
-    -- todo: nm has to be namespaced
-    pure $ VariantV nm vs
+    -- todo: type tag
+    pure $ VariantV (VariantTypeTag $ error "interpExpr VariantSel: fixmenm") nm vs
 
 interpExpr (I.RunTask catchAsync tsk) = do
     x <- runTask catchAsync $ interpExpr tsk
@@ -469,7 +470,7 @@ tryApplyBinding (I.TupleBinding bs) v = do
 
 tryApplyBinding (I.VariantBinding vnm flds) v = do
     -- check v is a variant
-    vt' <- variantTag v 
+    vt' <- variantName v 
     case vt' of
         Nothing -> pure Nothing
         Just vt ->
