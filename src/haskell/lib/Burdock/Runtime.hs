@@ -147,8 +147,7 @@ import Control.Exception.Safe (catch
 
 data RuntimeState
     = RuntimeState
-    {rtFFITypes :: IORef [(Text,FFITypeTag)]
-    ,rtBindings :: IORef [(Text, Value)]
+    {rtBindings :: IORef [(Text, Value)]
     ,rtNumTestFailed :: IORef Int
     ,rtNumTestPassed :: IORef Int
     ,rtCallStack :: IORef [Maybe Text]
@@ -185,7 +184,6 @@ emptyRuntimeState :: IO RuntimeState
 emptyRuntimeState =
     RuntimeState
         <$> newIORef []
-        <*> newIORef []
         <*> newIORef 0
         <*> newIORef 0
         <*> newIORef []
@@ -200,7 +198,6 @@ setBootstrapRecTup v = do
 
 addFFIType :: Text -> (Text -> Value -> Runtime Value) -> Runtime FFITypeTag
 addFFIType nm memfn = do
-    x <- rtFFITypes <$> ask
     let ty = FFITypeTag nm memfn
     -- recursive hack
     ftg <-
@@ -208,7 +205,6 @@ addFFIType nm memfn = do
         then pure ty
         else getFFITypeTag "ffitypetag"
     addBinding nm $ makeValue ftg ty
-    liftIO $ modifyIORef x ((nm,ty) :)
     pure ty
 
 getFFITypeTag :: Text -> Runtime FFITypeTag

@@ -437,12 +437,8 @@ binaryMemberLax burName inType outType f v1 as =
             let n1 = maybe (error $ "bl not a " <> inType <> " " <> debugShowValue v1) id $ extractValue v1
                 mn2 = extractValue v2
                 -- todo: make false an arg?
-            --maybe (makeValueName outType False) (makeValueName outType) . (f n1)) mn2
-            --pure $ maybe (makeValue (ValueTypeTag outType) False) (makeValue (ValueTypeTag outType) . (f n1)) mn2
             maybe (makeValueName outType False) (makeValueName outType . (f n1)) mn2
-
         _ -> error $ "bad args to " <> inType <> " " <> burName
-
 
 ------------------------------------------------------------------------------
 
@@ -513,7 +509,6 @@ booleanFFI "_equals" v1 = do
     makeFunctionValue $ binaryMemberLax "_equals" "boolean" "boolean" ((==) :: Bool -> Bool -> Bool) v1
 booleanFFI m _ = error $ "unsupported field on boolean: " <> m
 
-
 gremlinFFI :: Text -> Value -> Runtime Value
 gremlinFFI "_torepr" v1 = do
     case extractValue v1 of
@@ -522,7 +517,6 @@ gremlinFFI "_torepr" v1 = do
 gremlinFFI "_equals" v1 = do
     makeFunctionValue $ binaryMemberLax "_equals" "gremlintype" "gremlintype" ((==) :: Bool -> Bool -> Bool) v1
 gremlinFFI m _ = error $ "unsupported field on gremlin: " <> m
-
 
 ------------------------------------------------------------------------------
 
@@ -570,7 +564,9 @@ myMakeVariant [nm, flds, es] = do
                 id $ extractValue es
                                         
     when (length es' /= length flds') $ error $ "wrong number of args to create variant " <> t
-    makeVariant (DataDeclTypeTag $ error "mymakevariant: fixme") t $ zip flds'' es'
+    -- todo: need the type tag to put in here, later it will be abstract
+    -- and it will be used in lots of these auxiliary functions
+    makeVariant (DataDeclTypeTag undefined) t $ zip flds'' es'
 myMakeVariant _ = error $ "bad args to makeVariant"
 
 myIsVariant :: [Value] -> Runtime Value
