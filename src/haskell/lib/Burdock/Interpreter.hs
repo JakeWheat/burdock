@@ -64,13 +64,13 @@ import Burdock.Runtime
     ,lookupBinding
     ,captureClosure
     
-    ,makeValue
     ,extractValue
     ,makeBurdockList
     ,makeRecord
     ,extractTuple
     ,DataDeclTypeTag(..)
-    ,ValueTypeTag(..)
+    ,makeString
+    ,makeNumber
 
     ,debugShowValue
     
@@ -320,15 +320,16 @@ interpExpr (I.RunTask catchAsync tsk) = do
         -- a left left of a string is an show'n arbitrary haskell exception
         Left (Left e, st) -> do
             left <- interpExpr (I.Iden "left")
-            st' <- makeBurdockList $ map (makeValue (ValueTypeTag "string") . maybe "nothing" id) st
-            ret <- makeRecord [("exception", makeValue (ValueTypeTag "string") e)
+            st' <- makeBurdockList =<< mapM (makeString . maybe "nothing" id) st
+            e' <- makeString e
+            ret <- makeRecord [("exception", e')
                               ,("callstack", st')]
             app Nothing left [ret]
         -- a left right v is a burdock value that has been raised from burdock
         -- or ffi code
         Left (Right v, st) -> do
             left <- interpExpr (I.Iden "left")
-            st' <- makeBurdockList $ map (makeValue (ValueTypeTag "string") . maybe "nothing" id) st
+            st' <- makeBurdockList =<< mapM (makeString . maybe "nothing" id) st
             ret <- makeRecord [("exception", v)
                               ,("callstack", st')]
             app Nothing left [ret]
@@ -355,16 +356,9 @@ interpExpr (I.Lam fvs bs bdy) = do
                 interpStmts bdy
     pure $ VFun runF
 
-interpExpr (I.Num n) =
-    {- todo: you either have to look up "number" in the runtime environment
-       or keep a token from when the number type was created, this is so type
-       names are namespaced and scoped, e.g. if you have two modules which have
-       a type with the same name as each other
-    -}
-    pure $ makeValue (ValueTypeTag "number") n
+interpExpr (I.Num n) = makeNumber n
 
-interpExpr (I.IString t) =
-    pure $ makeValue (ValueTypeTag "string") t
+interpExpr (I.IString t) = makeString t
 
 interpExpr (I.Iden nm) = do
     b <- lookupBinding nm

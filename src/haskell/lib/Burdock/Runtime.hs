@@ -46,7 +46,6 @@ module Burdock.Runtime
     ,extractValue
 
     ,DataDeclTypeTag(..)
-    ,ValueTypeTag(..)
     ,FFITypeTag
     ,tyName
     ,Env
@@ -60,6 +59,12 @@ module Burdock.Runtime
     ,makeRecord
     ,extractTuple
     ,makeTuple
+    ,makeString
+    ,makeBool
+    ,makeNumber
+    ,getFFITypeTag
+    ,makeDataDeclTag
+    ,makeValueName
 
     ,runTask
     ,throwValue
@@ -193,18 +198,36 @@ setBootstrapRecTup v = do
     st <- ask
     liftIO $ writeIORef (rtBootstrapRecTup st) v
 
-addFFIType :: Text -> (Text -> Value -> Runtime Value) -> Runtime ()
+addFFIType :: Text -> (Text -> Value -> Runtime Value) -> Runtime FFITypeTag
 addFFIType nm memfn = do
     x <- rtFFITypes <$> ask
     let ty = FFITypeTag nm memfn
-    addBinding nm $ makeValue (ValueTypeTag "ffitypetag") ty
+    -- recursive hack
+    ftg <-
+        if nm == "ffitypetag"
+        then pure ty
+        else getFFITypeTag "ffitypetag"
+    addBinding nm $ makeValue ftg ty
     liftIO $ modifyIORef x ((nm,ty) :)
+    pure ty
+
+getFFITypeTag :: Text -> Runtime FFITypeTag
+getFFITypeTag nm = do
+    v <- maybe (error $ "internal: ffitypetag " <> nm <> " not found") id
+         <$> lookupBinding nm
+    maybe (error $ "internal: ffitypetag " <> nm <> " wrong type") pure $ extractValue v
+
+makeDataDeclTag :: Text -> Runtime Value
+makeDataDeclTag v = do
+    let tg = DataDeclTypeTag v
+    tgx <- getFFITypeTag "datadecltag"
+    pure $ makeValue tgx tg
 
 type Runtime = ReaderT RuntimeState IO
 
 -- todo: make this abstract
 -- don't use the eq and show except for debugging
-data Value = Value ValueTypeTag Dynamic
+data Value = Value FFITypeTag Dynamic
            | VariantV DataDeclTypeTag Text [(Text, Value)]
            | MethodV Value
            | VFun ([Value] -> Runtime Value)
@@ -213,7 +236,12 @@ data Value = Value ValueTypeTag Dynamic
 
 -- todo: use something more robust
 data DataDeclTypeTag = DataDeclTypeTag {dtyName :: Text}
-data ValueTypeTag = ValueTypeTag Text
+--data ValueTypeTag = ValueTypeTag Text
+
+data FFITypeTag
+    = FFITypeTag
+    {tyName :: Text
+    ,tyMemberFn :: (Text -> Value -> Runtime Value)}
 
 debugShowValue :: Value -> Text
 debugShowValue (Value _tg dn)
@@ -228,7 +256,7 @@ debugShowValue v
     | Just ls <- extractBurdockList v
     = "[list: " <> T.intercalate "," (map debugShowValue ls) <> "]"
 
-debugShowValue (Value (ValueTypeTag tg) dn) = "Value " <> show tg <> " " <> show dn
+debugShowValue (Value tg dn) = "Value " <> tyName tg <> " " <> show dn
 debugShowValue (VariantV _ tf fs) =
     -- todo: show the tag also?
     "VariantV " <> tf <> " " <> T.concat (map f fs)
@@ -246,7 +274,7 @@ getCallStack = do
 data Env = Env [(Text, Value)]
     --deriving Show
 
-makeValue :: Typeable a => ValueTypeTag -> a -> Value
+makeValue :: Typeable a => FFITypeTag -> a -> Value
 makeValue tg v = Value tg $ toDyn v
 
 makeBurdockList :: [Value] -> Runtime Value
@@ -300,6 +328,20 @@ nothingValue = do
 makeFunctionValue :: ([Value] -> Runtime Value) -> Runtime Value
 makeFunctionValue f = pure $ VFun f
 
+makeValueName :: Typeable a => Text -> a -> Runtime Value
+makeValueName tgn v = do
+    tg <- getFFITypeTag tgn
+    pure $ makeValue tg v
+
+makeString :: Text -> Runtime Value
+makeString s = makeValueName "string" s
+
+makeBool :: Bool -> Runtime Value
+makeBool b = makeValueName "boolean" b
+
+makeNumber :: Scientific -> Runtime Value
+makeNumber n = makeValueName "number" n
+
 makeVariant :: DataDeclTypeTag -> Text -> [(Text,Value)] -> Runtime Value
 makeVariant ty n fs = pure $ VariantV ty n fs
 
@@ -346,11 +388,7 @@ captureClosure nms = do
 -- but an ffivalue, the ctor Value currently, should have
 -- a pointer to it's type, not go via any kind of name lookup like this
 getMember :: Value -> Text -> Runtime Value
-getMember v@(Value (ValueTypeTag tyNm) _) fld = do
-    st <- ask
-    ty <- liftIO ((maybe (error $ "type not found " <> tyNm) id . lookup tyNm)
-                  <$> readIORef (rtFFITypes st))
-    (tyMemberFn ty) fld v
+getMember v@(Value tg _) fld = (tyMemberFn tg) fld v
 
 getMember v@(VariantV _ _ fs) fld = do
     case lookup fld fs of
@@ -359,11 +397,11 @@ getMember v@(VariantV _ _ fs) fld = do
         Just v1 -> pure v1
 
 getMember (MethodV {}) "_torepr" = do
-    let v = makeValue (ValueTypeTag "string") ("<method>" :: Text)
+    v <- makeString "<method>"
     makeFunctionValue (\_ -> pure v)
     --pure $ makeValue "string" ("<methodv>" :: Text)
 getMember (VFun {}) "_torepr" = do
-    let v = makeValue (ValueTypeTag "string") ("<function>" :: Text)
+    v <- makeString "<function>"
     makeFunctionValue (\_ -> pure v)
 
 getMember (BoxV v) fld = do
@@ -423,11 +461,6 @@ lookupBinding nm = do
     x <- rtBindings <$> ask
     x1 <- liftIO $ readIORef x
     pure $ lookup nm x1
-
-data FFITypeTag
-    = FFITypeTag
-    {tyName :: Text
-    ,tyMemberFn :: (Text -> Value -> Runtime Value)}
 
 runRuntime :: RuntimeState -> Runtime a -> IO a
 runRuntime rt f = runReaderT f rt

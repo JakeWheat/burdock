@@ -32,6 +32,7 @@ import Burdock.Runtime
     ,createBurdockRunner
     ,addFFIType
     ,addBinding
+    ,tyName
 
     ,getModuleValue
     ,RuntimeImportSource(..)
@@ -46,6 +47,12 @@ import Burdock.Runtime
     ,makeBurdockList
     ,extractBurdockList
     ,makeTuple
+    ,makeString
+    ,makeBool
+    ,makeNumber
+    --,getFFITypeTag
+    ,makeDataDeclTag
+    ,makeValueName
 
     ,getMember
     ,app
@@ -59,9 +66,7 @@ import Burdock.Runtime
     ,extractValue
     ,makeFunctionValue
     ,DataDeclTypeTag(..)
-    ,ValueTypeTag(..)
     ,Scientific
-    ,tyName
     )
 
 --import Burdock.Pretty (prettyExpr)
@@ -302,6 +307,9 @@ initRuntime = do
     hackMM <- liftIO $ newIORef [("run-task", (Nothing,BEIdentifier))
                                 ,("run-task-cs", (Nothing,BEIdentifier))
                                 ,("run-task-cs-async", (Nothing,BEIdentifier))
+                                -- hack for boolean literal patterns
+                                -- todo: renamer should convert boolean literal
+                                --   patterns into a booleanliteralpattern variant
                                 ,("true", (Nothing, BEVariant 0))
                                 ,("false", (Nothing, BEVariant 0))
                                 ]
@@ -312,40 +320,59 @@ initRuntime = do
             liftIO $ modifyIORef hackMM ((nm, (Nothing, BEIdentifier)) : )
             addBinding nm f
 
-    addFFIType' "ffitypetag" ffitypetagFFI
-    addFFIType' "datadecltag" datadecltagFFI
-    
-    addFFIType' "number" scientificFFI
-    addFFIType' "string" stringFFI
-    addFFIType' "boolean" booleanFFI
+    -- todo: divide this up into stuff that's needed to execute bootstrap
+    -- and maybe internals
+    -- stuff which is part of a built in module or needed to run scripts
+    -- which use the whole language and built in modules only
+    -- and other bits, used just for testing?
 
-    addBinding' "make-datadecltag" =<< makeFunctionValue makeDataDeclTag
+    void $ addFFIType' "ffitypetag" ffitypetagFFI
+    void $ addFFIType' "datadecltag" datadecltagFFI
 
-    addBinding' "print" =<< makeFunctionValue myPrint
+    void $ addFFIType' "number" scientificFFI
+    void $ addFFIType' "string" stringFFI
+    booleanType <- addFFIType' "boolean" booleanFFI
+
+    addBinding' "tuple" =<< makeDataDeclTag "tuple"
+    addBinding' "record" =<< makeDataDeclTag "record"
+
+
+    void $ addFFIType' "haskell-list" ffitypetagFFI
+
+    addBinding' "make-datadecltag" =<< makeFunctionValue makeDataDeclTag'
     addBinding' "make-burdock-list" =<< makeFunctionValue myMakeBurdockList
     addBinding' "make-haskell-list" =<< makeFunctionValue makeHaskellList
     addBinding' "make-variant" =<< makeFunctionValue myMakeVariant
     addBinding' "is-variant" =<< makeFunctionValue myIsVariant
-    addBinding' "debug-print" =<< makeFunctionValue myDebugPrint
-    addBinding' "debug-show" =<< makeFunctionValue myDebugShow
     addBinding' "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
     addBinding' "raise" =<< makeFunctionValue raise
+
+    -- loading a module needs the interpreter, but the interpreter depends on this
+    -- module
+    addBinding' "load-module" =<< makeFunctionValue myLoadModule
+
+    -- should true be a built in value (built into the runtime), or an ffi
+    -- value, or a agdt?
+    
+    addBinding' "true" (makeValue booleanType True)
+    addBinding' "false" (makeValue booleanType False)
+
+    --------------------------------------
+
+    gremlintype <- addFFIType' "gremlintype" gremlinFFI
+    void $ addFFIType' "temp-handle" ffitypetagFFI
+    void $ addFFIType' "bytestring" ffitypetagFFI
+
+
+    addBinding' "print" =<< makeFunctionValue myPrint
+    addBinding' "debug-print" =<< makeFunctionValue myDebugPrint
+    addBinding' "debug-show" =<< makeFunctionValue myDebugShow
     addBinding' "get-call-stack" =<< makeFunctionValue myGetCallStack
     addBinding' "torepr" =<< makeFunctionValue myToRepr
     addBinding' "tostring" =<< makeFunctionValue myToString
     addBinding' "show-variant" =<< makeFunctionValue showVariant
     addBinding' "show-tuple" =<< makeFunctionValue showTuple
     addBinding' "show-record" =<< makeFunctionValue showRecord
-
-    -- loading a module needs the interpreter, but the interpreter depends on this
-    -- module
-    addBinding' "load-module" =<< makeFunctionValue myLoadModule
-
-
-    -- should true be a built in value (built into the runtime), or an ffi
-    -- value, or a agdt?
-    addBinding' "true" (makeValue (ValueTypeTag "boolean") True)
-    addBinding' "false" (makeValue (ValueTypeTag "boolean") False)
 
     addBinding' "not" =<< makeFunctionValue myNot
 
@@ -358,7 +385,7 @@ initRuntime = do
 
     addBinding' "torepr-debug" =<< makeFunctionValue toreprDebug
 
-    addBinding' "gremlin" (makeValue (ValueTypeTag "gremlintype") False)
+    addBinding' "gremlin" $ makeValue gremlintype False
 
     addBinding' "read-process" =<< makeFunctionValue myReadProcessWithExitCode
 
@@ -388,7 +415,7 @@ unaryMember burName inType outType f v as =
     case as of
         [] -> do
             let v1 = maybe (error $ "u not a " <> inType <> " " <> debugShowValue v) id $ extractValue v
-            pure $ makeValue (ValueTypeTag outType) $ f v1
+            makeValueName outType $ f v1
         _ -> error $ "bad args to " <> inType <> " " <> burName
 
 
@@ -399,7 +426,7 @@ binaryMember burName inType outType f v1 as =
         [v2] -> do
             let n1 = maybe (error $ "b0 not a " <> inType <> " " <> debugShowValue v1) id $ extractValue v1
                 n2 = maybe (error $ "b1 not a " <> inType <> " " <> debugShowValue v2) id $ extractValue v2
-            pure $ makeValue (ValueTypeTag outType) $ f n1 n2
+            makeValueName outType $ f n1 n2
         _ -> error $ "bad args to " <> inType <> " " <> burName
 
 binaryMemberLax :: (Typeable a, Typeable b) =>
@@ -410,7 +437,10 @@ binaryMemberLax burName inType outType f v1 as =
             let n1 = maybe (error $ "bl not a " <> inType <> " " <> debugShowValue v1) id $ extractValue v1
                 mn2 = extractValue v2
                 -- todo: make false an arg?
-            pure $ maybe (makeValue (ValueTypeTag outType) False) (makeValue (ValueTypeTag outType) . (f n1)) mn2
+            --maybe (makeValueName outType False) (makeValueName outType) . (f n1)) mn2
+            --pure $ maybe (makeValue (ValueTypeTag outType) False) (makeValue (ValueTypeTag outType) . (f n1)) mn2
+            maybe (makeValueName outType False) (makeValueName outType . (f n1)) mn2
+
         _ -> error $ "bad args to " <> inType <> " " <> burName
 
 
@@ -420,7 +450,7 @@ ffitypetagFFI :: Text -> Value -> Runtime Value
 ffitypetagFFI "_torepr" v = makeFunctionValue $ \case
     [] -> do
         let y = maybe (error $ "toreprnot a ffitypetag " <> debugShowValue v) id $ extractValue v
-        pure $ makeValue (ValueTypeTag "string") $ tyName y
+        makeString $ tyName y
     xs -> error $ "unsupported args to torepr: " <> T.intercalate "," (map debugShowValue xs)
           <> debugShowValue v
 ffitypetagFFI m _ = error $ "unsupported field on ffitypetag: " <> m
@@ -429,10 +459,15 @@ datadecltagFFI :: Text -> Value -> Runtime Value
 datadecltagFFI "_torepr" v = makeFunctionValue $ \case
     [] -> do
         let y = maybe (error $ "toreprnot a datadecltag" <> debugShowValue v) id $ extractValue v
-        pure $ makeValue (ValueTypeTag "string") $ dtyName y
+        makeString $ dtyName y
     xs -> error $ "unsupported args to torepr: " <> T.intercalate "," (map debugShowValue xs)
           <> debugShowValue v
 datadecltagFFI m _ = error $ "unsupported field on datadecltag: " <> m
+
+makeDataDeclTag' :: [Value] -> Runtime Value
+makeDataDeclTag' [v] | Just v' <- extractValue v = do
+    makeDataDeclTag v'
+makeDataDeclTag' _ = error $ "bad args to makeDataDeclTag'"
 
 ------------------------------------------------------------------------------
 
@@ -478,6 +513,17 @@ booleanFFI "_equals" v1 = do
     makeFunctionValue $ binaryMemberLax "_equals" "boolean" "boolean" ((==) :: Bool -> Bool -> Bool) v1
 booleanFFI m _ = error $ "unsupported field on boolean: " <> m
 
+
+gremlinFFI :: Text -> Value -> Runtime Value
+gremlinFFI "_torepr" v1 = do
+    case extractValue v1 of
+        Just (v :: Bool) -> makeString $ "gremlin: " <> show v
+        Nothing -> error $ "non gremlintytpe: " <> debugShowValue v1
+gremlinFFI "_equals" v1 = do
+    makeFunctionValue $ binaryMemberLax "_equals" "gremlintype" "gremlintype" ((==) :: Bool -> Bool -> Bool) v1
+gremlinFFI m _ = error $ "unsupported field on gremlin: " <> m
+
+
 ------------------------------------------------------------------------------
 
 -- helpers for the testing
@@ -486,7 +532,7 @@ indent :: [Value] -> Runtime Value
 indent [x] | Just t <- extractValue x = do
     let ls = T.lines t
         ls' = map ("  " <>) ls
-    pure $ makeValue (ValueTypeTag "string") $ T.unlines ls'
+    makeString $ T.unlines ls'
 indent _ = error $ "bad args to indent"
 
 myAddTestPass :: [Value] -> Runtime Value
@@ -505,13 +551,8 @@ myAddTestFail _ = error $ "bad args to myAddTestFail"
 
 -- specific language support for agdt
 
-makeDataDeclTag :: [Value] -> Runtime Value
-makeDataDeclTag [v] | Just v' <- extractValue v =
-    pure $ makeValue (ValueTypeTag "datadecltag") $ DataDeclTypeTag v'
-makeDataDeclTag _ = error $ "bad args to makeDataDeclTag"
-
 makeHaskellList :: [Value] -> Runtime Value
-makeHaskellList vs = pure $ makeValue (ValueTypeTag "haskell-list") vs
+makeHaskellList vs = makeValueName "haskell-list" vs
 
 myMakeVariant :: [Value] -> Runtime Value
 myMakeVariant [nm, flds, es] = do
@@ -534,18 +575,13 @@ myMakeVariant _ = error $ "bad args to makeVariant"
 
 myIsVariant :: [Value] -> Runtime Value
 myIsVariant [nm, x] = do
-    
     let nm' :: Text
         nm' = maybe (error $ "bad args to is variant, first arg is not text")
             id $ extractValue nm
     x' <- variantName x
     case x' of
-        Nothing -> do
-            --liftIO $ putStrLn "wrong type"
-            pure $ makeValue (ValueTypeTag "boolean") False
-        Just t -> do
-            --liftIO $ putStrLn $ "check " <> T.unpack nm' <> " " <> T.unpack t
-            pure $ makeValue (ValueTypeTag "boolean") $ nm' == t
+        Nothing -> makeBool False
+        Just t -> makeBool $ nm' == t
         
 myIsVariant _ = error $ "bad args to myIsVariant"
 
@@ -553,7 +589,7 @@ myIsVariant _ = error $ "bad args to myIsVariant"
 -- work them out. Currently, the passed fields are ignored and this
 -- function works them out using the hack auxiliary variantValueFields
 checkVariantsEqual :: [Value] -> Runtime Value
-checkVariantsEqual [a, b] = do
+checkVariantsEqual [a, b@(VariantV {})] = do
     at <- variantName a
     bt <- variantName b
     vfldsa <- variantValueFields a
@@ -575,16 +611,15 @@ checkVariantsEqual [a, b] = do
                     x <- app Nothing eqx [vb]
                     pure x
                 -- and together all the fsEq
-                let andEm [] = pure $ makeValue (ValueTypeTag "boolean") True
+                let andEm [] = makeBool True
                     andEm (v:vs) = case extractValue v of
                         Just True -> andEm vs
-                        Just False -> pure $ makeValue (ValueTypeTag "boolean") False
+                        Just False -> makeBool False
                         _ -> error $ "non boolean returned from _equals method"
                 andEm fsEq
-            else do
-                --liftIO $ putStrLn "fields not equal:"
-                pure $ makeValue (ValueTypeTag "boolean") False
-        _ -> pure $ makeValue (ValueTypeTag "boolean") False
+            else makeBool False
+        _ -> error $ "checkVariantsEqual error: " <> debugShowValue a <> " " <> debugShowValue b
+checkVariantsEqual [_,_] = makeBool False
 checkVariantsEqual _ = error $ "bad args to checkVariantsEqual"
 
 showVariant :: [Value] -> Runtime Value
@@ -602,9 +637,9 @@ showVariant [x] = do
             let es' :: [Text]
                 es' = maybe (error "showvariant non string from torepr") id $ sequence es
             --liftIO $ putStrLn $ show es'
-            pure $ if null es'
-                   then makeValue (ValueTypeTag "string") $ n
-                   else makeValue (ValueTypeTag "string") $ n <> "(" <> T.intercalate ", " es' <> ")"
+            if null es'
+                then makeString n
+                else makeString $ n <> "(" <> T.intercalate ", " es' <> ")"
         _ -> error $ "show variant called on non variant " <> debugShowValue x
     
 showVariant _ = error $ "bad args to showVariant"
@@ -647,14 +682,14 @@ myDebugPrint [x] = do
 myDebugPrint _ = error $ "bad args to myDebugPrint"
 
 myDebugShow :: [Value] -> Runtime Value
-myDebugShow [x] = pure $ makeValue (ValueTypeTag "string") $ debugShowValue x
+myDebugShow [x] = makeString $ debugShowValue x
 myDebugShow _ = error $ "bad args to myDebugShow"
 
 toreprDebug :: [Value] -> Runtime Value
 toreprDebug [x] = do
     y <- runTask False $ myToRepr [x]
     case y of
-        Left _ -> pure $ makeValue (ValueTypeTag "string") $ debugShowValue x
+        Left _ -> makeString $ debugShowValue x
         Right v -> pure v
 toreprDebug _ = error $ "bad args to toreprDebug"
 
@@ -665,13 +700,10 @@ raise _ = error $ "bad args to raise"
 myGetCallStack :: [Value] -> Runtime Value
 myGetCallStack [] = do
     cs <- getCallStack
-    let cs' = flip map cs $ \case
-            Nothing -> mt "nothing"
-            Just x -> mt x
+    cs' <- flip mapM cs $ \case
+            Nothing -> makeString "nothing"
+            Just x -> makeString x
     makeBurdockList cs' -- makeValue "string" $ T.intercalate "," cs'
-  where
-    mt :: Text -> Value
-    mt = makeValue (ValueTypeTag "string")
 myGetCallStack _ = error $ "bad args to myGetCallStack"
 
 myToRepr :: [Value] -> Runtime Value
@@ -702,9 +734,9 @@ showTuple [x] = do
             let es' :: [Text]
                 es' = maybe (error "showTuple non string from torepr") id $ sequence es
             --liftIO $ putStrLn $ show es'
-            pure $ if null es'
-                   then makeValue (ValueTypeTag "string") ("{}" :: Text)
-                   else makeValue (ValueTypeTag "string") $ "{" <> T.intercalate ";" es' <> "}"
+            if null es'
+                then makeString "{}"
+                else makeString $ "{" <> T.intercalate ";" es' <> "}"
         _ -> error $ "showTuple called on non variant " <> debugShowValue x
 showTuple _ = error $ "bad args to showTuple"
 
@@ -727,16 +759,16 @@ showRecord [x] = do
                 es'' = zip nms es'
                 esx = map (\(a,b) -> a <> ":" <> b) es''
             --liftIO $ putStrLn $ show es'
-            pure $ if null es''
-                   then makeValue (ValueTypeTag "string") ("{}" :: Text)
-                   else makeValue (ValueTypeTag "string") $ "{" <> T.intercalate "," esx <> "}"
+            if null es''
+                then makeString "{}"
+                else makeString $ "{" <> T.intercalate "," esx <> "}"
         _ -> error $ "showRecord called on non variant " <> debugShowValue x
 showRecord _ = error $ "bad args to showRecord"
 
 myNot :: [Value] -> Runtime Value
 myNot [x] = case extractValue x of
-    Just True -> pure $ makeValue (ValueTypeTag "boolean") False
-    Just False -> pure $ makeValue (ValueTypeTag "boolean") True
+    Just True -> makeBool False
+    Just False -> makeBool True
     _ -> error $ "bad arg to not"
 myNot _ = error $ "bad args to raise"
 
@@ -774,7 +806,7 @@ spawnSleepThrowTo _ = error $ "bad args to spawnSleepThrowTo"
 bmyThreadId :: [Value] -> Runtime Value
 bmyThreadId [] = do
     i <- liftIO myThreadId
-    pure $ makeValue (ValueTypeTag "string") (show i)
+    makeString (show i)
 bmyThreadId _ = error $ "bad args to bmyThreadId"
 
 runCallbackN :: [Value] -> Runtime Value
@@ -801,8 +833,7 @@ runCallbackAsyncN [n, t, fun] = do
             replicateM_ n'' $ do
                 liftIO $ threadDelay $ floor $ t' * 1000 * 1000
                 app Nothing fun []
-
-    pure $ makeValue (ValueTypeTag "temp-handle") h
+    makeValueName "temp-handle" h
 runCallbackAsyncN _ = error $ "bad args to runCallbackAsyncN"
 
 testWait :: [Value] -> Runtime Value
@@ -817,7 +848,7 @@ handleThreadId :: [Value] -> Runtime Value
 handleThreadId [h] = do
     let h' :: A.Async ()
         h' = maybe (error $ "bad arg to handleThreadId " <> debugShowValue h) id $ extractValue h
-    pure $ makeValue (ValueTypeTag "string") (show $ A.asyncThreadId h')
+    makeString (show $ A.asyncThreadId h')
 handleThreadId _ = error $ "bad args to handleThreadId"
 
 
@@ -852,9 +883,10 @@ myReadProcessWithExitCode [prog, args, stdinVal] = do
         x1 = fromIntegral $ case x of
                  ExitSuccess -> 0
                  ExitFailure n -> n
-    makeTuple [makeValue (ValueTypeTag "number") x1
-              ,makeValue (ValueTypeTag "string") $ T.pack so
-              ,makeValue (ValueTypeTag "string") $ T.pack se]
+    x1' <- makeNumber x1
+    so' <- makeString $ T.pack so
+    se' <- makeString $ T.pack se
+    makeTuple [x1', so', se']
 myReadProcessWithExitCode _ = error $ "bad args to myReadProcessWithExitCode"
 
 ------------------------------------------------------------------------------
@@ -867,7 +899,7 @@ makeBytestring [x] = do
     let y = maybe (error $ "non number passed to make bytestring" <> debugShowValue x) id $ extractValue x
         z = maybe (error $ "non integer passed to make bytestring: " <> show y) id $ extractInt y
         !bs = BS.replicate z 0
-    pure $! makeValue (ValueTypeTag "bytestring") $! bs
+    makeValueName "bytestring" $! bs
 makeBytestring _ = error $ "bad args to makeBytestring"
 
 -- pass bytestring, position, returns the byte
@@ -880,7 +912,7 @@ getBytestringByte [bsv,pos] = do
         b = BS.index bs n
         sb :: Scientific
         sb = fromIntegral b
-    pure $ makeValue (ValueTypeTag "number") sb
+    makeNumber sb
 getBytestringByte _ = error $ "bad args to getBytestringByte"
 
 split :: [Value] -> Runtime Value
@@ -888,7 +920,7 @@ split [x] = do
     let t = maybe (error "non string passed to split") id $ extractValue x
         xs = T.splitOn " " t
     --liftIO $ putStrLn $ show xs
-    makeBurdockList $ map (makeValue (ValueTypeTag "string")) xs
+    makeBurdockList =<< mapM makeString xs
 split _ = error $ "bad args to split"
 
 

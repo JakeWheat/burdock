@@ -26,8 +26,7 @@ import Burdock.Runtime
     ,Value
     ,lookupBinding
     ,app
-    ,makeValue
-    ,ValueTypeTag(..)
+    ,makeString
     )
 
 import Control.Exception.Safe (catch
@@ -95,12 +94,14 @@ runTestTree cbs (TestCase nm tst) = do
     catchFailure (e :: SomeException) =
         makeTestFail nm (show e)
     makeTestPass :: Text -> Runtime Value
-    makeTestPass t =
-        app Nothing (testPass cbs) [makeValue (ValueTypeTag "string") t]
+    makeTestPass t = do
+        t' <- makeString t
+        app Nothing (testPass cbs) [t']
     makeTestFail :: Text -> Text -> Runtime Value
-    makeTestFail t msg  =
-        app Nothing (testFail cbs) [makeValue (ValueTypeTag "string") t
-                                   ,makeValue (ValueTypeTag "string") msg]
+    makeTestFail t msg  = do
+        t' <- makeString t
+        msg' <- makeString msg
+        app Nothing (testFail cbs) [t', msg']
     prependLocation mbloc s =
         case mbloc of
             Nothing -> s

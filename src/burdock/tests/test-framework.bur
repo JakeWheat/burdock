@@ -34,6 +34,6 @@ check "test the tests - how can this be trusted?":
     is test-fail("1 is 1", 'LHS error: "a error"\nRHS error: "b error"')
 
   my-do-bpred-test(lam(a,b): raise(gremlin) end, "is", "!=", "1", "1", right(1), right(1))
-    is test-fail("1 is 1", '1 is 1 raised Value "gremlintype" <<Bool>>')
+    is test-fail("1 is 1", '1 is 1 raised Value gremlintype <<Bool>>')
 
 end
