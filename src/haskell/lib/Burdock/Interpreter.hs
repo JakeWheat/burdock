@@ -20,6 +20,8 @@ module Burdock.Interpreter
     ,runTask
     ,debugShowValue
     ,extractValue
+    ,DumpMode(..)
+    ,dumpSource
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -137,6 +139,14 @@ import System.FilePath
 import Burdock.ModuleMetadata
     (ModuleMetadata(..))
 
+import Burdock.Pretty (prettyScript)
+
+import Burdock.Renamer
+    (renameScript
+    ,renameModule
+    ,prettyStaticErrors
+    )
+
 ------------------------------------------------------------------------------
 
 debugPrintUserScript :: Bool
@@ -187,6 +197,56 @@ createHandle = do
 runScript :: Maybe T.Text -> L.Text -> Runtime Value
 runScript fn src = snd <$> runScript' debugPrintUserScript fn src
 
+--------------------------------------
+
+-- quick hack functions to dump renamed or desugared source
+
+data DumpMode
+    = DumpRenameScript
+    | DumpRenameModule
+    | DumpDesugarScript
+    | DumpDesugarModule
+
+prepDump :: Maybe Text
+         -> L.Text
+         -> (Text
+             -> S.Script
+             -> ModuleMetadata
+             -> [(S.ImportSource, ModuleID)]
+             -> [(ModuleID, ModuleMetadata)]
+             -> Runtime a)
+         -> Runtime a
+prepDump fn' src res = do
+    let fn = maybe "unnamed" id fn'
+        ast = either error id $ parseScript fn src
+    ms <- recurseMetadata (Just fn) ast
+    tmpHack <- getTempEnvStage
+    let (ism,ms') = unwrapMetadata ms
+    res fn ast tmpHack ism ms'
+
+dumpSource :: DumpMode -> Maybe T.Text -> L.Text -> Runtime L.Text
+dumpSource DumpRenameScript fn' src =
+    prepDump fn' src $ \fn ast tmpHack ism ms' ->
+    case renameScript fn tmpHack ism ms' ast of
+        Left  e -> error $ prettyStaticErrors e
+        Right (_,res) -> pure $ prettyScript res
+
+dumpSource DumpRenameModule fn' src =
+    prepDump fn' src $ \fn ast tmpHack ism ms' ->
+    case renameModule fn tmpHack ism ms' ast of
+        Left  e -> error $ prettyStaticErrors e
+        Right (_,res) -> pure $ prettyScript res
+
+dumpSource DumpDesugarScript fn' src =
+    prepDump fn' src $ \fn ast tmpHack ism ms' -> do
+    let (_,dast) = desugarScript tmpHack fn ism ms' ast
+    pure $ prettyStmts dast
+
+dumpSource DumpDesugarModule fn' src =
+    prepDump fn' src $ \fn ast tmpHack ism ms' -> do
+    let (_,dast) = desugarModule tmpHack fn ism ms' ast
+    pure $ prettyStmts dast
+    
 ------------------------------------------------------------------------------
 
 runScript' :: Bool -> Maybe T.Text -> L.Text -> Runtime (ModuleMetadata, Value)

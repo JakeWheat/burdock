@@ -148,7 +148,7 @@ desugarScript :: ModuleMetadata
               -> (ModuleMetadata,[I.Stmt])
 desugarScript tmpHack fn ism mds scr =
     let (mm,renamed) = either (error . prettyStaticErrors) id $ renameScript fn tmpHack ism mds scr
-    in desugar mds mm renamed
+    in desugar mm renamed
 
 -- todo: desugaring a module will wrap the statements in a block
 -- and the last element will be a make-module-value which will give the provides
@@ -162,15 +162,12 @@ desugarModule :: ModuleMetadata
               -> (ModuleMetadata,[I.Stmt])
 desugarModule tmpHack fn ism mds scr =
     let (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule fn tmpHack ism mds scr
-    in desugar mds mm renamed
+    in desugar mm renamed
 
--- todo: return the metadata also
--- handle provides desugaringdwqsdw
-desugar :: [(ModuleID,ModuleMetadata)]
-        -> ModuleMetadata
+desugar :: ModuleMetadata
         -> S.Script
         -> (ModuleMetadata, [I.Stmt])
-desugar mds mm (S.Script ss) =
+desugar mm (S.Script ss) =
     (mm, view synTree $ runReader (desugarStmts ss) Inh)
 
 type Desugar = Reader Inh

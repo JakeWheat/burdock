@@ -21,6 +21,8 @@ import Burdock.Interpreter
     ,debugShowValue
     ,createHandle
     ,extractValue
+    ,dumpSource
+    ,DumpMode(..)
     )
 
 import qualified Data.Text as T
@@ -44,10 +46,6 @@ import qualified Data.Text.Lazy.IO as L
 import Burdock.TestLib (runHUnitTests)
 import Burdock.Tests (allTests)
 
-import TempRenamer
-    (tempRenamer
-    ,tempDesugar)
-
 ---------------------------------------
 
 main :: IO ()
@@ -60,19 +58,26 @@ main = do
     -- implement the non test run version
     case args of
         -- output renamed scripts
-        ("rename": as) -> mapM_ (tempRenamer False) (map T.pack as)
+        ("rename": as) -> mapM_ (dumpIt DumpRenameScript) (map T.pack as)
         -- output renamed modules
-        ("rename-module": as) -> mapM_ (tempRenamer True) (map T.pack as)
+        ("rename-module": as) -> mapM_ (dumpIt DumpRenameModule) (map T.pack as)
         -- output desugared scripts
-        ("desugar": as) -> mapM_ (tempDesugar False) (map T.pack as)
+        ("desugar": as) -> mapM_ (dumpIt DumpDesugarScript) (map T.pack as)
         -- output desugared modules
-        ("desugar-module": as) -> mapM_ (tempDesugar True) (map T.pack as)
+        ("desugar-module": as) -> mapM_ (dumpIt DumpDesugarModule) (map T.pack as)
         -- run tests, including the internal hunit tests
         ("test-all": as) -> runScriptWithTests True as
         -- run the scripts with their tests
         ("test": as) -> runScriptWithTests False as
         -- run scripts without tests (needs work)
         _ -> runScripts args
+  where
+    dumpIt flav fn = do
+        st <- createHandle
+        void $ runRuntime st $ do
+            mySrc <- liftIO $ L.readFile $ T.unpack fn
+            res <- dumpSource flav (Just fn) mySrc
+            liftIO $ L.putStrLn res
 
 -- this will bail on the first script that fails
 runScripts :: [String] -> IO ()
