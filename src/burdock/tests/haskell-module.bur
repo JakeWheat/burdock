@@ -1,7 +1,7 @@
 
 import haskell("demo-haskell-module") as m
 
-check:
+check "simple bindings plus simple callback":
   m.a is 2
   m.add-one(3) is 4
 
@@ -10,7 +10,7 @@ check:
 
 end
 
-check:
+check "using a haskell ioref captured in a closure":
   m.read-haskell-var() is 0
   m.increment-haskell-var()
   m.read-haskell-var() is 1
@@ -20,7 +20,7 @@ check:
 
 end
 
-check:
+check "callback a burdock function with an obvious closure":
   a = 7
   fun vf(n):
     n + a
@@ -28,7 +28,7 @@ check:
   m.callback-burdock(vf) is 10
 end
 
-check:
+check "callback a burdock function that closes over a burdock var":
   var v = 0
   fun vf(n):
     v := n
@@ -37,14 +37,46 @@ check:
   v is 3
 end
 
-check:
+check "imported function, ffi side stuff":
   m.call-abs-haskell(-2) is 2
   m.reexported-abs(-2) is 2
 end
 
-check:
+check "opaque wrapped user haskell value":
   x1 = m.make-haskell-value(1)
   m.unwrap-haskell-value(x1) is 1
   x2 = m.modify-haskell-value(x1)
   m.unwrap-haskell-value(x2) is 2
 end
+
+check "fields on a user haskell value":
+
+  x1 = m.make-haskell-pair(2,5)
+  x1.a is 2
+  x1.b is 5
+
+end
+
+check "_equals on a user haskell value":
+
+  x1 = m.make-haskell-pair(2,5)
+  x2 = m.make-haskell-pair(2,7)
+  x3 = m.make-haskell-pair(2,5)
+  x1 is x1
+  x1 is x3
+  x1 is-not x2
+  1 is-not x1
+  x1 is-not 1
+
+end
+
+check "torepr":
+  x = m.make-haskell-pair(2,5)
+  torepr(x) is "(2.0,5.0)"
+end
+
+check "app on an ffi value":
+  x = m.make-my-adder(3)
+  x(5) is 8
+end
+
