@@ -6,20 +6,26 @@ module Burdock.HaskellModulePlugin
     ,hmmModulePlugin
     ,HaskellModule(..)
     ,makeHaskellModule
+    ,importModule
+    ,S.ImportSource (..)
     ) where
 
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
 
+import qualified Burdock.Syntax as S (ImportSource (..))
+
 import Burdock.Runtime
     (Runtime
     ,ModulePlugin(..)
-    --,RuntimeImportSource
     ,ModuleMetadata
     ,Value
     ,RuntimeImportSource(..)
     ,liftIO
     ,makeRecord
+    ,lookupImportSource
+    ,BurdockImportSource(..)
+    ,getModuleValue
     )
 
 import Data.Text (Text)
@@ -78,3 +84,10 @@ makeHaskellModule bs = do
     let ms = flip map bs $ \(nm,_) -> (nm, (Nothing, BEIdentifier))
     m <- makeRecord bs
     pure $ HaskellModule (pure (ModuleMetadata ms)) (pure m)
+
+importModule :: S.ImportSource -> Runtime Value
+importModule is = do
+    ris <- lookupImportSource $ case is of
+           S.ImportName nm ->  BurdockImportName nm
+           S.ImportSpecial p as -> BurdockImportSpecial p as
+    getModuleValue Nothing ris

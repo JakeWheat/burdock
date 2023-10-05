@@ -21,11 +21,14 @@ import Burdock.Runtime
     ,app
     ,nothingValue
     ,liftIO
+    ,getMember
     )
 
 import Burdock.HaskellModulePlugin
     (HaskellModule(..)
     ,makeHaskellModule
+    ,importModule
+    ,ImportSource(..)
     )
 
 import Burdock.Scientific (Scientific)
@@ -63,11 +66,21 @@ createModule = do
             liftIO $ modifyIORef haskellVar (+1)
             nothingValue
         _ -> error $ "bad args to incrementHaskellVar"
+
+    numbers <- importModule $ ImportName ["numbers"]
+    babs <- getMember numbers "num-abs"
+
+    callAbs <- makeFunction $ \case
+        [x] -> do
+            app Nothing babs [x]
+        _ -> error $ "bad args to callAbs"
     
     makeHaskellModule [("a", a)
                       ,("add-one", addOne)
                       ,("callback-burdock", cbb)
                       ,("read-haskell-var", readHaskellVar)
                       ,("increment-haskell-var", incrementHaskellVar)
+                      ,("call-abs-haskell", callAbs)
+                      ,("reexported-abs", babs)
                       ]
         

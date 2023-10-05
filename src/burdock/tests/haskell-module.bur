@@ -36,3 +36,8 @@ check:
   m.callback-burdock(vf)
   v is 3
 end
+
+check:
+  m.call-abs-haskell(-2) is 2
+  m.reexported-abs(-2) is 2
+end
