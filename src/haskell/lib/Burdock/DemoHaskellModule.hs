@@ -8,6 +8,9 @@ module Burdock.DemoHaskellModule
     (createModule
     ) where
 
+import Prelude hiding (error, putStrLn, show)
+import Burdock.Utils (error)
+
 -- todo: make the HaskellModulePlugin into a general haskell ffi api
 -- then everything users should access goes through that, and they
 -- don't import the runtime directly
@@ -22,6 +25,8 @@ import Burdock.Runtime
     ,nothingValue
     ,liftIO
     ,getMember
+    ,makeValue
+    ,debugShowValue
     )
 
 import Burdock.HaskellModulePlugin
@@ -29,11 +34,16 @@ import Burdock.HaskellModulePlugin
     ,makeHaskellModule
     ,importModule
     ,ImportSource(..)
+    ,ModuleMember(..)
+    ,makeFFIType
+    ,opaque
     )
 
 import Burdock.Scientific (Scientific)
 
 import Data.IORef (newIORef, readIORef, modifyIORef)
+
+import qualified Data.Text as T
 
 haskellAddOne :: [Value] -> Runtime Value
 haskellAddOne = \case
@@ -47,6 +57,8 @@ callbackToBurdockDemo = \case
         nm <- makeNumber 3
         app Nothing f [nm]
     _ -> error $ "bad args to callbackToBurdockDemo"
+
+data HaskellValue = HaskellValue Scientific
 
 createModule :: Runtime HaskellModule
 createModule = do
@@ -74,13 +86,37 @@ createModule = do
         [x] -> do
             app Nothing babs [x]
         _ -> error $ "bad args to callAbs"
+
+    myType <- makeFFIType "my-type" opaque
+
+    makeHaskellValue <- makeFunction $ \case
+        [n'] | Just n <- extractValue n' -> do
+            let v = HaskellValue n
+            pure $ makeValue myType v
+        _ -> error $ "bad args to makeHaskellValue"
+
+    -- todo: use better helpers with the tags and stuff being checked
+    -- and producing nice error messages
+    modifyHaskellValue <- makeFunction $ \case
+        [n'] | Just (HaskellValue n) <- extractValue n' -> do
+            pure $ makeValue myType $ HaskellValue $ n + 1
+        _ -> error $ "bad args to modifyHaskellValue"
+
+    unwrapHaskellValue <- makeFunction $ \case
+        [n'] | Just (HaskellValue n) <- extractValue n' -> do
+            makeNumber n
+        xs -> error $ "bad args to unwrapHaskellValue"
     
-    makeHaskellModule [("a", a)
-                      ,("add-one", addOne)
-                      ,("callback-burdock", cbb)
-                      ,("read-haskell-var", readHaskellVar)
-                      ,("increment-haskell-var", incrementHaskellVar)
-                      ,("call-abs-haskell", callAbs)
-                      ,("reexported-abs", babs)
+    makeHaskellModule [Identifier "a" a
+                      ,Identifier "add-one" addOne
+                      ,Identifier "callback-burdock" cbb
+                      ,Identifier "read-haskell-var" readHaskellVar
+                      ,Identifier "increment-haskell-var" incrementHaskellVar
+                      ,Identifier "call-abs-haskell" callAbs
+                      ,Identifier "reexported-abs" babs
+                      ,Type myType
+                      ,Identifier "make-haskell-value" makeHaskellValue
+                      ,Identifier "modify-haskell-value" modifyHaskellValue
+                      ,Identifier "unwrap-haskell-value" unwrapHaskellValue
                       ]
         

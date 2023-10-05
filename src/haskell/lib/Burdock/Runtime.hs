@@ -37,7 +37,9 @@ module Burdock.Runtime
     ,emptyRuntimeState
     ,getRuntimeState
     ,addFFIType
-
+    ,ffiTypeTagToValue
+    ,makeFFIType
+    
     ,setBootstrapRecTup
     ,BootstrapValues(..)
     
@@ -68,6 +70,7 @@ module Burdock.Runtime
     ,makeDataDeclTag
     ,makeValueName
     ,makeFunction
+    ,makeFFIType
 
     ,runTask
     ,throwValue
@@ -199,9 +202,12 @@ setBootstrapRecTup v = do
     st <- ask
     liftIO $ writeIORef (rtBootstrapRecTup st) v
 
+makeFFIType :: Text -> (Text -> Value -> Runtime Value) -> Runtime FFITypeTag
+makeFFIType nm memfn = pure $ FFITypeTag nm memfn
+
 addFFIType :: Text -> (Text -> Value -> Runtime Value) -> Runtime FFITypeTag
 addFFIType nm memfn = do
-    let ty = FFITypeTag nm memfn
+    ty <- makeFFIType nm memfn
     -- recursive hack
     ftg <-
         if nm == "ffitypetag"
@@ -209,6 +215,15 @@ addFFIType nm memfn = do
         else getFFITypeTag "ffitypetag"
     addBinding nm $ makeValue ftg ty
     pure ty
+
+ffiTypeTagToValue :: FFITypeTag -> Runtime Value
+ffiTypeTagToValue ty@(FFITypeTag nm _) = do
+    -- recursive hack
+    ftg <-
+        if nm == "ffitypetag"
+        then pure ty
+        else getFFITypeTag "ffitypetag"
+    pure $ makeValue ftg ty
 
 getFFITypeTag :: Text -> Runtime FFITypeTag
 getFFITypeTag nm = do

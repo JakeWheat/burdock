@@ -41,3 +41,10 @@ check:
   m.call-abs-haskell(-2) is 2
   m.reexported-abs(-2) is 2
 end
+
+check:
+  x1 = m.make-haskell-value(1)
+  m.unwrap-haskell-value(x1) is 1
+  x2 = m.modify-haskell-value(x1)
+  m.unwrap-haskell-value(x2) is 2
+end

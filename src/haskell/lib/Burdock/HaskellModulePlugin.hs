@@ -1,5 +1,6 @@
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
 module Burdock.HaskellModulePlugin
     (haskellModulePlugin
     ,addHaskellModule
@@ -7,7 +8,10 @@ module Burdock.HaskellModulePlugin
     ,HaskellModule(..)
     ,makeHaskellModule
     ,importModule
-    ,S.ImportSource (..)
+    ,S.ImportSource(..)
+    ,ModuleMember(..)
+    ,opaque
+    ,makeFFIType
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -26,6 +30,10 @@ import Burdock.Runtime
     ,lookupImportSource
     ,BurdockImportSource(..)
     ,getModuleValue
+    ,FFITypeTag
+    ,tyName
+    ,ffiTypeTagToValue
+    ,makeFFIType
     )
 
 import Data.Text (Text)
@@ -79,15 +87,28 @@ addHaskellModule nm hm hmm = do
     hm' <- hm
     liftIO $ modifyIORef (hmmModules hmm) ((nm,hm'):)
 
-makeHaskellModule :: [(Text, Value)] -> Runtime HaskellModule
+data ModuleMember
+    = Identifier Text Value
+    | Type FFITypeTag
+
+makeHaskellModule :: [ModuleMember] -> Runtime HaskellModule
 makeHaskellModule bs = do
-    let ms = flip map bs $ \(nm,_) -> (nm, (Nothing, BEIdentifier))
-    m <- makeRecord bs
+    let ms = flip map bs $ \case
+            Identifier nm _ -> (nm, (Nothing, BEIdentifier))
+            Type tg -> (tyName tg, (Nothing, BEType 0))
+    m <- makeRecord =<< flip mapM bs (\case
+            Identifier nm v -> pure (nm,v)
+            Type tg -> do
+                v <- ffiTypeTagToValue tg
+                pure (tyName tg, v))
     pure $ HaskellModule (pure (ModuleMetadata ms)) (pure m)
 
 importModule :: S.ImportSource -> Runtime Value
 importModule is = do
     ris <- lookupImportSource $ case is of
-           S.ImportName nm ->  BurdockImportName nm
+           S.ImportName nm -> BurdockImportName nm
            S.ImportSpecial p as -> BurdockImportSpecial p as
     getModuleValue Nothing ris
+
+opaque :: Text -> Value -> Runtime Value
+opaque _ _  = error $ "opaque value"
