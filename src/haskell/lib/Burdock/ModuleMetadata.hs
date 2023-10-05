@@ -8,7 +8,6 @@ module Burdock.ModuleMetadata
     ,BindingMeta(..)
     ,tempEmptyModuleMetadata
     ) where
-    
 
 import Burdock.Syntax (SourcePosition)
 import Data.Text (Text)

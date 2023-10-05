@@ -557,6 +557,7 @@ data RuntimeImportSource
     {risImportSourceName :: Text
     ,risArgs :: [Text]
     }
+    deriving Show
 
 data ModulePlugin
     = ModulePlugin

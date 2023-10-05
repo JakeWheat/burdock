@@ -147,6 +147,13 @@ import Burdock.Renamer
     ,prettyStaticErrors
     )
 
+-- temp
+import qualified Burdock.DemoHaskellModule
+import Burdock.HaskellModulePlugin
+    (haskellModulePlugin
+    ,addHaskellModule
+    ,hmmModulePlugin)
+
 ------------------------------------------------------------------------------
 
 debugPrintUserScript :: Bool
@@ -166,6 +173,9 @@ createHandle = do
     runRuntime st $ do
         mp <- burdockModulePlugin
         addModulePlugin "file" mp
+
+        hp <- haskellModulePlugin
+        addModulePlugin "haskell" $ hmmModulePlugin hp
 
         tmpHackMetadata <- initRuntime
 
@@ -190,6 +200,8 @@ createHandle = do
 
         -- temp: add the stuff in initRuntime + bootstrap + internals
         setTempEnvStage $ tempCombineModuleMetadata (tempCombineModuleMetadata tmpHackMetadata bmm) imm
+
+        addHaskellModule "demo-haskell-module" Burdock.DemoHaskellModule.createModule hp
 
             -- todo: tests in the internals?
         getRuntimeState

@@ -41,6 +41,9 @@ common shared-properties
                       Burdock.Renamer
                       Burdock.RenamerEnv
                       Burdock.ModuleMetadata
+                      Burdock.HaskellModulePlugin
+
+                      Burdock.DemoHaskellModule
 
     build-depends:    base ^>=4.17.0.0
                     , scientific

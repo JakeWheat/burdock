@@ -1,0 +1,6 @@
+
+import haskell("demo-haskell-module") as m
+
+check:
+  m.a is 2
+end
