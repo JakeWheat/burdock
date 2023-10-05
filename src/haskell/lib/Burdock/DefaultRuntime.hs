@@ -645,14 +645,12 @@ showVariant _ = error $ "bad args to showVariant"
 -- module system support
 
 myLoadModule  :: [Value] -> Runtime Value
-myLoadModule [ctx,fn]
+myLoadModule [ctx,nm,as]
     | Just (ctx' :: Text)  <- extractValue ctx
-    , Just (fn' :: Text) <- extractValue fn =
-    getModuleValue (Just ctx') $ RuntimeImportSource "file" [fn']
--- temp for new system in progress of being implemented
-myLoadModule [fn]
-    | Just (fn' :: Text) <- extractValue fn =
-    getModuleValue Nothing $ RuntimeImportSource "file" [fn']
+    , Just (nm' :: Text) <- extractValue nm
+    , Just as' <- extractBurdockList as
+    , Just (as'' :: [Text]) <- mapM extractValue as' = do
+    getModuleValue (Just ctx') $ RuntimeImportSource nm' as''
 myLoadModule _ = error $ "bad args to myLoadModule"
 
 ------------------------------------------------------------------------------

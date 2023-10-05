@@ -162,8 +162,15 @@ prettyStaticErrors = T.unlines . map prettyStaticError
 
 data ModuleID
     = ModuleID
-    {mName :: Text}
+    {mPlugin :: Text
+    ,mArgs :: [Text]}
     deriving (Eq, Show)
+
+moduleIDCanonicalName :: ModuleID -> Text
+moduleIDCanonicalName m = "_" <> T.intercalate "_" ("module" : mPlugin m : mArgs m)
+
+moduleIDShow :: ModuleID -> Text
+moduleIDShow m = mPlugin m <> "(" <> T.intercalate "," (mArgs m) <> ")"
 
 data RenamerEnv
     = RenamerEnv
@@ -221,10 +228,11 @@ provideFrom = error $ "provide from not implemented yet"
 bImport :: SourcePosition -> ModuleID -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
 bImport sp mid alias re =
     -- todo: make a better canonical alias
-    let nm = mName mid
-        canonicalAlias = "_module-" <> nm
+    let canonicalAlias = moduleIDCanonicalName mid
         moduleMetadata = case lookup mid (reCtx re) of
-            Nothing -> error $ "renamerenv bimport unrecognised module: " <> nm -- todo return staticerror
+            -- todo: this should show the original import source that the user used
+            -- maybe also the desugared one is useful for debugging
+            Nothing -> error $ "renamerenv bimport unrecognised module: " <> moduleIDShow mid -- todo return staticerror
             Just m -> m
         ps = flip map (mmBindings moduleMetadata) $ \(i, (_sp, be)) ->
              ([alias,i], ([canonicalAlias,i], sp, be))
@@ -236,10 +244,9 @@ bImport sp mid alias re =
 include :: SourcePosition -> ModuleID -> RenamerEnv -> ([StaticError], RenamerEnv)
 include sp mid re =
     runRenamerEnv re $ do
-    let nm = mName mid
-        canonicalAlias = "_module-" <> nm
+    let canonicalAlias = moduleIDCanonicalName mid
         moduleMetadata = case lookup mid (reCtx re) of
-            Nothing -> error $ "renamerenv include unrecognised module: " <> nm -- todo return staticerror
+            Nothing -> error $ "renamerenv include unrecognised module: " <> moduleIDShow mid -- todo return staticerror
                        <> " " <> show (map fst (reCtx re))
             Just m -> m
     state (\re1 -> ((), re1 {reLoadModules = (mid,canonicalAlias) : reLoadModules re}))

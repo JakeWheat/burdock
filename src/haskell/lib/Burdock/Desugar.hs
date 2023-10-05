@@ -159,17 +159,12 @@ desugarModule tmpHack fn mds scr =
 -- todo: return the metadata also
 -- handle provides desugaringdwqsdw
 desugar :: [(ModuleID,ModuleMetadata)]
-        -> [(Text, [Text])]
+        -> [ModuleID]
         -> ModuleMetadata
         -> S.Script
         -> (ModuleMetadata, [I.Stmt])
 desugar mds deps mm (S.Script ss) =
-    let ok = let ds = map (\case
-                                  (_,[mfn]) -> mfn
-                                  x -> error $ "desugar: unsupported runtime import source: " <> show x
-                          ) deps
-                 missing = filter (`notElem` map (mName . fst) mds) $ ds
-                 
+    let ok = let missing = filter (`notElem` map fst mds) deps
              in if null missing
                 then id
                 else error $ "desugar: module metadata missing: " <> show missing
@@ -180,20 +175,19 @@ type Desugar = Reader Inh
 
 ------------------------------------------------------------------------------
 
-getSourceDependencies :: S.Script -> [(Text, [Text])] -- returns the import sources used with plugin names
+getSourceDependencies :: S.Script -> [ModuleID] -- returns the import sources used with plugin names
 getSourceDependencies (S.Script ss) = concatMap getImportSourceInfo ss
   where
     getImportSourceInfo (S.StmtExpr _ (S.Block _ ss')) = concatMap getImportSourceInfo ss'
     getImportSourceInfo (S.Import _ (S.ImportSpecial nm args) _) =
-        [(nm,args)]
+        [ModuleID nm args]
     getImportSourceInfo (S.Include _ (S.ImportSpecial nm args)) =
-        [(nm,args)]
+        [ModuleID nm args]
     getImportSourceInfo (S.ImportFrom _ (S.ImportSpecial nm args) _) =
-        [(nm,args)]
-    getImportSourceInfo _x = [] -- error $ show x
+        [ModuleID nm args]
+    getImportSourceInfo _x = []
 
 ------------------------------------------------------------------------------
-
 
 {-
 desugar statements by first desugaring the bits that

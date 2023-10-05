@@ -19,10 +19,10 @@ module TempRenamer
     ) where
 
 import Prelude hiding (error, putStrLn, show)
-import Burdock.Utils (error)
+import Burdock.Utils (error, show)
 
 import Burdock.Parse (parseScript)
-import qualified Burdock.Syntax as S
+--import qualified Burdock.Syntax as S
 
 import Burdock.Renamer
     (renameScript
@@ -66,7 +66,7 @@ tempRenamer isModule fn = do
     let ast = case parseScript fn src of
             Left e -> error e
             Right ast' -> ast'
-    let imps = hackGetImports ast
+    let imps = getSourceDependencies ast
     -- todo: need to memoize and share and stuff
     ctx <- concat <$> mapM processImport imps
     -- todo: use function to extract the imported files, and recurse
@@ -78,19 +78,20 @@ tempRenamer isModule fn = do
         Left  e -> error $ prettyStaticErrors e
         Right (_,res) -> L.putStrLn $ prettyScript res
 
-processImport :: Text -> IO [(ModuleID, ModuleMetadata)]
-processImport mfn = do
+processImport :: ModuleID -> IO [(ModuleID, ModuleMetadata)]
+processImport mid@(ModuleID "file" [mfn]) = do
         src <- L.readFile (T.unpack mfn)
         let ast = case parseScript mfn src of
                 Left e -> error e
                 Right ast' -> ast'
-        let imps = hackGetImports ast
+        let imps = getSourceDependencies ast
         -- todo: need to memoize and share and stuff
         ctx <- concat <$> mapM processImport imps
         let x = renameModule mfn tempEmptyModuleMetadata ctx ast
         case x of
             Left e -> error $ prettyStaticErrors e
-            Right (m,_) -> pure ((ModuleID mfn,m) : ctx)
+            Right (m,_) -> pure ((mid,m) : ctx)
+processImport x = error $ "unsupported moduleid: " <> show x
 
 tempDesugar :: Bool -> Text -> IO ()
 tempDesugar isModule fn = do
@@ -99,7 +100,7 @@ tempDesugar isModule fn = do
     let ast = case parseScript fn src of
             Left e -> error e
             Right ast' -> ast'
-    let imps = hackGetImports ast
+    let imps = getSourceDependencies ast
     ctx <- concat <$> mapM processImport imps
     mm <- hackGetPreexistingEnv
     let stmts = snd $ (if isModule
@@ -107,9 +108,6 @@ tempDesugar isModule fn = do
                        else desugarScript) mm fn ctx ast
     L.putStrLn $ prettyStmts stmts
         
-hackGetImports :: S.Script -> [Text]
-hackGetImports ast = map (head . snd) $ getSourceDependencies ast
-
 hackGetPreexistingEnv :: IO ModuleMetadata
 hackGetPreexistingEnv = do
     h <- createHandle

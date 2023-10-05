@@ -61,7 +61,7 @@ makeRenamerTest rt = TestCase (rName rt) $ do
         f acc ((fn,src):srcs) = do
             let ast = either (error . show) id $ parseScript fn src
             (mmeta, _) <- renameModule (rName rt) tempEmptyModuleMetadata acc ast
-            f ((ModuleID fn,mmeta):acc) srcs
+            f ((ModuleID "file" [fn],mmeta):acc) srcs
     let ctx = either (error . show) id $ f [] (rSources rt)
     -- parse the script, rename it
     let res = case rScript rt of

@@ -30,8 +30,8 @@ Script:
 import file("imported") as i
 i.a
 Result:
-_module-imported = load-module("import", "imported")
-_module-imported.a
+_module_file_imported = load-module("import", "file", [list:"imported"])
+_module_file_imported.a
 
 Test: import unrec
 File: imported
@@ -110,8 +110,8 @@ Script:
 import file("imported") as i
 i.a.x
 Result:
-_module-imported = load-module("import field access", "imported")
-_module-imported.a.x
+_module_file_imported = load-module("import field access", "file", [list: "imported"])
+_module_file_imported.a.x
 
 Test: import field access fail
 File: imported
@@ -149,8 +149,8 @@ import file("imported") as i
 include from i: * end
 a
 Result:
-_module-imported = load-module("includefrom", "imported")
-_module-imported.a
+_module_file_imported = load-module("includefrom", "file", [list: "imported"])
+_module_file_imported.a
 
 Test: includefrom with field access
 File: imported
@@ -160,8 +160,8 @@ import file("imported") as i
 include from i: * end
 a.x
 Result:
-_module-imported = load-module("includefrom with field access", "imported")
-_module-imported.a.x
+_module_file_imported = load-module("includefrom with field access", "file", [list: "imported"])
+_module_file_imported.a.x
 
 Test: includefrom * clash
 File: imported1
@@ -198,10 +198,10 @@ shadow a = 3
 a
 i.a
 Result:
-_module-imported = load-module("include shadow ok", "imported")
+_module_file_imported = load-module("include shadow ok", "file", [list: "imported"])
 shadow a = 3
 a
-_module-imported.a
+_module_file_imported.a
 
 Test: provide all direct
 Module:
@@ -298,9 +298,9 @@ import file("mymod") as mymod
 mymod.a
 mymod.b
 Result:
-_module-mymod = load-module("provide all direct", "mymod")
-_module-mymod.a
-_module-mymod.b
+_module_file_mymod = load-module("provide all direct", "file", [list: "mymod"])
+_module_file_mymod.a
+_module_file_mymod.b
 
 Test: provide explicit
 File: mymod
@@ -313,8 +313,8 @@ Script:
 import file("mymod") as mymod
 mymod.a
 Result:
-_module-mymod = load-module("provide explicit", "mymod")
-_module-mymod.a
+_module_file_mymod = load-module("provide explicit", "file", [list: "mymod"])
+_module_file_mymod.a
 
 Test: provide explicit fail
 File: mymod
@@ -368,8 +368,8 @@ Script:
 import file("mymod") as mymod
 mymod.c
 Result:
-_module-mymod = load-module("provide rename", "mymod")
-_module-mymod.c
+_module_file_mymod = load-module("provide rename", "file", [list: "mymod"])
+_module_file_mymod.c
 
 Test: provide hiding fail
 File: mymod
@@ -395,8 +395,8 @@ Script:
 import file("mymod") as mymod
 mymod.b
 Result:
-_module-mymod = load-module("provide hiding", "mymod")
-_module-mymod.b
+_module_file_mymod = load-module("provide hiding", "file", [list: "mymod"])
+_module_file_mymod.b
 
 
 Test: includefrom explicit
@@ -409,8 +409,8 @@ import file("imported") as i
 include from i: a end
 a
 Result:
-_module-imported = load-module("includefrom explicit", "imported")
-_module-imported.a
+_module_file_imported = load-module("includefrom explicit", "file", [list: "imported"])
+_module_file_imported.a
 
 Test: includefrom explicit fail
 File: imported
@@ -445,8 +445,8 @@ import file("imported") as i
 include from i: a as b end
 b
 Result:
-_module-imported = load-module("includefrom rename", "imported")
-_module-imported.a
+_module_file_imported = load-module("includefrom rename", "file", [list: "imported"])
+_module_file_imported.a
 
 Test: includefrom hiding
 File: imported
@@ -458,8 +458,8 @@ import file("imported") as i
 include from i: * hiding (a) end
 b
 Result:
-_module-imported = load-module("includefrom hiding", "imported")
-_module-imported.b
+_module_file_imported = load-module("includefrom hiding", "file", [list: "imported"])
+_module_file_imported.b
 
 Test: includefrom hiding fail
 File: imported
@@ -498,9 +498,9 @@ import file("imported") as i
 a = 3
 assert-type-compat(a :: i.Test)
 Result:
-_module-imported = load-module("import type", "imported")
+_module_file_imported = load-module("import type", "file", [list: "imported"])
 a = 3
-assert-type-compat(a :: _module-imported.Test)
+assert-type-compat(a :: _module_file_imported.Test)
 
 Test: trivial variant
 Script:
@@ -576,11 +576,11 @@ cases a:
   | el => 6
 end
 Result:
-_module-imported = load-module("import variant", "imported")
-a = _module-imported.test(3)
+_module_file_imported = load-module("import variant", "file", [list: "imported"])
+a = _module_file_imported.test(3)
 cases a:
-  | _module-imported.test(_) => 4
-  | _module-imported.test2 => 5
+  | _module_file_imported.test(_) => 4
+  | _module_file_imported.test2 => 5
   | el => 6
 end
 
@@ -606,8 +606,8 @@ Script:
 import file("imported") as i
 i.a := 5
 Result:
-_module-imported = load-module("import var assign", "imported")
-_module-imported.a := 5
+_module_file_imported = load-module("import var assign", "file", [list: "imported"])
+_module_file_imported.a := 5
 
 Test: import assign fail
 File: imported
@@ -701,10 +701,10 @@ cases z:
   | ctor2(a,ctor2(ctor0,d)) => a + d
 end
 Result:
-_module-imported = load-module("nested patterns", "imported")
+_module_file_imported = load-module("nested patterns", "file", [list: "imported"])
 z = 3
 cases z:
-  | _module-imported.ctor2(a,_module-imported.ctor2(_module-imported.ctor0,d)) => a + d
+  | _module_file_imported.ctor2(a,_module_file_imported.ctor2(_module_file_imported.ctor0,d)) => a + d
 end
 
 Test: check more patterns
@@ -729,16 +729,16 @@ cases z:
   | 'test' => 'test1'
 end
 Result:
-_module-imported = load-module("check more patterns", "imported")
+_module_file_imported = load-module("check more patterns", "file", [list: "imported"])
 z = 3
 cases z:
   | a => a
-  | _module-imported.ctor2(a,_module-imported.ctor2(_module-imported.ctor0,d)) => a + d
-  | b :: _module-imported.Test => b
+  | _module_file_imported.ctor2(a,_module_file_imported.ctor2(_module_file_imported.ctor0,d)) => a + d
+  | b :: _module_file_imported.Test => b
   | shadow c => c
   | _ => 0
   | {a;b} => a + b
-  | {a;_module-imported.ctor0} => a
+  | {a;_module_file_imported.ctor0} => a
   | {_;_} as c => c
   | 4 => 5
   | 'test' => 'test1'

@@ -213,9 +213,8 @@ loadAndDesugarModule fn = do
 recurseMetadata :: Maybe Text -> S.Script -> Runtime [(ModuleID, ModuleMetadata)]
 recurseMetadata ctx ast = do
     let deps = getSourceDependencies ast
-    forM deps $ \case
-        (nm,args@(fn:_)) -> (ModuleID fn,) <$> getModuleMetadata ctx (RuntimeImportSource nm args)
-        x -> error $ "desugar unsupported import source: " <> show x
+    forM deps $ \x -> case x of
+        ModuleID p as -> (x,) <$> getModuleMetadata ctx (RuntimeImportSource p as)
 
 ------------------------------------------------------------------------------
 

@@ -135,7 +135,11 @@ import Control.Arrow (first, second)
 
 type Renamer = ReaderT RenamerEnv (Writer [StaticError])
 
-renameModule :: Text -> ModuleMetadata -> [(ModuleID, ModuleMetadata)] -> S.Script -> Either [StaticError] (ModuleMetadata, S.Script)
+renameModule :: Text
+             -> ModuleMetadata
+             -> [(ModuleID, ModuleMetadata)]
+             -> S.Script
+             -> Either [StaticError] (ModuleMetadata, S.Script)
 renameModule fn tmpHack ctx (S.Script stmts) =
     errToEither $ runRenamer fn tmpHack ctx $ do
         (re, stmts') <- rewritePreludeStmts stmts
@@ -190,20 +194,20 @@ rewritePreludeStmts (S.Provide sp pis : ss) = do
     ctx <- callWithEnv $ provide sp pis
     local (const ctx) (rewritePreludeStmts ss)
 
-rewritePreludeStmts (S.Import sp (S.ImportSpecial "file" [nm]) al : ss) = do
-    ctx <- callWithEnv $ bImport sp (ModuleID nm) al
+rewritePreludeStmts (S.Import sp (S.ImportSpecial p as) al : ss) = do
+    ctx <- callWithEnv $ bImport sp (ModuleID p as) al
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.IncludeFrom sp al pis : ss) = do
     ctx <- callWithEnv $ includeFrom sp al pis
     local (const ctx) (rewritePreludeStmts ss)
 
-rewritePreludeStmts (S.Include sp (S.ImportSpecial "file" [nm]) : ss) = do
-    ctx <- callWithEnv $ include sp (ModuleID nm)
+rewritePreludeStmts (S.Include sp (S.ImportSpecial p as) : ss) = do
+    ctx <- callWithEnv $ include sp (ModuleID p as)
     local (const ctx) (rewritePreludeStmts ss)
 
-rewritePreludeStmts (S.ImportFrom sp (S.ImportSpecial "file" [nm]) pis : ss) = do
-    ctx <- callWithEnv $ importFrom sp (ModuleID nm) pis
+rewritePreludeStmts (S.ImportFrom sp (S.ImportSpecial p as) pis : ss) = do
+    ctx <- callWithEnv $ importFrom sp (ModuleID p as) pis
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.ProvideFrom sp al pis : ss) = do
@@ -219,8 +223,13 @@ rewritePreludeStmts ss = do
     second (map (uncurry (mlm fn)) lms ++) <$> rewriteStmts ss
   where
       -- temp extra arg to load module from the old system
-    mlm fn nm al = S.LetDecl n (S.NameBinding n al)
-                (S.App n (S.Iden n "load-module") [S.Text n fn, S.Text n $ mName nm])
+    mlm :: Text -> ModuleID -> Text -> S.Stmt
+    mlm ctx mid al =
+        S.LetDecl n (S.NameBinding n al)
+            (S.App n (S.Iden n "load-module")
+                [S.Text n ctx
+                ,S.Text n $ mPlugin mid
+                ,S.Construct n ["list"] $ map (S.Text n) $ mArgs mid])
     n = Nothing
 
 ---------------------------------------
