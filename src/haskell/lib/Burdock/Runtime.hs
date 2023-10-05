@@ -67,6 +67,7 @@ module Burdock.Runtime
     ,getFFITypeTag
     ,makeDataDeclTag
     ,makeValueName
+    ,makeFunction
 
     ,runTask
     ,throwValue
@@ -274,6 +275,9 @@ data Env = Env [(Text, Value)]
 
 makeValue :: Typeable a => FFITypeTag -> a -> Value
 makeValue tg v = Value tg $ toDyn v
+
+makeFunction :: ([Value] -> Runtime Value) -> Runtime Value
+makeFunction f = pure $ VFun f
 
 makeBurdockList :: [Value] -> Runtime Value
 makeBurdockList [] = do

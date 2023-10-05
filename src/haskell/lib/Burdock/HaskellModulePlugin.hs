@@ -5,6 +5,7 @@ module Burdock.HaskellModulePlugin
     ,addHaskellModule
     ,hmmModulePlugin
     ,HaskellModule(..)
+    ,makeHaskellModule
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -18,6 +19,7 @@ import Burdock.Runtime
     ,Value
     ,RuntimeImportSource(..)
     ,liftIO
+    ,makeRecord
     )
 
 import Data.Text (Text)
@@ -26,6 +28,11 @@ import Data.IORef
     ,newIORef
     ,readIORef
     ,modifyIORef)
+
+import Burdock.ModuleMetadata
+    (ModuleMetadata(..)
+    ,BindingMeta(..)
+    )
 
 data HaskellModuleManager
     = HaskellModuleManager
@@ -65,3 +72,9 @@ addHaskellModule nm hm hmm = do
     -- todo: figure out how to defer this to the first time the module is used
     hm' <- hm
     liftIO $ modifyIORef (hmmModules hmm) ((nm,hm'):)
+
+makeHaskellModule :: [(Text, Value)] -> Runtime HaskellModule
+makeHaskellModule bs = do
+    let ms = flip map bs $ \(nm,_) -> (nm, (Nothing, BEIdentifier))
+    m <- makeRecord bs
+    pure $ HaskellModule (pure (ModuleMetadata ms)) (pure m)

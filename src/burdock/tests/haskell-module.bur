@@ -3,4 +3,36 @@ import haskell("demo-haskell-module") as m
 
 check:
   m.a is 2
+  m.add-one(3) is 4
+
+  fun bf(n): n + 2 end
+  m.callback-burdock(bf) is 5
+
+end
+
+check:
+  m.read-haskell-var() is 0
+  m.increment-haskell-var()
+  m.read-haskell-var() is 1
+  m.increment-haskell-var()
+  m.increment-haskell-var()
+  m.read-haskell-var() is 3
+
+end
+
+check:
+  a = 7
+  fun vf(n):
+    n + a
+  end
+  m.callback-burdock(vf) is 10
+end
+
+check:
+  var v = 0
+  fun vf(n):
+    v := n
+  end
+  m.callback-burdock(vf)
+  v is 3
 end
