@@ -46,6 +46,8 @@ import Burdock.Runtime
     ,getModuleMetadata
     ,getModuleValue
     ,addModulePlugin
+    ,lookupImportSource
+    ,BurdockImportSource(..)
     
     --,ffimethodapp
     --,RuntimeState
@@ -93,7 +95,7 @@ import Burdock.Parse (parseScript)
 import Burdock.Desugar
     (desugarScript
     ,desugarModule
-    ,getSourceDependencies
+    ,getImportSources
     ,ModuleID(..)
     )
 
@@ -195,7 +197,8 @@ runScript' debugPrint fn' src = do
     ms <- recurseMetadata (Just fn) ast
     --liftIO $ putStrLn $ "desugar script"
     tmpHack <- getTempEnvStage
-    let (mm,dast) = desugarScript tmpHack fn ms ast
+    let (ism,ms') = unwrapMetadata ms
+    let (mm,dast) = desugarScript tmpHack fn ism ms' ast
     when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
     when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
     (mm,) <$> interpBurdock dast
@@ -208,13 +211,23 @@ loadAndDesugarModule fn = do
     ms <- recurseMetadata (Just fn) ast
     --liftIO $ putStrLn $ "desugar " <> fn
     tmpHack <- getTempEnvStage
-    pure $ desugarModule tmpHack fn ms ast
+    let (ism,ms') = unwrapMetadata ms
+    pure $ desugarModule tmpHack fn ism ms' ast
 
-recurseMetadata :: Maybe Text -> S.Script -> Runtime [(ModuleID, ModuleMetadata)]
+unwrapMetadata :: [(S.ImportSource, ModuleID, ModuleMetadata)]
+               -> ([(S.ImportSource, ModuleID)], [(ModuleID, ModuleMetadata)])
+unwrapMetadata = unzip . map (\(is,mid,mm) -> ((is,mid),(mid,mm)))
+
+recurseMetadata :: Maybe Text -> S.Script -> Runtime [(S.ImportSource, ModuleID, ModuleMetadata)]
 recurseMetadata ctx ast = do
-    let deps = getSourceDependencies ast
-    forM deps $ \x -> case x of
-        ModuleID p as -> (x,) <$> getModuleMetadata ctx (RuntimeImportSource p as)
+    let deps = getImportSources ast
+    is <- flip mapM deps $ \x -> case x of
+        S.ImportName nm -> (x,) <$> lookupImportSource (BurdockImportName nm)
+        S.ImportSpecial p as -> (x,) <$> lookupImportSource (BurdockImportSpecial p as)
+    forM is $ \x -> case x of
+        (bis, ris) ->
+            (bis, ModuleID (risImportSourceName ris) (risArgs ris),)
+            <$> getModuleMetadata ctx ris
 
 ------------------------------------------------------------------------------
 

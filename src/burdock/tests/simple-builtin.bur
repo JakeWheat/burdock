@@ -1,0 +1,8 @@
+
+include numbers
+
+check:
+  num-abs(2) is 2
+  num-abs(-2) is 2
+  num-abs(0) is 0
+end

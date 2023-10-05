@@ -137,11 +137,12 @@ type Renamer = ReaderT RenamerEnv (Writer [StaticError])
 
 renameModule :: Text
              -> ModuleMetadata
+             -> [(S.ImportSource, ModuleID)]
              -> [(ModuleID, ModuleMetadata)]
              -> S.Script
              -> Either [StaticError] (ModuleMetadata, S.Script)
-renameModule fn tmpHack ctx (S.Script stmts) =
-    errToEither $ runRenamer fn tmpHack ctx $ do
+renameModule fn tmpHack ism ctx (S.Script stmts) =
+    errToEither $ runRenamer fn tmpHack ism ctx $ do
         (re, stmts') <- rewritePreludeStmts stmts
         -- get the module value info to create the make-module last statement
         rs <- liftErrs $ applyProvides re
@@ -156,11 +157,12 @@ renameModule fn tmpHack ctx (S.Script stmts) =
 
 renameScript :: Text
              -> ModuleMetadata
+             -> [(S.ImportSource, ModuleID)]
              -> [(ModuleID, ModuleMetadata)]
              -> S.Script
              -> Either [StaticError] (ModuleMetadata, S.Script)
-renameScript fn tmpHack ctx (S.Script stmts) =
-    errToEither $ runRenamer fn tmpHack ctx $ do
+renameScript fn tmpHack ism ctx (S.Script stmts) =
+    errToEither $ runRenamer fn tmpHack ism ctx $ do
         (re, stmts') <- rewritePreludeStmts stmts
         -- todo: use a new function which puts in a default provide all
         -- the motivation to return module metadata from this is for a
@@ -171,8 +173,13 @@ renameScript fn tmpHack ctx (S.Script stmts) =
     -- errToEither $ runRenamer tmpHack ctx (S.Script . snd <$> rewritePreludeStmts stmts)
 
 -- tmpHack used to shoehorn in definitions from pre module initRuntime, bootstrap and internals hacks
-runRenamer :: Text -> ModuleMetadata -> [(ModuleID, ModuleMetadata)] -> Renamer a -> (a, [StaticError])
-runRenamer fn tmpHack ctx f = runWriter $ flip runReaderT (makeRenamerEnv fn tmpHack ctx) f
+runRenamer :: Text
+           -> ModuleMetadata
+           -> [(S.ImportSource, ModuleID)]
+           -> [(ModuleID, ModuleMetadata)]
+           -> Renamer a
+           -> (a, [StaticError])
+runRenamer fn tmpHack isCtx ctx f = runWriter $ flip runReaderT (makeRenamerEnv fn tmpHack isCtx ctx) f
 
 callWithEnv :: (RenamerEnv -> ([StaticError], b)) -> Renamer b
 callWithEnv f = liftErrs =<< f <$> ask
@@ -194,20 +201,20 @@ rewritePreludeStmts (S.Provide sp pis : ss) = do
     ctx <- callWithEnv $ provide sp pis
     local (const ctx) (rewritePreludeStmts ss)
 
-rewritePreludeStmts (S.Import sp (S.ImportSpecial p as) al : ss) = do
-    ctx <- callWithEnv $ bImport sp (ModuleID p as) al
+rewritePreludeStmts (S.Import sp is al : ss) = do
+    ctx <- callWithEnv $ bImport sp is al
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.IncludeFrom sp al pis : ss) = do
     ctx <- callWithEnv $ includeFrom sp al pis
     local (const ctx) (rewritePreludeStmts ss)
 
-rewritePreludeStmts (S.Include sp (S.ImportSpecial p as) : ss) = do
-    ctx <- callWithEnv $ include sp (ModuleID p as)
+rewritePreludeStmts (S.Include sp is : ss) = do
+    ctx <- callWithEnv $ include sp is
     local (const ctx) (rewritePreludeStmts ss)
 
-rewritePreludeStmts (S.ImportFrom sp (S.ImportSpecial p as) pis : ss) = do
-    ctx <- callWithEnv $ importFrom sp (ModuleID p as) pis
+rewritePreludeStmts (S.ImportFrom sp is pis : ss) = do
+    ctx <- callWithEnv $ importFrom sp is pis
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.ProvideFrom sp al pis : ss) = do

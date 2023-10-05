@@ -22,7 +22,7 @@ checker run
 module Burdock.Desugar
     (desugarScript
     ,desugarModule
-    ,getSourceDependencies
+    ,getImportSources
     ,ModuleMetadata
     ,ModuleID(..)
     ,internals
@@ -140,51 +140,50 @@ mkSyn e = Syn e [] []
 -- todo: isbootstrap will be replaced with a new handle bootstrap process
 -- after the module system is working
 
-desugarScript :: ModuleMetadata -> Text -> [(ModuleID,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
-desugarScript tmpHack fn mds scr =
-    let deps = getSourceDependencies scr
-        (mm,renamed) = either (error . prettyStaticErrors) id $ renameScript fn tmpHack mds scr
-    in desugar mds deps mm renamed
+desugarScript :: ModuleMetadata
+              -> Text
+              -> [(S.ImportSource, ModuleID)]
+              -> [(ModuleID,ModuleMetadata)]
+              -> S.Script
+              -> (ModuleMetadata,[I.Stmt])
+desugarScript tmpHack fn ism mds scr =
+    let (mm,renamed) = either (error . prettyStaticErrors) id $ renameScript fn tmpHack ism mds scr
+    in desugar mds mm renamed
 
 -- todo: desugaring a module will wrap the statements in a block
 -- and the last element will be a make-module-value which will give the provides
 -- processed exported decls
 
-desugarModule :: ModuleMetadata -> Text -> [(ModuleID,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
-desugarModule tmpHack fn mds scr =
-    let deps = getSourceDependencies scr
-        (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule fn tmpHack mds scr
-    in desugar mds deps mm renamed
+desugarModule :: ModuleMetadata
+              -> Text
+              -> [(S.ImportSource, ModuleID)]
+              -> [(ModuleID,ModuleMetadata)]
+              -> S.Script
+              -> (ModuleMetadata,[I.Stmt])
+desugarModule tmpHack fn ism mds scr =
+    let (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule fn tmpHack ism mds scr
+    in desugar mds mm renamed
 
 -- todo: return the metadata also
 -- handle provides desugaringdwqsdw
 desugar :: [(ModuleID,ModuleMetadata)]
-        -> [ModuleID]
         -> ModuleMetadata
         -> S.Script
         -> (ModuleMetadata, [I.Stmt])
-desugar mds deps mm (S.Script ss) =
-    let ok = let missing = filter (`notElem` map fst mds) deps
-             in if null missing
-                then id
-                else error $ "desugar: module metadata missing: " <> show missing
-                     <> "\n" <> show mds
-    in ok (mm, view synTree $ runReader (desugarStmts ss) Inh)
+desugar mds mm (S.Script ss) =
+    (mm, view synTree $ runReader (desugarStmts ss) Inh)
 
 type Desugar = Reader Inh
 
 ------------------------------------------------------------------------------
 
-getSourceDependencies :: S.Script -> [ModuleID] -- returns the import sources used with plugin names
-getSourceDependencies (S.Script ss) = concatMap getImportSourceInfo ss
+getImportSources :: S.Script -> [S.ImportSource]
+getImportSources (S.Script ss) = concatMap getImportSourceInfo ss
   where
     getImportSourceInfo (S.StmtExpr _ (S.Block _ ss')) = concatMap getImportSourceInfo ss'
-    getImportSourceInfo (S.Import _ (S.ImportSpecial nm args) _) =
-        [ModuleID nm args]
-    getImportSourceInfo (S.Include _ (S.ImportSpecial nm args)) =
-        [ModuleID nm args]
-    getImportSourceInfo (S.ImportFrom _ (S.ImportSpecial nm args) _) =
-        [ModuleID nm args]
+    getImportSourceInfo (S.Import _ s _) = [s]
+    getImportSourceInfo (S.Include _ s) = [s]
+    getImportSourceInfo (S.ImportFrom _ s _) = [s]
     getImportSourceInfo _x = []
 
 ------------------------------------------------------------------------------
@@ -435,6 +434,9 @@ desugarExpr (S.Construct _ ["list"] es) =
 -- used to bootstrap the language
 desugarExpr (S.Construct _ ["haskell-list"] es) =
     desugarExpr $ S.App Nothing (S.Iden Nothing "make-haskell-list") es
+
+desugarExpr (S.UnaryMinus sp e) =
+    desugarExpr (S.BinOp sp (S.Num sp (-1)) "*" e)
 
 ------------------
 -- S -> I

@@ -23,6 +23,8 @@ module Burdock.Runtime
     ,getModuleMetadata
     ,getModuleValue
     ,addModulePlugin
+    ,lookupImportSource
+    ,BurdockImportSource(..)
     
     ,runRuntime
     ,Runtime
@@ -583,3 +585,14 @@ addModulePlugin nm mp = do
     st <- ask
     liftIO $ modifyIORef (rtModulePlugins st) ((nm,mp):)
 
+data BurdockImportSource
+    = BurdockImportSpecial Text [Text]
+    | BurdockImportName [Text]
+    deriving Show
+
+lookupImportSource :: BurdockImportSource -> Runtime RuntimeImportSource
+lookupImportSource (BurdockImportSpecial nm as) = pure $ RuntimeImportSource nm as
+lookupImportSource (BurdockImportName [nm]) =
+    -- todo: need to locate the builtins a bit more robustly
+    pure $ RuntimeImportSource "file" ["/home/jake/wd/burdock/2023/src/burdock/built-ins/" <> nm <> ".bur"]
+lookupImportSource x = error $ "import source not supported: " <> show x

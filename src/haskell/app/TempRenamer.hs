@@ -53,20 +53,21 @@ import Burdock.Interpreter
 import Burdock.Desugar
     (desugarScript
     ,desugarModule
-    ,getSourceDependencies
+    ,getImportSources
     )
 
 import Burdock.InterpreterPretty
     (prettyStmts)
 
 tempRenamer :: Bool -> Text -> IO ()
-tempRenamer isModule fn = do
+tempRenamer isModule fn = undefined {-do
     -- how will this work with included modules for now?
     src <- L.readFile (T.unpack fn)
     let ast = case parseScript fn src of
             Left e -> error e
             Right ast' -> ast'
-    let imps = getSourceDependencies ast
+    let imps :: [ModuleID]
+        imps = undefined -- getSourceDependencies ast
     -- todo: need to memoize and share and stuff
     ctx <- concat <$> mapM processImport imps
     -- todo: use function to extract the imported files, and recurse
@@ -76,37 +77,39 @@ tempRenamer isModule fn = do
          then renameModule fn mm ctx ast
          else renameScript fn mm ctx ast of
         Left  e -> error $ prettyStaticErrors e
-        Right (_,res) -> L.putStrLn $ prettyScript res
+        Right (_,res) -> L.putStrLn $ prettyScript res-}
 
 processImport :: ModuleID -> IO [(ModuleID, ModuleMetadata)]
-processImport mid@(ModuleID "file" [mfn]) = do
+processImport mid@(ModuleID "file" [mfn]) = undefined {-do
         src <- L.readFile (T.unpack mfn)
         let ast = case parseScript mfn src of
                 Left e -> error e
                 Right ast' -> ast'
-        let imps = getSourceDependencies ast
+        let imps :: [ModuleID]
+            imps = undefined -- getSourceDependencies ast
         -- todo: need to memoize and share and stuff
         ctx <- concat <$> mapM processImport imps
         let x = renameModule mfn tempEmptyModuleMetadata ctx ast
         case x of
             Left e -> error $ prettyStaticErrors e
-            Right (m,_) -> pure ((mid,m) : ctx)
+            Right (m,_) -> pure ((mid,m) : ctx)-}
 processImport x = error $ "unsupported moduleid: " <> show x
 
 tempDesugar :: Bool -> Text -> IO ()
-tempDesugar isModule fn = do
+tempDesugar isModule fn = undefined {-do
 
     src <- L.readFile (T.unpack fn)
     let ast = case parseScript fn src of
             Left e -> error e
             Right ast' -> ast'
-    let imps = getSourceDependencies ast
+    let imps :: [ModuleID]
+        imps = undefined -- getImportSources getSourceDependencies ast
     ctx <- concat <$> mapM processImport imps
     mm <- hackGetPreexistingEnv
     let stmts = snd $ (if isModule
                        then desugarModule
                        else desugarScript) mm fn ctx ast
-    L.putStrLn $ prettyStmts stmts
+    L.putStrLn $ prettyStmts stmts-}
         
 hackGetPreexistingEnv :: IO ModuleMetadata
 hackGetPreexistingEnv = do

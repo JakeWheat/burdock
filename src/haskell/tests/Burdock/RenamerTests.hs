@@ -25,7 +25,6 @@ import Burdock.RenamerTestParser
 import Burdock.Renamer
     (renameScript
     ,renameModule
-    --,StaticError(..)
     ,ModuleID(..)
     )
 
@@ -35,7 +34,8 @@ import qualified Data.Text as T
 import qualified Data.Text.Lazy.IO as L
 import Burdock.Parse (parseScript)
 
-import Burdock.Syntax (resetSourcePositions)
+import Burdock.Syntax (resetSourcePositions
+                      ,ImportSource(..))
 
 import qualified Test.Tasty.HUnit as Tst
 import Control.Monad (when)
@@ -60,15 +60,17 @@ makeRenamerTest rt = TestCase (rName rt) $ do
     let f acc [] = pure acc
         f acc ((fn,src):srcs) = do
             let ast = either (error . show) id $ parseScript fn src
-            (mmeta, _) <- renameModule (rName rt) tempEmptyModuleMetadata acc ast
+                hackISCtx = flip map acc $ \(x@(ModuleID nm as),_) -> (ImportSpecial nm as, x)
+            (mmeta, _) <- renameModule (rName rt) tempEmptyModuleMetadata hackISCtx acc ast
             f ((ModuleID "file" [fn],mmeta):acc) srcs
     let ctx = either (error . show) id $ f [] (rSources rt)
+        isCtx = flip map ctx $ \(x@(ModuleID nm as),_) -> (ImportSpecial nm as,x)
     -- parse the script, rename it
     let res = case rScript rt of
             Left m -> let ast = either (error . show) id $ parseScript (rName rt) m
-                      in either Left (Right . snd) $ renameModule (rName rt) tempEmptyModuleMetadata ctx ast
+                      in either Left (Right . snd) $ renameModule (rName rt) tempEmptyModuleMetadata isCtx ctx ast
             Right s -> let ast = either (error . show) id $ parseScript (rName rt) s
-                      in either Left (Right .  snd) $ renameScript (rName rt) tempEmptyModuleMetadata ctx ast
+                      in either Left (Right .  snd) $ renameScript (rName rt) tempEmptyModuleMetadata isCtx ctx ast
     -- check if it matches the expected, or the expected errors
     case (res, rResult rt) of
         (Left errs, Left expErrs) ->

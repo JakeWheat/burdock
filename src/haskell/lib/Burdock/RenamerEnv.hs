@@ -44,10 +44,13 @@ module Burdock.RenamerEnv
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
 
--- could try to create a custom data type that's the same as provide
--- items to isolate the syntax from this module, but it seems like
+-- could try to create a custom data type that's the same as these imported
+-- bits of syntax to isolate the syntax from this module, but it seems like
 -- overkill unless there's some specific reason to do it completely correctly
-import Burdock.Syntax (ProvideItem(..))
+import Burdock.Syntax
+    (ProvideItem(..)
+    ,ImportSource(..)
+    )
 
 import Data.Text (Text)
 import qualified Data.Text as T
@@ -174,9 +177,11 @@ moduleIDShow m = mPlugin m <> "(" <> T.intercalate "," (mArgs m) <> ")"
 
 data RenamerEnv
     = RenamerEnv
-    { -- available modules to import, the key is the identifier of the module
+    { -- available modules to import
+     reImportSources :: [(ImportSource,ModuleID)]
+      --  the key is the identifier of the module
       -- this is the name and args of the import source
-     reCtx :: [(ModuleID, ModuleMetadata)]
+    ,reCtx :: [(ModuleID, ModuleMetadata)]
     -- all the local bindings so far, this is used to process the provide items
     -- and create a module metadata for the current module at the end of renaming
     ,reLocalBindings :: [(Text, (SourcePosition, BindingMeta))]
@@ -201,11 +206,15 @@ data RenamerEnv
     }
     deriving Show
 
-makeRenamerEnv :: Text -> ModuleMetadata -> [(ModuleID, ModuleMetadata)] -> RenamerEnv
-makeRenamerEnv fn (ModuleMetadata tmpHack) ctx =
+makeRenamerEnv :: Text
+               -> ModuleMetadata
+               -> [(ImportSource, ModuleID)]
+               -> [(ModuleID, ModuleMetadata)]
+               -> RenamerEnv
+makeRenamerEnv fn (ModuleMetadata tmpHack) isCtx ctx =
     let b = flip map tmpHack $ \(nm,(sp,bm)) ->
             ([nm],([nm], sp, bm))
-    in RenamerEnv ctx [] [] [] [] b fn
+    in RenamerEnv isCtx ctx [] [] [] [] b fn
 
 ------------------------------------------------------------------------------
 
@@ -225,10 +234,11 @@ provideFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([Static
 provideFrom = error $ "provide from not implemented yet"
 
 -- load the module, and include all the bindings in it with the alias
-bImport :: SourcePosition -> ModuleID -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-bImport sp mid alias re =
+bImport :: SourcePosition -> ImportSource -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+bImport sp is alias re =
     -- todo: make a better canonical alias
-    let canonicalAlias = moduleIDCanonicalName mid
+    let mid = maybe (error $ "unmatched import source: " <> show is) id $ lookup is $ reImportSources re
+        canonicalAlias = moduleIDCanonicalName mid
         moduleMetadata = case lookup mid (reCtx re) of
             -- todo: this should show the original import source that the user used
             -- maybe also the desugared one is useful for debugging
@@ -241,10 +251,11 @@ bImport sp mid alias re =
        ,reAliasedModules = (alias, (canonicalAlias, moduleMetadata)) : reAliasedModules re
        ,reBindings = ps ++ reBindings re})
 
-include :: SourcePosition -> ModuleID -> RenamerEnv -> ([StaticError], RenamerEnv)
-include sp mid re =
+include :: SourcePosition -> ImportSource -> RenamerEnv -> ([StaticError], RenamerEnv)
+include sp is re =
     runRenamerEnv re $ do
-    let canonicalAlias = moduleIDCanonicalName mid
+    let mid = maybe (error $ "unmatched import source: " <> show is) id $ lookup is $ reImportSources re
+        canonicalAlias = moduleIDCanonicalName mid
         moduleMetadata = case lookup mid (reCtx re) of
             Nothing -> error $ "renamerenv include unrecognised module: " <> moduleIDShow mid -- todo return staticerror
                        <> " " <> show (map fst (reCtx re))
@@ -299,7 +310,7 @@ includeFrom sp mal pis re =
     addOne :: ([Text], ([Text], SourcePosition, BindingMeta)) -> RenamerEnvM ()
     addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))
 
-importFrom :: SourcePosition -> ModuleID -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
+importFrom :: SourcePosition -> ImportSource -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 importFrom = error $ "import from not implemented yet"
 
 -- get the load-modules info needed for the desugaring
