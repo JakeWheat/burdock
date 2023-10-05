@@ -374,7 +374,7 @@ desugarStmt (S.VarDecl _ (S.SimpleBinding _ _ nm _) e) = do
 
 desugarStmt (S.SetVar _ (S.Iden _ nm) e) = do
     e' <- desugarExpr e
-    pure $ combineSyns [ns e'] $ mkSyn [I.SetVar nm $ _synTree e']
+    pure $ combineSyns [ns e'] (mkSyn [I.SetVar nm $ _synTree e']) {_synFreeVars = [nm]}
 
 desugarStmt x = error $ "desugarStmt " <> show x
     

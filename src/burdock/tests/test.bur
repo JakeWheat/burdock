@@ -194,6 +194,15 @@ check "vars":
 
 end
 
+check "var assign closure capture":
+  var v = 0
+  fun vf(n):
+    v := n
+  end
+  vf(3)
+  v is 3
+end
+
 check "rec decl":
 
   rec fact = lam(x):
