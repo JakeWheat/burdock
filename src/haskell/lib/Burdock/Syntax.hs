@@ -85,7 +85,7 @@ data ProvideItem
 
 data ImportSource
     = ImportSpecial Text [Text]
-    | ImportName Text
+    | ImportName [Text]
     deriving (Eq,Show,Data) 
 
 data Expr

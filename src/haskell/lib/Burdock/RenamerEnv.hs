@@ -160,7 +160,9 @@ prettyStaticErrors = T.unlines . map prettyStaticError
 -- there's a lot of redundancy here, this is aimed to make it
 -- easier to use it
 
-data ModuleID = ModuleID {mName :: Text}
+data ModuleID
+    = ModuleID
+    {mName :: Text}
     deriving (Eq, Show)
 
 data RenamerEnv

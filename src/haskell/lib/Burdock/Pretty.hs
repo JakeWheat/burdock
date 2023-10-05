@@ -1,12 +1,15 @@
 
+{-# LANGUAGE OverloadedStrings #-}
 module Burdock.Pretty
     (prettyExpr
     ,prettyScript
     ,prettyStmt
     ) where
 
-import Prettyprinter (pretty
-                     ,Doc
+import Prelude hiding (error, putStrLn, show)
+import Burdock.Utils (show)
+
+import Prettyprinter (Doc
                      ,parens
                      ,nest
                      ,(<+>)
@@ -18,8 +21,8 @@ import Prettyprinter (pretty
                      ,hsep
                      ,layoutPretty
                      ,defaultLayoutOptions
-                     ,Pretty
                      )
+import qualified Prettyprinter as P
 
 import Prettyprinter.Render.Text (renderLazy)
 
@@ -32,6 +35,7 @@ import Burdock.Syntax
 
 import qualified Data.Text.Lazy as L
 import qualified Data.Text as T
+import Data.Text (Text)
 
 ---------------------------------------
 
@@ -60,7 +64,7 @@ expr (Num _ n) = pretty $ showScientific n
 
 -- todo handle parsing and printing escape chars properly
 expr (Text _ s) | '\n' `T.elem` s = pretty "```" <> pretty s <> pretty "```"
-expr (Text _ s) = dquotes (pretty $ escape $ T.unpack s)
+expr (Text _ s) = dquotes (pretty $ T.pack $ escape $ T.unpack s)
   where
     escape ('\n':xs) = '\\':'n':escape xs
     escape ('\\':xs) = '\\':'\\':escape xs
@@ -361,23 +365,26 @@ provideItem (ProvideModuleAlias _ ns a) =
 
 importSource :: ImportSource -> Doc a
 importSource (ImportSpecial nm as) = pretty nm <> parens (commaSep $ map (dquotes . pretty) as)
-importSource (ImportName s) = pretty s
+importSource (ImportName s) = xSep "." $ map pretty s
 
 stmts :: [Stmt] -> Doc a
 stmts = vsep . map stmt
 
-
 script :: Script -> Doc a
 script (Script iss) = stmts iss
 
-
+-- regular pretty completely defeats the type checker when you want
+-- to change the ast and get type errors, instead it just produces
+-- incorrect code.
+pretty :: Text -> Doc a
+pretty = P.pretty
 
 commaSep :: [Doc a] -> Doc a
 commaSep = sep . punctuate comma
 
-xSep :: String -> [Doc a] -> Doc a
+xSep :: Text -> [Doc a] -> Doc a
 xSep s = sep . punctuate (pretty s)
 
-dotIden :: Pretty a => [a] -> Doc ann
+dotIden :: [Text] -> Doc ann
 dotIden ts = sep $ punctuate (pretty ".") $ map pretty ts
 

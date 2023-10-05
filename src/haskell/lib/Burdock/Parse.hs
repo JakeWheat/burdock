@@ -972,16 +972,18 @@ include = do
 importSource :: Parser ImportSource
 importSource = do
     a <- identifier
-    a' <- ctu a
-    bchoice [ImportSpecial a' <$> parens (commaSep stringRaw)
-            ,pure $ ImportName a']
+    bchoice [ImportSpecial a <$> parens (commaSep stringRaw)
+            ,importName a]
   where
-    ctu a = choice
+    importName a = do
+        as <- ctu
+        pure $ ImportName (a:as)
+    ctu = choice
         [do
          symbol_ "."
          b <- identifier
-         ctu (a `T.append` "." `T.append` b)
-        ,pure a]
+         (b:) <$> ctu
+        ,pure []]
 
 importStmt :: Parser Stmt
 importStmt = do

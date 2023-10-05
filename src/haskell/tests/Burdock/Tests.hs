@@ -25,7 +25,7 @@ allTests :: TestTree
 allTests =
     TestGroup "allTests"
     [t3
-    --,Burdock.ParseTests.testData
+    ,Burdock.ParseTests.testData
     ,renamerTests
     ]
 

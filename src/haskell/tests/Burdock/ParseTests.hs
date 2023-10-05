@@ -711,13 +711,16 @@ end|]
      ,Include np (ImportSpecial "file" ["file.tea"]))
 
     ,("include string-dict"
-     ,Include np (ImportName "string-dict"))
+     ,Include np (ImportName ["string-dict"]))
 
+    ,("include package.module"
+     ,Include np (ImportName ["package", "module"]))
+    
     ,("import file(\"file.tea\") as X"
      ,Import np (ImportSpecial "file" ["file.tea"]) "X")
 
     ,("import string-dict as X"
-     ,Import np (ImportName "string-dict") "X")
+     ,Import np (ImportName ["string-dict"]) "X")
 
     ,("include from X: * end"
      ,IncludeFrom np "X" [ProvideAll np])
@@ -732,7 +735,7 @@ end|]
      ,IncludeFrom np "X" [ProvideAlias np ["a"] "b"])
 
     ,("import from string-dict: a as b end"
-     ,ImportFrom np (ImportName "string-dict") [ProvideAlias np ["a"] "b"])
+     ,ImportFrom np (ImportName ["string-dict"]) [ProvideAlias np ["a"] "b"])
 
     -- todo: add optional alias
     ,("use package \"dir/my-package\""
