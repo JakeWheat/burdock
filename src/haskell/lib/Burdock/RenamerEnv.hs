@@ -14,6 +14,7 @@ module Burdock.RenamerEnv
     ,prettyStaticErrors
 
     ,ModuleMetadata
+    ,ModuleID(..)
     ,RenamerEnv
     ,makeRenamerEnv
     ,rePath
@@ -159,18 +160,21 @@ prettyStaticErrors = T.unlines . map prettyStaticError
 -- there's a lot of redundancy here, this is aimed to make it
 -- easier to use it
 
+data ModuleID = ModuleID {mName :: Text}
+    deriving (Eq, Show)
+
 data RenamerEnv
     = RenamerEnv
     { -- available modules to import, the key is the identifier of the module
-      -- for burdock modules for now, this will be the unique path to the module source
-     reCtx :: [(Text, ModuleMetadata)]
+      -- this is the name and args of the import source
+     reCtx :: [(ModuleID, ModuleMetadata)]
     -- all the local bindings so far, this is used to process the provide items
     -- and create a module metadata for the current module at the end of renaming
     ,reLocalBindings :: [(Text, (SourcePosition, BindingMeta))]
     -- tally of all the load modules needed in the renamed source
     -- it's the module id that matches the key in reCtx, and the local canonical
     -- alias for that module
-    ,reLoadModules :: [(Text,Text)]
+    ,reLoadModules :: [(ModuleID,Text)]
     -- modules brought into user scope using a prelude statement, the key is the user
     -- alias. this is only used by other prelude statements
     -- the value is the canonical name and the module metadata
@@ -188,7 +192,7 @@ data RenamerEnv
     }
     deriving Show
 
-makeRenamerEnv :: Text -> ModuleMetadata -> [(Text, ModuleMetadata)] -> RenamerEnv
+makeRenamerEnv :: Text -> ModuleMetadata -> [(ModuleID, ModuleMetadata)] -> RenamerEnv
 makeRenamerEnv fn (ModuleMetadata tmpHack) ctx =
     let b = flip map tmpHack $ \(nm,(sp,bm)) ->
             ([nm],([nm], sp, bm))
@@ -212,29 +216,31 @@ provideFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([Static
 provideFrom = error $ "provide from not implemented yet"
 
 -- load the module, and include all the bindings in it with the alias
-bImport :: SourcePosition -> Text -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-bImport sp nm alias re =
+bImport :: SourcePosition -> ModuleID -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
+bImport sp mid alias re =
     -- todo: make a better canonical alias
-    let canonicalAlias = "_module-" <> nm
-        moduleMetadata = case lookup nm (reCtx re) of
+    let nm = mName mid
+        canonicalAlias = "_module-" <> nm
+        moduleMetadata = case lookup mid (reCtx re) of
             Nothing -> error $ "renamerenv bimport unrecognised module: " <> nm -- todo return staticerror
             Just m -> m
         ps = flip map (mmBindings moduleMetadata) $ \(i, (_sp, be)) ->
              ([alias,i], ([canonicalAlias,i], sp, be))
     in ([], re
-       {reLoadModules = (nm,canonicalAlias) : reLoadModules re
+       {reLoadModules = (mid,canonicalAlias) : reLoadModules re
        ,reAliasedModules = (alias, (canonicalAlias, moduleMetadata)) : reAliasedModules re
        ,reBindings = ps ++ reBindings re})
 
-include :: SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-include sp nm re =
+include :: SourcePosition -> ModuleID -> RenamerEnv -> ([StaticError], RenamerEnv)
+include sp mid re =
     runRenamerEnv re $ do
-    let canonicalAlias = "_module-" <> nm
-        moduleMetadata = case lookup nm (reCtx re) of
+    let nm = mName mid
+        canonicalAlias = "_module-" <> nm
+        moduleMetadata = case lookup mid (reCtx re) of
             Nothing -> error $ "renamerenv include unrecognised module: " <> nm -- todo return staticerror
                        <> " " <> show (map fst (reCtx re))
             Just m -> m
-    state (\re1 -> ((), re1 {reLoadModules = (nm,canonicalAlias) : reLoadModules re}))
+    state (\re1 -> ((), re1 {reLoadModules = (mid,canonicalAlias) : reLoadModules re}))
     flip mapM_ (mmBindings moduleMetadata) $ \(i,(_sp,be)) ->
         case lookup [i] (reBindings re) of
             Nothing -> addOne ([i], ([canonicalAlias,i], sp, be))
@@ -284,14 +290,14 @@ includeFrom sp mal pis re =
     addOne :: ([Text], ([Text], SourcePosition, BindingMeta)) -> RenamerEnvM ()
     addOne e = state (\re1 -> ((), re1 {reBindings = e : reBindings re1}))
 
-importFrom :: SourcePosition -> Text -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
+importFrom :: SourcePosition -> ModuleID -> [ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 importFrom = error $ "import from not implemented yet"
 
 -- get the load-modules info needed for the desugaring
 -- the result is id for the module, local alias for the module
 -- so (a,b) here should become b = load-module("a")
 -- this should be called before processing the first non prelude statement
-queryLoadModules :: RenamerEnv -> ([StaticError], [(Text,Text)])
+queryLoadModules :: RenamerEnv -> ([StaticError], [(ModuleID,Text)])
 queryLoadModules re = ([], reLoadModules re)
 
 -- this applies the provides and returns the final module metadata

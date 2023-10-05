@@ -94,6 +94,7 @@ import Burdock.Desugar
     (desugarScript
     ,desugarModule
     ,getSourceDependencies
+    ,ModuleID(..)
     )
 
 import qualified Burdock.Syntax as S
@@ -209,11 +210,11 @@ loadAndDesugarModule fn = do
     tmpHack <- getTempEnvStage
     pure $ desugarModule tmpHack fn ms ast
 
-recurseMetadata :: Maybe Text -> S.Script -> Runtime [(Text, ModuleMetadata)]
+recurseMetadata :: Maybe Text -> S.Script -> Runtime [(ModuleID, ModuleMetadata)]
 recurseMetadata ctx ast = do
     let deps = getSourceDependencies ast
     forM deps $ \case
-        (nm,args@(fn:_)) -> (fn,) <$> getModuleMetadata ctx (RuntimeImportSource nm args)
+        (nm,args@(fn:_)) -> (ModuleID fn,) <$> getModuleMetadata ctx (RuntimeImportSource nm args)
         x -> error $ "desugar unsupported import source: " <> show x
 
 ------------------------------------------------------------------------------

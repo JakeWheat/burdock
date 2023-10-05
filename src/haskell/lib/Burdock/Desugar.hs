@@ -24,6 +24,7 @@ module Burdock.Desugar
     ,desugarModule
     ,getSourceDependencies
     ,ModuleMetadata
+    ,ModuleID(..)
     ,internals
     ) where
 
@@ -72,6 +73,7 @@ import Burdock.Renamer
     ,renameScript
     ,renameModule
     ,prettyStaticErrors
+    ,ModuleID(..)
     )
 
 ------------------------------------------------------------------------------
@@ -138,7 +140,7 @@ mkSyn e = Syn e [] []
 -- todo: isbootstrap will be replaced with a new handle bootstrap process
 -- after the module system is working
 
-desugarScript :: ModuleMetadata -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
+desugarScript :: ModuleMetadata -> Text -> [(ModuleID,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
 desugarScript tmpHack fn mds scr =
     let deps = getSourceDependencies scr
         (mm,renamed) = either (error . prettyStaticErrors) id $ renameScript fn tmpHack mds scr
@@ -148,7 +150,7 @@ desugarScript tmpHack fn mds scr =
 -- and the last element will be a make-module-value which will give the provides
 -- processed exported decls
 
-desugarModule :: ModuleMetadata -> Text -> [(Text,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
+desugarModule :: ModuleMetadata -> Text -> [(ModuleID,ModuleMetadata)] -> S.Script -> (ModuleMetadata,[I.Stmt])
 desugarModule tmpHack fn mds scr =
     let deps = getSourceDependencies scr
         (mm,renamed) = either (error . prettyStaticErrors) id $ renameModule fn tmpHack mds scr
@@ -156,7 +158,7 @@ desugarModule tmpHack fn mds scr =
 
 -- todo: return the metadata also
 -- handle provides desugaringdwqsdw
-desugar :: [(Text,ModuleMetadata)]
+desugar :: [(ModuleID,ModuleMetadata)]
         -> [(Text, [Text])]
         -> ModuleMetadata
         -> S.Script
@@ -166,7 +168,7 @@ desugar mds deps mm (S.Script ss) =
                                   (_,[mfn]) -> mfn
                                   x -> error $ "desugar: unsupported runtime import source: " <> show x
                           ) deps
-                 missing = filter (`notElem` map fst mds) $ ds
+                 missing = filter (`notElem` map (mName . fst) mds) $ ds
                  
              in if null missing
                 then id

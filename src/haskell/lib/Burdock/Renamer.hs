@@ -71,6 +71,7 @@ module Burdock.Renamer
     ,renameScript
 
     ,ModuleMetadata
+    ,ModuleID(..)
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -82,6 +83,7 @@ import Burdock.RenamerEnv
     ,prettyStaticErrors
 
     ,ModuleMetadata
+    ,ModuleID(..)
     ,RenamerEnv
     ,makeRenamerEnv
 
@@ -133,7 +135,7 @@ import Control.Arrow (first, second)
 
 type Renamer = ReaderT RenamerEnv (Writer [StaticError])
 
-renameModule :: Text -> ModuleMetadata -> [(Text, ModuleMetadata)] -> S.Script -> Either [StaticError] (ModuleMetadata, S.Script)
+renameModule :: Text -> ModuleMetadata -> [(ModuleID, ModuleMetadata)] -> S.Script -> Either [StaticError] (ModuleMetadata, S.Script)
 renameModule fn tmpHack ctx (S.Script stmts) =
     errToEither $ runRenamer fn tmpHack ctx $ do
         (re, stmts') <- rewritePreludeStmts stmts
@@ -150,7 +152,7 @@ renameModule fn tmpHack ctx (S.Script stmts) =
 
 renameScript :: Text
              -> ModuleMetadata
-             -> [(Text, ModuleMetadata)]
+             -> [(ModuleID, ModuleMetadata)]
              -> S.Script
              -> Either [StaticError] (ModuleMetadata, S.Script)
 renameScript fn tmpHack ctx (S.Script stmts) =
@@ -165,7 +167,7 @@ renameScript fn tmpHack ctx (S.Script stmts) =
     -- errToEither $ runRenamer tmpHack ctx (S.Script . snd <$> rewritePreludeStmts stmts)
 
 -- tmpHack used to shoehorn in definitions from pre module initRuntime, bootstrap and internals hacks
-runRenamer :: Text -> ModuleMetadata -> [(Text, ModuleMetadata)] -> Renamer a -> (a, [StaticError])
+runRenamer :: Text -> ModuleMetadata -> [(ModuleID, ModuleMetadata)] -> Renamer a -> (a, [StaticError])
 runRenamer fn tmpHack ctx f = runWriter $ flip runReaderT (makeRenamerEnv fn tmpHack ctx) f
 
 callWithEnv :: (RenamerEnv -> ([StaticError], b)) -> Renamer b
@@ -189,7 +191,7 @@ rewritePreludeStmts (S.Provide sp pis : ss) = do
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.Import sp (S.ImportSpecial "file" [nm]) al : ss) = do
-    ctx <- callWithEnv $ bImport sp nm al
+    ctx <- callWithEnv $ bImport sp (ModuleID nm) al
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.IncludeFrom sp al pis : ss) = do
@@ -197,11 +199,11 @@ rewritePreludeStmts (S.IncludeFrom sp al pis : ss) = do
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.Include sp (S.ImportSpecial "file" [nm]) : ss) = do
-    ctx <- callWithEnv $ include sp nm
+    ctx <- callWithEnv $ include sp (ModuleID nm)
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.ImportFrom sp (S.ImportSpecial "file" [nm]) pis : ss) = do
-    ctx <- callWithEnv $ importFrom sp nm pis
+    ctx <- callWithEnv $ importFrom sp (ModuleID nm) pis
     local (const ctx) (rewritePreludeStmts ss)
 
 rewritePreludeStmts (S.ProvideFrom sp al pis : ss) = do
@@ -218,7 +220,7 @@ rewritePreludeStmts ss = do
   where
       -- temp extra arg to load module from the old system
     mlm fn nm al = S.LetDecl n (S.NameBinding n al)
-                (S.App n (S.Iden n "load-module") [S.Text n fn, S.Text n nm])
+                (S.App n (S.Iden n "load-module") [S.Text n fn, S.Text n $ mName nm])
     n = Nothing
 
 ---------------------------------------

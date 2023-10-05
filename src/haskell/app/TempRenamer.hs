@@ -27,7 +27,9 @@ import qualified Burdock.Syntax as S
 import Burdock.Renamer
     (renameScript
     ,renameModule
-    ,prettyStaticErrors)
+    ,prettyStaticErrors
+    ,ModuleID(..)
+    )
 
 import Burdock.Renamer
     (ModuleMetadata)
@@ -76,7 +78,7 @@ tempRenamer isModule fn = do
         Left  e -> error $ prettyStaticErrors e
         Right (_,res) -> L.putStrLn $ prettyScript res
 
-processImport :: Text -> IO [(Text, ModuleMetadata)]
+processImport :: Text -> IO [(ModuleID, ModuleMetadata)]
 processImport mfn = do
         src <- L.readFile (T.unpack mfn)
         let ast = case parseScript mfn src of
@@ -88,7 +90,7 @@ processImport mfn = do
         let x = renameModule mfn tempEmptyModuleMetadata ctx ast
         case x of
             Left e -> error $ prettyStaticErrors e
-            Right (m,_) -> pure ((mfn,m) : ctx)
+            Right (m,_) -> pure ((ModuleID mfn,m) : ctx)
 
 tempDesugar :: Bool -> Text -> IO ()
 tempDesugar isModule fn = do
