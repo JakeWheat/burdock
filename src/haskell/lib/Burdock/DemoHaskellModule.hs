@@ -5,7 +5,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.DemoHaskellModule
-    (createModule
+    (demoHaskellModule
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -61,8 +61,8 @@ callbackToBurdockDemo = \case
 
 data HaskellValue = HaskellValue Scientific
 
-createModule :: Runtime HaskellModule
-createModule = do
+demoHaskellModule :: Runtime HaskellModule
+demoHaskellModule = do
     a <- makeNumber 2
     addOne <- makeFunction haskellAddOne
     cbb <- makeFunction callbackToBurdockDemo
@@ -108,7 +108,6 @@ createModule = do
             makeNumber n
         _ -> error $ "bad args to unwrapHaskellValue"
 
-
     let myPairFieldThing f v1 =
             case (f,extractValue v1) of
                 ("a", Just (p0::Scientific, _::Scientific)) -> makeNumber p0
@@ -121,7 +120,6 @@ createModule = do
                                   makeBool $ x == y'
                             [_] | otherwise -> makeBool False
                             _ -> error $ "bad args to my-pair _equals"
-                
                 ("_torepr", Just x) ->
                     -- needs to return a function which doesn't take any args
                     makeFunctionValue $ \case
@@ -169,4 +167,3 @@ createModule = do
                       ,Type myAdder
                       ,Identifier "make-my-adder" makeMyAdder
                       ]
-        

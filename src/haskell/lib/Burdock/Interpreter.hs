@@ -148,7 +148,8 @@ import Burdock.Renamer
     )
 
 -- temp
-import qualified Burdock.DemoHaskellModule
+import Burdock.DemoHaskellModule (demoHaskellModule)
+import Burdock.TestHelpers (testHelpers)
 import Burdock.HaskellModulePlugin
     (haskellModulePlugin
     ,addHaskellModule
@@ -201,7 +202,8 @@ createHandle = do
         -- temp: add the stuff in initRuntime + bootstrap + internals
         setTempEnvStage $ tempCombineModuleMetadata (tempCombineModuleMetadata tmpHackMetadata bmm) imm
 
-        addHaskellModule "demo-haskell-module" Burdock.DemoHaskellModule.createModule hp
+        addHaskellModule "demo-haskell-module" demoHaskellModule hp
+        addHaskellModule "test-helpers" testHelpers hp
 
             -- todo: tests in the internals?
         getRuntimeState

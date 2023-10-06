@@ -44,6 +44,7 @@ common shared-properties
                       Burdock.HaskellModulePlugin
 
                       Burdock.DemoHaskellModule
+                      Burdock.TestHelpers
 
     build-depends:    base ^>=4.17.0.0
                     , scientific

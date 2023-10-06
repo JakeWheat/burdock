@@ -15,21 +15,13 @@ import Data.Text.IO (putStrLn)
 
 import Data.List (sort)
 
---import qualified Burdock.Syntax as S
 import Burdock.Runtime
     (Value(..)
-    --,runBurdock
     ,Runtime
     ,liftIO
     ,addTestPass
     ,addTestFail
 
-    --,ffimethodapp
-    --,RuntimeState
-    --,emptyRuntimeState
-    --,getRuntimeState
-    --,runBurdock
-    ,createBurdockRunner
     ,addFFIType
     ,addBinding
     ,tyName
@@ -50,7 +42,6 @@ import Burdock.Runtime
     ,makeString
     ,makeBool
     ,makeNumber
-    --,getFFITypeTag
     ,makeDataDeclTag
     ,makeValueName
 
@@ -69,11 +60,9 @@ import Burdock.Runtime
     ,Scientific
     )
 
---import Burdock.Pretty (prettyExpr)
 import Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as L
---import qualified Data.Text.Lazy.IO as L
 
 import qualified Text.RawString.QQ as R
 
@@ -86,20 +75,11 @@ import Control.Monad
     (when
     ,forM
     ,void
-    ,replicateM_
     )
 
 import Data.Dynamic
     (Typeable
     )
-
-import Control.Concurrent
-    (threadDelay
-    ,throwTo
-    ,myThreadId
-    )
-
-import qualified Control.Concurrent.Async as A
 
 import qualified Data.ByteString as BS
 
@@ -360,7 +340,6 @@ initRuntime = do
     --------------------------------------
 
     gremlintype <- addFFIType' "gremlintype" gremlinFFI
-    void $ addFFIType' "temp-handle" ffitypetagFFI
     void $ addFFIType' "bytestring" ffitypetagFFI
 
 
@@ -376,9 +355,6 @@ initRuntime = do
 
     addBinding' "not" =<< makeFunctionValue myNot
 
-    addBinding' "sleep" =<< makeFunctionValue mySleep
-    addBinding' "spawn-sleep-throw-to" =<< makeFunctionValue spawnSleepThrowTo
-
     addBinding' "add-test-pass" =<< makeFunctionValue myAddTestPass
     addBinding' "add-test-fail" =<< makeFunctionValue myAddTestFail
     addBinding' "indent" =<< makeFunctionValue indent
@@ -392,12 +368,6 @@ initRuntime = do
     addBinding' "make-bytestring" =<< makeFunctionValue makeBytestring
     addBinding' "get-bytestring-byte" =<< makeFunctionValue getBytestringByte
     addBinding' "split" =<< makeFunctionValue split
-
-    addBinding' "my-thread-id" =<< makeFunctionValue bmyThreadId
-    addBinding' "run-callback-n" =<< makeFunctionValue runCallbackN
-    addBinding' "run-callback-async-n" =<< makeFunctionValue runCallbackAsyncN
-    addBinding' "test-wait" =<< makeFunctionValue testWait
-    addBinding' "handle-thread-id" =<< makeFunctionValue handleThreadId
 
     -- well hacky, use reverse to shoehorn in the true and false variants
     -- before the binding
@@ -765,86 +735,6 @@ myNot [x] = case extractValue x of
     Just False -> makeBool True
     _ -> error $ "bad arg to not"
 myNot _ = error $ "bad args to raise"
-
-------------------------------------------------------------------------------
-
--- concurrency testing
-
-mySleep :: [Value] -> Runtime Value
-mySleep [x] = do
-    case extractValue x of
-        Just (n :: Scientific) -> do
-            liftIO $ threadDelay $ floor $ n * 1000 * 1000
-            nothingValue
-            
-        Nothing -> error $ "bad args to mySleep: " <> debugShowValue x
-mySleep _ = error $ "bad args to mySleep"
-
--- used before threads implemented to test async stack traces
--- it will spawn a thread and return immediately
--- that thread will sleep for the given amount, then asynchronously
--- throw an exception to the original thread
-spawnSleepThrowTo :: [Value] -> Runtime Value
-spawnSleepThrowTo [x] = do
-    case extractValue x of
-        Just (n :: Scientific) -> do
-            mainTid <- liftIO $ myThreadId
-            void $ liftIO $ A.async $ do
-                 threadDelay $ floor $ n * 1000 * 1000
-                 throwTo mainTid A.AsyncCancelled
-            nothingValue
-            
-        Nothing -> error $ "bad args to spawnSleepThrowTo: " <> debugShowValue x
-spawnSleepThrowTo _ = error $ "bad args to spawnSleepThrowTo"
-
-bmyThreadId :: [Value] -> Runtime Value
-bmyThreadId [] = do
-    i <- liftIO myThreadId
-    makeString (show i)
-bmyThreadId _ = error $ "bad args to bmyThreadId"
-
-runCallbackN :: [Value] -> Runtime Value
-runCallbackN [n, fun] = do
-    let n' :: Scientific
-        n' = maybe (error $ "bad first arg to runCallbackN " <> debugShowValue n) id $ extractValue n
-        n'' = maybe (error $ "arg should be int " <> show n') id $ extractInt n'
-    replicateM_ n'' $ app Nothing fun []
-    nothingValue
-runCallbackN _ = error $ "bad args to runCallbackN"
-
-
-runCallbackAsyncN :: [Value] -> Runtime Value
-runCallbackAsyncN [n, t, fun] = do
-    let n' :: Scientific
-        n' = maybe (error $ "bad first arg to runCallbackAsyncN " <> debugShowValue n) id $ extractValue n
-        n'' = maybe (error $ "arg should be int " <> show n') id $ extractInt n'
-        t' :: Scientific
-        t' = maybe (error $ "bad second arg to runCallbackAsyncN " <> debugShowValue t) id $ extractValue t
-
-    (h :: A.Async ()) <- do
-        runIt <- createBurdockRunner
-        liftIO $ A.async $ runIt $ do
-            replicateM_ n'' $ do
-                liftIO $ threadDelay $ floor $ t' * 1000 * 1000
-                app Nothing fun []
-    makeValueName "temp-handle" h
-runCallbackAsyncN _ = error $ "bad args to runCallbackAsyncN"
-
-testWait :: [Value] -> Runtime Value
-testWait [h] = do
-    let h' :: A.Async ()
-        h' = maybe (error $ "bad arg to testWait " <> debugShowValue h) id $ extractValue h
-    liftIO $ A.wait h'
-    nothingValue
-testWait _ = error $ "bad args to testWait"
-
-handleThreadId :: [Value] -> Runtime Value
-handleThreadId [h] = do
-    let h' :: A.Async ()
-        h' = maybe (error $ "bad arg to handleThreadId " <> debugShowValue h) id $ extractValue h
-    makeString (show $ A.asyncThreadId h')
-handleThreadId _ = error $ "bad args to handleThreadId"
-
 
 ------------------------------------------------------------------------------
 
