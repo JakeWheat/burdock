@@ -464,31 +464,16 @@ desugarExpr (S.DotExpr _ e fld) = do
     pure $ combineSyns [ns e'] $  mkSyn $ I.DotExpr (_synTree e') fld
      
 desugarExpr (S.RecordSel _ fs) = do
-    trm <- ("_torepr",) <$> desugarExpr (S.Iden n "_record_torepr")
-    eqm <- ("_equals",) <$> desugarExpr (S.Iden n "_record_equals")
     fs' <- mapM (\(a,b) -> (a,) <$> desugarExpr b) fs
-    let fs'' = trm : eqm : fs'
-        addHelpers = over synFreeVars (nub . (\x -> "_record_torepr" : "_record_equals" : x))
-    pure $ addHelpers $ combineSyns (map (ns . snd) fs'')
-        $ mkSyn $ I.VariantSel "record" $ map stp fs''
-        
+    pure $ combineSyns (map (ns . snd) fs')
+        $ mkSyn $ I.RecordSel $ map stp fs'
   where
     stp (a,b) = (a,_synTree b)
-    n = Nothing
 
 desugarExpr (S.TupleSel _ fs) = do
-    trm <- ("_torepr",) <$> desugarExpr (S.Iden n "_tuple_torepr")
-    eqm <- ("_equals",) <$> desugarExpr (S.Iden n "_tuple_equals")
-    let fs1 = zip (map show [(0::Int)..]) fs
-    fs' <- mapM (\(a,b) -> (a,) <$> desugarExpr b) fs1
-    let fs'' = trm : eqm : fs'
-        addHelpers = over synFreeVars (nub . (\x -> "_tuple_torepr" : "_tuple_equals" : x))
-    let x = addHelpers $ combineSyns (map (ns . snd) fs'')
-            $ mkSyn $ I.VariantSel "tuple" $ map stp fs''
-    pure x
-  where
-    stp (a,b) = (a,_synTree b)
-    n = Nothing
+    fs' <- mapM desugarExpr fs
+    pure $ combineSyns (map ns fs')
+            $ mkSyn $ I.TupleSel $ map _synTree fs'
 
 desugarExpr (S.App _ (S.Iden _ "run-task-cs") [e]) = do
     e' <- desugarExpr e

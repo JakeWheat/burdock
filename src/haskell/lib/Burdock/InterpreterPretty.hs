@@ -21,6 +21,7 @@ import Prettyprinter (Doc
                      ,layoutPretty
                      ,defaultLayoutOptions
                      ,brackets
+                     ,braces
                      )
 
 import qualified Prettyprinter as P
@@ -63,10 +64,12 @@ expr (If cs els) = vsep (prettyCs cs ++ pel els ++ [pretty "end"])
                    ,nest 2 (stmts e)]
 expr (DotExpr e i) = expr e <> pretty "." <> pretty i
 expr (App _ e es) = expr e <> nest 2 (parens (commaSep $ map expr es))
-expr (VariantSel nm es) =
-    pretty nm <> parens (commaSep $ map fld es)
+expr (RecordSel es) =
+    braces (commaSep $ map fld es)
   where
     fld (n,e) = pretty n <> pretty ":" <+> expr e
+expr (TupleSel es) =
+    braces (xSep ";" $ map expr es)
     
 expr (Lam fv fh e) = prettyBlocklike vsep
     [pretty "lam"

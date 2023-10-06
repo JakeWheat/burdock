@@ -71,8 +71,8 @@ import Burdock.Runtime
     ,extractValue
     ,makeBurdockList
     ,makeRecord
+    ,makeTuple
     ,extractTuple
-    ,DataDeclTypeTag(..)
     ,makeString
     ,makeNumber
 
@@ -396,10 +396,13 @@ interpExpr (I.DotExpr e1 fld) = do
     v1 <- interpExpr e1
     getMember v1 fld
 
-interpExpr (I.VariantSel nm fs) = do
-    vs <- mapM (\(n,e) -> (n,) <$> interpExpr e) fs
-    -- todo: type tag
-    pure $ VariantV (DataDeclTypeTag $ error "interpExpr VariantSel: fixmenm") nm vs
+interpExpr (I.RecordSel fs) = do
+    vs <- flip mapM fs $ \(n,e) -> (n,) <$> interpExpr e
+    makeRecord vs
+
+interpExpr (I.TupleSel fs) = do
+    vs <- mapM interpExpr fs
+    makeTuple vs
 
 interpExpr (I.RunTask catchAsync tsk) = do
     x <- runTask catchAsync $ interpExpr tsk

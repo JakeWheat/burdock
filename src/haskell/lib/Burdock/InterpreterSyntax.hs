@@ -23,7 +23,8 @@ data Expr
     | DotExpr Expr Text
     -- source pos, fn, args
     | App (Maybe Text) Expr [Expr]
-    | VariantSel Text [(Text,Expr)]
+    | RecordSel [(Text,Expr)]
+    | TupleSel [Expr]
     -- free vars, param bindings, body
     | Lam [Text] [Binding] [Stmt]
     | Num Scientific

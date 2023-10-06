@@ -387,7 +387,7 @@ makeRecord fs = do
     st <- ask
     btV <- liftIO $ readIORef (rtBootstrapRecTup st)
     -- todo: lookup the proper tag
-    makeVariant (DataDeclTypeTag "record") "record" (("_equals", btRecEq btV) : ("_torepr", btRecEq btV) : fs)
+    makeVariant (DataDeclTypeTag "record") "record" (("_equals", btRecEq btV) : ("_torepr", btRecToRepr btV) : fs)
               
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do
