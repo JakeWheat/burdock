@@ -2,7 +2,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE QuasiQuotes #-}
-{-# LANGUAGE BangPatterns #-}
 module Burdock.DefaultRuntime
     (initRuntime
     ,internals
@@ -68,7 +67,6 @@ import qualified Text.RawString.QQ as R
 
 import Burdock.Scientific
     (showScientific
-    ,extractInt
     )
 
 import Control.Monad
@@ -80,8 +78,6 @@ import Control.Monad
 import Data.Dynamic
     (Typeable
     )
-
-import qualified Data.ByteString as BS
 
 import System.Process
     (readProcessWithExitCode
@@ -340,7 +336,7 @@ initRuntime = do
     --------------------------------------
 
     gremlintype <- addFFIType' "gremlintype" gremlinFFI
-    void $ addFFIType' "bytestring" ffitypetagFFI
+    --void $ addFFIType' "bytestring" ffitypetagFFI
 
 
     addBinding' "print" =<< makeFunctionValue myPrint
@@ -365,9 +361,8 @@ initRuntime = do
 
     addBinding' "read-process" =<< makeFunctionValue myReadProcessWithExitCode
 
-    addBinding' "make-bytestring" =<< makeFunctionValue makeBytestring
-    addBinding' "get-bytestring-byte" =<< makeFunctionValue getBytestringByte
-    addBinding' "split" =<< makeFunctionValue split
+    --addBinding' "make-bytestring" =<< makeFunctionValue makeBytestring
+    --addBinding' "get-bytestring-byte" =<< makeFunctionValue getBytestringByte
 
     -- well hacky, use reverse to shoehorn in the true and false variants
     -- before the binding
@@ -377,7 +372,7 @@ initRuntime = do
     ModuleMetadata <$> reverse <$> liftIO (readIORef hackMM)
 
 ------------------------------------------------------------------------------
-
+ 
 -- some helper functions mainly for operators
 
 unaryMember :: Typeable a => Text -> Text -> Text -> (a -> Text) -> Value -> [Value] -> Runtime Value
@@ -772,39 +767,3 @@ myReadProcessWithExitCode [prog, args, stdinVal] = do
     se' <- makeString $ T.pack se
     makeTuple [x1', so', se']
 myReadProcessWithExitCode _ = error $ "bad args to myReadProcessWithExitCode"
-
-------------------------------------------------------------------------------
-
--- temp testing for tail calls
-
--- pass a number, get back a bytestring of that length in bytes
-makeBytestring :: [Value] -> Runtime Value
-makeBytestring [x] = do
-    let y = maybe (error $ "non number passed to make bytestring" <> debugShowValue x) id $ extractValue x
-        z = maybe (error $ "non integer passed to make bytestring: " <> show y) id $ extractInt y
-        !bs = BS.replicate z 0
-    makeValueName "bytestring" $! bs
-makeBytestring _ = error $ "bad args to makeBytestring"
-
--- pass bytestring, position, returns the byte
--- value at that position
-getBytestringByte :: [Value] -> Runtime Value
-getBytestringByte [bsv,pos] = do
-    let bs = maybe (error $ "non bytestring passed to get bytestring" <> debugShowValue bsv) id $ extractValue bsv
-        ns = maybe (error $ "non number passed to get bytestring" <> debugShowValue pos) id $ extractValue pos
-        n = maybe (error $ "non integer passed to make bytestring: " <> show ns) id $ extractInt ns
-        b = BS.index bs n
-        sb :: Scientific
-        sb = fromIntegral b
-    makeNumber sb
-getBytestringByte _ = error $ "bad args to getBytestringByte"
-
-split :: [Value] -> Runtime Value
-split [x] = do
-    let t = maybe (error "non string passed to split") id $ extractValue x
-        xs = T.splitOn " " t
-    --liftIO $ putStrLn $ show xs
-    makeBurdockList =<< mapM makeString xs
-split _ = error $ "bad args to split"
-
-

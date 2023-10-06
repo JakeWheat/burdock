@@ -482,7 +482,7 @@ desugarExpr (S.TupleSel _ fs) = do
     let fs1 = zip (map show [(0::Int)..]) fs
     fs' <- mapM (\(a,b) -> (a,) <$> desugarExpr b) fs1
     let fs'' = trm : eqm : fs'
-        addHelpers = over synFreeVars (nub . (\x -> "_record_torepr" : "_record_equals" : x))
+        addHelpers = over synFreeVars (nub . (\x -> "_tuple_torepr" : "_tuple_equals" : x))
     let x = addHelpers $ combineSyns (map (ns . snd) fs'')
             $ mkSyn $ I.VariantSel "tuple" $ map stp fs''
     pure x

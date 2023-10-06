@@ -1,4 +1,6 @@
 
+include haskell("test-helpers")
+
 fun run-plain(script):
   "cabal run burdock -- " + script
 end
