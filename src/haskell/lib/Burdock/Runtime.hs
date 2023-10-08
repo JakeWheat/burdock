@@ -50,6 +50,7 @@ module Burdock.Runtime
     ,extractValue
 
     ,DataDeclTypeTag(..)
+    ,dataDeclTagsEqual
     ,FFITypeTag
     ,tyName
     ,Env
@@ -72,6 +73,7 @@ module Burdock.Runtime
     ,makeNumber
 
     ,variantName
+    ,variantTag
     ,variantFields
     ,variantValueFields
     -- temp, should only be used for the binding in the default env
@@ -241,17 +243,17 @@ makeDataDeclTag v = do
 type Runtime = ReaderT RuntimeState IO
 
 -- todo: make this abstract
--- don't use the eq and show except for debugging
 data Value = FFIValue FFITypeTag Dynamic
            | VariantV DataDeclTypeTag Text [(Text, Value)]
            | MethodV Value
            | VFun ([Value] -> Runtime Value)
            | BoxV (IORef Value)
-    --deriving (Show)
 
 -- todo: use something more robust
 data DataDeclTypeTag = DataDeclTypeTag {dtyName :: Text}
---data ValueTypeTag = ValueTypeTag Text
+
+dataDeclTagsEqual :: DataDeclTypeTag -> DataDeclTypeTag -> Bool
+dataDeclTagsEqual a b = dtyName a == dtyName b
 
 data FFITypeTag
     = FFITypeTag
@@ -363,6 +365,10 @@ makeVariant ty n fs = pure $ VariantV ty n fs
 variantName :: Value -> Runtime (Maybe Text)
 variantName (VariantV _ nm _) = pure $ Just nm
 variantName _ = pure Nothing -- error $ "non variant passed to variant tag"
+
+variantTag :: Value ->  Runtime (Maybe DataDeclTypeTag)
+variantTag (VariantV tg _ _) = pure $ Just tg
+variantTag _ = pure Nothing
 
 variantFields :: Value -> Runtime (Maybe [(Text, Value)])
 variantFields (VariantV _ _ flds) = pure $ Just flds

@@ -61,6 +61,7 @@ module Burdock.RuntimeBootstrap
     ,makeNumber
 
     ,variantName
+    ,variantTag
     ,variantFields
     ,variantValueFields
 

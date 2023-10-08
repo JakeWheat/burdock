@@ -52,11 +52,13 @@ import Burdock.Runtime
     ,makeValue
     ,makeVariant
     ,variantName
+    ,variantTag
     ,variantValueFields
     ,extractValue
     ,makeFunctionValue
     ,DataDeclTypeTag(..)
     ,Scientific
+    ,dataDeclTagsEqual
     )
 
 import Data.Text (Text)
@@ -319,6 +321,7 @@ initRuntime = do
     addBinding' "make-burdock-list" =<< makeFunctionValue myMakeBurdockList
     addBinding' "make-haskell-list" =<< makeFunctionValue makeHaskellList
     addBinding' "make-variant" =<< makeFunctionValue myMakeVariant
+    addBinding' "is-type" =<< makeFunctionValue myIsType
     addBinding' "is-variant" =<< makeFunctionValue myIsVariant
     addBinding' "check-variants-equal" =<< makeFunctionValue checkVariantsEqual
     addBinding' "raise" =<< makeFunctionValue raise
@@ -515,37 +518,55 @@ makeHaskellList :: [Value] -> Runtime Value
 makeHaskellList vs = makeValueName "haskell-list" vs
 
 myMakeVariant :: [Value] -> Runtime Value
-myMakeVariant [nm, flds, es] = do
-    let t :: Text
-        t = maybe (error $ "bad args to make variant, first arg is not text")
+myMakeVariant [tg, nm, flds, es] = do
+    let tg' :: DataDeclTypeTag
+        tg' = maybe (error $ "bad args to make variant, first arg is not DataDeclTypeTag")
+              id $ extractValue tg
+        t :: Text
+        t = maybe (error $ "bad args to make variant, second arg is not text")
             id $ extractValue nm
         flds' :: [Value]
-        flds' = maybe (error $ "bad args to make variant, second arg is not haskell list")
+        flds' = maybe (error $ "bad args to make variant, third arg is not haskell list")
                 id $ extractValue flds
         flds'' :: [Text]
-        flds'' = flip map flds' $ \f -> maybe (error $ "bad args to make variant, second arg has non string in list")
+        flds'' = flip map flds' $ \f -> maybe (error $ "bad args to make variant, third arg has non string in list")
                  id $ extractValue f
         es' :: [Value]
-        es' = maybe (error $ "bad args to make variant, third arg is not list")
+        es' = maybe (error $ "bad args to make variant, fourth arg is not list")
                 id $ extractValue es
                                         
     when (length es' /= length flds') $ error $ "wrong number of args to create variant " <> t
     -- todo: need the type tag to put in here, later it will be abstract
     -- and it will be used in lots of these auxiliary functions
-    makeVariant (DataDeclTypeTag undefined) t $ zip flds'' es'
+    makeVariant tg' t $ zip flds'' es'
 myMakeVariant _ = error $ "bad args to makeVariant"
 
 myIsVariant :: [Value] -> Runtime Value
-myIsVariant [nm, x] = do
-    let nm' :: Text
-        nm' = maybe (error $ "bad args to is variant, first arg is not text")
+myIsVariant [tg, nm, x] = do
+    let tg' :: DataDeclTypeTag
+        tg' = maybe (error $ "bad args to make variant, first arg is not DataDeclTypeTag")
+              id $ extractValue tg
+        nm' :: Text
+        nm' = maybe (error $ "bad args to is variant, second arg is not text")
             id $ extractValue nm
+    tgx <- variantTag x
     x' <- variantName x
+    case (tgx, x') of
+        (Just tgx', Just t) -> makeBool $ dataDeclTagsEqual tg' tgx' && nm' == t
+        _ -> makeBool False
+myIsVariant _ = error $ "bad args to myIsVariant"
+
+myIsType :: [Value] -> Runtime Value
+myIsType [tg, x] = do
+    let tg' :: DataDeclTypeTag
+        tg' = maybe (error $ "bad args to is type, first arg is not datadecltag")
+            id $ extractValue tg
+    x' <- variantTag x
     case x' of
         Nothing -> makeBool False
-        Just t -> makeBool $ nm' == t
-        
-myIsVariant _ = error $ "bad args to myIsVariant"
+        Just t -> makeBool $ dataDeclTagsEqual tg' t
+myIsType _ = error $ "bad args to myIsType"
+
 
 -- todo: decide if the flds should be passed, or this function should
 -- work them out. Currently, the passed fields are ignored and this

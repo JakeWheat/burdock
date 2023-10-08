@@ -265,7 +265,8 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
             extraMeths = filter defaultNeeded defaultMeths ++ suppliedMeths
             callMakeVariant ps =
                 S.App n (S.Iden n "make-variant")
-                  [S.Text n vnm
+                  [ S.Iden n dnm
+                  , S.Text n vnm
                   , lst $ map fst extraMeths ++ map (S.Text n) ps
                   , lst $ map snd extraMeths ++ map (S.Iden n) ps]
         in if null bs
@@ -277,20 +278,19 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
     isIt (S.VariantDecl _ vnm _ _) =
         letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
                                    S.App n (S.Iden n "is-variant")
-                                   [S.Text n vnm, S.Iden n "x"]]
+                                   [S.Iden n dnm, S.Text n vnm, S.Iden n "x"]]
     lst es = S.Construct n ["haskell-list"] es
-    callIs (S.VariantDecl _ vnm _ _) = S.App n (S.Iden n $ "is-" <> vnm) [S.Iden n "x"]
     isDat = letDecl ("is-" <> dnm)
             $ lam ["x"]
-           [S.StmtExpr n $ foldl1 orE $ map callIs vs]
+            [S.StmtExpr n $ S.App n (S.Iden n "is-type")
+             [S.Iden n dnm, S.Iden n "x"]]
     sbNm (_,S.SimpleBinding _ _ nm _) = nm
     n = Nothing
     letDecl nm v = S.LetDecl n (mnm nm) v
     recDecl nm v = S.RecDecl n (mnm nm) v
     lam as e = S.Lam n (fh $ map mnm as) e
     fh as = S.FunHeader [] as Nothing
-    orE a b = S.BinOp n a "or" b
-    mnm x = S.NameBinding n x
+    mnm x = S.NameBinding n x 
 
 desugarToRec (s:ss) = s : desugarToRec ss
 desugarToRec [] = []
