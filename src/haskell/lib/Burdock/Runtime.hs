@@ -242,7 +242,7 @@ type Runtime = ReaderT RuntimeState IO
 
 -- todo: make this abstract
 -- don't use the eq and show except for debugging
-data Value = Value FFITypeTag Dynamic
+data Value = FFIValue FFITypeTag Dynamic
            | VariantV DataDeclTypeTag Text [(Text, Value)]
            | MethodV Value
            | VFun ([Value] -> Runtime Value)
@@ -259,11 +259,11 @@ data FFITypeTag
     ,tyMemberFn :: (Text -> Value -> Runtime Value)}
 
 debugShowValue :: Value -> Text
-debugShowValue (Value _tg dn)
+debugShowValue (FFIValue _tg dn)
     | Just (dn' :: Scientific) <- fromDynamic dn
     = "ValueNum " <> showScientific dn'
 
-debugShowValue (Value _tg dn)
+debugShowValue (FFIValue _tg dn)
     | Just (ls :: [Value]) <- fromDynamic dn
     = "[HaskellList: " <> T.intercalate "," (map debugShowValue ls) <> "]"
 
@@ -271,7 +271,7 @@ debugShowValue v
     | Just ls <- extractBurdockList v
     = "[list: " <> T.intercalate "," (map debugShowValue ls) <> "]"
 
-debugShowValue (Value tg dn) = "Value " <> tyName tg <> " " <> show dn
+debugShowValue (FFIValue tg dn) = "Value " <> tyName tg <> " " <> show dn
 debugShowValue (VariantV _ tf fs) =
     -- todo: show the tag also?
     "VariantV " <> tf <> " " <> T.concat (map f fs)
@@ -290,7 +290,7 @@ data Env = Env [(Text, Value)]
     --deriving Show
 
 makeValue :: Typeable a => FFITypeTag -> a -> Value
-makeValue tg v = Value tg $ toDyn v
+makeValue tg v = FFIValue tg $ toDyn v
 
 makeBurdockList :: [Value] -> Runtime Value
 makeBurdockList [] = do
@@ -331,7 +331,7 @@ makeTuple fs = do
     makeVariant (DataDeclTypeTag "tuple") "tuple" (("_equals", btTupEq btV) : ("_torepr", btTupToRepr btV) : fs1)
 
 extractValue :: Typeable a => Value -> Maybe a
-extractValue (Value _ v) = fromDynamic v
+extractValue (FFIValue _ v) = fromDynamic v
 extractValue _x = Nothing -- error $ "can't extract value from " ++ T.unpack (debugShowValue x)
 
 nothingValue :: Runtime Value
@@ -403,7 +403,7 @@ captureClosure nms = do
 -- but an ffivalue, the ctor Value currently, should have
 -- a pointer to it's type, not go via any kind of name lookup like this
 getMember :: Value -> Text -> Runtime Value
-getMember v@(Value tg _) fld = (tyMemberFn tg) fld v
+getMember v@(FFIValue tg _) fld = (tyMemberFn tg) fld v
 
 getMember v@(VariantV _ _ fs) fld = do
     case lookup fld fs of
@@ -432,7 +432,7 @@ app sp (MethodV f) args = app sp f args
 app sp (BoxV v) args = do
     v' <- liftIO $ readIORef v
     app sp v' args
-app sp v@(Value tg _) args = do
+app sp v@(FFIValue tg _) args = do
     fn <- (tyMemberFn tg) "_app" v
     app sp fn args
 
