@@ -34,6 +34,7 @@ common shared-properties
                       Burdock.Runtime
                       Burdock.DefaultRuntime
                       Burdock.Interpreter
+                      Burdock.InterpreterHandle
                       Burdock.InterpreterSyntax
                       Burdock.InterpreterPretty
                       Burdock.Desugar

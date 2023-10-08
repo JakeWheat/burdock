@@ -19,7 +19,6 @@ import Burdock.Runtime
     (Runtime
     ,Value
     ,extractValue
-    ,makeFunction
     ,app
     ,nothingValue
     ,liftIO
@@ -30,6 +29,7 @@ import Burdock.Runtime
     ,FFITypeTag
     ,makeNumber
     ,makeBurdockList
+    ,makeFunctionValue
     )
 
 import Burdock.HaskellModulePlugin
@@ -68,20 +68,20 @@ testHelpers = do
 
     tempHandle <- makeFFIType "temp-handle" opaque
 
-    mySleep' <- makeFunction mySleep
-    spawnSleepThrowTo' <- makeFunction spawnSleepThrowTo
-    bmyThreadId' <- makeFunction bmyThreadId
-    runCallbackN' <- makeFunction runCallbackN
-    runCallbackAsyncN' <- makeFunction (runCallbackAsyncN tempHandle)
-    testWait' <- makeFunction testWait
-    handleThreadId' <- makeFunction handleThreadId
+    mySleep' <- makeFunctionValue mySleep
+    spawnSleepThrowTo' <- makeFunctionValue spawnSleepThrowTo
+    bmyThreadId' <- makeFunctionValue bmyThreadId
+    runCallbackN' <- makeFunctionValue runCallbackN
+    runCallbackAsyncN' <- makeFunctionValue (runCallbackAsyncN tempHandle)
+    testWait' <- makeFunctionValue testWait
+    handleThreadId' <- makeFunctionValue handleThreadId
 
-    split' <- makeFunction split
+    split' <- makeFunctionValue split
 
     bytestringt <- makeFFIType "bytestring" opaque
 
-    makeBytestring' <- makeFunction (makeBytestring bytestringt)
-    getBytestringByte' <- makeFunction getBytestringByte
+    makeBytestring' <- makeFunctionValue (makeBytestring bytestringt)
+    getBytestringByte' <- makeFunctionValue getBytestringByte
 
     makeHaskellModule
         [Type tempHandle

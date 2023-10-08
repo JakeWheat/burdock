@@ -53,30 +53,33 @@ module Burdock.Runtime
     ,FFITypeTag
     ,tyName
     ,Env
-    
 
     ,captureClosure
-    ,makeVariant
-    ,variantName
-    ,variantFields
-    ,variantValueFields
+    
+    ,nothingValue
+    ,makeBurdockList
+    ,extractBurdockList
+
     ,makeRecord
-    ,extractTuple
+    
     ,makeTuple
+    ,extractTuple
+
+    ,makeVariant
+    ,makeValueName
     ,makeString
     ,makeBool
     ,makeNumber
+
+    ,variantName
+    ,variantFields
+    ,variantValueFields
+
     ,getFFITypeTag
     ,makeDataDeclTag
-    ,makeValueName
-    ,makeFunction
 
     ,runTask
     ,throwValue
-
-
-    -- temp, should only be used for the binding in the default env
-    ,nothingValue
 
     ,getCallStack
     
@@ -85,8 +88,6 @@ module Burdock.Runtime
     ,addBinding
     ,lookupBinding
 
-    ,makeBurdockList
-    ,extractBurdockList
     ,createBurdockRunner
 
     ,getMember
@@ -289,9 +290,6 @@ data Env = Env [(Text, Value)]
 
 makeValue :: Typeable a => FFITypeTag -> a -> Value
 makeValue tg v = Value tg $ toDyn v
-
-makeFunction :: ([Value] -> Runtime Value) -> Runtime Value
-makeFunction f = pure $ VFun f
 
 makeBurdockList :: [Value] -> Runtime Value
 makeBurdockList [] = do

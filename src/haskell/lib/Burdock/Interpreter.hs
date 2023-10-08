@@ -11,345 +11,59 @@ executes it on the runtime.
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Interpreter
-    (createHandle
-    ,runRuntime
-    ,runScript
-    ,getModuleValue
-    ,getTestResults
-    ,liftIO
-    ,runTask
-    ,debugShowValue
-    ,extractValue
-    ,DumpMode(..)
-    ,dumpSource
+    (interpBurdock
     ) where
 
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
-import Data.Text.IO (putStrLn)
 
---import qualified Burdock.Syntax as S
 import qualified Burdock.InterpreterSyntax as I
 import Burdock.Runtime
-    (Value(..)
-    ,runRuntime
-    ,Runtime
-    ,RuntimeState
-    ,getRuntimeState
-    ,getTestResults
-    ,liftIO
-    ,setBootstrapRecTup
-    ,BootstrapValues(..)
-    ,nothingValue
+    (Runtime
+    ,Value(..)
 
-    ,ModuleMetadata
-    ,RuntimeImportSource(..)
-    ,ModulePlugin(..)
-    ,getModuleMetadata
-    ,getModuleValue
-    ,addModulePlugin
-    ,lookupImportSource
-    ,BurdockImportSource(..)
+    ,withScope
+    ,lookupBinding
+    ,getMember
+    ,runTask
+    ,app
+    ,addBinding
+    ,captureClosure
+    ,withNewEnv
     
-    --,ffimethodapp
-    --,RuntimeState
-    ,emptyRuntimeState
-    --,addFFIType
+    ,liftIO
+
+    ,makeString
+    ,makeNumber
+    ,makeRecord
+    ,makeTuple
+    ,makeBurdockList
+
+    ,extractTuple
+    ,extractValue
 
     ,variantName
     ,variantValueFields
     
-    ,getMember
-    ,app
-
-    ,withScope
-    ,withNewEnv
-    ,addBinding
-    ,lookupBinding
-    ,captureClosure
-    
-    ,extractValue
-    ,makeBurdockList
-    ,makeRecord
-    ,makeTuple
-    ,extractTuple
-    ,makeString
-    ,makeNumber
-
+    ,nothingValue
     ,debugShowValue
     
-    ,runTask
-    --,makeFunctionValue
-    --,Type(..)
-    --,Scientific
-
-    ,getTempEnvStage
-    ,setTempEnvStage
     )
 
---import Burdock.Pretty (prettyExpr)
 import Data.Text (Text)
-import qualified Data.Text as T
-import qualified Data.Text.Lazy as L
-import qualified Data.Text.Lazy.IO as L
-
-import Burdock.Parse (parseScript)
-import Burdock.Desugar
-    (desugarScript
-    ,desugarModule
-    ,getImportSources
-    ,ModuleID(..)
-    )
-
-import qualified Burdock.Syntax as S
-
-import Burdock.DefaultRuntime
-    (initRuntime
-    ,internals
-    ,bootstrap
-    )
     
 import Control.Monad
     (forM_
     ,when
     ,zipWithM
-    ,forM
     )
 
 import Data.IORef
-    (IORef
-    ,newIORef
+    (newIORef
     ,writeIORef
     ,readIORef
-    ,modifyIORef
     )
 
-import Text.Show.Pretty (ppShow)
-import Burdock.InterpreterPretty (prettyStmts)
-
-import System.Directory
-    (canonicalizePath
-    ,getCurrentDirectory
-    )
-import System.FilePath
-    (takeDirectory
-    ,(</>)
-    )
-
-import Burdock.ModuleMetadata
-    (ModuleMetadata(..))
-
-import Burdock.Pretty (prettyScript)
-
-import Burdock.Renamer
-    (renameScript
-    ,renameModule
-    ,prettyStaticErrors
-    )
-
--- temp
-import Burdock.DemoHaskellModule (demoHaskellModule)
-import Burdock.TestHelpers (testHelpers)
-import Burdock.HaskellModulePlugin
-    (haskellModulePlugin
-    ,addHaskellModule
-    ,hmmModulePlugin)
-
-------------------------------------------------------------------------------
-
-debugPrintUserScript :: Bool
-debugPrintUserScript = False
-
-debugPrintBootstrap :: Bool
-debugPrintBootstrap = False
-
-debugPrintInternals :: Bool
-debugPrintInternals = False
-
-------------------------------------------------------------------------------
-
-createHandle :: IO RuntimeState
-createHandle = do
-    st <- emptyRuntimeState
-    runRuntime st $ do
-        mp <- burdockModulePlugin
-        addModulePlugin "file" mp
-
-        hp <- haskellModulePlugin
-        addModulePlugin "haskell" $ hmmModulePlugin hp
-
-        tmpHackMetadata <- initRuntime
-
-        setTempEnvStage tmpHackMetadata
-        (bmm,_) <- runScript' debugPrintBootstrap (Just "_bootstrap") bootstrap
-
-        let lkpf f = maybe (error $ "_bootstrap " <> f <> " not found") id <$> lookupBinding f
-
-        setBootstrapRecTup =<< BootstrapValues
-            <$> lkpf "_tuple_equals"
-            <*> lkpf "_tuple_torepr"
-            <*> lkpf "_record_equals"
-            <*> lkpf "_record_torepr"
-            <*> lkpf "empty"
-            <*> lkpf "link"
-            <*> lkpf "nothing"
-        
-        -- temp: add the stuff in initRuntime + bootstrap
-        let tempCombineModuleMetadata (ModuleMetadata a) (ModuleMetadata b) = ModuleMetadata (a ++ b)
-        setTempEnvStage $ tempCombineModuleMetadata tmpHackMetadata bmm
-        (imm,_) <- runScript' debugPrintInternals (Just "_internals") internals
-
-        -- temp: add the stuff in initRuntime + bootstrap + internals
-        setTempEnvStage $ tempCombineModuleMetadata (tempCombineModuleMetadata tmpHackMetadata bmm) imm
-
-        addHaskellModule "demo-haskell-module" demoHaskellModule hp
-        addHaskellModule "test-helpers" testHelpers hp
-
-            -- todo: tests in the internals?
-        getRuntimeState
-
-runScript :: Maybe T.Text -> L.Text -> Runtime Value
-runScript fn src = snd <$> runScript' debugPrintUserScript fn src
-
---------------------------------------
-
--- quick hack functions to dump renamed or desugared source
-
-data DumpMode
-    = DumpRenameScript
-    | DumpRenameModule
-    | DumpDesugarScript
-    | DumpDesugarModule
-
-prepDump :: Maybe Text
-         -> L.Text
-         -> (Text
-             -> S.Script
-             -> ModuleMetadata
-             -> [(S.ImportSource, ModuleID)]
-             -> [(ModuleID, ModuleMetadata)]
-             -> Runtime a)
-         -> Runtime a
-prepDump fn' src res = do
-    let fn = maybe "unnamed" id fn'
-        ast = either error id $ parseScript fn src
-    ms <- recurseMetadata (Just fn) ast
-    tmpHack <- getTempEnvStage
-    let (ism,ms') = unwrapMetadata ms
-    res fn ast tmpHack ism ms'
-
-dumpSource :: DumpMode -> Maybe T.Text -> L.Text -> Runtime L.Text
-dumpSource DumpRenameScript fn' src =
-    prepDump fn' src $ \fn ast tmpHack ism ms' ->
-    case renameScript fn tmpHack ism ms' ast of
-        Left  e -> error $ prettyStaticErrors e
-        Right (_,res) -> pure $ prettyScript res
-
-dumpSource DumpRenameModule fn' src =
-    prepDump fn' src $ \fn ast tmpHack ism ms' ->
-    case renameModule fn tmpHack ism ms' ast of
-        Left  e -> error $ prettyStaticErrors e
-        Right (_,res) -> pure $ prettyScript res
-
-dumpSource DumpDesugarScript fn' src =
-    prepDump fn' src $ \fn ast tmpHack ism ms' -> do
-    let (_,dast) = desugarScript tmpHack fn ism ms' ast
-    pure $ prettyStmts dast
-
-dumpSource DumpDesugarModule fn' src =
-    prepDump fn' src $ \fn ast tmpHack ism ms' -> do
-    let (_,dast) = desugarModule tmpHack fn ism ms' ast
-    pure $ prettyStmts dast
-    
-------------------------------------------------------------------------------
-
-runScript' :: Bool -> Maybe T.Text -> L.Text -> Runtime (ModuleMetadata, Value)
-runScript' debugPrint fn' src = do
-    -- filename either comes from bootstrap or from user
-    fn <- T.pack <$> liftIO (canonicalizePath $ maybe "unnamed" T.unpack fn')
-    let ast = either error id $ parseScript fn src
-    ms <- recurseMetadata (Just fn) ast
-    --liftIO $ putStrLn $ "desugar script"
-    tmpHack <- getTempEnvStage
-    let (ism,ms') = unwrapMetadata ms
-    let (mm,dast) = desugarScript tmpHack fn ism ms' ast
-    when False $ liftIO $ putStrLn $ T.pack $ ppShow dast
-    when debugPrint $ liftIO $ L.putStrLn $ prettyStmts dast
-    (mm,) <$> interpBurdock dast
-
-loadAndDesugarModule :: Text -> Runtime (ModuleMetadata, [I.Stmt])
-loadAndDesugarModule fn = do
-    --liftIO $ putStrLn $ "load " <>  fn
-    src <- liftIO $ L.readFile (T.unpack fn)
-    let ast = either error id $ parseScript fn src
-    ms <- recurseMetadata (Just fn) ast
-    --liftIO $ putStrLn $ "desugar " <> fn
-    tmpHack <- getTempEnvStage
-    let (ism,ms') = unwrapMetadata ms
-    pure $ desugarModule tmpHack fn ism ms' ast
-
-unwrapMetadata :: [(S.ImportSource, ModuleID, ModuleMetadata)]
-               -> ([(S.ImportSource, ModuleID)], [(ModuleID, ModuleMetadata)])
-unwrapMetadata = unzip . map (\(is,mid,mm) -> ((is,mid),(mid,mm)))
-
-recurseMetadata :: Maybe Text -> S.Script -> Runtime [(S.ImportSource, ModuleID, ModuleMetadata)]
-recurseMetadata ctx ast = do
-    let deps = getImportSources ast
-    is <- flip mapM deps $ \x -> case x of
-        S.ImportName nm -> (x,) <$> lookupImportSource (BurdockImportName nm)
-        S.ImportSpecial p as -> (x,) <$> lookupImportSource (BurdockImportSpecial p as)
-    forM is $ \x -> case x of
-        (bis, ris) ->
-            (bis, ModuleID (risImportSourceName ris) (risArgs ris),)
-            <$> getModuleMetadata ctx ris
-
-------------------------------------------------------------------------------
-
-data BurdockModulePluginCache
-    = BurdockModulePluginCache
-    {cacheCompiled :: IORef [(Text, (ModuleMetadata, [I.Stmt]))]
-    ,cacheModuleValues :: IORef [(Text, Value)]
-    }
-
-burdockModulePlugin :: Runtime ModulePlugin
-burdockModulePlugin = do
-    let nx = liftIO $ newIORef []
-    pc <- BurdockModulePluginCache <$> nx <*> nx
-    let --resolveModulePath :: Maybe Text -> Text -> Runtime Text
-        resolveModulePath ctx fn = do
-            ctx' <- case ctx of
-                Nothing -> liftIO $ getCurrentDirectory
-                Just x -> pure $ takeDirectory $ T.unpack x
-            liftIO (T.pack <$> (canonicalizePath (ctx' </> T.unpack fn)))
-            
-        compileCacheModule fn = do
-            v <- liftIO $ readIORef (cacheCompiled pc)
-            case lookup fn v of
-                Just v' -> pure v'
-                Nothing -> do
-                    vs <- loadAndDesugarModule fn
-                    liftIO $ modifyIORef (cacheCompiled pc) ((fn,vs):)
-                    pure vs
-        getMetadata' ctx ri = do
-            fn <- resolveModulePath ctx $ getRiFile ri
-            (m,_) <- compileCacheModule fn
-            pure m
-        getModuleValue' ctx ri = do
-            fn <- resolveModulePath ctx $ getRiFile ri
-            v <- liftIO $ readIORef (cacheModuleValues pc)
-            case lookup fn v of
-                Just v' -> pure v'
-                Nothing -> do
-                    (_,dast) <- compileCacheModule fn
-                    v' <- interpBurdock dast
-                    liftIO $ modifyIORef (cacheModuleValues pc) ((fn,v'):)
-                    pure v'
-    pure $ ModulePlugin getMetadata' getModuleValue'
-  where
-    getRiFile = \case 
-        RuntimeImportSource _ [fn] -> fn
-        RuntimeImportSource _ as -> error $ "bad args to burdock module source: " <> show as
-        
 ------------------------------------------------------------------------------
 
 interpBurdock :: [I.Stmt] -> Runtime Value

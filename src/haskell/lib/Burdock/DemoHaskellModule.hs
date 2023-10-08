@@ -20,7 +20,6 @@ import Burdock.Runtime
     ,makeNumber
     ,Value
     ,extractValue
-    ,makeFunction
     ,app
     ,nothingValue
     ,liftIO
@@ -64,17 +63,17 @@ data HaskellValue = HaskellValue Scientific
 demoHaskellModule :: Runtime HaskellModule
 demoHaskellModule = do
     a <- makeNumber 2
-    addOne <- makeFunction haskellAddOne
-    cbb <- makeFunction callbackToBurdockDemo
+    addOne <- makeFunctionValue haskellAddOne
+    cbb <- makeFunctionValue callbackToBurdockDemo
 
     haskellVar <- liftIO $ newIORef 0
-    readHaskellVar <- makeFunction $ \case
+    readHaskellVar <- makeFunctionValue $ \case
         [] -> do
             n <- liftIO $ readIORef haskellVar
             makeNumber n
         _ -> error $ "bad args to readhaskellvar"
 
-    incrementHaskellVar <- makeFunction $ \case
+    incrementHaskellVar <- makeFunctionValue $ \case
         [] -> do
             liftIO $ modifyIORef haskellVar (+1)
             nothingValue
@@ -83,14 +82,14 @@ demoHaskellModule = do
     numbers <- importModule $ ImportName ["numbers"]
     babs <- getMember numbers "num-abs"
 
-    callAbs <- makeFunction $ \case
+    callAbs <- makeFunctionValue $ \case
         [x] -> do
             app Nothing babs [x]
         _ -> error $ "bad args to callAbs"
 
     myType <- makeFFIType "my-type" opaque
 
-    makeHaskellValue <- makeFunction $ \case
+    makeHaskellValue <- makeFunctionValue $ \case
         [n'] | Just n <- extractValue n' -> do
             let v = HaskellValue n
             pure $ makeValue myType v
@@ -98,12 +97,12 @@ demoHaskellModule = do
 
     -- todo: use better helpers with the tags and stuff being checked
     -- and producing nice error messages
-    modifyHaskellValue <- makeFunction $ \case
+    modifyHaskellValue <- makeFunctionValue $ \case
         [n'] | Just (HaskellValue n) <- extractValue n' -> do
             pure $ makeValue myType $ HaskellValue $ n + 1
         _ -> error $ "bad args to modifyHaskellValue"
 
-    unwrapHaskellValue <- makeFunction $ \case
+    unwrapHaskellValue <- makeFunctionValue $ \case
         [n'] | Just (HaskellValue n) <- extractValue n' -> do
             makeNumber n
         _ -> error $ "bad args to unwrapHaskellValue"
@@ -129,7 +128,7 @@ demoHaskellModule = do
 
     myPairType <- makeFFIType "my-pair-type" myPairFieldThing
 
-    makeHaskellPair <- makeFunction $ \case
+    makeHaskellPair <- makeFunctionValue $ \case
         [p0,p1] | Just (p0'::Scientific) <- extractValue p0
                 , Just (p1'::Scientific) <- extractValue p1 -> do
             pure $ makeValue myPairType $ (p0',p1')
@@ -146,7 +145,7 @@ demoHaskellModule = do
 
     myAdder <- makeFFIType "my-adder" myAdderFieldThing
 
-    makeMyAdder <- makeFunction $ \case
+    makeMyAdder <- makeFunctionValue $ \case
         [n'] | Just (n :: Scientific) <- extractValue n' ->
                pure $ makeValue myAdder n
         _ -> error $ "bad args to make my adder"

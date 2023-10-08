@@ -12,7 +12,7 @@ import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (show)
 import Data.Text.IO (putStrLn)
 
-import Burdock.Interpreter
+import Burdock.InterpreterHandle
     (runRuntime
     ,getTestResults
     ,liftIO
