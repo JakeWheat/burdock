@@ -99,6 +99,9 @@ module Burdock.Runtime
     ,addTestFail
     ,addTestPass
     ,getTestResults
+    ,doIsTest
+    ,doIsNotTest
+    ,setTestModule
 
     --,ffimethodapp
     -- temp
@@ -161,6 +164,7 @@ data RuntimeState
     ,rtNumTestPassed :: IORef Int
     ,rtCallStack :: IORef [Maybe Text]
     ,rtBootstrapRecTup :: IORef BootstrapValues
+    ,rtTestModule :: IORef Value
     ,rtModulePlugins :: IORef [(Text, ModulePlugin)]
     -- hack used by the renamer temporarily
     ,rtTempEnvStage :: IORef ModuleMetadata
@@ -197,6 +201,7 @@ emptyRuntimeState =
         <*> newIORef 0
         <*> newIORef []
         <*> newIORef (error "bootstrap for tuples and records not completed")
+        <*> newIORef (error "testing module not loaded")
         <*> newIORef []
         <*> newIORef tempEmptyModuleMetadata
 
@@ -554,6 +559,26 @@ getTestResults = do
 
 getRuntimeState :: Runtime RuntimeState
 getRuntimeState = ask
+
+doIsTest :: [Value] -> Runtime Value
+doIsTest as = do
+    st <- ask
+    testm <- liftIO $ readIORef (rtTestModule st)
+    f <- getMember testm "my-do-is-test"
+    app Nothing f as
+
+doIsNotTest :: [Value] -> Runtime Value
+doIsNotTest as = do
+    st <- ask
+    testm <- liftIO $ readIORef (rtTestModule st)
+    f <- getMember testm "my-do-is-not-test"
+    app Nothing f as
+
+setTestModule :: Value -> Runtime ()
+setTestModule m = do
+    st <- ask
+    liftIO $ writeIORef (rtTestModule st) m
+
 
 ------------------------------------------------------------------------------
 

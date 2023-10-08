@@ -86,6 +86,9 @@ module Burdock.RuntimeBootstrap
     ,addTestFail
     ,addTestPass
     ,getTestResults
+    ,setTestModule
+    ,doIsTest
+    ,doIsNotTest
 
     --,ffimethodapp
     -- temp

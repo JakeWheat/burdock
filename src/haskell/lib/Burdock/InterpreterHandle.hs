@@ -49,6 +49,7 @@ import Burdock.RuntimeBootstrap
     
     ,Value
 
+    ,withScope
     ,addModulePlugin
     ,ModulePlugin(..)
     ,RuntimeImportSource(..)
@@ -60,6 +61,7 @@ import Burdock.RuntimeBootstrap
     ,runTask
     ,debugShowValue
     ,extractValue
+    ,setTestModule
     )
 
 import Data.Text (Text)
@@ -121,7 +123,10 @@ import Burdock.Renamer
 import Burdock.DemoHaskellModule (demoHaskellModule)
 import Burdock.TestHelpers (testHelpers)
 import Burdock.HaskellModulePlugin
-    (addHaskellModule)
+    (addHaskellModule
+    ,importModule
+    ,ImportSource(..)
+    )
 
 import Burdock.Interpreter
     (interpBurdock
@@ -175,6 +180,10 @@ createHandle = do
 
         addHaskellModule "demo-haskell-module" demoHaskellModule hp
         addHaskellModule "test-helpers" testHelpers hp
+
+        -- todo: figure out how to only load the testing module when it is used
+        testing <- importModule $ ImportName ["testing"]
+        setTestModule testing
 
             -- todo: tests in the internals?
         getRuntimeState
@@ -311,7 +320,7 @@ burdockModulePlugin = do
                 Just v' -> pure v'
                 Nothing -> do
                     (_,dast) <- compileCacheModule fn
-                    v' <- interpBurdock dast
+                    v' <- withScope $ interpBurdock dast
                     liftIO $ modifyIORef (cacheModuleValues pc) ((fn,v'):)
                     pure v'
     pure $ ModulePlugin getMetadata' getModuleValue'

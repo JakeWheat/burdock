@@ -10,7 +10,7 @@ module Burdock.TestLib
     ) where
 import Prelude hiding (error, putStrLn, show)
 import Data.Text.IO (putStrLn)
-import Burdock.Utils (show,error)
+import Burdock.Utils (show)
 
 import GHC.Stack
     (srcLocFile
@@ -20,13 +20,13 @@ import GHC.Stack
 import qualified Test.Tasty as Tst
 import qualified Test.Tasty.HUnit as Tst
 
-import Burdock.Runtime
+import Burdock.RuntimeBootstrap
     (Runtime
     ,liftIO
     ,Value
-    ,lookupBinding
     ,app
     ,makeString
+    ,getMember
     )
 
 import Control.Exception.Safe (catch
@@ -37,6 +37,9 @@ import Control.Monad (void)
 
 import qualified Data.Text as T
 import Data.Text (Text)
+import Burdock.HaskellModulePlugin
+    (importModule
+    ,ImportSource(..))
 
 ------------------------------------------------------------------------------
 
@@ -70,10 +73,15 @@ data TestRunClosure
 
 runHUnitTests :: TestTree -> Runtime ()
 runHUnitTests allTests = do
-    trc <- TestRunClosure
+    testing <- importModule $ ImportName ["testing"]
+    {-trc <- TestRunClosure
         <$> (maybe (error "log-and-print-result not found") id <$> lookupBinding "log-and-print-result")
         <*> (maybe (error "test-pass not found") id <$> lookupBinding "test-pass")
-        <*> (maybe (error "test-fail not found") id <$> lookupBinding "test-fail")
+        <*> (maybe (error "test-fail not found") id <$> lookupBinding "test-fail")-}
+    trc <- TestRunClosure
+           <$> getMember testing "log-and-print-result"
+           <*> getMember testing "test-pass"
+           <*> getMember testing "test-fail"
     runTestTree trc allTests
 
 runTestTree :: TestRunClosure -> TestTree -> Runtime ()
