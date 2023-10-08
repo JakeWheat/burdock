@@ -31,13 +31,14 @@ import Burdock.Utils (error, show)
 import Data.Text.IO (putStrLn)
 
 import qualified Burdock.InterpreterSyntax as I
-import Burdock.Runtime
+import Burdock.RuntimeBootstrap
     (Runtime
     ,RuntimeState
-    ,emptyRuntimeState
+    --,emptyRuntimeState
     ,getRuntimeState
     ,runRuntime
     ,liftIO
+    ,createBootstrapHandle
 
     ,setTempEnvStage
     ,getTempEnvStage
@@ -77,8 +78,7 @@ import Burdock.Desugar
 import qualified Burdock.Syntax as S
 
 import Burdock.DefaultRuntime
-    (initRuntime
-    ,internals
+    (internals
     ,bootstrap
     )
     
@@ -121,9 +121,7 @@ import Burdock.Renamer
 import Burdock.DemoHaskellModule (demoHaskellModule)
 import Burdock.TestHelpers (testHelpers)
 import Burdock.HaskellModulePlugin
-    (haskellModulePlugin
-    ,addHaskellModule
-    ,hmmModulePlugin)
+    (addHaskellModule)
 
 import Burdock.Interpreter
     (interpBurdock
@@ -145,17 +143,15 @@ debugPrintInternals = False
 
 createHandle :: IO RuntimeState
 createHandle = do
-    st <- emptyRuntimeState
+    -- get the handle with the bootstrap ffi set up
+    (st,hp) <- createBootstrapHandle
     runRuntime st $ do
+        -- add the burdock module handler, then run the initial burdock scripts
+        bootstrapMetadata <- getTempEnvStage
+        
         mp <- burdockModulePlugin
         addModulePlugin "file" mp
 
-        hp <- haskellModulePlugin
-        addModulePlugin "haskell" $ hmmModulePlugin hp
-
-        tmpHackMetadata <- initRuntime
-
-        setTempEnvStage tmpHackMetadata
         (bmm,_) <- runScript' debugPrintBootstrap (Just "_bootstrap") bootstrap
 
         let lkpf f = maybe (error $ "_bootstrap " <> f <> " not found") id <$> lookupBinding f
@@ -169,13 +165,13 @@ createHandle = do
             <*> lkpf "link"
             <*> lkpf "nothing"
         
-        -- temp: add the stuff in initRuntime + bootstrap
+        -- temp: add the bootstrap ffi + bootstrap burdock metadata
         let tempCombineModuleMetadata (ModuleMetadata a) (ModuleMetadata b) = ModuleMetadata (a ++ b)
-        setTempEnvStage $ tempCombineModuleMetadata tmpHackMetadata bmm
+        setTempEnvStage $ tempCombineModuleMetadata bootstrapMetadata bmm
         (imm,_) <- runScript' debugPrintInternals (Just "_internals") internals
 
-        -- temp: add the stuff in initRuntime + bootstrap + internals
-        setTempEnvStage $ tempCombineModuleMetadata (tempCombineModuleMetadata tmpHackMetadata bmm) imm
+        -- temp: add metadata
+        setTempEnvStage $ tempCombineModuleMetadata (tempCombineModuleMetadata bootstrapMetadata bmm) imm
 
         addHaskellModule "demo-haskell-module" demoHaskellModule hp
         addHaskellModule "test-helpers" testHelpers hp

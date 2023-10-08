@@ -32,6 +32,7 @@ common shared-properties
                       Burdock.Parse
                       Burdock.Scientific
                       Burdock.Runtime
+                      Burdock.RuntimeBootstrap
                       Burdock.DefaultRuntime
                       Burdock.Interpreter
                       Burdock.InterpreterHandle
@@ -43,6 +44,7 @@ common shared-properties
                       Burdock.RenamerEnv
                       Burdock.ModuleMetadata
                       Burdock.HaskellModulePlugin
+
 
                       Burdock.DemoHaskellModule
                       Burdock.TestHelpers

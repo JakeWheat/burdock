@@ -333,21 +333,22 @@ initRuntime = do
     addBinding' "true" (makeValue booleanType True)
     addBinding' "false" (makeValue booleanType False)
 
+    addBinding' "torepr" =<< makeFunctionValue myToRepr
+    addBinding' "show-variant" =<< makeFunctionValue showVariant
+    addBinding' "show-tuple" =<< makeFunctionValue showTuple
+    addBinding' "show-record" =<< makeFunctionValue showRecord
+
     --------------------------------------
 
+    -- below here doesn't belong in the runtimebootstrap
     gremlintype <- addFFIType' "gremlintype" gremlinFFI
     --void $ addFFIType' "bytestring" ffitypetagFFI
-
 
     addBinding' "print" =<< makeFunctionValue myPrint
     addBinding' "debug-print" =<< makeFunctionValue myDebugPrint
     addBinding' "debug-show" =<< makeFunctionValue myDebugShow
     addBinding' "get-call-stack" =<< makeFunctionValue myGetCallStack
-    addBinding' "torepr" =<< makeFunctionValue myToRepr
     addBinding' "tostring" =<< makeFunctionValue myToString
-    addBinding' "show-variant" =<< makeFunctionValue showVariant
-    addBinding' "show-tuple" =<< makeFunctionValue showTuple
-    addBinding' "show-record" =<< makeFunctionValue showRecord
 
     addBinding' "not" =<< makeFunctionValue myNot
 

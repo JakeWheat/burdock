@@ -15,7 +15,7 @@ import Burdock.Utils (error,show)
 -- todo: make the HaskellModulePlugin into a general haskell ffi api
 -- then everything users should access goes through that, and they
 -- don't import the runtime directly
-import Burdock.Runtime
+import Burdock.RuntimeBootstrap
     (Runtime
     ,Value
     ,extractValue

@@ -18,7 +18,7 @@ import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
 
 import qualified Burdock.InterpreterSyntax as I
-import Burdock.Runtime
+import Burdock.RuntimeBootstrap
     (Runtime
     ,Value(..)
 

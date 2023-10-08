@@ -74,6 +74,7 @@ module Burdock.Runtime
     ,variantName
     ,variantFields
     ,variantValueFields
+    -- temp, should only be used for the binding in the default env
 
     ,getFFITypeTag
     ,makeDataDeclTag

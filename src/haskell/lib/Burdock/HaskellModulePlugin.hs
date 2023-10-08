@@ -12,6 +12,7 @@ module Burdock.HaskellModulePlugin
     ,ModuleMember(..)
     ,opaque
     ,makeFFIType
+    ,HaskellModuleManager
     ) where
 
 import Prelude hiding (error, putStrLn, show)
