@@ -88,7 +88,7 @@ expr (Iden n) = pretty n
 expr (MethodExpr m) = pretty "method"
     <> prettyBlocklike sep [expr m]
 expr (RunTask _e es) = pretty "run-task" <> parens (expr es)
-expr (Cases e mats) =
+expr (Cases _ e mats) =
     prettyBlocklike vsep
     [pretty "cases" <+> expr e <> pretty ":"
     ,vsep (map mf mats)]

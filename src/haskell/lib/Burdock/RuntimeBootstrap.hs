@@ -67,6 +67,7 @@ module Burdock.RuntimeBootstrap
 
     ,getFFITypeTag
     ,makeDataDeclTag
+    ,dataDeclTagsEqual
 
     ,runTask
     ,throwValue

@@ -41,8 +41,11 @@ import Burdock.RuntimeBootstrap
 
     ,extractTuple
     ,extractValue
+    ,DataDeclTypeTag
+    ,dataDeclTagsEqual
 
     ,variantName
+    ,variantTag
     ,variantValueFields
     
     ,nothingValue
@@ -189,11 +192,11 @@ interpExpr (I.If cs els) =
                 Just e -> interpStmts e
     in m cs
 
-interpExpr (I.Cases e bs) = do
+interpExpr (I.Cases sp e bs) = do
     v <- interpExpr e
     let f [] = error $ "internal error, cases fall through"
         f ((b,bdy):bs') = do
-            b' <- tryApplyBinding b v
+            b' <- tryApplyBinding sp b v
             case b' of
                 Nothing -> f bs'
                 Just ls -> withScope $ do
@@ -225,7 +228,7 @@ letExprs bs = do
 -- not duplicate a bunch of non-syntax syntax for the runtime
 letValues :: [(I.Binding, Value)] -> Runtime ()
 letValues bs = forM_ bs $ \(b,v) -> do
-    mbs <- tryApplyBinding b v
+    mbs <- tryApplyBinding Nothing b v
     case mbs of
         Nothing -> error $ "couldn't bind " <> debugShowValue v <> " to " <> show b
         Just bs' -> mapM_ (uncurry addBinding) bs'
@@ -245,19 +248,18 @@ later it will also return the shadow-age of each binding
 
 -}
 
-tryApplyBinding :: I.Binding -> Value -> Runtime (Maybe [(Text,Value)])
-
+tryApplyBinding :: Maybe Text -> I.Binding -> Value -> Runtime (Maybe [(Text,Value)])
 
 -- temp? hack for boolean literals
-tryApplyBinding (I.VariantBinding "_patterninfo-true" []) v | Just True <- extractValue v = pure $ Just []
-tryApplyBinding (I.VariantBinding "_patterninfo-true" []) _ = pure Nothing
-tryApplyBinding (I.VariantBinding "_patterninfo-false" []) v | Just False <- extractValue v = pure $ Just []
-tryApplyBinding (I.VariantBinding "_patterninfo-false" []) _ = pure Nothing
+tryApplyBinding _ (I.VariantBinding "_patterninfo-true" []) v | Just True <- extractValue v = pure $ Just []
+tryApplyBinding _ (I.VariantBinding "_patterninfo-true" []) _ = pure Nothing
+tryApplyBinding _ (I.VariantBinding "_patterninfo-false" []) v | Just False <- extractValue v = pure $ Just []
+tryApplyBinding _ (I.VariantBinding "_patterninfo-false" []) _ = pure Nothing
 
-tryApplyBinding (I.NameBinding nm) v = pure $ Just [(nm,v)]
-tryApplyBinding I.WildcardBinding _ = pure $ Just []
+tryApplyBinding _ (I.NameBinding nm) v = pure $ Just [(nm,v)]
+tryApplyBinding _ I.WildcardBinding _ = pure $ Just []
 
-tryApplyBinding (I.TupleBinding bs) v = do
+tryApplyBinding sp (I.TupleBinding bs) v = do
     vs' <- extractTuple v
     case vs' of
         Nothing -> pure Nothing
@@ -265,28 +267,37 @@ tryApplyBinding (I.TupleBinding bs) v = do
             if length bs /= length vs
             then pure Nothing
             else do
-                x <- zipWithM tryApplyBinding bs vs
+                x <- zipWithM (tryApplyBinding sp) bs vs
                 pure $ (concat <$> sequence x)
 
-tryApplyBinding (I.VariantBinding vnm' flds) v = do
+tryApplyBinding sp (I.VariantBinding vnm' flds) v = do
+    vinfo' <- maybe (error $ (maybe "" id sp) <> "pattern not found: " <> vnm') id <$> lookupBinding vnm'
+    let (tinf',vinfo) = case extractValue vinfo' of
+            Nothing -> error $ "bad vnm': " <> debugShowValue vinfo'
+            Just ([a,b] :: [Value]) -> (a,b)
+            Just x -> error $ "expected 2 element list for " <> vnm' <> ", got " <> (T.intercalate "," (map debugShowValue x))
+        patternTag :: DataDeclTypeTag
+        patternTag = maybe (error $ "patterninfo[0] not datadecltypetag: " <> show (vnm', debugShowValue tinf')) id $ extractValue tinf'
+        patternNm :: Text
+        patternNm = maybe (error $ "patterninfo[1] not Text: " <> show (vnm', debugShowValue vinfo)) id $ extractValue vinfo
     -- temp quick hack
-    let vnm = T.drop (T.length ("_patterninfo-"::Text)) vnm'
+    --let vnm = T.drop (T.length ("_patterninfo-"::Text)) vnm'
     -- check v is a variant
-    vt' <- variantName v 
-    case vt' of
-        Nothing -> pure Nothing
-        Just vt ->
-            -- check it's tag matches vnm
-            if vt /= vnm
-            then pure Nothing
-            else do
+    valueNm' <- variantName v
+    valueTag' <- variantTag v
+    case (valueNm', valueTag') of
+        (Just valueNm, Just valueTag)
+            | dataDeclTagsEqual patternTag valueTag
+            , valueNm == patternNm -> do
                 -- todo: use a single function that gets the tag and the fields as a maybe
                 vfs <- maybe (error "impossible? tryApplyBinding I.VariantBinding variantValueFields is Nothing")
                              id <$> variantValueFields v
                 -- check there's the right number of flds
-                when (length vfs /= length flds) $ error $ "wrong number of args to variant binding " <> vnm <> " expected " <> show (length vfs) <> ", got " <> show (length flds)
+                when (length vfs /= length flds) $ error $ "wrong number of args to variant binding " <> valueNm <> " expected " <> show (length vfs) <> ", got " <> show (length flds)
                    <> "\n" <> show (flip map vfs $ \(n,v1)-> (n, debugShowValue v1), flds)
                 -- gather the tryapplies recursively for the v fields
-                x :: [Maybe [(Text, Value)]] <- mapM (uncurry tryApplyBinding) (zip flds $ map snd vfs)
+                x :: [Maybe [(Text, Value)]] <- mapM (uncurry (tryApplyBinding sp)) (zip flds $ map snd vfs)
                 pure (concat <$> sequence x)
---tryApplyBinding _ = Nothing
+        (Just {}, Just {}) -> pure Nothing
+        (Nothing,Nothing) -> pure Nothing
+        _ -> error $ "internal error in pattern matching variant inconsistent"

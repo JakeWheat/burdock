@@ -338,7 +338,7 @@ applyProvides re =
         ps = flip concatMap (reProvideItems re) $ \case
             ProvideAll _ ->
                 flip concatMap localBindings $ \case
-                    (nm,(_,BEType{})) -> []
+                    (_,(_,BEType{})) -> []
                     e@(nm,e1@(_,BEVariant{})) -> [(e, [nm])
                                               ,((renameVariantPattern nm,e1), [renameVariantPattern nm])]
                     e@(nm,_) -> [(e, [nm])]

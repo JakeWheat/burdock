@@ -247,8 +247,8 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
     -- make sure the is-var are available for the is-dat
     -- make sure all of these are available for the methods
     [typeStub] ++ map isIt vs ++ [isDat]
-    ++ map makeIt vs
     ++ map patternInfo vs
+    ++ map makeIt vs
     ++ desugarToRec ss
   where
     typeinfoName = renameTypeName dnm
@@ -492,13 +492,10 @@ desugarExpr (S.App _ (S.Iden _ "run-task-cs-async") [e]) = do
     pure $ combineSyns [ns e'] $ mkSyn $ I.RunTask True (_synTree e')
 
 desugarExpr (S.App sp f es) = do
-    let spx = case sp of
-            Nothing -> "nothing"
-            Just (n,i,j) -> "(" <> n <> "," <> show i <> "," <> show j <> ")"
     f' <- desugarExpr f
     es' <- mapM desugarExpr es
     pure $ combineSyns (ns f' : map ns es')
-        $ mkSyn $ I.App (Just spx) (_synTree f') (map _synTree es')
+        $ mkSyn $ I.App (Just $ showSp sp) (_synTree f') (map _synTree es')
 
 desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) = do
     bdy' <- desugarStmts bdy
@@ -540,12 +537,13 @@ desugarExpr (S.Cases pos tst _ bs mels) = do
             Just el -> [(S.WildcardBinding Nothing, Nothing, el)]
     bs' <- mapM desugarBranch bsx
     pure $ combineSyns (ns tst' : map ns bs')
-         $ mkSyn $ I.Cases (_synTree tst') (map _synTree bs')
+         $ mkSyn $ I.Cases (Just $ showSp pos) (_synTree tst') (map _synTree bs')
   where
     desugarBranch (bm,_,bdy) = do
         bm' <- desugarBinding bm
         bdy' <- desugarStmts bdy
-        pure $ set synFreeVars (nub (view synFreeVars bdy' \\ view synNewBindings bm'))
+        pure $ set synFreeVars
+               (nub ((view synFreeVars bdy' \\ view synNewBindings bm') ++ view synFreeVars bm'))
             $ combineSynsNoFreeVars [ns bm', ns bdy']
             $ mkSyn (_synTree bm', _synTree bdy')
     n = Nothing
@@ -578,11 +576,12 @@ doLetRec bs =
 
 desugarBinding :: S.Binding -> Desugar (Syn I.Binding)
 desugarBinding = \case
-    S.NameBinding _ nm -> addName False nm $ mkSyn (I.NameBinding nm)
-    S.ShadowBinding _ nm -> addName False nm $ mkSyn (I.NameBinding nm)
+    S.NameBinding _ nm -> addName nm $ mkSyn (I.NameBinding nm)
+    S.ShadowBinding _ nm -> addName nm $ mkSyn (I.NameBinding nm)
     S.VariantBinding _ [vnm] bs -> do
         bs' <- mapM desugarBinding bs
-        addName True vnm $ combineSynsWithNewBindings (map ns bs') $ mkSyn $ I.VariantBinding vnm $ map _synTree bs'
+        addVariant vnm
+            $ combineSynsWithNewBindings (map ns bs') $ mkSyn $ I.VariantBinding vnm $ map _synTree bs'
     S.WildcardBinding _ -> pure $ mkSyn $ I.WildcardBinding
     S.TupleBinding _ bs -> do
         -- combine the subbindings
@@ -590,8 +589,12 @@ desugarBinding = \case
         pure $ combineSynsWithNewBindings (map ns bs') $ mkSyn $ I.TupleBinding $ map _synTree bs'
     x -> error $ "unsupported binding: " <> show x
   where
-    addName isVariant nm b = do
-        let l = if isVariant
-                then synFreeVars
-                else synNewBindings
-        pure $ over l (nm:) b
+    addVariant nm b = do
+        pure $ over synFreeVars (nm:) b
+    addName nm b = do
+        pure $ over synNewBindings (nm:) b
+
+showSp :: S.SourcePosition -> Text
+showSp = \case
+    Nothing -> "nothing"
+    Just (n,i,j) -> "(" <> n <> "," <> show i <> "," <> show j <> ")"

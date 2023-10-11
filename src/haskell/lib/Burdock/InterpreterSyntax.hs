@@ -10,6 +10,8 @@ import Data.Text (Text)
 import Burdock.Scientific (Scientific)
 import Data.Data (Data)
 
+type SourcePos = Maybe Text
+
 data Stmt
     = LetDecl Binding Expr
     | StmtExpr Expr
@@ -22,7 +24,7 @@ data Expr
     | If [(Expr,[Stmt])] (Maybe [Stmt])
     | DotExpr Expr Text
     -- source pos, fn, args
-    | App (Maybe Text) Expr [Expr]
+    | App SourcePos Expr [Expr]
     | RecordSel [(Text,Expr)]
     | TupleSel [Expr]
     -- free vars, param bindings, body
@@ -32,7 +34,7 @@ data Expr
     | Iden Text
     | MethodExpr Expr
     | RunTask Bool Expr
-    | Cases Expr [(Binding, [Stmt])]
+    | Cases SourcePos Expr [(Binding, [Stmt])]
     deriving (Eq,Show,Data)
 
 data Binding
