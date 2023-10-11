@@ -432,20 +432,22 @@ desugarExpr (S.Let _ bs e) =
 
 desugarExpr (S.Parens _ e) = desugarExpr e
 
--- temp, want to put list = make-burdock-list in the bootstrap or internals
+-- temp, move this to the renamer? need to teach the renamer how to spot
+-- a specific use of list
+-- don't want to create a loop with the general handling of list construct
 desugarExpr (S.Construct _ ["list"] es) =
     desugarExpr $ S.App Nothing (S.Iden Nothing "make-burdock-list") es
 
--- used to bootstrap the language
+-- used to bootstrap the interpreter
 desugarExpr (S.Construct _ ["haskell-list"] es) =
     desugarExpr $ S.App Nothing (S.Iden Nothing "make-haskell-list") es
-
-desugarExpr (S.UnaryMinus sp e) =
-    desugarExpr (S.BinOp sp (S.Num sp (-1)) "*" e)
 
 -- [myname : es] -> myname.make([list:es])
 desugarExpr (S.Construct sp [nm] es) =
     desugarExpr $ S.App sp (S.DotExpr sp (S.Iden sp nm) "make") [S.Construct sp ["list"] es]
+
+desugarExpr (S.UnaryMinus sp e) =
+    desugarExpr (S.BinOp sp (S.Num sp (-1)) "*" e)
 
 ------------------
 -- S -> I

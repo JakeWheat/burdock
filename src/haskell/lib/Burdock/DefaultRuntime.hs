@@ -263,7 +263,6 @@ initRuntime = do
     addBinding' "tuple" =<< makeDataDeclTag "tuple"
     addBinding' "record" =<< makeDataDeclTag "record"
 
-
     void $ addFFIType' "haskell-list" ffitypetagFFI
 
     addBinding' "make-datadecltag" =<< makeFunctionValue makeDataDeclTag'

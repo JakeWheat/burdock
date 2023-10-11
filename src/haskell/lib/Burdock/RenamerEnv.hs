@@ -419,15 +419,14 @@ createType :: SourcePosition
              -> RenamerEnv
              -> ([StaticError], RenamerEnv)
 createType sp i numParams vs re =
-    case lookup [i] (reBindings re) of
+    let renamedTypeName = renameTypeName i
+    in case lookup [renamedTypeName] (reBindings re) of
         Just (_,sp',_) -> ([IdentifierRedefined sp sp' i], re)
-        _ ->
-            let renamedTypeName = renameTypeName i
-                bs = (renamedTypeName,(sp,BEType numParams))
+        _ -> let bs = (renamedTypeName,(sp,BEType numParams))
                       : flip map vs (\(vsp,vnm) -> (vnm, (vsp,BEVariant 0)))
-            in ([]
-               ,re {reBindings = flip map bs (\(nm,(sp',be)) -> ([nm],([nm], sp', be))) ++ reBindings re
-                   ,reLocalBindings = bs ++ reLocalBindings re})
+             in ([]
+                ,re {reBindings = flip map bs (\(nm,(sp',be)) -> ([nm],([nm], sp', be))) ++ reBindings re
+                    ,reLocalBindings = bs ++ reLocalBindings re})
 
 {-
 

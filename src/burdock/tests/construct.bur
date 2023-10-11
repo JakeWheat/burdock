@@ -73,3 +73,13 @@ check:
   [list1: 1, 1, 1, 1, 1] is "xfive things"
   [list1: "a", "b", "c", true, false, 5] is "xtoo many things"
 end
+
+random-thing = 4
+
+data random-thing:
+  | xxxxx
+end
+
+#data random-thing:
+#  | xxxxx
+#end
