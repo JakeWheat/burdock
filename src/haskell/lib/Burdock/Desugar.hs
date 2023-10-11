@@ -432,7 +432,7 @@ desugarExpr (S.Let _ bs e) =
 
 desugarExpr (S.Parens _ e) = desugarExpr e
 
--- temp until construct implemented fully
+-- temp, want to put list = make-burdock-list in the bootstrap or internals
 desugarExpr (S.Construct _ ["list"] es) =
     desugarExpr $ S.App Nothing (S.Iden Nothing "make-burdock-list") es
 
@@ -442,6 +442,10 @@ desugarExpr (S.Construct _ ["haskell-list"] es) =
 
 desugarExpr (S.UnaryMinus sp e) =
     desugarExpr (S.BinOp sp (S.Num sp (-1)) "*" e)
+
+-- [myname : es] -> myname.make([list:es])
+desugarExpr (S.Construct sp [nm] es) =
+    desugarExpr $ S.App sp (S.DotExpr sp (S.Iden sp nm) "make") [S.Construct sp ["list"] es]
 
 ------------------
 -- S -> I

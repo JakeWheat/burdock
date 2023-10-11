@@ -480,7 +480,9 @@ rewriteExpr (S.RecordSel sp fs) =
 rewriteExpr (S.TupleGet sp e i) =
     (\e' -> S.TupleGet sp e' i) <$> rewriteExpr e
 
-rewriteExpr (S.Construct sp nm es) = S.Construct sp nm <$> mapM rewriteExpr es
+rewriteExpr (S.Construct sp nm es) = do
+    nm' <- callWithEnv $ renameIdentifier $ map (sp,) nm
+    S.Construct sp (map snd nm') <$> mapM rewriteExpr es
 
 rewriteExpr (S.AssertTypeCompat sp e ann) = do
     ann' <- rewriteAnn ann

@@ -43,4 +43,3 @@ data Binding
     | VariantBinding Text [Binding]
     | TupleBinding [Binding]
     deriving (Eq,Show,Data)
-
