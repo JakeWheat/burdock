@@ -191,6 +191,7 @@ data BootstrapValues
     ,btListEmpty :: Value
     ,btListLink :: Value
     ,btNothing :: Value
+    ,btStringTypeTag :: FFITypeTag
     }
 
 emptyRuntimeState :: IO RuntimeState
@@ -358,6 +359,12 @@ makeValueName tgn v = do
 makeString :: Text -> Runtime Value
 makeString s = makeValueName "string" s
 
+makeStringInternal :: Text -> Runtime Value
+makeStringInternal t = do
+    st <- ask
+    btV <- liftIO $ readIORef (rtBootstrapRecTup st)
+    pure $ makeValue (btStringTypeTag btV) t
+
 makeBool :: Bool -> Runtime Value
 makeBool b = makeValueName "boolean" b
 
@@ -423,11 +430,11 @@ getMember v@(VariantV _ _ fs) fld = do
         Just v1 -> pure v1
 
 getMember (MethodV {}) "_torepr" = do
-    v <- makeString "<method>"
+    v <- makeStringInternal "<method>"
     makeFunctionValue (\_ -> pure v)
     --pure $ makeValue "string" ("<methodv>" :: Text)
 getMember (VFun {}) "_torepr" = do
-    v <- makeString "<function>"
+    v <- makeStringInternal "<function>"
     makeFunctionValue (\_ -> pure v)
 
 getMember (BoxV v) fld = do

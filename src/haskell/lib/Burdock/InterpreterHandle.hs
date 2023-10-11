@@ -12,6 +12,7 @@ adds some debug support
 {-# LANGUAGE TupleSections #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.InterpreterHandle
     (createHandle
     ,runRuntime
@@ -45,7 +46,8 @@ import Burdock.RuntimeBootstrap
     ,lookupBinding
     ,setBootstrapRecTup
     ,BootstrapValues(..)
-    
+
+    ,FFITypeTag
     
     ,Value
 
@@ -109,7 +111,9 @@ import System.FilePath
     )
 
 import Burdock.ModuleMetadata
-    (ModuleMetadata(..))
+    (ModuleMetadata(..)
+    ,BindingMeta(BEIdentifier)
+    )
 
 import Burdock.Pretty (prettyScript)
 
@@ -152,7 +156,9 @@ createHandle = do
     (st,hp) <- createBootstrapHandle
     runRuntime st $ do
         -- add the burdock module handler, then run the initial burdock scripts
-        bootstrapMetadata <- getTempEnvStage
+        ModuleMetadata bootstrapMetadata' <- getTempEnvStage
+        -- hack cos list construct is implemented in desugar atm
+        let bootstrapMetadata = ModuleMetadata (("list", (Nothing, BEIdentifier)) : bootstrapMetadata')
         
         mp <- burdockModulePlugin
         addModulePlugin "file" mp
@@ -160,6 +166,11 @@ createHandle = do
         (bmm,_) <- runScript' debugPrintBootstrap (Just "_bootstrap") bootstrap
 
         let lkpf f = maybe (error $ "_bootstrap " <> f <> " not found") id <$> lookupBinding f
+            typeTag t = do
+                v <- maybe (error $ "_bootstrap " <> t  <> " not found") id <$> lookupBinding t
+                case extractValue v of
+                    Just (t' :: FFITypeTag) -> pure t'
+                    Nothing -> error $ "_bootstrap type " <> t <> " looked up to: " <> debugShowValue v
 
         setBootstrapRecTup =<< BootstrapValues
             <$> lkpf "_tuple_equals"
@@ -169,6 +180,7 @@ createHandle = do
             <*> lkpf "empty"
             <*> lkpf "link"
             <*> lkpf "nothing"
+            <*> typeTag "string"
         
         -- temp: add the bootstrap ffi + bootstrap burdock metadata
         let tempCombineModuleMetadata (ModuleMetadata a) (ModuleMetadata b) = ModuleMetadata (a ++ b)
