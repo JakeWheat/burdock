@@ -434,7 +434,7 @@ Result:
 _module_file_mymod = load-module("provide hiding", "file", [list: "mymod"])
 _module_file_mymod.b
 
-
+# next provide tests: do imported use as well as just desugared module
 Test: provide named type
 Module:
 provide:
@@ -463,17 +463,47 @@ data MyType:
 end
 make-module({_typeinfo-NotMyType:_typeinfo-MyType})
 
+Test: provide ctor
+Module:
+provide:
+  ctor1
+end
+data MyData:
+  | ctor1(a)
+end
+Result:
+data MyData:
+  | ctor1(a)
+end
+make-module({ctor1:ctor1,_patterninfo-ctor1:_patterninfo-ctor1})
 
-# Test: provide renamed type
-# Test provide type *
+Test: provide rename ctor
+Module:
+provide:
+  ctor1 as ctor2
+end
+data MyData:
+  | ctor1(a)
+end
+Result:
+data MyData:
+  | ctor1(a)
+end
+make-module({ctor2:ctor1,_patterninfo-ctor2:_patterninfo-ctor1})
 
-# Test: provide named type script
-
-
-# Test: provide renamed type script
-# Test provide type * script
-
-
+Test: provide * with variants
+Module:
+provide:
+  *
+end
+data MyData:
+  | ctor1(a)
+end
+Result:
+data MyData:
+  | ctor1(a)
+end
+make-module({ctor1:ctor1,_patterninfo-ctor1:_patterninfo-ctor1,is-MyData:is-MyData,is-ctor1:is-ctor1})
 
 Test: includefrom explicit
 File: imported
@@ -610,7 +640,7 @@ Result:
 data Test: test(a) end
 a = test(3)
 cases a:
-  | test(_) => 1
+  | _patterninfo-test(_) => 1
 end
 
 Test: variant not found
@@ -679,8 +709,8 @@ Result:
 _module_file_imported = load-module("import variant", "file", [list: "imported"])
 a = _module_file_imported.test(3)
 cases a:
-  | _module_file_imported.test(_) => 4
-  | _module_file_imported.test2 => 5
+  | _module_file_imported._patterninfo-test(_) => 4
+  | _module_file_imported._patterninfo-test2 => 5
   | el => 6
 end
 
@@ -791,7 +821,7 @@ end
 z = 3
 cases z:
   | x => x
-  | ctor2(a,b) => a + b
+  | _patterninfo-ctor2(a,b) => a + b
 end
 
 Test: nested patterns
@@ -813,7 +843,7 @@ Result:
 _module_file_imported = load-module("nested patterns", "file", [list: "imported"])
 z = 3
 cases z:
-  | _module_file_imported.ctor2(a,_module_file_imported.ctor2(_module_file_imported.ctor0,d)) => a + d
+  | _module_file_imported._patterninfo-ctor2(a,_module_file_imported._patterninfo-ctor2(_module_file_imported._patterninfo-ctor0,d)) => a + d
 end
 
 Test: check more patterns
@@ -846,12 +876,12 @@ _module_file_imported = load-module("check more patterns", "file", [list: "impor
 z = 3
 cases z:
   | a => a
-  | _module_file_imported.ctor2(a,_module_file_imported.ctor2(_module_file_imported.ctor0,d)) => a + d
+  | _module_file_imported._patterninfo-ctor2(a,_module_file_imported._patterninfo-ctor2(_module_file_imported._patterninfo-ctor0,d)) => a + d
   | b :: _module_file_imported._typeinfo-Test => b
   | shadow c => c
   | _ => 0
   | {a;b} => a + b
-  | {a;_module_file_imported.ctor0} => a
+  | {a;_module_file_imported._patterninfo-ctor0} => a
   | {_;_} as c => c
   | 4 => 5
   | 'test' => 'test1'

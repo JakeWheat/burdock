@@ -75,6 +75,7 @@ import Burdock.Renamer
     ,prettyStaticErrors
     ,ModuleID(..)
     ,renameTypeName
+    ,renameVariantPattern
     )
 
 ------------------------------------------------------------------------------
@@ -246,7 +247,9 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
     -- make sure the is-var are available for the is-dat
     -- make sure all of these are available for the methods
     [typeStub] ++ map isIt vs ++ [isDat]
-    ++ map makeIt vs ++ desugarToRec ss
+    ++ map makeIt vs
+    ++ map patternInfo vs
+    ++ desugarToRec ss
   where
     typeinfoName = renameTypeName dnm
     typeStub = letDecl typeinfoName $ S.App n (S.Iden n "make-datadecltag") [S.Text n dnm]
@@ -277,6 +280,9 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
                  in recDecl vnm
                     $ S.Lam n (fh $ map (S.NameBinding n) ps)
                     [S.StmtExpr n $ callMakeVariant ps]
+    patternInfo (S.VariantDecl _ vnm _ _) =
+        letDecl (renameVariantPattern vnm)
+        $ S.Construct n ["haskell-list"] [S.Iden n typeinfoName, S.Text n vnm]
     isIt (S.VariantDecl _ vnm _ _) =
         letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
                                    S.App n (S.Iden n "is-variant")

@@ -70,6 +70,7 @@ module Burdock.Renamer
     ,renameModule
     ,renameScript
     ,renameTypeName
+    ,renameVariantPattern
 
     ,ModuleMetadata
     ,ModuleID(..)
@@ -107,6 +108,7 @@ import Burdock.RenamerEnv
     ,renameBinding
     ,renameAssign
     ,renameTypeName
+    ,renameVariantPattern
     )
 
 import qualified Burdock.RenamerEnv as R

@@ -40,7 +40,7 @@ module Burdock.RenamerEnv
     ,renameAssign
     ,renameTypeName
     ,renameQTypeName
-
+    ,renameVariantPattern
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -306,6 +306,7 @@ includeFrom sp mal pis re =
         ProvideAlias sp' [i] nm ->
             case lookup i (mmBindings modMeta) of
                 Nothing -> tell [UnrecognisedIdentifier sp' [i]]
+                -- special case for variants
                 Just (sp'',be) -> addOne ([nm], ([canonicalAlias,i], sp'', be))
             
         x -> error $ "unsupported include from provide item: " <> show x
@@ -335,16 +336,26 @@ applyProvides re =
         localBindings = reverse $ reLocalBindings re
         ps :: [((Text,(SourcePosition, BindingMeta)), [Text])]
         ps = flip concatMap (reProvideItems re) $ \case
-            ProvideAll _ -> map (\e@(nm,_) -> (e, [nm]))
-                $ filter (\(_, (_,x)) -> case x of
-                                 BEType {} -> False
-                                 _ -> True)
-                  localBindings
+            ProvideAll _ ->
+                flip concatMap localBindings $ \case
+                    (nm,(_,BEType{})) -> []
+                    e@(nm,e1@(_,BEVariant{})) -> [(e, [nm])
+                                              ,((renameVariantPattern nm,e1), [renameVariantPattern nm])]
+                    e@(nm,_) -> [(e, [nm])]
             ProvideName _ as -> case lookup as (reBindings re) of
                 Nothing -> error $ "identifier not found: " <> show as
+                -- special case for variants
+                Just (cn,sp,be@(BEVariant {})) ->
+                    [((last as,(sp,be)), cn)
+                    ,((renameVariantPattern $ last as,(sp,be)), renameQVariantPattern cn)]
                 Just (cn,sp,be) -> [((last as,(sp,be)), cn)]
             ProvideAlias _ as n -> case lookup as (reBindings re) of
                 Nothing -> error $ "identifier not found: " <> show as
+                -- special case for variants
+                Just (cn,sp,be@(BEVariant {})) ->
+                    [((n,(sp,be)), cn)
+                    ,((renameVariantPattern n,(sp,be)), renameQVariantPattern cn)
+                    ]
                 Just (cn,sp,be) -> [((n,(sp,be)), cn)]
             ProvideHiding _ nms ->
                 map (\e@(nm,_) -> (e, [nm]))
@@ -478,14 +489,14 @@ renameBinding b re =
             case lookup [nm] (reBindings re) of
                 -- todo: check number of args, if it isn't 0, it should be
                 -- an error
-                Just (cn, _, BEVariant numP) -> ([], VariantBinding sp cn numP)
+                Just (cn, _, BEVariant numP) -> ([], VariantBinding sp (renameQVariantPattern cn) numP)
                 Nothing -> ([], b)
                 -- error: should be caught when attempt to apply the binding
                 Just (_, _, _) -> ([], b)
         VariantBinding sp nm _numP ->
             -- todo: check number of args match
             case lookup nm (reBindings re) of
-                Just (cn, _, BEVariant numP) -> ([], VariantBinding sp cn numP)
+                Just (cn, _, BEVariant numP) -> ([], VariantBinding sp (renameQVariantPattern cn) numP)
                 _ -> ([UnrecognisedIdentifier sp nm], b)
 
 -- check if the target of the assign is a variable
@@ -526,5 +537,10 @@ when providing names, if they are variants, you export/import and rename
   the corresponding _patterninfo- binding too
 -}
 
---renameVariantPattern :: Text -> Text
---renameVariantPattern = ("_patterninfo-" <>)
+renameVariantPattern :: Text -> Text
+renameVariantPattern = ("_patterninfo-" <>)
+
+renameQVariantPattern :: [Text] -> [Text]
+renameQVariantPattern x = if null x
+    then error $ "empty qvariantname"
+    else init x ++ [renameVariantPattern $ last x]

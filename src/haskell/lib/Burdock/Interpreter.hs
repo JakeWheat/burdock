@@ -51,6 +51,7 @@ import Burdock.RuntimeBootstrap
     )
 
 import Data.Text (Text)
+import qualified Data.Text as T
     
 import Control.Monad
     (forM_
@@ -248,10 +249,10 @@ tryApplyBinding :: I.Binding -> Value -> Runtime (Maybe [(Text,Value)])
 
 
 -- temp? hack for boolean literals
-tryApplyBinding (I.VariantBinding "true" []) v | Just True <- extractValue v = pure $ Just []
-tryApplyBinding (I.VariantBinding "true" []) _ = pure Nothing
-tryApplyBinding (I.VariantBinding "false" []) v | Just False <- extractValue v = pure $ Just []
-tryApplyBinding (I.VariantBinding "false" []) _ = pure Nothing
+tryApplyBinding (I.VariantBinding "_patterninfo-true" []) v | Just True <- extractValue v = pure $ Just []
+tryApplyBinding (I.VariantBinding "_patterninfo-true" []) _ = pure Nothing
+tryApplyBinding (I.VariantBinding "_patterninfo-false" []) v | Just False <- extractValue v = pure $ Just []
+tryApplyBinding (I.VariantBinding "_patterninfo-false" []) _ = pure Nothing
 
 tryApplyBinding (I.NameBinding nm) v = pure $ Just [(nm,v)]
 tryApplyBinding I.WildcardBinding _ = pure $ Just []
@@ -267,7 +268,9 @@ tryApplyBinding (I.TupleBinding bs) v = do
                 x <- zipWithM tryApplyBinding bs vs
                 pure $ (concat <$> sequence x)
 
-tryApplyBinding (I.VariantBinding vnm flds) v = do
+tryApplyBinding (I.VariantBinding vnm' flds) v = do
+    -- temp quick hack
+    let vnm = T.drop (T.length ("_patterninfo-"::Text)) vnm'
     -- check v is a variant
     vt' <- variantName v 
     case vt' of
