@@ -74,6 +74,7 @@ import Burdock.Renamer
     ,renameModule
     ,prettyStaticErrors
     ,ModuleID(..)
+    ,renameTypeName
     )
 
 ------------------------------------------------------------------------------
@@ -247,7 +248,8 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
     [typeStub] ++ map isIt vs ++ [isDat]
     ++ map makeIt vs ++ desugarToRec ss
   where
-    typeStub = letDecl dnm $ S.App n (S.Iden n "make-datadecltag") [S.Text n dnm]
+    typeinfoName = renameTypeName dnm
+    typeStub = letDecl typeinfoName $ S.App n (S.Iden n "make-datadecltag") [S.Text n dnm]
     makeIt (S.VariantDecl _ vnm bs meths) =
         let defaultMeths =
                 [(S.Text n "_equals"
@@ -265,7 +267,7 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
             extraMeths = filter defaultNeeded defaultMeths ++ suppliedMeths
             callMakeVariant ps =
                 S.App n (S.Iden n "make-variant")
-                  [ S.Iden n dnm
+                  [ S.Iden n typeinfoName
                   , S.Text n vnm
                   , lst $ map fst extraMeths ++ map (S.Text n) ps
                   , lst $ map snd extraMeths ++ map (S.Iden n) ps]
@@ -278,12 +280,12 @@ desugarToRec (S.DataDecl _ dnm _ vs shr Nothing : ss) =
     isIt (S.VariantDecl _ vnm _ _) =
         letDecl ("is-" <> vnm) $ lam ["x"] [S.StmtExpr n $
                                    S.App n (S.Iden n "is-variant")
-                                   [S.Iden n dnm, S.Text n vnm, S.Iden n "x"]]
+                                   [S.Iden n typeinfoName, S.Text n vnm, S.Iden n "x"]]
     lst es = S.Construct n ["haskell-list"] es
     isDat = letDecl ("is-" <> dnm)
             $ lam ["x"]
             [S.StmtExpr n $ S.App n (S.Iden n "is-type")
-             [S.Iden n dnm, S.Iden n "x"]]
+             [S.Iden n typeinfoName, S.Iden n "x"]]
     sbNm (_,S.SimpleBinding _ _ nm _) = nm
     n = Nothing
     letDecl nm v = S.LetDecl n (mnm nm) v

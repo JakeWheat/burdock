@@ -481,7 +481,7 @@ assert-type-compat(a :: Test)
 Result:
 data Test: test(a) end
 a = test(3)
-assert-type-compat(a :: Test)
+assert-type-compat(a :: _typeinfo-Test)
 
 Test: type not found
 Script:
@@ -500,7 +500,7 @@ assert-type-compat(a :: i.Test)
 Result:
 _module_file_imported = load-module("import type", "file", [list: "imported"])
 a = 3
-assert-type-compat(a :: _module_file_imported.Test)
+assert-type-compat(a :: _module_file_imported._typeinfo-Test)
 
 Test: trivial variant
 Script:
@@ -734,7 +734,7 @@ z = 3
 cases z:
   | a => a
   | _module_file_imported.ctor2(a,_module_file_imported.ctor2(_module_file_imported.ctor0,d)) => a + d
-  | b :: _module_file_imported.Test => b
+  | b :: _module_file_imported._typeinfo-Test => b
   | shadow c => c
   | _ => 0
   | {a;b} => a + b

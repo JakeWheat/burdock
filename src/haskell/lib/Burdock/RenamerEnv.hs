@@ -38,6 +38,8 @@ module Burdock.RenamerEnv
     ,renameType
     ,renameBinding
     ,renameAssign
+    ,renameTypeName
+    ,renameQTypeName
 
     ) where
 
@@ -391,10 +393,12 @@ createType sp i numParams vs re =
     case lookup [i] (reBindings re) of
         Just (_,sp',_) -> ([IdentifierRedefined sp sp' i], re)
         _ ->
-            let bs = (i,(sp,BEType numParams))
+            let renamedTypeName = renameTypeName i
+                bs = (renamedTypeName,(sp,BEType numParams))
                       : flip map vs (\(vsp,vnm) -> (vnm, (vsp,BEVariant 0)))
-            in ([], re {reBindings = flip map bs (\(nm,(sp',be)) -> ([nm],([nm], sp', be))) ++ reBindings re
-                       ,reLocalBindings = bs ++ reLocalBindings re})
+            in ([]
+               ,re {reBindings = flip map bs (\(nm,(sp',be)) -> ([nm],([nm], sp', be))) ++ reBindings re
+                   ,reLocalBindings = bs ++ reLocalBindings re})
 
 {-
 
@@ -428,7 +432,7 @@ renameIdentifier [] _ = error $ "internal error: empty identifier"
 -- same as renameIdentifier, but for type names
 renameType :: SourcePosition -> [Text] -> RenamerEnv -> ([StaticError], (SourcePosition,[Text]))
 renameType sp x re =
-    case lookup x (reBindings re) of
+    case lookup (renameQTypeName x) (reBindings re) of
         Nothing -> ([UnrecognisedIdentifier sp x], (sp,x))
         -- todo: check if type
         Just (cn, _, _) -> ([], (sp, cn))
@@ -475,3 +479,34 @@ renameAssign sp nm re =
         -- todo: check if type
         Just (cn, _, BEVariable) -> ([], cn)
         Just (_, sp1, _) -> ([AssignToNonVar sp sp1 nm], nm)
+
+
+{-
+want to have constructors and types with the same name
+so they can't straightforwardly be in the same namespace
+pyret just puts them in completely different namespaces
+as a hack, rename Type to _typeinfo-Type
+then it sort of works as if they are in different namespaces
+-}
+renameTypeName :: Text -> Text
+renameTypeName = ("_typeinfo-" <>)
+
+renameQTypeName :: [Text] -> [Text]
+renameQTypeName x = if null x
+    then error $ "empty qtype name"
+    else init x ++ [renameTypeName $ last x]
+
+{-
+a variant is an identifier, which returns the constant or function
+to make a value of that variant
+it is also something that allows you to pattern match on the variant
+in this system, it will lookup a typeinfo/variant name pair
+the renamer will leave variant expressions pointing to the renamed
+  variant
+but patterns will point to _patterninfo-Variant
+when providing names, if they are variants, you export/import and rename
+  the corresponding _patterninfo- binding too
+-}
+
+--renameVariantPattern :: Text -> Text
+--renameVariantPattern = ("_patterninfo-" <>)
