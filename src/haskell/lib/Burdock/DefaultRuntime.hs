@@ -112,6 +112,10 @@ import Data.IORef
 bootstrap :: L.Text
 bootstrap = [R.r|
 
+provide:
+  *
+end
+
 _record_torepr = method(self):
    show-record(self)
  end
@@ -177,6 +181,10 @@ end
 
 internals :: L.Text
 internals = [R.r|
+
+provide:
+  *
+end
 
 ##################
 # built in stuff

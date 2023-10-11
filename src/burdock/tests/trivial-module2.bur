@@ -1,3 +1,5 @@
-
+provide:
+  *
+end
 #print("load me2")
 a = 7

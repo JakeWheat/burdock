@@ -18,23 +18,32 @@ unrecognised-identifier([list: "a"])
 
 Test: import
 Module:
+provide:
+  *
+end
 a = 3
 Result:
 a = 3
 make-module({a:a})
 
-Test: import
+Test: import1
 File: imported
+provide:
+  *
+end
 a = 3
 Script:
 import file("imported") as i
 i.a
 Result:
-_module_file_imported = load-module("import", "file", [list:"imported"])
+_module_file_imported = load-module("import1", "file", [list:"imported"])
 _module_file_imported.a
 
 Test: import unrec
 File: imported
+provide:
+  *
+end
 a = 3                                                
 Script:
 import file("imported") as i
@@ -73,6 +82,9 @@ unrecognised-identifier([list: "a"])
 
 Test: block no escape module version
 Module:
+provide:
+  *
+end
 a = 2
 block:
   b = 3
@@ -105,6 +117,9 @@ unrecognised-identifier([list: "b", "x"])
 
 Test: import field access
 File: imported
+provide:
+  *
+end
 a = 3        
 Script:                                        
 import file("imported") as i
@@ -115,6 +130,9 @@ _module_file_imported.a.x
 
 Test: import field access fail
 File: imported
+provide:
+  *
+end
 a = 3        
 Script:                                        
 import file("imported") as i
@@ -143,6 +161,9 @@ identifier-redefined("a")
 
 Test: includefrom
 File: imported
+provide:
+  *
+end
 a = 3
 Script:
 import file("imported") as i
@@ -154,6 +175,9 @@ _module_file_imported.a
 
 Test: includefrom with field access
 File: imported
+provide:
+  *
+end
 a = 3        
 Script:                                        
 import file("imported") as i
@@ -165,8 +189,14 @@ _module_file_imported.a.x
 
 Test: includefrom * clash
 File: imported1
+provide:
+  *
+end
 a = 3        
 File: imported2
+provide:
+  *
+end
 a = 3        
 Script:                                        
 import file("imported1") as i1
@@ -179,6 +209,9 @@ identifier-redefined("a")
 
 Test: include shadow fail
 File: imported
+provide:
+  *
+end
 a = 3
 Script:
 import file("imported") as i
@@ -190,6 +223,9 @@ identifier-redefined("a")
 
 Test: include shadow ok
 File: imported
+provide:
+  *
+end
 a = 3
 Script:
 import file("imported") as i
@@ -399,8 +435,51 @@ _module_file_mymod = load-module("provide hiding", "file", [list: "mymod"])
 _module_file_mymod.b
 
 
+Test: provide named type
+Module:
+provide:
+  type MyType
+end
+data MyType:
+  | something
+end
+Result:
+data MyType:
+  | something
+end
+make-module({_typeinfo-MyType:_typeinfo-MyType})
+
+Test: provide renamed type
+Module:
+provide:
+  type MyType as NotMyType
+end
+data MyType:
+  | something
+end
+Result:
+data MyType:
+  | something
+end
+make-module({_typeinfo-NotMyType:_typeinfo-MyType})
+
+
+# Test: provide renamed type
+# Test provide type *
+
+# Test: provide named type script
+
+
+# Test: provide renamed type script
+# Test provide type * script
+
+
+
 Test: includefrom explicit
 File: imported
+provide:
+  *
+end
 a = 3
 b = 4
 d = 5
@@ -414,6 +493,9 @@ _module_file_imported.a
 
 Test: includefrom explicit fail
 File: imported
+provide:
+  *
+end
 a = 3
 b = 4
 d = 5
@@ -426,6 +508,9 @@ unrecognised-identifier([list: "b"])
 
 Test: includefrom non existent
 File: imported
+provide:
+  *
+end
 a = 3
 b = 4
 d = 5
@@ -437,6 +522,9 @@ unrecognised-identifier([list: "e"])
 
 Test: includefrom rename
 File: imported
+provide:
+  *
+end
 a = 3
 b = 4
 d = 5
@@ -450,6 +538,9 @@ _module_file_imported.a
 
 Test: includefrom hiding
 File: imported
+provide:
+  *
+end
 a = 3
 b = 4
 d = 5
@@ -463,6 +554,9 @@ _module_file_imported.b
 
 Test: includefrom hiding fail
 File: imported
+provide:
+  *
+end
 a = 3
 b = 4
 d = 5
@@ -492,6 +586,9 @@ unrecognised-identifier([list: "Test"])
 
 Test: import type
 File: imported
+provide:
+  type Test
+end
 data Test: test(a) end
 Script:
 import file("imported") as i
@@ -560,6 +657,9 @@ end
 
 Test: import variant
 File: imported
+provide:
+  *
+end
 data Test:
   | test(a)
   | test2
@@ -601,6 +701,9 @@ assign-to-non-var([list: "a"])
 
 Test: import var assign
 File: imported
+provide:
+  *
+end
 var a = 4
 Script:
 import file("imported") as i
@@ -611,6 +714,9 @@ _module_file_imported.a := 5
 
 Test: import assign fail
 File: imported
+provide:
+  *
+end
 a = 4
 Script:
 import file("imported") as i
@@ -690,6 +796,9 @@ end
 
 Test: nested patterns
 File: imported
+provide:
+  *
+end
 data Test:
   | ctor0
   | ctor2(a,b)
@@ -709,6 +818,10 @@ end
 
 Test: check more patterns
 File: imported
+provide:
+  *,
+  type *
+end
 data Test:
   | ctor0
   | ctor2(a,b)

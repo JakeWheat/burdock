@@ -57,6 +57,7 @@ import Burdock.Syntax
 import Data.Text (Text)
 import qualified Data.Text as T
 
+import Data.Maybe (mapMaybe)
 import Data.Data (Data)
 import Burdock.Syntax (SourcePosition)
 
@@ -329,17 +330,16 @@ queryLoadModules re = ([], reLoadModules re)
 -- it will check for name clashes and unrecognised identifiers
 applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, [([Text],Text)]))
 applyProvides re =
-    let -- todo: no provides doesn't default to this, it defaults
-        -- to providing nothing
-        provideItems = if null (reProvideItems re)
-                       then [ProvideAll Nothing]
-                       else reProvideItems re
-        -- return the provided items in the order they were seen
+    let -- return the provided items in the order they were seen
+        -- when using *
         localBindings = reverse $ reLocalBindings re
         ps :: [((Text,(SourcePosition, BindingMeta)), [Text])]
-        ps = flip concatMap provideItems $ \case
-            -- todo: filter by type of binding
-            ProvideAll _ -> map (\e@(nm,_) -> (e, [nm])) localBindings
+        ps = flip concatMap (reProvideItems re) $ \case
+            ProvideAll _ -> map (\e@(nm,_) -> (e, [nm]))
+                $ filter (\(_, (_,x)) -> case x of
+                                 BEType {} -> False
+                                 _ -> True)
+                  localBindings
             ProvideName _ as -> case lookup as (reBindings re) of
                 Nothing -> error $ "identifier not found: " <> show as
                 Just (cn,sp,be) -> [((last as,(sp,be)), cn)]
@@ -350,6 +350,24 @@ applyProvides re =
                 map (\e@(nm,_) -> (e, [nm]))
                 $ filter ((`notElem` nms) . fst)
                 $ localBindings
+            ProvideType _ nm ->
+                let tinfoname = renameQTypeName nm
+                in case lookup tinfoname (reBindings re) of
+                    Nothing -> error $ "identifier not found: " <> show nm
+                    Just (cn,sp,be@(BEType{})) -> [((renameTypeName $ last nm,(sp,be)), cn)]
+                    Just {} -> error $ "internal: type provide item names non type: " <> show nm
+                    -- todo: can look up without the renameqtypename and give a more helpful
+                    -- error message in this case
+            ProvideTypeAlias _ nm al ->
+                let tinfoname = renameQTypeName nm
+                in case lookup tinfoname (reBindings re) of
+                    Nothing -> error $ "identifier not found: " <> show nm
+                    Just (cn,sp,be@(BEType{})) -> [((renameTypeName al,(sp,be)), cn)]
+                    Just {} -> error $ "internal: type provide item names non type: " <> show nm
+            ProvideTypeAll _ ->
+                flip mapMaybe localBindings $ \case
+                    (nm, (sp, be@(BEType{}))) -> Just ((nm, (sp,be)), [nm])
+                    _ -> Nothing
             x -> error $ "unsupported provide item " <> show x
         (ms,rs) = unzip $ flip map ps $ \(a@(nm,_), cn) -> (a,(cn,nm))
     in ([], (ModuleMetadata ms, rs))

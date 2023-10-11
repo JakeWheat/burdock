@@ -31,4 +31,3 @@ data ModuleMetadata
 
 tempEmptyModuleMetadata :: ModuleMetadata
 tempEmptyModuleMetadata = ModuleMetadata []
-

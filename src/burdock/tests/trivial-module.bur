@@ -1,4 +1,6 @@
-
+provide:
+  *
+end
 
 #print("load me")
 a = 5
