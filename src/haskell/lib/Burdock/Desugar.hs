@@ -25,7 +25,6 @@ module Burdock.Desugar
     ,getImportSources
     ,ModuleMetadata
     ,ModuleID(..)
-    ,internals
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -45,8 +44,6 @@ import Data.List
     (nub
     ,(\\)
     )
-
-import Burdock.DefaultRuntime (internals)
 
 import Control.Monad.Reader
     (runReader

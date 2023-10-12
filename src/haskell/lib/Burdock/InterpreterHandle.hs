@@ -13,6 +13,7 @@ adds some debug support
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE QuasiQuotes #-}
 module Burdock.InterpreterHandle
     (createHandle
     ,runRuntime
@@ -81,11 +82,6 @@ import Burdock.Desugar
 
 import qualified Burdock.Syntax as S
 
-import Burdock.DefaultRuntime
-    (internals
-    ,bootstrap
-    )
-    
 import Control.Monad
     (when
     ,forM
@@ -136,6 +132,7 @@ import Burdock.Interpreter
     (interpBurdock
     )
 
+import qualified Text.RawString.QQ as R
 
 ------------------------------------------------------------------------------
 
@@ -337,3 +334,105 @@ burdockModulePlugin = do
         RuntimeImportSource _ [fn] -> fn
         RuntimeImportSource _ as -> error $ "bad args to burdock module source: " <> show as
         
+
+------------------------------------------------------------------------------
+
+-- temp hack, before modules implemented, have bootstrap burdock
+-- then internals burdock, that are run in a handle when it's created
+-- before any user code
+
+bootstrap :: L.Text
+bootstrap = [R.r|
+
+provide:
+  *
+end
+
+data Nothing: nothing end
+
+data list:
+  | link(first, rest)
+  | empty
+sharing:
+  method _torepr(self):
+    fun intercalate-items(l):
+      cases l:
+        | empty => ""
+        | link(x, y) =>
+          cases y:
+            | empty => torepr(x)
+            | else => torepr(x) + ", " + intercalate-items(y)
+          end
+      end
+    end
+    cases self:
+      | empty => "[list: ]"
+      | link(x,y) => "[list: "
+          + intercalate-items(self) + "]"
+    end
+  end,
+  method _plus(self,b):
+    cases self:
+      | empty => b
+      | link(x,y) => link(x, y + b)
+    end
+  end,
+  method length(self):
+    cases self:
+      | empty => 0
+      | link(_,b) => 1 + b.length()
+    end
+  end ,
+  method map(self,f):
+    cases self:
+      | empty => empty
+      | link(a,b) => link(f(a), b.map(f))
+    end
+  end
+end
+
+             |]
+
+---------------------------------------
+
+internals :: L.Text
+internals = [R.r|
+
+provide:
+  *
+end
+
+##################
+# built in stuff
+           
+data Either:
+  | left(v)
+  | right(v)
+end
+
+_run-task-fixup = lam(x):
+    cases x:
+      | left(es) => left(es.exception)
+      | _ => x
+    end
+  end
+
+
+##################
+# more built in stuff
+
+#repeat :: (n :: Number, e :: a) -> List<a>
+fun repeat(n,e):
+  if n > 0:
+    link(e, repeat(n - 1, e))
+  else:
+    empty
+  end
+end
+
+# temp
+fun make-module(m):
+  m
+end
+
+  |]

@@ -33,7 +33,6 @@ common shared-properties
                       Burdock.Scientific
                       Burdock.Runtime
                       Burdock.RuntimeBootstrap
-                      Burdock.DefaultRuntime
                       Burdock.Interpreter
                       Burdock.InterpreterHandle
                       Burdock.InterpreterSyntax
