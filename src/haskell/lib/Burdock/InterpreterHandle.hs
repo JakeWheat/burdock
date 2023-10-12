@@ -173,9 +173,7 @@ createHandle = do
                     Nothing -> error $ "_bootstrap type " <> t <> " looked up to: " <> debugShowValue v
 
         setBootstrapRecTup =<< BootstrapValues
-            <$> lkpf "_record_equals"
-            <*> lkpf "_record_torepr"
-            <*> lkpf "empty"
+            <$> lkpf "empty"
             <*> lkpf "link"
             <*> lkpf "nothing"
             <*> typeTag "string"

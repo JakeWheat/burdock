@@ -116,14 +116,6 @@ provide:
   *
 end
 
-_record_torepr = method(self):
-   show-record(self)
- end
-
-_record_equals = method(self, b):
-   check-variants-equal(self,b)
- end
-
 data Nothing: nothing end
 
 data list:
@@ -252,9 +244,6 @@ initRuntime = do
     void $ addFFIType' "string" stringFFI
     booleanType <- addFFIType' "boolean" booleanFFI
 
-    --addBinding' "tuple" =<< makeDataDeclTag "tuple"
-    addBinding' "record" =<< makeDataDeclTag "record"
-
     void $ addFFIType' "haskell-list" ffitypetagFFI
 
     addBinding' "make-datadecltag" =<< makeFunctionValue makeDataDeclTag'
@@ -278,8 +267,6 @@ initRuntime = do
 
     addBinding' "torepr" =<< makeFunctionValue myToRepr
     addBinding' "show-variant" =<< makeFunctionValue showVariant
-    --addBinding' "show-tuple" =<< makeFunctionValue showTuple
-    addBinding' "show-record" =<< makeFunctionValue showRecord
 
     --------------------------------------
 
@@ -521,13 +508,10 @@ checkVariantsEqual [a, b@(VariantV {})] = do
     vfldsa <- variantValueFields a
     vfldsb <- variantValueFields b
     -- hack for records:
-    let exFlds t l = if t == Just "record"
-                     then sort (map fst l)
-                     else map fst l
     case (at,bt,vfldsa,vfldsb) of
         (Just at', Just bt',Just vfldsa', Just vfldsb') ->
             if at' == bt' &&
-               exFlds at vfldsa' == exFlds bt vfldsb'
+               map fst vfldsa' == map fst vfldsb'
             then do
                 --liftIO $ putStrLn $ "fields equal:" <> show at'
                 fsEq <- forM (map fst vfldsa') $ \f -> do
@@ -642,52 +626,6 @@ myToString [x] = do
         Just (_ :: Text) -> pure x
         Nothing -> myToRepr[x]
 myToString _ = error $ "bad args to myToString"
-
-{-showTuple :: [Value] -> Runtime Value
-showTuple [x] = do
-    at <- variantName x
-    bt <- variantValueFields x
-    let trm e = do
-            f <- getMember e "_torepr"
-            app Nothing f []
-    case (at,bt) of
-        (Just _n, Just fs) -> do
-            let fs' = map snd fs
-            fs'' <- mapM trm fs'
-            let (es :: [Maybe Text]) = map extractValue fs''
-            let es' :: [Text]
-                es' = maybe (error "showTuple non string from torepr") id $ sequence es
-            --liftIO $ putStrLn $ show es'
-            if null es'
-                then makeString "{}"
-                else makeString $ "{" <> T.intercalate ";" es' <> "}"
-        _ -> error $ "showTuple called on non variant " <> debugShowValue x
-showTuple _ = error $ "bad args to showTuple"-}
-
-showRecord :: [Value] -> Runtime Value
-showRecord [x] = do
-    at <- variantName x
-    bt <- variantValueFields x
-    let trm e = do
-            f <- getMember e "_torepr"
-            app Nothing f []
-    case (at,bt) of
-        (Just _n, Just fs) -> do
-            -- hack
-            let fs' = map snd fs
-                nms = map fst fs
-            fs'' <- mapM trm fs'
-            let (es :: [Maybe Text]) = map extractValue fs''
-            let es' :: [Text]
-                es' = maybe (error "showTuple non string from torepr") id $ sequence es
-                es'' = zip nms es'
-                esx = map (\(a,b) -> a <> ":" <> b) es''
-            --liftIO $ putStrLn $ show es'
-            if null es''
-                then makeString "{}"
-                else makeString $ "{" <> T.intercalate "," esx <> "}"
-        _ -> error $ "showRecord called on non variant " <> debugShowValue x
-showRecord _ = error $ "bad args to showRecord"
 
 myNot :: [Value] -> Runtime Value
 myNot [x] = case extractValue x of

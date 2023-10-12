@@ -156,8 +156,8 @@ import Control.Exception.Safe (catch
                               ,bracket
                               )
 
---import Data.List (sort)
---import Control.Monad (forM)
+import Data.List (sortBy)
+import Data.Ord (comparing)
 
 ------------------------------------------------------------------------------
 
@@ -188,9 +188,7 @@ setTempEnvStage v = do
 -- system
 data BootstrapValues
     = BootstrapValues
-    {btRecEq :: Value
-    ,btRecToRepr :: Value
-    ,btListEmpty :: Value
+    {btListEmpty :: Value
     ,btListLink :: Value
     ,btNothing :: Value
     ,btStringTypeTag :: FFITypeTag
@@ -253,6 +251,7 @@ type Runtime = ReaderT RuntimeState IO
 -- todo: make this abstract
 data Value = FFIValue FFITypeTag Dynamic
            | VariantV DataDeclTypeTag Text [(Text, Value)]
+           | RecordV [(Text,Value)]
            | TupleV [Value]
            | MethodV Value
            | VFun ([Value] -> Runtime Value)
@@ -291,6 +290,11 @@ debugShowValue (VariantV _ tf fs) =
 debugShowValue (MethodV v) = "MethodV " <> debugShowValue v
 debugShowValue (VFun {}) = "VFun {}"
 debugShowValue (BoxV {}) = "BoxV {}"
+
+debugShowValue (RecordV fs) = "{" <> T.intercalate "," (map f fs) <> "}"
+  where
+    f (n,v) = n <> ":" <> debugShowValue v
+
 debugShowValue (TupleV fs) = "{" <> T.intercalate ";" (map debugShowValue fs) <> "}"
 
 getCallStack :: Runtime [Maybe Text]
@@ -401,11 +405,7 @@ variantValueFields (VariantV _ _ flds) =
 variantValueFields _ = pure Nothing
 
 makeRecord :: [(Text,Value)] -> Runtime Value
-makeRecord fs = do
-    st <- ask
-    btV <- liftIO $ readIORef (rtBootstrapRecTup st)
-    -- todo: lookup the proper tag
-    makeVariant (DataDeclTypeTag "record") "record" (("_equals", btRecEq btV) : ("_torepr", btRecToRepr btV) : fs)
+makeRecord fs = pure $ RecordV fs
               
 captureClosure :: [Text] -> Runtime Env
 captureClosure nms = do
@@ -441,6 +441,45 @@ getMember (VFun {}) "_torepr" = do
 getMember (BoxV v) fld = do
     v' <- liftIO $ readIORef v
     getMember v' fld
+
+-- special cases for _torepr, _equals for record and tuple
+getMember (RecordV fs) "_torepr" = makeFunctionValue $ \case
+    [] -> do
+        vs <- mapM f fs
+        makeStringInternal $ "{" <> T.intercalate "," (map (\(n,v) -> n <> ":" <> v) vs) <> "}"
+    _ -> error $ "wrong number of args to record._torepr"
+  where
+    f (n,v) = do
+        v' <- getMember v "_torepr"
+        v'' <- app Nothing v' []
+        case extractValue v'' of
+            Just (v''' :: Text) -> pure (n,v''')
+            Nothing -> error $ "_torepr returned non string on " <> debugShowValue v''
+
+getMember (RecordV fs) "_equals" = makeFunctionValue $ \case
+    [RecordV gs] -> eq fs gs
+    [_] -> makeBool False
+    _ -> error $ "wrong number of args to tuple._equals"
+  where
+    eq as bs | length as /= length bs = makeBool False
+             | otherwise = let s = sortBy (comparing fst)
+                           in eq' (s as) (s bs)
+    eq' [] [] = makeBool True
+    eq' ((af,_):_) ((bf,_):_) | af /= bf = makeBool False
+    eq' ((_,a):as) ((_,b):bs) = do
+        myEq <- getMember a "_equals"
+        r <- app Nothing myEq [b]
+        case extractValue r of
+            Just True -> eq' as bs
+            Just False -> pure r
+            Nothing -> error $ "_equals method returned non bool " <> debugShowValue r
+    eq' _ _ = error $ "internal: record equals length check regression"      
+
+getMember v@(RecordV fs) fld = do
+    case lookup fld fs of
+        Nothing -> error $ "field not found:" <> fld <> ", " <> debugShowValue v
+        Just (MethodV v1) -> app Nothing v1 [v]
+        Just v1 -> pure v1
 
 getMember (TupleV fs) "_torepr" = makeFunctionValue $ \case
     [] -> do
