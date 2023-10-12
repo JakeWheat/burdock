@@ -82,6 +82,10 @@ check "tuple and record torepr":
   torepr({4;6}) is "{4;6}"
   torepr({a:4,b:5}) is "{a:4,b:5}"
   torepr({}) is "{}"
+  {4;6}._torepr() is "{4;6}"
+  {a:4,b:5}._torepr() is "{a:4,b:5}"
+  {}._torepr() is "{}"
+
 end
 
 check "temp prelude with either":
@@ -98,17 +102,41 @@ end
 check "torepr":
   #print(torepr(true))
   torepr(true) is "true"
+  true._torepr() is "true"
   torepr("test") is '"test"'
+  "test"._torepr() is '"test"'
   tostring("test") is "test"
   torepr(5) is "5"
+  # todo: fix parser to all this without whitespace
+  5 ._torepr() is "5"
   torepr([list:]) is "[list: ]"
   torepr([list: 1, true]) is "[list: 1, true]"
+  [list: 1, true]._torepr() is "[list: 1, true]"
   torepr(myctor) is "myctor"
+  myctor._torepr() is "myctor"
   torepr(left(5)) is "left(5)"
+  left(5)._torepr() is "left(5)"
   torepr(nothing) is "nothing"
+  nothing._torepr() is "nothing"
   
   torepr(method(self): self.x end) is "<method>"
+  method(self): self.x end._torepr() is "<method>"
   torepr(lam(): true end) is "<function>"
+  lam(): true end._torepr() is "<function>"
+
+  var va = true
+  va._torepr() is "true"
+  torepr(va) is "true"
+  var vb = "test" 
+  vb._torepr() is '"test"'
+  torepr(vb) is '"test"'
+  var vc = 3
+  vc._torepr() is "3"
+  torepr(vc) is "3"
+  var vd = nothing
+  vd._torepr() is "nothing"
+  torepr(vd) is "nothing"
+
 end
 
 check "is and is-not, equals":
