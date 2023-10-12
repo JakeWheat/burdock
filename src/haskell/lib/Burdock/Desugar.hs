@@ -509,7 +509,7 @@ desugarExpr (S.Lam _ (S.FunHeader _ bs _) bdy) = do
         bindingsFreeVars = concatMap (view synFreeVars) bs'
         -- add a few bonus things for now, later will get the closure capture
         -- sorted and remove these
-        allFreeVars = nub $ bodyFreeVars ++ bindingsFreeVars ++ ["make-burdock-list", "make-variant", "left", "right", "string", "haskell-list", "boolean", "number", "ffitypetag", "datadecltag", "tuple", "record", "temp-handle", "bytestring"]
+        allFreeVars = nub $ bodyFreeVars ++ bindingsFreeVars ++ ["make-burdock-list", "make-variant", "left", "right", renameTypeName "string", renameTypeName "haskell-list", renameTypeName "boolean", renameTypeName "number", renameTypeName "ffitypetag", renameTypeName "datadecltag", renameTypeName "tuple", renameTypeName "record", renameTypeName "temp-handle", renameTypeName "bytestring"]
         setFreeVars = set synFreeVars allFreeVars
     pure $ setFreeVars
          $ combineSynsNoFreeVars (map ns bs' ++ [ns bdy'])

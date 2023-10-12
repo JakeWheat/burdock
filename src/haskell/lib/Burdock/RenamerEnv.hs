@@ -365,6 +365,8 @@ applyProvides re =
                 let tinfoname = renameQTypeName nm
                 in case lookup tinfoname (reBindings re) of
                     Nothing -> error $ "identifier not found: " <> show nm
+                               --  <> "\n" <> show (tinfoname, nm)
+                               --  <> "\n" <> T.unlines (map (show . fst) (reBindings re))
                     Just (cn,sp,be@(BEType{})) -> [((renameTypeName $ last nm,(sp,be)), cn)]
                     Just {} -> error $ "internal: type provide item names non type: " <> show nm
                     -- todo: can look up without the renameqtypename and give a more helpful

@@ -79,7 +79,6 @@ module Burdock.Runtime
     ,variantValueFields
     -- temp, should only be used for the binding in the default env
 
-    ,getFFITypeTag
     ,makeDataDeclTag
 
     ,runTask
@@ -91,6 +90,7 @@ module Burdock.Runtime
     ,withNewEnv
     ,addBinding
     ,lookupBinding
+    ,lookupType
 
     ,createBurdockRunner
 
@@ -113,7 +113,7 @@ module Burdock.Runtime
 import Prelude hiding (error, putStrLn, show)
 import qualified Prelude as P
 import Burdock.Utils (error, show)
---import Data.Text.IO (putStrLn)
+import Data.Text.IO (putStrLn)
 
 import Burdock.Scientific
 import Burdock.ModuleMetadata
@@ -158,6 +158,8 @@ import Control.Exception.Safe (catch
 
 import Data.List (sortBy)
 import Data.Ord (comparing)
+
+import Burdock.RenamerEnv (renameTypeName)
 
 ------------------------------------------------------------------------------
 
@@ -214,6 +216,8 @@ setBootstrapRecTup v = do
 makeFFIType :: Text -> (Text -> Value -> Runtime Value) -> Runtime FFITypeTag
 makeFFIType nm memfn = pure $ FFITypeTag nm memfn
 
+-- creates an ffi type and adds a binding to it in the current scope
+-- not sure these should be combined like this
 addFFIType :: Text -> (Text -> Value -> Runtime Value) -> Runtime FFITypeTag
 addFFIType nm memfn = do
     ty <- makeFFIType nm memfn
@@ -222,7 +226,7 @@ addFFIType nm memfn = do
         if nm == "ffitypetag"
         then pure ty
         else getFFITypeTag "ffitypetag"
-    addBinding nm $ makeValue ftg ty
+    addBinding (renameTypeName nm) $ makeValue ftg ty
     pure ty
 
 ffiTypeTagToValue :: FFITypeTag -> Runtime Value
@@ -237,7 +241,7 @@ ffiTypeTagToValue ty@(FFITypeTag nm _) = do
 getFFITypeTag :: Text -> Runtime FFITypeTag
 getFFITypeTag nm = do
     v <- maybe (error $ "internal: ffitypetag " <> nm <> " not found") id
-         <$> lookupBinding nm
+         <$> lookupBinding (renameTypeName nm)
     maybe (error $ "internal: ffitypetag " <> nm <> " wrong type") pure $ extractValue v
 
 makeDataDeclTag :: Text -> Runtime Value
@@ -568,6 +572,15 @@ lookupBinding nm = do
     x <- rtBindings <$> ask
     x1 <- liftIO $ readIORef x
     pure $ lookup nm x1
+
+lookupType :: Text -> Runtime (Maybe Value)
+lookupType nm = do
+    x <- rtBindings <$> ask
+    x1 <- liftIO $ readIORef x
+    case lookup (renameTypeName nm) x1 of
+        Nothing -> liftIO $ putStrLn $ T.unlines $ map fst x1
+        Just {} -> pure ()
+    pure $ lookup (renameTypeName nm) x1
 
 runRuntime :: RuntimeState -> Runtime a -> IO a
 runRuntime rt f = runReaderT f rt

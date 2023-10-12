@@ -68,7 +68,6 @@ module Burdock.RuntimeBootstrap
     ,variantFields
     ,variantValueFields
 
-    ,getFFITypeTag
     ,makeDataDeclTag
     ,dataDeclTagsEqual
 
@@ -81,6 +80,7 @@ module Burdock.RuntimeBootstrap
     ,withNewEnv
     ,addBinding
     ,lookupBinding
+    ,lookupType
 
     ,createBurdockRunner
 
@@ -150,6 +150,7 @@ import Data.IORef
     ,modifyIORef
     ,readIORef)
 
+import Burdock.RenamerEnv (renameTypeName)
 
 createBootstrapHandle :: IO (RuntimeState, HaskellModuleManager)
 createBootstrapHandle = do
@@ -183,7 +184,7 @@ initRuntime = do
                                 ,("false", (Nothing, BEVariant 0))
                                 ]
     let addFFIType' nm ty = do
-            liftIO $ modifyIORef hackMM ((nm, (Nothing, BEType 0)) : )
+            liftIO $ modifyIORef hackMM ((renameTypeName nm, (Nothing, BEType 0)) : )
             addFFIType nm ty
         addBinding' nm f = do
             liftIO $ modifyIORef hackMM ((nm, (Nothing, BEIdentifier)) : )
@@ -203,6 +204,8 @@ initRuntime = do
     booleanType <- addFFIType' "boolean" booleanFFI
 
     void $ addFFIType' "haskell-list" ffitypetagFFI
+    -- hack for the construct hack for haskell-list
+    addBinding' "haskell-list" =<< makeBool True
 
     addBinding' "make-datadecltag" =<< makeFunctionValue makeDataDeclTag'
     addBinding' "make-burdock-list" =<< makeFunctionValue myMakeBurdockList
@@ -628,3 +631,4 @@ myReadProcessWithExitCode [prog, args, stdinVal] = do
     se' <- makeString $ T.pack se
     makeTuple [x1', so', se']
 myReadProcessWithExitCode _ = error $ "bad args to myReadProcessWithExitCode"
+

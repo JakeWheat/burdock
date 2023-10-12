@@ -45,6 +45,7 @@ import Burdock.RuntimeBootstrap
     ,setTempEnvStage
     ,getTempEnvStage
     ,lookupBinding
+    ,lookupType
     ,setBootstrapRecTup
     ,BootstrapValues(..)
 
@@ -164,7 +165,7 @@ createHandle = do
 
         let lkpf f = maybe (error $ "_bootstrap " <> f <> " not found") id <$> lookupBinding f
             typeTag t = do
-                v <- maybe (error $ "_bootstrap " <> t  <> " not found") id <$> lookupBinding t
+                v <- maybe (error $ "_bootstrap " <> t  <> " not found") id <$> lookupType t
                 case extractValue v of
                     Just (t' :: FFITypeTag) -> pure t'
                     Nothing -> error $ "_bootstrap type " <> t <> " looked up to: " <> debugShowValue v
