@@ -59,6 +59,7 @@ module Burdock.RuntimeBootstrap
     ,makeString
     ,makeBool
     ,makeNumber
+    ,tupleGet
 
     ,variantName
     ,variantTag

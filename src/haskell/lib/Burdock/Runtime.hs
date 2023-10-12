@@ -65,6 +65,7 @@ module Burdock.Runtime
     
     ,makeTuple
     ,extractTuple
+    ,tupleGet
 
     ,makeVariant
     ,makeValueName
@@ -155,6 +156,9 @@ import Control.Exception.Safe (catch
                               ,bracket
                               )
 
+--import Data.List (sort)
+--import Control.Monad (forM)
+
 ------------------------------------------------------------------------------
 
 data RuntimeState
@@ -184,9 +188,7 @@ setTempEnvStage v = do
 -- system
 data BootstrapValues
     = BootstrapValues
-    {btTupEq :: Value
-    ,btTupToRepr :: Value
-    ,btRecEq :: Value
+    {btRecEq :: Value
     ,btRecToRepr :: Value
     ,btListEmpty :: Value
     ,btListLink :: Value
@@ -251,6 +253,7 @@ type Runtime = ReaderT RuntimeState IO
 -- todo: make this abstract
 data Value = FFIValue FFITypeTag Dynamic
            | VariantV DataDeclTypeTag Text [(Text, Value)]
+           | TupleV [Value]
            | MethodV Value
            | VFun ([Value] -> Runtime Value)
            | BoxV (IORef Value)
@@ -288,6 +291,7 @@ debugShowValue (VariantV _ tf fs) =
 debugShowValue (MethodV v) = "MethodV " <> debugShowValue v
 debugShowValue (VFun {}) = "VFun {}"
 debugShowValue (BoxV {}) = "BoxV {}"
+debugShowValue (TupleV fs) = "{" <> T.intercalate ";" (map debugShowValue fs) <> "}"
 
 getCallStack :: Runtime [Maybe Text]
 getCallStack = do
@@ -325,18 +329,15 @@ extractBurdockList _ = Nothing
 
 extractTuple :: Value -> Runtime (Maybe [Value])
 -- todo: check the tag is tuple
-extractTuple v@(VariantV _ "tuple" _) = do
-    x <- variantValueFields v
-    pure $ fmap (map snd) x
+extractTuple (TupleV vs) = pure $ Just vs
 extractTuple _ = pure Nothing
 
 makeTuple :: [Value] -> Runtime Value
-makeTuple fs = do
-    let fs1 = zip (map show [(0::Int)..]) fs
-    st <- ask
-    btV <- liftIO $ readIORef (rtBootstrapRecTup st)
-    -- todo: lookup the proper tuple type tag
-    makeVariant (DataDeclTypeTag "tuple") "tuple" (("_equals", btTupEq btV) : ("_torepr", btTupToRepr btV) : fs1)
+makeTuple fs = pure $ TupleV fs
+
+tupleGet :: Value -> Int -> Runtime Value
+tupleGet (TupleV v) i = pure $ v !! i
+tupleGet x _ = error $ "tupleGet called on non tuple: " <> debugShowValue x
 
 extractValue :: Typeable a => Value -> Maybe a
 extractValue (FFIValue _ v) = fromDynamic v
@@ -440,6 +441,36 @@ getMember (VFun {}) "_torepr" = do
 getMember (BoxV v) fld = do
     v' <- liftIO $ readIORef v
     getMember v' fld
+
+getMember (TupleV fs) "_torepr" = makeFunctionValue $ \case
+    [] -> do
+        vs' <- mapM f fs
+        makeStringInternal $ "{" <> T.intercalate ";" vs' <> "}"
+    _ -> error $ "wrong number of args to _torepr on tuple"
+  where
+    f v = do
+        v' <- getMember v "_torepr"
+        v'' <- app Nothing v' []
+        case extractValue v'' of
+            Just (v''' :: Text) -> pure v'''
+            Nothing -> error $ "_torepr returned non string on " <> debugShowValue v''
+
+getMember (TupleV fs) "_equals" = makeFunctionValue $ \case
+    [TupleV gs] -> eq fs gs
+    [_] -> makeBool False
+    _ -> error $ "wrong number of args to tuple._equals"
+  where
+    eq as bs | length as /= length bs = makeBool False
+             | otherwise = eq' as bs
+    eq' [] [] = makeBool True
+    eq' (a:as) (b:bs) = do
+        myEq <- getMember a "_equals"
+        r <- app Nothing myEq [b]
+        case extractValue r of
+            Just True -> eq' as bs
+            Just False -> pure r
+            Nothing -> error $ "_equals method returned non bool " <> debugShowValue r
+    eq' _ _ = error $ "internal: tuple equals length check regression"      
 
 getMember v fld = error $ "unrecognised member " <> fld <> " on " <> debugShowValue v
 

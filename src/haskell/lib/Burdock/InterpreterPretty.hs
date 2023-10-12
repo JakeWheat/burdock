@@ -63,6 +63,8 @@ expr (If cs els) = vsep (prettyCs cs ++ pel els ++ [pretty "end"])
     pel (Just e) = [pretty "else:"
                    ,nest 2 (stmts e)]
 expr (DotExpr e i) = expr e <> pretty "." <> pretty i
+expr (TupleGet e i) = expr e <> pretty ".{" <> pretty (T.pack $ show i) <> pretty "}"
+
 expr (App _ e es) = expr e <> nest 2 (parens (commaSep $ map expr es))
 expr (RecordSel es) =
     braces (commaSep $ map fld es)

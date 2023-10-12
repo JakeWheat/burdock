@@ -124,14 +124,6 @@ _record_equals = method(self, b):
    check-variants-equal(self,b)
  end
 
-_tuple_torepr = method(self):
-   show-tuple(self)
- end
-
-_tuple_equals = method(self, b):
-   check-variants-equal(self,b)
- end
-
 data Nothing: nothing end
 
 data list:
@@ -260,7 +252,7 @@ initRuntime = do
     void $ addFFIType' "string" stringFFI
     booleanType <- addFFIType' "boolean" booleanFFI
 
-    addBinding' "tuple" =<< makeDataDeclTag "tuple"
+    --addBinding' "tuple" =<< makeDataDeclTag "tuple"
     addBinding' "record" =<< makeDataDeclTag "record"
 
     void $ addFFIType' "haskell-list" ffitypetagFFI
@@ -286,7 +278,7 @@ initRuntime = do
 
     addBinding' "torepr" =<< makeFunctionValue myToRepr
     addBinding' "show-variant" =<< makeFunctionValue showVariant
-    addBinding' "show-tuple" =<< makeFunctionValue showTuple
+    --addBinding' "show-tuple" =<< makeFunctionValue showTuple
     addBinding' "show-record" =<< makeFunctionValue showRecord
 
     --------------------------------------
@@ -651,7 +643,7 @@ myToString [x] = do
         Nothing -> myToRepr[x]
 myToString _ = error $ "bad args to myToString"
 
-showTuple :: [Value] -> Runtime Value
+{-showTuple :: [Value] -> Runtime Value
 showTuple [x] = do
     at <- variantName x
     bt <- variantValueFields x
@@ -670,7 +662,7 @@ showTuple [x] = do
                 then makeString "{}"
                 else makeString $ "{" <> T.intercalate ";" es' <> "}"
         _ -> error $ "showTuple called on non variant " <> debugShowValue x
-showTuple _ = error $ "bad args to showTuple"
+showTuple _ = error $ "bad args to showTuple"-}
 
 showRecord :: [Value] -> Runtime Value
 showRecord [x] = do

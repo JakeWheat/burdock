@@ -35,6 +35,7 @@ data Expr
     | MethodExpr Expr
     | RunTask Bool Expr
     | Cases SourcePos Expr [(Binding, [Stmt])]
+    | TupleGet Expr Int
     deriving (Eq,Show,Data)
 
 data Binding

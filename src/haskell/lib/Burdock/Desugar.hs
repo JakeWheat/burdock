@@ -393,9 +393,6 @@ desugarExpr :: S.Expr -> Desugar (Syn I.Expr)
 ------------------
 -- S -> S
 
-desugarExpr (S.TupleGet sp v n) =
-    desugarExpr (S.DotExpr sp v $ show n)
-
 -- what's the right way to find run-task, so it can be implemented
 -- differently at runtime from a regular function
 -- it has to be looked up in the environment. the desugarer should have
@@ -553,6 +550,10 @@ desugarExpr (S.Cases pos tst _ bs mels) = do
             $ combineSynsNoFreeVars [ns bm', ns bdy']
             $ mkSyn (_synTree bm', _synTree bdy')
     n = Nothing
+
+desugarExpr (S.TupleGet _sp v n) = do
+    v' <- desugarExpr v
+    pure $ v' {_synTree =  I.TupleGet (_synTree v') n}
 
 desugarExpr x = error $ "desugarExpr " <> show x
 

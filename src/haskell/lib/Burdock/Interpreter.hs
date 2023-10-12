@@ -38,6 +38,7 @@ import Burdock.RuntimeBootstrap
     ,makeRecord
     ,makeTuple
     ,makeBurdockList
+    ,tupleGet
 
     ,extractTuple
     ,extractValue
@@ -208,6 +209,10 @@ interpExpr (I.MethodExpr e) =
     MethodV <$> interpExpr e
     -- todo: need to check coding and user errors produce useful error messages
     -- when the e's value isn't what it should be
+
+interpExpr (I.TupleGet e i) = do
+    v <- interpExpr e
+    tupleGet v i
 
 --interpExpr x = error $ "interpExpr: " ++ show x
 
