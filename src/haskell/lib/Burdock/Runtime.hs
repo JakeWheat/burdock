@@ -262,6 +262,9 @@ data Value = FFIValue FFITypeTag Dynamic
            | BoxV (IORef Value)
 
 -- todo: use something more robust
+-- two options (for this and ffitypetag)
+-- 1. use a global counter as a surrogate key for each type
+-- 2. use some globally unique module id in each type value
 data DataDeclTypeTag = DataDeclTypeTag {dtyName :: Text}
 
 dataDeclTagsEqual :: DataDeclTypeTag -> DataDeclTypeTag -> Bool

@@ -1,0 +1,66 @@
+
+# put everything hacked into the runtimebootstrap in a namespace
+# intermediate step before they are created in a namespace in the first place
+
+provide:
+  type ffitypetag,
+  type datadecltag,
+  type number,
+  type string,
+  type boolean,
+
+  #type record,
+  #type tuple,
+  #type Function,
+  # ...
+
+  type haskell-list,
+  # what does pyret do when you provide a type with a construct - do
+  # you have to list it twice like this?
+  haskell-list,
+
+  make-datadecltag,
+  make-burdock-list,
+  make-variant,
+  is-type,
+  is-variant,
+  check-variants-equal,
+  raise,
+
+  load-module,
+
+
+  # need to change these to being proper variants or proper regular
+  # values with special case for patterns
+  #true,
+  #false,
+
+  torepr,
+  show-variant,
+
+  # below here doesn't belong in the runtimebootstrap
+  type gremlintype,
+
+  print,
+  debug-print,
+  debug-show,
+  get-call-stack,
+  tostring,
+
+  not,
+
+  add-test-pass,
+  add-test-fail,
+  indent,
+
+  do-is-test,
+  do-is-not-test,
+
+  torepr-debug,
+
+  gremlin,
+
+  read-process
+
+
+end

@@ -43,6 +43,7 @@ common shared-properties
                       Burdock.RenamerEnv
                       Burdock.ModuleMetadata
                       Burdock.HaskellModulePlugin
+                      Burdock.RuntimeBootstrapExtras
 
 
                       Burdock.DemoHaskellModule
