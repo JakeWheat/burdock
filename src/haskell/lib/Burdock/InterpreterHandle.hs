@@ -154,9 +154,9 @@ createHandle = do
     (st,hp) <- createBootstrapHandle
     runRuntime st $ do
         -- add the burdock module handler, then run the initial burdock scripts
-        ModuleMetadata bootstrapMetadata' <- getTempEnvStage
+        ModuleMetadata bootstrapMetadata' _ <- getTempEnvStage
         -- hack cos list construct is implemented in desugar atm
-        let bootstrapMetadata = ModuleMetadata (("list", (Nothing, BEIdentifier)) : bootstrapMetadata')
+        let bootstrapMetadata = ModuleMetadata (("list", (Nothing, BEIdentifier)) : bootstrapMetadata') []
         
         mp <- burdockModulePlugin
         addModulePlugin "file" mp
@@ -177,7 +177,7 @@ createHandle = do
             <*> typeTag "string"
         
         -- temp: add the bootstrap ffi + bootstrap burdock metadata
-        let tempCombineModuleMetadata (ModuleMetadata a) (ModuleMetadata b) = ModuleMetadata (a ++ b)
+        let tempCombineModuleMetadata (ModuleMetadata a ads) (ModuleMetadata b bds) = ModuleMetadata (a ++ b) (ads ++ bds)
         setTempEnvStage $ tempCombineModuleMetadata bootstrapMetadata bmm
         (imm,_) <- runScript' debugPrintInternals (Just "_internals") internals
 

@@ -317,7 +317,7 @@ initRuntime = do
     -- all this mess will be fixed after the module system and basic haskell
     -- ffi modules are implemented for user code, before replacing the system
     -- bootstrap with the new approach
-    ModuleMetadata <$> reverse <$> liftIO (readIORef hackMM)
+    flip ModuleMetadata [] <$> reverse <$> liftIO (readIORef hackMM)
 
 ------------------------------------------------------------------------------
  

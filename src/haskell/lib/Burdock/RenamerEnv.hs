@@ -214,7 +214,7 @@ makeRenamerEnv :: Text
                -> [(ImportSource, ModuleID)]
                -> [(ModuleID, ModuleMetadata)]
                -> RenamerEnv
-makeRenamerEnv fn (ModuleMetadata tmpHack) isCtx ctx =
+makeRenamerEnv fn (ModuleMetadata tmpHack _) isCtx ctx =
     let b = flip map tmpHack $ \(nm,(sp,bm)) ->
             ([nm],([nm], sp, bm))
     in RenamerEnv isCtx ctx [] [] [] [] b fn
@@ -383,7 +383,7 @@ applyProvides re =
                     _ -> Nothing
             x -> error $ "unsupported provide item " <> show x
         (ms,rs) = unzip $ flip map ps $ \(a@(nm,_), cn) -> (a,(cn,nm))
-    in ([], (ModuleMetadata ms, rs))
+    in ([], (ModuleMetadata ms [], rs))
 
 ------------------------------------------------------------------------------
 

@@ -102,7 +102,7 @@ makeHaskellModule bs = do
             Type tg -> do
                 v <- ffiTypeTagToValue tg
                 pure (tyName tg, v))
-    pure $ HaskellModule (pure (ModuleMetadata ms)) (pure m)
+    pure $ HaskellModule (pure (ModuleMetadata ms [])) (pure m)
 
 importModule :: S.ImportSource -> Runtime Value
 importModule is = do

@@ -26,8 +26,11 @@ data BindingMeta
 -- represents the bindings available in a module
 data ModuleMetadata
     = ModuleMetadata
-      {mmBindings :: [(Text,(SourcePosition, BindingMeta))]}
+      {mmBindings :: [(Text,(SourcePosition, BindingMeta))]
+      -- the data is used purely to expand data provide items
+      -- the type, constructors, is-* are all in the mmBindings
+      ,mmData :: [(Text,[Text])]}
     deriving Show
 
 tempEmptyModuleMetadata :: ModuleMetadata
-tempEmptyModuleMetadata = ModuleMetadata []
+tempEmptyModuleMetadata = ModuleMetadata [] []
