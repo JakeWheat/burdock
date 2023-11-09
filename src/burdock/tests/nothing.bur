@@ -1,8 +1,0 @@
-nothing
-#|
-
-check:
-  11 is 11
-  11 is 21
-end
-|#

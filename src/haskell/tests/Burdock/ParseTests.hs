@@ -80,6 +80,7 @@ exprParseTests = TestGroup "exprParseTests" $ map (uncurry ExprParseTest)
 \         \"stuff\"\n\
 \      ")
     ,("test", Iden np "test")
+    ,("_@internal", Iden np "_@internal")
     ,("(2)", Parens np (Num np 2))
     ,("a(7)", App Nothing (Iden np "a") [Num np 7])
     ,("a + b", BinOp np (Iden np "a") "+" (Iden np "b"))

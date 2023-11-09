@@ -1,8 +1,0 @@
-
-provide:
-  num-abs
-end
-
-fun num-abs(n):
-  if n < 0: -n else: n end
-end

@@ -238,7 +238,7 @@ identifierX :: Parser T.Text
 identifierX =
     lexeme (T.cons
     <$> (letterChar <|> char '_' <|> char '-')
-    <*> (L.toStrict <$> takeWhileP Nothing (\a -> (isAlphaNum a || a `elem` ("?-+_"::String)))))
+    <*> (L.toStrict <$> takeWhileP Nothing (\a -> (isAlphaNum a || a `elem` ("?-+_@"::String)))))
     <?> "identifier"
 
 identifier :: Parser T.Text

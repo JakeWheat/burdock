@@ -1,9 +1,0 @@
-check:
-  true and false is false
-  true or false is true
-end
-
-check "short circuiting":
-  true or raise("broke") is true
-  false and raise("broke") is false
-end

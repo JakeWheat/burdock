@@ -31,23 +31,7 @@ common shared-properties
                       Burdock.Pretty
                       Burdock.Parse
                       Burdock.Scientific
-                      Burdock.Runtime
-                      Burdock.RuntimeBootstrap
-                      Burdock.Interpreter
-                      Burdock.InterpreterHandle
-                      Burdock.InterpreterSyntax
-                      Burdock.InterpreterPretty
-                      Burdock.Desugar
                       Burdock.Utils
-                      Burdock.Renamer
-                      Burdock.RenamerEnv
-                      Burdock.ModuleMetadata
-                      Burdock.HaskellModulePlugin
-                      Burdock.RuntimeBootstrapExtras
-
-
-                      Burdock.DemoHaskellModule
-                      Burdock.TestHelpers
 
     build-depends:    base ^>=4.17.0.0
                     , scientific
@@ -86,9 +70,7 @@ executable burdock
     other-modules:    Burdock.Tests
                       Burdock.TestLib
                       Burdock.ParseTests
-                      Burdock.RenamerTestParser
-                      Burdock.RenamerTests
-
+ 
 Test-Suite Tests
     import:           shared-properties
     type:             exitcode-stdio-1.0
@@ -97,5 +79,4 @@ Test-Suite Tests
     other-Modules:    Burdock.Tests
                       Burdock.TestLib
                       Burdock.ParseTests
-                      Burdock.RenamerTestParser
-                      Burdock.RenamerTests
+ 
