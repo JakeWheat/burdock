@@ -45,41 +45,60 @@ import Burdock.Scientific (extractInt, Scientific)
 burdockSystemModule :: R.Runtime [(Text, Value)]
 burdockSystemModule = do
 
-    -- create ffitypetag burdock type
-    ffitagInBurdock <- makeFFIType "ffi-tag"
+    -- get the ffitypetag burdock type
+    -- this is used to make other ffi types
+    -- and it's added to a binding in burdock
+    ffiTypeInfo <- R.getFFITypeInfoTypeInfo
+    {-ffitagInBurdock <- makeFFIType "ffi-tag"
         [ToRepr $ \v -> pure $ "<" <> R.tyName v <> ">"
         -- to be fixed to use the unique type id
         ,Equals $ \v w -> pure $ R.tyName v == R.tyName w
-        ]
+        ]-}
     -- todo: put the above in the runtime, so it's always available
     -- then it'll just get bound to a name in burdock here
 
     -- create number type
-    burdockNumber <- makeFFIType "number1"
+    burdockNumberTI :: R.FFITypeInfo <-
+         R.makeFFIType ["_bootstrap", "number"]
+           [R.ToRepr $ \(v :: Scientific) -> pure $ show v
+           ,R.Compare $ (pure .) . compare
+           -- arith
+           ,R.Arith
+            {R.aAdd = (pure .) . (+)
+            ,R.aSub = (pure .) . (-)
+            ,R.aMult = (pure .) . (*)
+            ,R.aDiv = (pure .) . (/)}]
+    
+    {-bnti <- R.newFFITypeID ["_bootstrap", "number"]
+    memFn <- R.makeFFIMemFn bnti
         -- have to put the type in somewhere
-        [ToRepr $ \(v :: Scientific) -> pure $ show v
-        ,Compare $ (pure .) . compare
+        [R.ToRepr $ \(v :: Scientific) -> pure $ show v
+        ,R.Compare $ (pure .) . compare
         -- arith
-        ,Arith $ ArithM
+        ,R.Arith $ R.ArithM
         -- this is idiomatic so it's actually OK to write like this:
-         {aAdd = (pure .) . (+)
-         ,aSub = (pure .) . (-)
-         ,aMult = (pure .) . (*)
-         ,aDiv = (pure .) . (/)
+         {R.aAdd = (pure .) . (+)
+         ,R.aSub = (pure .) . (-)
+         ,R.aMult = (pure .) . (*)
+         ,R.aDiv = (pure .) . (/)
          }
         ]
+    burdockNumberTI <- R.makeFFITypeInfo bnti memFn-}
 
     -- is-number -> implement via is-ffi-type function with closure
     
-    tg <- myMakeValueTag
+    --tg <- myMakeValueTag
 
     testLog <- liftIO $ newIORef (0,0)
 
-    pure [("_type-ffitag", R.FFIValue ffitagInBurdock $ toDyn ffitagInBurdock)
-         ,("_type-number", R.FFIValue ffitagInBurdock $ toDyn burdockNumber)
+    burdockFFITag <- R.makeFFIValue ffiTypeInfo ffiTypeInfo
+    burdockNumberTag <- R.makeFFIValue ffiTypeInfo burdockNumberTI
+
+    pure [("_type-ffitag", burdockFFITag)
+         ,("_type-number", burdockNumberTag)
          
          ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
-         ,("demo-make-val", R.Fun (demoMakeVal tg))
+         ,("demo-make-val", R.Fun (demoMakeVal burdockNumberTI))
          ,("print", R.Fun bPrint)
          ,("get-test-passes", R.Fun (getTestVal testLog 0))
          ,("get-test-failures", R.Fun (getTestVal testLog 1))
@@ -181,7 +200,7 @@ bRunBinaryTest _ _ = error $ "bad args to bRunBinaryTest"
 
 ------------------------------------------------------------------------------
 
-data MyType = MyType Int
+{-data MyType = MyType Int
     deriving (Show,Eq,Ord)
 
 myMakeValueTag :: R.Runtime R.FFITypeTag
@@ -197,12 +216,13 @@ myMakeValueTag =
          ,aMult = \(MyType a) (MyType b) -> pure $ MyType (a * b)
          ,aDiv = \(MyType a) (MyType b) -> pure $ MyType (a `div` b)
          }
-        ]
+        ]-}
 
-demoMakeVal :: R.FFITypeTag -> [Value] -> R.Runtime Value
-demoMakeVal tg [R.Number n] = do
+demoMakeVal :: R.FFITypeInfo -> [Value] -> R.Runtime Value
+demoMakeVal nti [R.Number n] = do
+    R.makeFFIValue nti n
     -- tg <- myMakeValueTag
-    pure $ R.FFIValue tg $ toDyn $ MyType $ maybe (error "balls") id $ extractInt n
+    --pure $ R.FFIValue tg $ toDyn $ MyType $ maybe (error "balls") id $ extractInt n
 
 --------------------------------------
 
@@ -228,7 +248,7 @@ bPrint [v] = do
 --   for fields on ffi types
 --   for the other ffi behaviour: assign, app, others?
 
-makeFFIType :: Typeable a => Text -> [FFIValueEntry a] -> R.Runtime R.FFITypeTag
+{-makeFFIType :: Typeable a => Text -> [FFIValueEntry a] -> R.Runtime R.FFITypeTag
 makeFFIType nm meths = do
     -- todo: need to generate a type id from the runtime first
     -- then use this when extracting values to make sure they're the
@@ -294,3 +314,4 @@ data Arith a =
     ,aMult :: a -> a -> R.Runtime a
     ,aDiv :: a -> a -> R.Runtime a
     }
+-}

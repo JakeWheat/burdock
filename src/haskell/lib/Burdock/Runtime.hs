@@ -1,5 +1,7 @@
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Runtime
     (Runtime
     ,RuntimeState
@@ -10,7 +12,13 @@ module Burdock.Runtime
     ,debugShowValue
     -- temp
     ,showValue
-    ,FFITypeTag(..)
+
+    ,FFITypeInfo
+    ,makeFFIType
+    ,makeFFIValue
+    ,extractFFIValue
+    ,FFIValueEntry(..)
+    ,getFFITypeInfoTypeInfo
 
     ,withScope
     ,app
@@ -48,23 +56,20 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.Dynamic
     (Dynamic
+    ,fromDynamic
+    ,toDyn
+    ,Typeable
     )
 
 ------------------------------------------------------------------------------
 
 type SP = Maybe (Text, Int, Int)
 
--- todo: make these unique, can use a counter in the runtime state for now?
-data DataDeclTag = DataDeclTag Text
+data DataDeclTag = DataDeclTag {-Int-} Text
     deriving (Eq, Show)
 
 data VariantTag = VariantTag DataDeclTag Text
     deriving (Eq, Show)
-
-data FFITypeTag
-    = FFITypeTag
-    {tyName :: Text
-    ,tyMemberFn :: (Text -> Value -> Runtime Value)}
 
 data Value
     = Number Scientific
@@ -72,7 +77,7 @@ data Value
     | BText Text
     | BNothing
     
-    | FFIValue FFITypeTag Dynamic
+    | FFIValue FFITypeInfo Dynamic
 
     | Variant VariantTag [(Text,Value)]
     | Box (IORef Value)
@@ -114,12 +119,25 @@ showValue (Variant (VariantTag _ nm) fs) = do
 data RuntimeState
     = RuntimeState
     {rtBindings :: IORef [(Text, Value)]
+    --  ,autoDataDeclID :: IORef Int
+    ,rtAutoFFITypeID :: IORef Int
+    ,rtFFITypeInfoTypeInfo :: FFITypeInfo
     }
 
 makeRuntimeState :: IO RuntimeState
-makeRuntimeState =
-    RuntimeState
-    <$> newIORef []
+makeRuntimeState = do
+    st <-  RuntimeState
+        <$> newIORef []
+        --  <*> newIORef 0
+        <*> newIORef 0
+        <*> pure (error "delayed initialisation")
+    -- does this need to be here? try to move it to bootstrap
+    tinf <- runRuntime st $
+        makeFFIType ["_bootstrap","ffi-type-info"]
+            [ToRepr $ \(v :: FFITypeInfo) -> pure $ "<" <> tyNameText (tyTypeID v) <> ">"
+            ,Equals $ \v w -> pure $ tyTypeID v == tyTypeID w]
+
+    pure $ st {rtFFITypeInfoTypeInfo = tinf}
 
 type Runtime = ReaderT RuntimeState IO
 
@@ -148,6 +166,8 @@ captureClosure = do
     rtb <- rtBindings <$> ask
     liftIO $ readIORef rtb
 
+
+
 addBinding :: Text -> Value -> Runtime ()
 addBinding nm v = do
     stb <- rtBindings <$> ask
@@ -166,7 +186,363 @@ getMember _ v@(FFIValue tg _) fld = (tyMemberFn tg) fld v
 getMember sp (Module fs) f = case lookup f fs of
         Nothing -> error $ show sp <> " module member not found: " <> f
         Just v' -> pure v'
+
+-- temp?
+getMember _ (Boolean b) "_torepr" =
+    pure $ if b then wrap "true" else wrap "false"
+  where
+    wrap v = Fun $ \[] -> pure $ BText v
+
+
+        
 getMember sp v f = error $ show sp <> ": getMember: " <> debugShowValue v <> " . " <> f
 
 runTask :: Runtime a -> Runtime (Either Text a)
 runTask f = catchAsText (Right <$> f) (pure . Left)
+
+------------------------------------------------------------------------------
+
+-- ffi values helper functions
+
+data FFITypeID
+    = FFITypeID
+    {tyID :: Int
+    ,tyName :: [Text]
+    }
+    deriving (Eq,Show, Typeable)
+
+tyNameText :: FFITypeID -> Text
+tyNameText = T.intercalate "." . tyName
+
+data FFITypeInfo
+    = FFITypeInfo
+    {tyTypeID :: FFITypeID
+    ,tyMemberFn :: (Text -> Value -> Runtime Value)
+    }
+
+data FFIValueEntry a
+    = ToRepr (a -> Runtime Text)
+    | Equals (a -> a -> Runtime Bool)
+    | Compare (a -> a -> Runtime Ordering)
+    | Arith {aAdd :: a -> a -> Runtime a
+            ,aSub :: a -> a -> Runtime a
+            ,aMult :: a -> a -> Runtime a
+            ,aDiv :: a -> a -> Runtime a}
+
+makeFFIType :: Typeable a => [Text] -> [FFIValueEntry a] -> Runtime FFITypeInfo
+makeFFIType nm fs = makeFFIType2 nm $ makeMemFns fs
+    
+
+makeFFIType2 :: Typeable a =>
+                [Text]
+             -> (FFITypeID
+                 -> (a -> Runtime Value)
+                 -> (Value -> Runtime (Either Text a))
+                 -> (Text -> Value -> Runtime Value))
+             -> Runtime FFITypeInfo
+makeFFIType2 nm memFn = do
+    tid <- newFFITypeID nm
+    let tinf = FFITypeInfo tid memFn'
+        memFn' = memFn tid (makeFFIValue tinf) (extractFFIValue tinf)
+    pure $ tinf
+
+makeFFIValue :: Typeable a => FFITypeInfo -> a -> Runtime Value
+makeFFIValue ti a = pure $ FFIValue ti $ toDyn a
+
+extractFFIValue :: Typeable a => FFITypeInfo -> Value -> Runtime (Either Text a)
+extractFFIValue ti v = case v of
+    FFIValue vtg v' | tyTypeID ti == tyTypeID vtg
+                    , Just v'' <- fromDynamic v' -> pure $ Right v''
+    _ -> pure $ Left $ "wrong extract value (please fix this error message)"
+
+getFFITypeInfoTypeInfo :: Runtime FFITypeInfo
+getFFITypeInfoTypeInfo = rtFFITypeInfoTypeInfo <$> ask
+
+--------------------------------------
+
+makeMemFns :: [FFIValueEntry a]
+           -> FFITypeID
+           -> (a -> Runtime Value)
+           -> (Value -> Runtime (Either Text a))
+           -> (Text -> Value -> Runtime Value)
+makeMemFns meths tid mkV exV =
+    let eqMem fn = ("_equals", \v -> do
+            v' <- either error id <$> exV v
+            pure $ Fun $ \[w] -> do
+                w' <- exV w
+                case w' of
+                    Left _ -> pure $ Boolean False
+                    Right w'' -> Boolean <$> fn v' w'')
+        binMem nm fn = (nm, \v -> do
+                v' <- either error id <$> exV v
+                pure $ Fun $ \[w] -> do
+                    w' <- exV w
+                    case w' of
+                        Left _ -> error $ "bad type"
+                        Right w'' -> fn v' w'')
+        binMem2 nm fn = (nm, \v -> do
+                v' <- either error id <$> exV v
+                pure $ Fun $ \[w] -> do
+                    w' <- exV w
+                    case w' of
+                        Left _ -> error $ "bad type"
+                        Right w'' -> fn v' w'')
+        meths' :: [(Text, Value -> Runtime Value)]
+        meths' = concat $ flip map meths $ \case
+           ToRepr f -> [("_torepr", \v -> do
+               v' <- either error id <$> exV v
+               pure $ Fun $ \[] -> BText <$> f v')] 
+           Equals f -> [eqMem f]
+           Compare f -> [eqMem (\a b -> (==EQ) <$> f a b)
+                        ,binMem "_lessthan" (\a b -> (Boolean . (==LT)) <$> f a b)
+                        ,binMem "_lessequal" (\a b -> (Boolean . (`elem` [LT,EQ])) <$> f a b)
+                        ,binMem "_greaterequal" (\a b -> (Boolean . (`elem` [GT,EQ])) <$> f a b)
+                        ,binMem "_greaterthan" (\a b -> (Boolean . (==GT)) <$> f a b)]
+           Arith myadd mysub mymul mydiv ->
+               [binMem2 "_plus" $ \a b -> mkV =<< myadd a b
+               ,binMem2 "_minus" $ \a b -> mkV =<< mysub a b
+               ,binMem2 "_times" $ \a b -> mkV =<< mymul a b
+               ,binMem2 "_divide" $ \a b -> mkV =<< mydiv a b]
+        memFn nm = case lookup nm meths' of
+            Nothing -> error $ "field not found:" <> tyNameText tid <> " ." <> nm
+            Just x -> x
+    in memFn 
+
+autoID :: (RuntimeState -> IORef Int) -> Runtime Int
+autoID f = do
+    rf <- f <$> ask
+    ret <- liftIO $ readIORef rf
+    liftIO $ modifyIORef rf (+1)
+    pure ret
+
+newFFITypeID :: [Text] -> Runtime FFITypeID
+newFFITypeID tnm = do
+    newID <- autoID rtAutoFFITypeID
+    pure $ FFITypeID newID tnm
+
+{-
+getFFITypeInfoTypeInfo :: Runtime FFITypeInfo
+getFFITypeInfoTypeInfo = rtFFITypeInfoTypeInfo <$> ask
+
+autoID :: (RuntimeState -> IORef Int) -> Runtime Int
+autoID f = do
+    rf <- f <$> ask
+    ret <- liftIO $ readIORef rf
+    liftIO $ modifyIORef rf (+1)
+    pure ret
+
+newFFITypeID :: [Text] -> Runtime FFITypeID
+newFFITypeID tnm = do
+    newID <- autoID rtAutoFFITypeID
+    pure $ FFITypeID newID tnm
+
+makeFFITypeInfo :: FFITypeID -> (Text -> Value -> Runtime Value) -> Runtime FFITypeInfo
+makeFFITypeInfo tid memFn = pure $ FFITypeInfo tid memFn
+
+--todo: return an either with a nice error message?
+extractFFIValue :: Typeable a => FFITypeID -> Value -> Runtime (Either Text a)
+extractFFIValue tid (FFIValue vinf a) =
+    if tid /= tyTypeID vinf
+    then pure $ Left $ "Error: expected " <> tyNameText tid <> " but got " <> tyNameText (tyTypeID vinf)
+    else pure $ Right $ maybe (error $ "wrong type in dynamic" <> show (tid,tyTypeID vinf, a)) id $ fromDynamic a
+
+extractFFIValue tid v =
+    pure $ Left $ "Error: expected " <> tyNameText tid <> " but got " <> debugShowValue v
+
+
+makeFFIType2 :: Typeable a =>
+                [Text]
+             -> [FFIValueEntry a]
+             -> Runtime (a -> Runtime Value
+                        ,Value -> Runtime (Either Text a)
+                        ,FFITypeInfo)
+
+makeFFIType2 = undefined
+
+makeFFIType3 :: Typeable a =>
+                [Text] ->
+             -> Runtime (a -> Runtime Value
+                        ,Value -> Runtime (Either Text a)
+                        ,FFITypeInfo)
+makeFFIType3 = undefined
+    
+makeFFIValue :: Typeable a => FFITypeInfo -> a -> Runtime Value
+makeFFIValue tinf a = pure $ FFIValue tinf $ toDyn a
+
+-- higher level way to make the memFn
+
+-- todo: add helpers for generic ffi function wrappers
+-- for working with callbacks
+-- for general member fields on ffi values
+-- general methods on ffi values
+-- things like app on ffi values
+
+makeFFIMemFn :: Typeable a => FFITypeID -> [FFIValueEntry a] -> Runtime (Text -> Value -> Runtime Value)
+makeFFIMemFn tid meths =
+    let eqMem fn = ("_equals", \v -> do
+            v' <- either error id <$> extractFFIValue tid v
+            pure $ Fun $ \[w] -> do
+                w' <- extractFFIValue tid w
+                case w' of
+                    Left _ -> pure $ Boolean False
+                    Right w'' -> Boolean <$> fn v' w'')
+        binMem nm fn = (nm, \v -> do
+                v' <- either error id <$> extractFFIValue tid v
+                pure $ Fun $ \[w] -> do
+                    w' <- extractFFIValue tid w
+                    case w' of
+                        Left _ -> error $ "bad type"
+                        Right w'' -> fn v' w'')
+                        
+        meths' :: [(Text, Value -> Runtime Value)]
+        meths' = concat $ flip map meths $ \case
+           ToRepr f -> [("_torepr", \v -> do
+               v' <- either error id <$> extractFFIValue tid v
+               pure $ Fun $ \[] -> BText <$> f v')] 
+           Equals f -> [eqMem f]
+           Compare f -> [eqMem (\a b -> (==EQ) <$> f a b)
+                        ,binMem "_lessthan" (\a b -> (Boolean . (==LT)) <$> f a b)
+                        ,binMem "_lessequal" (\a b -> (Boolean . (`elem` [LT,EQ])) <$> f a b)
+                        ,binMem "_greaterequal" (\a b -> (Boolean . (`elem` [GT,EQ])) <$> f a b)
+                        ,binMem "_greaterthan" (\a b -> (Boolean . (==GT)) <$> f a b)]
+           {-Arith (ArithM myadd mysub mymul mydiv) ->
+               {-let mk1 nm fn = (nm, \case
+                    R.FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.FFIValue tg . toDyn <$> fn v' w')-}
+               [binMem "_plus" (\a b -> myadd a b
+                  --,mk1 "_minus" mysub
+                  --,mk1 "_times" mymul
+                  --,mk1 "_divide" mydiv
+                  ]-}
+
+           {-("_equals", \v -> do
+               v' <- either error id <$> extractFFIValue tid v
+               pure $ Fun $ \[w] -> do
+                   w' <- extractFFIValue tid w
+                   case w' of
+                       Left _ -> pure $ Boolean False
+                       Right w'' -> Boolean <$> f v' w'')]-}
+           {-Compare f ->
+               let mk1 nm fn = (nm, \v -> do
+                       v' <- either error id <$> extractFFIValue tid v
+                       pure $ Fun $ \[w] -> do
+                           w' <- extractFFIValue tid w
+                           case w' of
+                               Left _ -> pure $ Boolean False
+                               Right w'' -> Boolean . fn <$> f v' w'')
+                                       
+                    {-R.FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean . fn <$> f v' w')-}
+               in [{-("_equals", \case
+                    FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean . (==EQ) <$> f v' w'
+                              [_] -> pure $ R.Boolean False)
+                  ,-}mk1 "_lessthan" (==LT)
+                  ,mk1 "_lessequal" (`elem` [LT,EQ])
+                  ,mk1 "_greaterequal" (`elem` [GT,EQ])
+                  ,mk1 "_greaterthan" (==GT)
+                  ]-}
+           {-ToRepr f -> [("_torepr",\case
+               R.FFIValue _ v
+                   | Just v' <- fromDynamic v ->
+                     pure $ R.Fun $ \[] -> R.BText <$> f v')]
+           Equals f -> [("_equals", \case
+               R.FFIValue _ v
+                   | Just v' <- fromDynamic v ->
+                     pure $ R.Fun $ \case
+                         [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean <$> f v' w'
+                         [_] -> pure $ R.Boolean False)]
+           Compare f ->
+               let mk1 nm fn = (nm, \case
+                    R.FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean . fn <$> f v' w')
+               in [("_equals", \case
+                    R.FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean . (==EQ) <$> f v' w'
+                              [_] -> pure $ R.Boolean False)
+                  ,mk1 "_lessthan" (==LT)
+                  ,mk1 "_lessequal" (`elem` [LT,EQ])
+                  ,mk1 "_greaterequal" (`elem` [GT,EQ])
+                  ,mk1 "_greaterthan" (==GT)
+                  ]
+           Arith (ArithM myadd mysub mymul mydiv) ->
+               let mk1 nm fn = (nm, \case
+                    R.FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.FFIValue tg . toDyn <$> fn v' w')
+               in [mk1 "_plus" myadd
+                  ,mk1 "_minus" mysub
+                  ,mk1 "_times" mymul
+                  ,mk1 "_divide" mydiv
+                  ]-}
+        memFn nm = case lookup nm meths' of
+            Nothing -> error $ "field not found:" <> tyNameText tid <> " ." <> nm
+            Just x -> x
+    in pure memFn 
+    
+{-
+makeFFIType :: Typeable a => Text -> [FFIValueEntry a] -> R.Runtime R.FFITypeTag
+makeFFIType nm meths = do
+    -- todo: need to generate a type id from the runtime first
+    -- then use this when extracting values to make sure they're the
+    -- right type
+    let meths' :: [(Text, Value -> R.Runtime Value)]
+        meths' = concat $ flip map meths $ \case
+           ToRepr f -> [("_torepr",\case
+               R.FFIValue _ v
+                   | Just v' <- fromDynamic v ->
+                     pure $ R.Fun $ \[] -> R.BText <$> f v')]
+           Equals f -> [("_equals", \case
+               R.FFIValue _ v
+                   | Just v' <- fromDynamic v ->
+                     pure $ R.Fun $ \case
+                         [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean <$> f v' w'
+                         [_] -> pure $ R.Boolean False)]
+           Compare f ->
+               let mk1 nm fn = (nm, \case
+                    R.FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean . fn <$> f v' w')
+               in [("_equals", \case
+                    R.FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean . (==EQ) <$> f v' w'
+                              [_] -> pure $ R.Boolean False)
+                  ,mk1 "_lessthan" (==LT)
+                  ,mk1 "_lessequal" (`elem` [LT,EQ])
+                  ,mk1 "_greaterequal" (`elem` [GT,EQ])
+                  ,mk1 "_greaterthan" (==GT)
+                  ]
+           Arith (ArithM myadd mysub mymul mydiv) ->
+               let mk1 nm fn = (nm, \case
+                    R.FFIValue _ v
+                        | Just v' <- fromDynamic v ->
+                          pure $ R.Fun $ \case
+                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.FFIValue tg . toDyn <$> fn v' w')
+               in [mk1 "_plus" myadd
+                  ,mk1 "_minus" mysub
+                  ,mk1 "_times" mymul
+                  ,mk1 "_divide" mydiv
+                  ]
+        memFn nm = case lookup nm meths' of
+            Nothing -> error $ "field not found:" <> nm
+            Just x -> x
+        -- really relying on haskell laziness here
+        tg = R.FFITypeTag {R.tyName = nm
+                          ,R.tyMemberFn = memFn}
+    pure tg
+-}
+-}
