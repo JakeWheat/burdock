@@ -26,7 +26,7 @@ import qualified Burdock.Desugar as D
 import qualified Burdock.Interpreter as I
 import qualified Burdock.Runtime as R
 import Burdock.StaticError (prettyStaticErrors)
-import Burdock.System (burdockSystemModule)
+import Burdock.Bootstrap (burdockBootstrapModule)
     
 ------------------------------------------------------------------------------
 
@@ -39,8 +39,8 @@ createHandle :: IO Handle
 createHandle = do
     st <- R.makeRuntimeState
     R.runRuntime st $ do
-        sm <- burdockSystemModule
-        R.addBinding "_system" (R.Module sm)
+        sm <- burdockBootstrapModule
+        R.addBinding "_bootstrap" (R.Module sm)
     pure $ Handle st
 
 runScript :: Handle -> (Maybe Text) -> L.Text -> IO Value

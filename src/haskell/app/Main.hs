@@ -70,8 +70,8 @@ main = do
 runScriptTest :: Text -> IO (Int,Int)
 runScriptTest fn =
     let getTestResults st = do
-            passes <- runScript st Nothing "_system.get-test-passes()"
-            failures <- runScript st Nothing "_system.get-test-failures()"
+            passes <- runScript st Nothing "_bootstrap.get-test-passes()"
+            failures <- runScript st Nothing "_bootstrap.get-test-failures()"
             case (passes,failures) of
                 (Number p, Number f)
                     | Just p' <- extractInt p

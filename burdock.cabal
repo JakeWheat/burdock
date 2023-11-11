@@ -41,7 +41,7 @@ common shared-properties
                       Burdock.Rename
                       Burdock.StaticError
                       Burdock.ModuleMetadata
-                      Burdock.System
+                      Burdock.Bootstrap
 
     build-depends:    base ^>=4.17.0.0
                     , scientific

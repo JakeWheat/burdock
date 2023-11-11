@@ -9,8 +9,8 @@ built in ffi module used to bootstrap the interpreter/handle
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Burdock.System
-    (burdockSystemModule
+module Burdock.Bootstrap
+    (burdockBootstrapModule
     ) where
 
 import Prelude hiding (error, show, putStrLn)
@@ -42,8 +42,8 @@ import Burdock.Scientific (extractInt, Scientific)
 
 ------------------------------------------------------------------------------
 
-burdockSystemModule :: R.Runtime [(Text, Value)]
-burdockSystemModule = do
+burdockBootstrapModule :: R.Runtime [(Text, Value)]
+burdockBootstrapModule = do
 
     -- get the ffitypetag burdock type
     -- this is used to make other ffi types
@@ -133,7 +133,7 @@ haskell-list ffitype
 make-datadecl-tag, make haskell list, make variant, is type, is
 variant, check variants equal, show variant
 
-this is roughly the core of the _system module that's needed to run
+this is roughly the core of the _bootstrap module that's needed to run
 the language itself
 
 -}

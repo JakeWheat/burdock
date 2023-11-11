@@ -1,17 +1,17 @@
 
-a = _system.demo-make-val(4)
-_system.print(a)
+a = _bootstrap.demo-make-val(4)
+_bootstrap.print(a)
 
-_system.print(a == 1)
-_system.print(a == _system.demo-make-val(4))
-_system.print(a == _system.demo-make-val(5))
-#_system.print(3)
-_system.print(_system.demo-make-val(12) / _system.demo-make-val(6))
-_system.print(1 < 2)
-_system.print(1 >= 2)
-_system.print(1 + 2)
-_system.print(1 >= 2)
-_system.print(3 * 2)
+_bootstrap.print(a == 1)
+_bootstrap.print(a == _bootstrap.demo-make-val(4))
+_bootstrap.print(a == _bootstrap.demo-make-val(5))
+#_bootstrap.print(3)
+_bootstrap.print(_bootstrap.demo-make-val(12) / _bootstrap.demo-make-val(6))
+_bootstrap.print(1 < 2)
+_bootstrap.print(1 >= 2)
+_bootstrap.print(1 + 2)
+_bootstrap.print(1 >= 2)
+_bootstrap.print(3 * 2)
 
 check:
   1 is 1

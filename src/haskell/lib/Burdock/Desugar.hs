@@ -44,7 +44,7 @@ desugarExpr (S.BinOp sp e0 "is" e1) = do
         ,S.Text sp "!="
         ]
   where
-    app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_system") nm) as
+    app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") nm) as
     wrapit e = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp e]
     lam as e = S.Lam sp (S.FunHeader [] (flip map as $ S.NameBinding sp) Nothing) [S.StmtExpr sp e]
 
@@ -58,7 +58,7 @@ desugarExpr (S.BinOp sp e0 "is-not" e1) = do
         ,S.Text sp "=="
         ]
   where
-    app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_system") nm) as
+    app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") nm) as
     wrapit e = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp e]
     lam as e = S.Lam sp (S.FunHeader [] (flip map as $ S.NameBinding sp) Nothing) [S.StmtExpr sp e]
 
