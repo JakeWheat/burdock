@@ -1,12 +1,14 @@
 
-a = _bootstrap.demo-make-val(4)
-_bootstrap.print(a)
+#a = _bootstrap.demo-make-val(4)
+#_bootstrap.print(a)
 
+a = 2
+_bootstrap.print(1)
 _bootstrap.print(a == 1)
-_bootstrap.print(a == _bootstrap.demo-make-val(4))
-_bootstrap.print(a == _bootstrap.demo-make-val(5))
+#_bootstrap.print(a == _bootstrap.demo-make-val(4))
+#_bootstrap.print(a == _bootstrap.demo-make-val(5))
 #_bootstrap.print(3)
-_bootstrap.print(_bootstrap.demo-make-val(12) / _bootstrap.demo-make-val(6))
+#_bootstrap.print(_bootstrap.demo-make-val(12) / _bootstrap.demo-make-val(6))
 _bootstrap.print(1 < 2)
 _bootstrap.print(1 >= 2)
 _bootstrap.print(1 + 2)

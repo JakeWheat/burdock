@@ -8,10 +8,11 @@ module Burdock.Runtime
     ,makeRuntimeState
     ,runRuntime
 
-    ,Value(..)
+    ,Value
     ,debugShowValue
     -- temp
     ,showValue
+    ,Value(BNothing,Boolean,BText,Fun,Box,Module)
 
     ,FFITypeInfo
     ,makeFFIType
@@ -72,8 +73,7 @@ data VariantTag = VariantTag DataDeclTag Text
     deriving (Eq, Show)
 
 data Value
-    = Number Scientific
-    | Boolean Bool
+    = Boolean Bool
     | BText Text
     | BNothing
     
@@ -88,7 +88,7 @@ data Value
 
 -- pure show for use in temporary error messages and internal errors
 debugShowValue :: Value -> Text
-debugShowValue (Number n) = showScientific n
+--debugShowValue (Number n) = showScientific n
 debugShowValue (Boolean b) = show b
 debugShowValue (BText t) = "\"" <> t <> "\""
 debugShowValue BNothing = "nothing"
@@ -101,7 +101,7 @@ debugShowValue (Variant (VariantTag _ nm) fs) =
     nm <> "(" <> T.intercalate "," (map (debugShowValue . snd) fs) <> ")"
 
 showValue :: Value -> Runtime Text
-showValue (Number n) = pure $ showScientific n
+--showValue (Number n) = pure $ showScientific n
 showValue (Boolean b) = pure $ show b
 showValue (BText t) = pure $ "\"" <> t <> "\""
 showValue BNothing = pure $ "nothing"
@@ -165,8 +165,6 @@ captureClosure :: Runtime [(Text,Value)]
 captureClosure = do
     rtb <- rtBindings <$> ask
     liftIO $ readIORef rtb
-
-
 
 addBinding :: Text -> Value -> Runtime ()
 addBinding nm v = do

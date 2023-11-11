@@ -171,7 +171,7 @@ bRunBinaryTest _ _ = error $ "bad args to bRunBinaryTest"
 ------------------------------------------------------------------------------
 
 demoMakeVal :: R.FFITypeInfo -> [Value] -> R.Runtime Value
-demoMakeVal nti [R.Number n] = R.makeFFIValue nti n
+--demoMakeVal nti [R.Number n] = R.makeFFIValue nti n
 demoMakeVal _ _ = error "bad args to demoMakeVal"
 
 --------------------------------------

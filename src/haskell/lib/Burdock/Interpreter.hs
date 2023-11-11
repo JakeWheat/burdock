@@ -1,11 +1,13 @@
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Burdock.Interpreter
     (interpBurdock
     ) where
 
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
+import Data.Text.IO (putStrLn)
 
 import Data.Text (Text)
 import Control.Monad.IO.Class (liftIO)
@@ -40,7 +42,14 @@ interpStmt s = error $ "interpStmt: " <> show s
 
 interpExpr :: I.Expr -> R.Runtime R.Value
 
-interpExpr (I.Num _ n) = pure $ R.Number n
+interpExpr (I.Num sp n) = do
+    --liftIO $ putStrLn $ show sp
+    Just bs <- R.lookupBinding "_bootstrap"
+    bnum <- R.getMember Nothing bs "_type-number"
+    ti <- R.getFFITypeInfoTypeInfo
+    Right (nti :: R.FFITypeInfo) <- R.extractFFIValue ti bnum
+    R.makeFFIValue nti n
+    -- pure $ R.Number n
 interpExpr (I.IString _ n) = pure $ R.BText n
 
 interpExpr (I.Iden _ "true") = pure $ R.Boolean True
@@ -94,5 +103,3 @@ tryApplyBinding _ (I.NameBinding _sp nm) v = do
     pure $ Just [(nm,v)]
 
 tryApplyBinding _sp b _v = error $ "tryApplyBinding " <> show b
-
-

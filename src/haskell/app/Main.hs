@@ -72,12 +72,13 @@ runScriptTest fn =
     let getTestResults st = do
             passes <- runScript st Nothing "_bootstrap.get-test-passes()"
             failures <- runScript st Nothing "_bootstrap.get-test-failures()"
+            undefined {-
             case (passes,failures) of
                 (Number p, Number f)
                     | Just p' <- extractInt p
                     , Just f' <- extractInt f
                       -> pure (p',f')
-                _ -> error $ "bad return value from get test results " <> debugShowValue passes <> " " <> debugShowValue failures
+                _ -> error $ "bad return value from get test results " <> debugShowValue passes <> " " <> debugShowValue failures-}
         doIt = do
             putStrLn fn
             mySrc <- liftIO $ L.readFile (T.unpack fn)
