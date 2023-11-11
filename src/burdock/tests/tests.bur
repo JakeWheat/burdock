@@ -1,0 +1,16 @@
+
+a = _system.demo-make-val(4)
+_system.print(a)
+#_system.print(a == 1)
+#_system.print(3)
+_system.print(_system.demo-make-val(12) / _system.demo-make-val(6))
+_system.print(1 < 2)
+_system.print(1 >= 2)
+_system.print(1 + 2)
+_system.print(1 >= 2)
+_system.print(3 * 2)
+
+check:
+  1 is 1
+  2 is 3
+end

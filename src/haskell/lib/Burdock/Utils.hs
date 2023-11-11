@@ -1,4 +1,5 @@
 
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
 module Burdock.Utils
     (error
@@ -6,6 +7,7 @@ module Burdock.Utils
     ,trace
     ,traceit
     ,emacsShowPos
+    ,catchAsText
     ) where
 
 import Prelude hiding (error, show)
@@ -16,6 +18,13 @@ import Data.Text as T
 import qualified Debug.Trace as DT
 
 import GHC.Stack (HasCallStack)
+
+import Control.Exception.Safe
+    (catch
+    ,SomeException
+    ,MonadCatch
+    )
+
 
 error :: HasCallStack => T.Text -> a
 error = P.error . T.unpack
@@ -32,3 +41,6 @@ traceit msg val = DT.trace (T.unpack (msg <> show val)) val
 emacsShowPos :: Maybe (T.Text, Int, Int) -> T.Text
 emacsShowPos Nothing = "unknown:"
 emacsShowPos (Just (nm,l,c)) = nm <> ":" <> show l <> ":" <> show c <> ":"
+
+catchAsText :: MonadCatch m => m a -> (Text -> m a) -> m a
+catchAsText f h = catch f $ \(e :: SomeException) -> h (show e)

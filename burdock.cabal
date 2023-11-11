@@ -32,6 +32,16 @@ common shared-properties
                       Burdock.Parse
                       Burdock.Scientific
                       Burdock.Utils
+                      Burdock.Burdock
+                      Burdock.Interpreter
+                      Burdock.Runtime
+                      Burdock.Desugar
+                      Burdock.InterpreterSyntax
+                      Burdock.PrettyInterpreter
+                      Burdock.Rename
+                      Burdock.StaticError
+                      Burdock.ModuleMetadata
+                      Burdock.System
 
     build-depends:    base ^>=4.17.0.0
                     , scientific
