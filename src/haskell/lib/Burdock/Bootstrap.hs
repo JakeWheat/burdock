@@ -23,22 +23,16 @@ import Data.Text (Text)
 import qualified Data.Text as T
 import Control.Monad.IO.Class (liftIO)
 
-import Data.Dynamic
-    (toDyn
-    ,fromDynamic
-    ,Typeable
-    )
-
 import Data.IORef
     (IORef
-    ,readIORef
+    --,readIORef
     ,modifyIORef
     ,newIORef
     )
 
 import qualified Burdock.Runtime as R
 import Burdock.Runtime (Value)
-import Burdock.Scientific (extractInt, Scientific)
+import Burdock.Scientific (Scientific)
 
 ------------------------------------------------------------------------------
 
@@ -49,46 +43,9 @@ burdockBootstrapModule = do
     -- this is used to make other ffi types
     -- and it's added to a binding in burdock
     ffiTypeInfo <- R.getFFITypeInfoTypeInfo
-    {-ffitagInBurdock <- makeFFIType "ffi-tag"
-        [ToRepr $ \v -> pure $ "<" <> R.tyName v <> ">"
-        -- to be fixed to use the unique type id
-        ,Equals $ \v w -> pure $ R.tyName v == R.tyName w
-        ]-}
-    -- todo: put the above in the runtime, so it's always available
-    -- then it'll just get bound to a name in burdock here
 
     -- create number type
-    burdockNumberTI :: R.FFITypeInfo <-
-         R.makeFFIType ["_bootstrap", "number"]
-           [R.ToRepr $ \(v :: Scientific) -> pure $ show v
-           ,R.Compare $ (pure .) . compare
-           -- arith
-           ,R.Arith
-            {R.aAdd = (pure .) . (+)
-            ,R.aSub = (pure .) . (-)
-            ,R.aMult = (pure .) . (*)
-            ,R.aDiv = (pure .) . (/)}]
-    
-    {-bnti <- R.newFFITypeID ["_bootstrap", "number"]
-    memFn <- R.makeFFIMemFn bnti
-        -- have to put the type in somewhere
-        [R.ToRepr $ \(v :: Scientific) -> pure $ show v
-        ,R.Compare $ (pure .) . compare
-        -- arith
-        ,R.Arith $ R.ArithM
-        -- this is idiomatic so it's actually OK to write like this:
-         {R.aAdd = (pure .) . (+)
-         ,R.aSub = (pure .) . (-)
-         ,R.aMult = (pure .) . (*)
-         ,R.aDiv = (pure .) . (/)
-         }
-        ]
-    burdockNumberTI <- R.makeFFITypeInfo bnti memFn-}
-
-    -- is-number -> implement via is-ffi-type function with closure
-    
-    --tg <- myMakeValueTag
-
+    burdockNumberTI <- makeNumber
     testLog <- liftIO $ newIORef (0,0)
 
     burdockFFITag <- R.makeFFIValue ffiTypeInfo ffiTypeInfo
@@ -137,6 +94,19 @@ this is roughly the core of the _bootstrap module that's needed to run
 the language itself
 
 -}
+
+------------------------------------------------------------------------------
+
+makeNumber :: R.Runtime R.FFITypeInfo
+makeNumber = do
+    R.makeFFIType ["_bootstrap", "number"]
+        [R.ToRepr $ \(v :: Scientific) -> pure $ show v
+        ,R.Compare $ (pure .) . compare
+        ,R.Arith
+            {R.aAdd = (pure .) . (+)
+            ,R.aSub = (pure .) . (-)
+            ,R.aMult = (pure .) . (*)
+            ,R.aDiv = (pure .) . (/)}]
     
 ------------------------------------------------------------------------------
 
@@ -200,29 +170,9 @@ bRunBinaryTest _ _ = error $ "bad args to bRunBinaryTest"
 
 ------------------------------------------------------------------------------
 
-{-data MyType = MyType Int
-    deriving (Show,Eq,Ord)
-
-myMakeValueTag :: R.Runtime R.FFITypeTag
-myMakeValueTag =
-    makeFFIType "my-type"
-        [ToRepr $ \(v :: MyType) -> pure $ show v
-        --,Equals $ \(v :: MyType) w -> pure $ v == w
-        ,Compare $ \(v :: MyType) w -> pure $ compare v w
-        -- arith
-        ,Arith $ ArithM
-         {aAdd = \(MyType a) (MyType b) -> pure $ MyType (a + b)
-         ,aSub = \(MyType a) (MyType b) -> pure $ MyType (a - b)
-         ,aMult = \(MyType a) (MyType b) -> pure $ MyType (a * b)
-         ,aDiv = \(MyType a) (MyType b) -> pure $ MyType (a `div` b)
-         }
-        ]-}
-
 demoMakeVal :: R.FFITypeInfo -> [Value] -> R.Runtime Value
-demoMakeVal nti [R.Number n] = do
-    R.makeFFIValue nti n
-    -- tg <- myMakeValueTag
-    --pure $ R.FFIValue tg $ toDyn $ MyType $ maybe (error "balls") id $ extractInt n
+demoMakeVal nti [R.Number n] = R.makeFFIValue nti n
+demoMakeVal _ _ = error "bad args to demoMakeVal"
 
 --------------------------------------
 
@@ -240,78 +190,4 @@ bPrint [v] = do
         _ -> error $ "non text returned from x._torepr()" <> R.debugShowValue v <> " " <> R.debugShowValue r
     pure R.BNothing
 
-------------------------------------------------------------------------------
-
--- this bit to move, probably to Runtime
--- todo: add some more helpers - for generic functions
---   for other kinds of methods
---   for fields on ffi types
---   for the other ffi behaviour: assign, app, others?
-
-{-makeFFIType :: Typeable a => Text -> [FFIValueEntry a] -> R.Runtime R.FFITypeTag
-makeFFIType nm meths = do
-    -- todo: need to generate a type id from the runtime first
-    -- then use this when extracting values to make sure they're the
-    -- right type
-    let meths' :: [(Text, Value -> R.Runtime Value)]
-        meths' = concat $ flip map meths $ \case
-           ToRepr f -> [("_torepr",\case
-               R.FFIValue _ v
-                   | Just v' <- fromDynamic v ->
-                     pure $ R.Fun $ \[] -> R.BText <$> f v')]
-           Equals f -> [("_equals", \case
-               R.FFIValue _ v
-                   | Just v' <- fromDynamic v ->
-                     pure $ R.Fun $ \case
-                         [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean <$> f v' w'
-                         [_] -> pure $ R.Boolean False)]
-           Compare f ->
-               let mk1 nm fn = (nm, \case
-                    R.FFIValue _ v
-                        | Just v' <- fromDynamic v ->
-                          pure $ R.Fun $ \case
-                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean . fn <$> f v' w')
-               in [("_equals", \case
-                    R.FFIValue _ v
-                        | Just v' <- fromDynamic v ->
-                          pure $ R.Fun $ \case
-                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.Boolean . (==EQ) <$> f v' w'
-                              [_] -> pure $ R.Boolean False)
-                  ,mk1 "_lessthan" (==LT)
-                  ,mk1 "_lessequal" (`elem` [LT,EQ])
-                  ,mk1 "_greaterequal" (`elem` [GT,EQ])
-                  ,mk1 "_greaterthan" (==GT)
-                  ]
-           Arith (ArithM myadd mysub mymul mydiv) ->
-               let mk1 nm fn = (nm, \case
-                    R.FFIValue _ v
-                        | Just v' <- fromDynamic v ->
-                          pure $ R.Fun $ \case
-                              [R.FFIValue _ w] | Just w' <- fromDynamic w -> R.FFIValue tg . toDyn <$> fn v' w')
-               in [mk1 "_plus" myadd
-                  ,mk1 "_minus" mysub
-                  ,mk1 "_times" mymul
-                  ,mk1 "_divide" mydiv
-                  ]
-        memFn nm = case lookup nm meths' of
-            Nothing -> error $ "field not found:" <> nm
-            Just x -> x
-        -- really relying on haskell laziness here
-        tg = R.FFITypeTag {R.tyName = nm
-                          ,R.tyMemberFn = memFn}
-    pure tg
-
-data FFIValueEntry a
-    = ToRepr (a -> R.Runtime Text)
-    | Equals (a -> a -> R.Runtime Bool)
-    | Compare (a -> a -> R.Runtime Ordering)
-    | Arith (Arith a)
-
-data Arith a =
-    ArithM
-    {aAdd :: a -> a -> R.Runtime a
-    ,aSub :: a -> a -> R.Runtime a
-    ,aMult :: a -> a -> R.Runtime a
-    ,aDiv :: a -> a -> R.Runtime a
-    }
--}
+bPrint _ = error "bad args to print"
