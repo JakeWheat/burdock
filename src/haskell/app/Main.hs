@@ -50,8 +50,12 @@ import Burdock.Burdock
     ,runScript
     ,Value(..)
     ,debugShowValue
+    ,extractFFIValue
+    ,hRuntimeState
     )
 import Burdock.Scientific (extractInt)
+import qualified Burdock.Runtime as R
+
 
 main :: IO ()
 main = do
@@ -70,15 +74,19 @@ main = do
 runScriptTest :: Text -> IO (Int,Int)
 runScriptTest fn =
     let getTestResults st = do
+            -- todo: create a nice user wrapper here that doesn't need all this
+            -- boilerplate and internals
             passes <- runScript st Nothing "_bootstrap.get-test-passes()"
             failures <- runScript st Nothing "_bootstrap.get-test-failures()"
-            undefined {-
-            case (passes,failures) of
-                (Number p, Number f)
-                    | Just p' <- extractInt p
-                    , Just f' <- extractInt f
-                      -> pure (p',f')
-                _ -> error $ "bad return value from get test results " <> debugShowValue passes <> " " <> debugShowValue failures-}
+            ntix <- runScript st Nothing "_bootstrap._type-number"
+            R.runRuntime (hRuntimeState st) $ do
+                xx <- R.getFFITypeInfoTypeInfo
+                Right nti <- R.extractFFIValue xx ntix
+                Right passes' <- extractFFIValue nti passes
+                Right failures' <- extractFFIValue nti failures
+                case (extractInt passes',extractInt failures') of
+                    (Just p',Just f') -> pure (p',f')
+                    _ -> error $ "bad return value from get test results " <> debugShowValue passes <> " " <> debugShowValue failures
         doIt = do
             putStrLn fn
             mySrc <- liftIO $ L.readFile (T.unpack fn)

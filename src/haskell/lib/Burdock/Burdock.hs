@@ -4,10 +4,16 @@ module Burdock.Burdock
     (liftIO
     ,createHandle
     ,runScript
+
     -- todo: make abstract
     ,Value(..)
+    ,R.makeFFIValue
+    ,R.extractFFIValue
+    ,hRuntimeState
+
     -- what should user code do in these situations:
     ,R.debugShowValue
+    ,R.getFFITypeInfoTypeInfo
     
     ,Handle
     ) where

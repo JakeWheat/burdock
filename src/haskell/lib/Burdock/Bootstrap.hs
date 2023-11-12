@@ -25,7 +25,7 @@ import Control.Monad.IO.Class (liftIO)
 
 import Data.IORef
     (IORef
-    --,readIORef
+    ,readIORef
     ,modifyIORef
     ,newIORef
     )
@@ -46,6 +46,7 @@ burdockBootstrapModule = do
 
     -- create number type
     burdockNumberTI <- makeNumber
+
     testLog <- liftIO $ newIORef (0,0)
 
     burdockFFITag <- R.makeFFIValue ffiTypeInfo ffiTypeInfo
@@ -57,8 +58,8 @@ burdockBootstrapModule = do
          ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
          ,("demo-make-val", R.Fun (demoMakeVal burdockNumberTI))
          ,("print", R.Fun bPrint)
-         ,("get-test-passes", R.Fun (getTestVal testLog 0))
-         ,("get-test-failures", R.Fun (getTestVal testLog 1))
+         ,("get-test-passes", R.Fun (getTestVal testLog 0 burdockNumberTI))
+         ,("get-test-failures", R.Fun (getTestVal testLog 1 burdockNumberTI))
          ]
 
 {-
@@ -154,8 +155,13 @@ runBinaryTest tally msg v0 v1 op opFailString = do
                  ["FAIL: " <> msg
                  ,"RHS raised: " <> er1]
 
-getTestVal :: IORef (Int,Int) -> Int -> [Value] -> R.Runtime Value
-getTestVal = undefined
+getTestVal :: IORef (Int,Int) -> Int -> R.FFITypeInfo -> [Value] -> R.Runtime Value
+getTestVal v i nti = \case
+    [] -> do
+        (a,b) :: (Int,Int) <- liftIO $ readIORef v
+        if i == 0
+            then R.makeFFIValue nti $ ((fromIntegral a) :: Scientific)
+            else R.makeFFIValue nti $ ((fromIntegral b) :: Scientific)
 
 bRunBinaryTest :: IORef (Int,Int) -> [Value] -> R.Runtime Value
 bRunBinaryTest tally [R.BText msg

@@ -7,7 +7,7 @@ module Burdock.Interpreter
 
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
-import Data.Text.IO (putStrLn)
+--import Data.Text.IO (putStrLn)
 
 import Data.Text (Text)
 import Control.Monad.IO.Class (liftIO)
@@ -42,7 +42,7 @@ interpStmt s = error $ "interpStmt: " <> show s
 
 interpExpr :: I.Expr -> R.Runtime R.Value
 
-interpExpr (I.Num sp n) = do
+interpExpr (I.Num _sp n) = do
     --liftIO $ putStrLn $ show sp
     Just bs <- R.lookupBinding "_bootstrap"
     bnum <- R.getMember Nothing bs "_type-number"

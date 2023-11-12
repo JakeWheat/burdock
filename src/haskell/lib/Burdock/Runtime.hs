@@ -66,7 +66,7 @@ import Data.Dynamic
 
 type SP = Maybe (Text, Int, Int)
 
-data DataDeclTag = DataDeclTag {-Int-} Text
+data DataDeclTag = DataDeclTag Int Text
     deriving (Eq, Show)
 
 data VariantTag = VariantTag DataDeclTag Text
@@ -119,7 +119,7 @@ showValue (Variant (VariantTag _ nm) fs) = do
 data RuntimeState
     = RuntimeState
     {rtBindings :: IORef [(Text, Value)]
-    --  ,autoDataDeclID :: IORef Int
+    ,rtAutoDataDeclID :: IORef Int
     ,rtAutoFFITypeID :: IORef Int
     ,rtFFITypeInfoTypeInfo :: FFITypeInfo
     }
@@ -128,7 +128,7 @@ makeRuntimeState :: IO RuntimeState
 makeRuntimeState = do
     st <-  RuntimeState
         <$> newIORef []
-        --  <*> newIORef 0
+        <*> newIORef 0
         <*> newIORef 0
         <*> pure (error "delayed initialisation")
     -- does this need to be here? try to move it to bootstrap
