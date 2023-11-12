@@ -114,7 +114,6 @@ check:
   is-ctor1(ctor1) is true
   is-ctor2(ctor1) is false
 
- #|
   cases x:
     | ctor2(a,b) => false
     | ctor1 => true
@@ -123,12 +122,18 @@ check:
   cases y:
     | ctor1 => false
     | ctor2(c,d) => d
-  end is 'a'
+  end is 5
 
-  cases y:
+  #|cases y:
     | yy => yy
-  end is ctor2(2,'a')
-|#
+  end is ctor2(2,5)|#
+
+  # temp work around before variant equals implemented
+  zz = cases y:
+    | yy => yy
+  end
+  zz.a is 2
+  zz.b is 5
 
 end
 

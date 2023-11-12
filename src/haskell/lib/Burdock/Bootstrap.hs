@@ -58,6 +58,7 @@ burdockBootstrapModule = do
     burdockFFITag <- R.makeFFIValue ffiTypeInfo ffiTypeInfo
     burdockNumberTag <- R.makeFFIValue ffiTypeInfo burdockNumberTI
     haskellListTag <- R.makeFFIValue ffiTypeInfo haskellListTI
+    variantTag <- R.makeFFIValue ffiTypeInfo variantTagTI
     
     pure [
 
@@ -65,6 +66,7 @@ burdockBootstrapModule = do
           ("_type-ffitag", burdockFFITag)
          ,("_type-number", burdockNumberTag)
          ,("_type-haskell-list", haskellListTag)
+         ,("_type-variant-tag", variantTag)
 
          ,("nothing", R.BNothing)
 

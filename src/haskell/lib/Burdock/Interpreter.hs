@@ -7,7 +7,7 @@ module Burdock.Interpreter
 
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
---import Data.Text.IO (putStrLn)
+import Data.Text.IO (putStrLn)
 
 import Data.Text (Text)
 import Control.Monad.IO.Class (liftIO)
@@ -32,14 +32,14 @@ interpStmt :: I.Stmt -> R.Runtime R.Value
 
 interpStmt (I.LetDecl _ b e) = do
     v <- interpExpr e
-    letValues [(b,v)]
+    letValues True [(b,v)]
     pure R.BNothing
 
 -- todo: make vars abstract, move to runtime
 interpStmt (I.VarDecl sp nm e) = do
     v <- interpExpr e
     r <- R.makeVar v
-    letValues [(I.NameBinding sp nm, r)]
+    letValues True [(I.NameBinding sp nm, r)]
     pure R.BNothing
 
 interpStmt (I.SetVar sp [nm] e) = do
@@ -91,7 +91,7 @@ interpExpr (I.Lam _sp fvs bs bdy) = do
             -- todo: check lists same length
             let bs' = zip bs vs
             R.withNewEnv env $ do
-                letValues bs'
+                letValues True bs'
                 interpStmts bdy
     pure $ R.Fun runF
 
@@ -107,24 +107,81 @@ interpExpr (I.If sp bs' mels) =
                 x -> error $ show sp <> "expected boolean, got " <> R.debugShowValue x
     in f bs'
 
+interpExpr (I.Cases sp e bs) = do
+    v <- interpExpr e
+    let f [] = error $ "no case branches matched"
+        f ((t,bdy):bs') = do
+            res <- tryApplyBinding sp False t v
+            case res of
+                Nothing -> f bs'
+                Just ls -> R.withScope $ do
+                    R.localEnv (ls++) $ interpStmts bdy
+    f bs
+
 interpExpr (I.Block _ stmts) = R.withScope $ interpStmts stmts
 
 interpExpr e = error $ "interpExpr: " <> show e
 
 ------------------------------------------------------------------------------
 
-letValues :: [(I.Binding, R.Value)] -> R.Runtime ()
-letValues bs = flip mapM_ bs $ \(b,v) -> do
-    mbs <- tryApplyBinding Nothing b v
+letValues :: Bool -> [(I.Binding, R.Value)] -> R.Runtime ()
+letValues isSimple bs = flip mapM_ bs $ \(b,v) -> do
+    mbs <- tryApplyBinding Nothing isSimple b v
     case mbs of
         Nothing -> error $ "couldn't bind " <> R.debugShowValue v <> " to " <> show b
         Just bs' -> mapM_ (uncurry R.addBinding) bs'
 
 ------------------------------------------------------------------------------
 
-tryApplyBinding :: I.SP -> I.Binding -> R.Value -> R.Runtime (Maybe [(Text,R.Value)])
+-- second arg is issimple, which allows variants
+tryApplyBinding :: I.SP -> Bool -> I.Binding -> R.Value -> R.Runtime (Maybe [(Text,R.Value)])
 
-tryApplyBinding _ (I.NameBinding _sp nm) v = do
-    pure $ Just [(nm,v)]
+-- the bool says if this is a simple binding - so a name cannot match a 0 arg variant
+-- need a better solution for this
+-- just removing it causes data decl desugaring to fail to execute
 
-tryApplyBinding _sp b _v = error $ "tryApplyBinding " <> show b
+tryApplyBinding _ True (I.NameBinding _sp nm) v = pure $ Just [(nm,v)]
+    
+tryApplyBinding _ False (I.NameBinding _sp nm) v = do
+    -- try to match 0 arg constructor
+    mvtg <- lookupVariantByName nm
+    case mvtg of
+        Just (R.VariantTag pddt pvnm) -> do
+            case v of
+                R.Variant (R.VariantTag vddt vvnm) [] | (pddt,pvnm) == (vddt,vvnm) ->
+                    pure $ Just []
+                _ -> pure $ Nothing
+        Nothing -> pure $ Just [(nm,v)]
+
+tryApplyBinding _ _ (I.VariantBinding _sp [nm] bs) (R.Variant (R.VariantTag vddt vvnm) vfs) = do
+    mvtg <- lookupVariantByName nm
+    case mvtg of
+        Just (R.VariantTag pddt pvnm) | (pddt,pvnm) == (vddt,vvnm) -> do
+            x <- flip mapM (zip bs vfs) $ \(b, vf) ->
+                tryApplyBinding Nothing False b (snd vf)
+            let y :: Maybe [(Text, R.Value)]
+                y = concat <$> sequence x
+            pure y
+        _ -> pure $ Nothing
+
+tryApplyBinding _ _ (I.VariantBinding {}) _ = pure Nothing    
+tryApplyBinding _ _ b _ = error $ show b
+
+lookupVariantByName :: Text -> R.Runtime (Maybe R.VariantTag)
+lookupVariantByName nm = do
+    bv <- R.lookupBinding ("_variant-" <> nm)
+    case bv of
+        -- if it matches a variant in scope, we commit to it
+        -- if it matches something else in scope, this should be a shadowing
+        -- issue, which will be handled elsewhere, so assume it's ok to shadow
+        Just vtg -> do
+            -- vtg is a value, inside this value we want to find a variant tag
+            Just bstp <- R.lookupBinding "_bootstrap"
+            vvti <- R.getMember Nothing bstp "_type-variant-tag"
+            ffiti <- R.getFFITypeInfoTypeInfo
+            Right vvti' <- R.extractFFIValue ffiti vvti
+            cand <- R.extractFFIValue vvti' vtg
+            case cand of
+                Left _ -> pure Nothing
+                Right (r :: R.VariantTag) -> pure $ Just r
+        _ -> pure Nothing

@@ -42,6 +42,6 @@ data Expr
 data Binding
     = NameBinding SP Text
     | WildcardBinding SP
-    | VariantBinding SP Text [Binding]
+    | VariantBinding SP [Text] [Binding]
     | TupleBinding SP [Binding]
     deriving (Eq,Show,Data)

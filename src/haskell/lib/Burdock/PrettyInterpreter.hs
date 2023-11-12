@@ -104,9 +104,9 @@ bindExpr n e =
 binding :: Binding -> Doc a
 binding (NameBinding _ s) = pretty s
 binding (WildcardBinding _) = pretty "_"
-binding (VariantBinding _ nms []) = pretty nms
+binding (VariantBinding _ nms []) = xSep "." $ map pretty nms
 binding (VariantBinding _ nms bs) =
-    pretty nms <> parens (commaSep $ map binding bs)
+    xSep "." (map pretty nms) <> parens (commaSep $ map binding bs)
 binding (TupleBinding _ bs) =
     pretty "{"
     <> nest 2 (xSep ";" $ map binding bs)

@@ -105,6 +105,9 @@ desugarExpr (S.BinOp sp e0 op e1) | Just op' <- lookup op methOps =
 desugarExpr (S.If sp ts els) =
     I.If sp (flip map ts $ \(e,bdy) -> (desugarExpr e, desugarStmts bdy)) $ fmap desugarStmts els
 
+desugarExpr (S.Cases sp e Nothing bs Nothing) =
+    I.Cases sp (desugarExpr e) $ flip map bs $ \(b,_,bdy) -> (desugarBinding b, desugarStmts bdy)
+
 desugarExpr e = error $ "desugarExpr " <> show e
 
 ------------------------------------------------------------------------------
@@ -112,6 +115,7 @@ desugarExpr e = error $ "desugarExpr " <> show e
 desugarBinding :: S.Binding -> I.Binding
 desugarBinding (S.NameBinding sp nm) = I.NameBinding sp nm
 desugarBinding (S.ShadowBinding sp nm) = I.NameBinding sp nm
+desugarBinding (S.VariantBinding sp nm bs) = I.VariantBinding sp nm $ map desugarBinding bs
 desugarBinding b = error $ "desugarBinding " <> show b
 
 ------------------------------------------------------------------------------

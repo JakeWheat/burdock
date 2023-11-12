@@ -52,6 +52,7 @@ import Burdock.Burdock
     ,debugShowValue
     ,extractFFIValue
     ,hRuntimeState
+    ,desugar
     )
 import Burdock.Scientific (extractInt)
 import qualified Burdock.Runtime as R
@@ -64,12 +65,20 @@ main = do
     case as of
         ("rename": _as') -> undefined
         ("rename-module": _as') -> undefined
-        ("desugar": _as') -> undefined
+        ("desugar": as') -> mapM_ doDesugar as'
         ("desugar-module": _as') -> undefined
         ("test": as') -> runScriptWithTests as'
         ("test-all": _as') -> undefined -- do the hunit tests too
         ("--": _as) -> undefined -- runfiles
         _ -> undefined -- runfiles
+
+doDesugar :: Text -> IO ()
+doDesugar fn = do
+    putStrLn fn
+    mySrc <- liftIO $ L.readFile (T.unpack fn)
+    st <- createHandle
+    x <- desugar st (Just fn) mySrc
+    L.putStrLn x
 
 runScriptTest :: Text -> IO (Int,Int)
 runScriptTest fn =

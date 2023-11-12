@@ -20,7 +20,7 @@ module Burdock.Runtime
     ,DataDeclTag(..)
     ,VariantTag(..)
 
-    ,FFITypeInfo
+    ,FFITypeInfo(..)
     ,makeFFIType
     ,makeFFIValue
     ,extractFFIValue
@@ -28,6 +28,7 @@ module Burdock.Runtime
     ,getFFITypeInfoTypeInfo
 
     ,withScope
+    ,localEnv
     ,app
     ,captureClosure
     ,withNewEnv
@@ -157,15 +158,19 @@ runRuntime st f = runReaderT f st
 --------------------------------------
 
 withScope :: Runtime a -> Runtime a
-withScope f = do
-    rtb <- rtBindings <$> ask
-    b1 <- liftIO (newIORef =<< readIORef rtb)
-    local (\y -> y {rtBindings = b1}) f
+withScope f = localEnv id f
 
 withNewEnv :: [(Text,Value)] -> Runtime a -> Runtime a
 withNewEnv bs f = do
     b1 <- liftIO $ newIORef bs
     local (\y -> y {rtBindings = b1}) f
+
+localEnv :: ([(Text,Value)] -> [(Text,Value)]) -> Runtime a -> Runtime a
+localEnv f stuff = do
+    rtb <- rtBindings <$> ask
+    rtbv <- liftIO $ readIORef rtb
+    rtbvn <- liftIO $ newIORef (f rtbv)
+    local (\s -> s {rtBindings = rtbvn}) stuff
 
 app :: SP -> Value -> [Value] -> Runtime Value
 app _sourcePos (Fun f) args = f args
