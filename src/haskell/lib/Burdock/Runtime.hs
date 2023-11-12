@@ -13,6 +13,8 @@ module Burdock.Runtime
     -- temp
     ,showValue
     ,Value(BNothing,Boolean,BText,Fun,Box,Module)
+    ,makeVar
+    ,setVar
 
     ,FFITypeInfo
     ,makeFFIType
@@ -51,6 +53,7 @@ import Data.IORef
     ,newIORef
     ,readIORef
     ,modifyIORef
+    ,writeIORef
     )
 
 import Control.Monad.IO.Class (liftIO)
@@ -88,7 +91,6 @@ data Value
 
 -- pure show for use in temporary error messages and internal errors
 debugShowValue :: Value -> Text
---debugShowValue (Number n) = showScientific n
 debugShowValue (Boolean b) = show b
 debugShowValue (BText t) = "\"" <> t <> "\""
 debugShowValue BNothing = "nothing"
@@ -101,7 +103,6 @@ debugShowValue (Variant (VariantTag _ nm) fs) =
     nm <> "(" <> T.intercalate "," (map (debugShowValue . snd) fs) <> ")"
 
 showValue :: Value -> Runtime Text
---showValue (Number n) = pure $ showScientific n
 showValue (Boolean b) = pure $ show b
 showValue (BText t) = pure $ "\"" <> t <> "\""
 showValue BNothing = pure $ "nothing"
@@ -195,6 +196,17 @@ getMember sp v f = error $ show sp <> ": getMember: " <> debugShowValue v <> " .
 
 runTask :: Runtime a -> Runtime (Either Text a)
 runTask f = catchAsText (Right <$> f) (pure . Left)
+
+makeVar :: Value -> Runtime Value
+makeVar v = do
+    r <- liftIO $ newIORef v
+    pure $ Box r
+
+setVar :: SP -> Value -> Value -> Runtime ()
+setVar sp bx v = do
+    case bx of
+        Box r -> liftIO $ writeIORef r v
+        _ -> error $ show sp <> " attempt to set non var: " <> debugShowValue bx
 
 ------------------------------------------------------------------------------
 

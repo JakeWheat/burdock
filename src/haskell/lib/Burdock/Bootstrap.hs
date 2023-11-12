@@ -44,11 +44,12 @@ burdockBootstrapModule = do
     -- and it's added to a binding in burdock
     ffiTypeInfo <- R.getFFITypeInfoTypeInfo
 
-    -- create number type
     burdockNumberTI <- makeNumber
 
     testLog <- liftIO $ newIORef (0,0)
 
+    -- wrap direct ffi type infos as burdock ffi values so they can
+    -- be bound in a burdock namespace
     burdockFFITag <- R.makeFFIValue ffiTypeInfo ffiTypeInfo
     burdockNumberTag <- R.makeFFIValue ffiTypeInfo burdockNumberTI
 
@@ -128,11 +129,11 @@ runBinaryTest tally msg v0 v1 op opFailString = do
             r <- R.app Nothing op [v0'', v1'']
             case r of
                 R.Boolean True -> liftIO $ do
-                    liftIO $ modifyIORef tally (second (+1))
+                    liftIO $ modifyIORef tally (first (+1))
                     liftIO $ putStrLn $ "PASS: " <> msg
                 R.Boolean False -> do
-                    liftIO $ modifyIORef tally (first (+1))
-                    -- todo: have to runtask the call to showValue
+                    liftIO $ modifyIORef tally (second (+1))
+                    -- todo: have to runtask the call to torepr
                     sv0 <- R.showValue v0''
                     sv1 <- R.showValue v1''
                     liftIO $ putStrLn $ T.unlines

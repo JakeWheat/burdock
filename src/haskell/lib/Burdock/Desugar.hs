@@ -30,6 +30,8 @@ desugarStmt :: S.Stmt -> I.Stmt
 desugarStmt (S.Check sp _ bdy) = desugarStmt $ S.StmtExpr sp $ S.Block sp bdy
 desugarStmt (S.StmtExpr sp e) = I.StmtExpr sp $ desugarExpr e
 desugarStmt (S.LetDecl sp b e) = I.LetDecl sp (desugarBinding b) (desugarExpr e)
+desugarStmt (S.VarDecl sp (S.SimpleBinding _ _ nm Nothing) e) = I.VarDecl sp nm (desugarExpr e)
+desugarStmt (S.SetVar sp (S.Iden _ nm) e) = I.SetVar sp [nm] (desugarExpr e)
 
 desugarStmt s = error $ "desugarStmt " <> show s
 

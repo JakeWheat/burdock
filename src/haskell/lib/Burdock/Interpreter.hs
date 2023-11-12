@@ -35,6 +35,19 @@ interpStmt (I.LetDecl _ b e) = do
     letValues [(b,v)]
     pure R.BNothing
 
+-- todo: make vars abstract, move to runtime
+interpStmt (I.VarDecl sp nm e) = do
+    v <- interpExpr e
+    r <- R.makeVar v
+    letValues [(I.NameBinding sp nm, r)]
+    pure R.BNothing
+
+interpStmt (I.SetVar sp [nm] e) = do
+    v <- interpExpr e
+    Just bx <- R.lookupBinding nm
+    R.setVar sp bx v
+    pure R.BNothing
+
 interpStmt (I.StmtExpr _ e) = interpExpr e
 interpStmt s = error $ "interpStmt: " <> show s
 

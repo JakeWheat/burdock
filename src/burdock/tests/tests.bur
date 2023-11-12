@@ -1,21 +1,135 @@
 
-#a = _bootstrap.demo-make-val(4)
-#_bootstrap.print(a)
-
-a = 2
-_bootstrap.print(1)
-_bootstrap.print(a == 1)
-#_bootstrap.print(a == _bootstrap.demo-make-val(4))
-#_bootstrap.print(a == _bootstrap.demo-make-val(5))
-#_bootstrap.print(3)
-#_bootstrap.print(_bootstrap.demo-make-val(12) / _bootstrap.demo-make-val(6))
-_bootstrap.print(1 < 2)
-_bootstrap.print(1 >= 2)
-_bootstrap.print(1 + 2)
-_bootstrap.print(1 >= 2)
-_bootstrap.print(3 * 2)
+# todo: fix text, bool to have compare
+# deal with != -> is it just desugaring?
 
 check:
   1 is 1
-  2 is 3
+  #"test" is "test"
+  #1 is-not "test"
+  #true is true
+  #true is-not false
 end
+
+check:
+  if 1 == 2: 3 else: 4 end is 4
+end
+
+check:
+  a = 3
+  a is 3
+  #a is-not 4
+end
+
+check:
+
+  1 + 1 is 2
+  b = 1
+  f = lam(a): a + b end
+  f(3) is 4
+
+end
+
+check:
+  var a = 5
+
+  a is 5
+
+  a := 7
+  a is 7
+
+  var b = 1
+  set_it = lam(c): 
+     b := c
+  end
+  b is 1
+  set_it(2)
+  b is 2
+
+end
+
+#|
+
+check:
+  rec fact = lam(n): if n <= 1: 1 else: n * fact(n - 1) end end
+  fact(1) is 1
+  fact(5) is 120
+
+end
+
+check:
+
+  rec addeven = lam(x): if x == 0: 0 else: x + addodd(x - 1) end end
+  rec addodd = lam(x): if x == 0: 0 else: x + addeven(x - 1) end end
+  addeven(6) is 21
+
+end
+
+check:
+
+  fun addeven(x): if x == 0: 0 else: x + addodd(x - 1) end end
+  fun addodd(x): if x == 0: 0 else: x + addeven(x - 1) end end
+  addeven(6) is 21
+
+end
+
+check:
+
+  a = 6
+  block:
+    shadow  a = 5
+    a - 1
+  end is 4
+
+  a is 6
+
+  block:
+    when false:
+      raise("bye")
+    end
+    5
+  end is 5
+
+  (3 + 4) * 5 is 35
+
+end
+
+check:
+
+  data MyDat:
+    | ctor1
+    | ctor2(a,b)
+  end
+
+  data Other:
+    | other1(a)
+  end
+
+
+  x = ctor1
+  y = ctor2(2,'a')
+
+  y.a is 2
+  y.b is 'a'
+
+  is-MyDat(ctor1) is true
+  is-Other(ctor1) is false
+
+  is-ctor1(ctor1) is true
+  is-ctor2(ctor1) is false
+
+  cases x:
+    | ctor2(a,b) => false
+    | ctor1 => true
+  end is true
+
+  cases y:
+    | ctor1 => false
+    | ctor2(c,d) => d
+  end is 'a'
+
+  cases y:
+    | yy => yy
+  end is ctor2(2,'a')
+
+end
+|#
