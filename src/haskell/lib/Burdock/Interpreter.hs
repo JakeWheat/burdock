@@ -95,6 +95,18 @@ interpExpr (I.Lam _sp fvs bs bdy) = do
                 interpStmts bdy
     pure $ R.Fun runF
 
+interpExpr (I.If sp bs' mels) =
+    let f [] = case mels of
+            Nothing -> error $ show sp <> " no if branches match and no else"
+            Just els -> R.withScope $ interpStmts els
+        f ((t,b):bs) = do
+            tv <- interpExpr t
+            case tv of
+                R.Boolean False -> f bs
+                R.Boolean True -> R.withScope $ interpStmts b
+                x -> error $ show sp <> "expected boolean, got " <> R.debugShowValue x
+    in f bs'
+
 interpExpr (I.Block _ stmts) = R.withScope $ interpStmts stmts
 
 interpExpr e = error $ "interpExpr: " <> show e
