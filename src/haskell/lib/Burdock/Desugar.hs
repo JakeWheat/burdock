@@ -28,8 +28,7 @@ desugarScript _fn (S.Script stmts) = pure $ desugarStmts stmts
 ------------------------------------------------------------------------------
 
 desugarStmts :: [S.Stmt] -> [I.Stmt]
-desugarStmts ss = map desugarStmt $ desugarRecs ss
-
+desugarStmts ss = map desugarStmt $ desugarRecs $ desugarDataDecls ss
 
 ------------------------------------------------------------------------------
 
@@ -140,3 +139,65 @@ makeRec sp nm e =
         let placeholder = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp $ S.App sp (S.Iden sp "raise") [S.Text sp "internal: recursive var not initialized"]]
         in (S.VarDecl sp (S.SimpleBinding sp S.NoShadow nm Nothing) placeholder
            ,S.SetVar sp (S.Iden sp nm) e)
+
+------------------------------------------------------------------------------
+
+{-
+
+a data decl desugars to:
+a type letdecl. this is renamed as a hack for now, because contruct implementations
+  can have the same name as a type and not conflict
+pattern letdecls - these contain the info needed to check a pattern match on a variant value
+letdecls for is-type, is-variants
+letdecls for the constructors
+  these will be letrec, because they can refer to each other
+
+-}
+
+desugarDataDecl :: S.Stmt -> [S.Stmt]
+desugarDataDecl (S.DataDecl dsp dnm _params variants _meths _where) =
+    concat [
+    [--_type-name = make-data-decl-tag(...)
+      slet dsp ("_type-" <> dnm) $ sapp dsp "make-data-decl-tag" [S.Text dsp dnm]
+     --   is-name = lam(x): _is-type(_type-name, x)
+     ,slet dsp ("is-" <> dnm) $ slam dsp ["x"] $ sapp dsp "is-type" [S.Iden dsp ("_type-" <> dnm)
+                                                                    ,S.Iden dsp "x"]]
+    --variants.each:
+    --  _variant-variantname = make-variant-tag(_type-name, ...)
+    ,map makeVariantInfo variants
+    --variants.each:
+    --  is-variant-name(x) = _is-variant(_variant-variantname, x)
+    ,map makeIsVariant variants
+    --rec variants.each:
+    --  variant-name = lam(args): make-variant(_variant-variantname, args)
+    ,map makeVariantCtor variants
+    ]
+  where
+    makeVariantInfo (S.VariantDecl vsp vnm _fs _meths) =
+        slet vsp ("_variant-" <> vnm) $ sapp vsp "make-variant-tag" [S.Iden vsp ("_type-" <> dnm)
+                                                                    ,S.Text vsp vnm]
+    makeIsVariant (S.VariantDecl vsp vnm _fs _meths) =
+        slet vsp ("is-" <> vnm) $ slam vsp ["x"] $ sapp vsp "is-variant" [S.Iden vsp ("_variant-" <> vnm)
+                                                                          ,S.Iden vsp "x"]
+    makeVariantCtor (S.VariantDecl vsp vnm [] _meths) =
+        slet vsp vnm $ sapp vsp "make-variant" [S.Iden vsp ("_variant-" <> vnm)
+                                               ,hl vsp []
+                                               ,hl vsp []
+                                               ]
+    makeVariantCtor (S.VariantDecl vsp vnm fs _meths) =
+        let fnms = flip map fs $ \(_,S.SimpleBinding _ _ nm _) -> nm
+        in slet vsp vnm $ slam vsp fnms $ sapp vsp "make-variant"
+           [S.Iden vsp ("_variant-" <> vnm)
+           ,hl vsp $ map (S.Text vsp) fnms
+           ,hl vsp $ map (S.Iden vsp) fnms]
+    slet sp nm e = S.LetDecl sp (S.NameBinding sp nm) e
+    sapp sp nm args = S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") nm) args
+    slam sp as e =
+      let bs = flip map as $ \a -> S.NameBinding sp a
+      in S.Lam sp (S.FunHeader [] bs Nothing) [S.StmtExpr sp e]
+    hl sp as = sapp sp "make-haskell-list" as
+
+desugarDataDecl x = [x]
+
+desugarDataDecls :: [S.Stmt] -> [S.Stmt]
+desugarDataDecls = concatMap desugarDataDecl

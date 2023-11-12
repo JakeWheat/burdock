@@ -91,7 +91,6 @@ check:
 
 end
 
-#|
 check:
 
   data MyDat:
@@ -103,12 +102,11 @@ check:
     | other1(a)
   end
 
-
   x = ctor1
-  y = ctor2(2,'a')
+  y = ctor2(2,5)
 
   y.a is 2
-  y.b is 'a'
+  y.b is 5
 
   is-MyDat(ctor1) is true
   is-Other(ctor1) is false
@@ -116,6 +114,7 @@ check:
   is-ctor1(ctor1) is true
   is-ctor2(ctor1) is false
 
+ #|
   cases x:
     | ctor2(a,b) => false
     | ctor1 => true
@@ -129,6 +128,7 @@ check:
   cases y:
     | yy => yy
   end is ctor2(2,'a')
+|#
 
 end
-|#
+

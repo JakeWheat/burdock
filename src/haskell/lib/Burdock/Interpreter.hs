@@ -63,7 +63,7 @@ interpExpr (I.Num _sp n) = do
     Right (nti :: R.FFITypeInfo) <- R.extractFFIValue ti bnum
     R.makeFFIValue nti n
     -- pure $ R.Number n
-interpExpr (I.IString _ n) = pure $ R.BText n
+interpExpr (I.IString _ n) = pure $ R.BString n
 
 interpExpr (I.Iden _ "true") = pure $ R.Boolean True
 interpExpr (I.Iden _ "false") = pure $ R.Boolean False

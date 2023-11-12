@@ -8,13 +8,17 @@ module Burdock.Runtime
     ,makeRuntimeState
     ,runRuntime
 
-    ,Value
+    --,Value
     ,debugShowValue
     -- temp
     ,showValue
-    ,Value(BNothing,Boolean,BText,Fun,Box,Module)
+    ,Value(BNothing,Boolean,BString,Fun,Box,Module,Variant)
     ,makeVar
     ,setVar
+
+    ,newDataDeclTag
+    ,DataDeclTag(..)
+    ,VariantTag(..)
 
     ,FFITypeInfo
     ,makeFFIType
@@ -37,7 +41,7 @@ module Burdock.Runtime
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show, catchAsText)
 
-import Burdock.Scientific (Scientific, showScientific)
+--import Burdock.Scientific (Scientific, showScientific)
 import Data.Text (Text)
 import qualified Data.Text as T
 
@@ -77,7 +81,7 @@ data VariantTag = VariantTag DataDeclTag Text
 
 data Value
     = Boolean Bool
-    | BText Text
+    | BString Text
     | BNothing
     
     | FFIValue FFITypeInfo Dynamic
@@ -92,7 +96,7 @@ data Value
 -- pure show for use in temporary error messages and internal errors
 debugShowValue :: Value -> Text
 debugShowValue (Boolean b) = show b
-debugShowValue (BText t) = "\"" <> t <> "\""
+debugShowValue (BString t) = "\"" <> t <> "\""
 debugShowValue BNothing = "nothing"
 debugShowValue (Fun {}) = "<function>"
 debugShowValue (Method {}) = "<method>"
@@ -104,7 +108,7 @@ debugShowValue (Variant (VariantTag _ nm) fs) =
 
 showValue :: Value -> Runtime Text
 showValue (Boolean b) = pure $ show b
-showValue (BText t) = pure $ "\"" <> t <> "\""
+showValue (BString t) = pure $ "\"" <> t <> "\""
 showValue BNothing = pure $ "nothing"
 showValue (Fun {}) = pure $ "<function>"
 showValue (Method {}) = pure $ "<method>"
@@ -114,6 +118,11 @@ showValue (FFIValue _ d) = pure $ "<" <> show d <> ">"
 showValue (Variant (VariantTag _ nm) fs) = do
     as <- flip mapM fs $ showValue . snd
     pure $ nm <> "(" <> T.intercalate "," as <> ")"
+
+newDataDeclTag :: Text -> Runtime DataDeclTag
+newDataDeclTag tnm = do
+    newID <- autoID rtAutoDataDeclID
+    pure $ DataDeclTag newID tnm
 
 ------------------------------------------------------------------------------
 
@@ -186,11 +195,22 @@ getMember sp (Module fs) f = case lookup f fs of
         Nothing -> error $ show sp <> " module member not found: " <> f
         Just v' -> pure v'
 
+getMember sp (Variant _ fs) f = case lookup f fs of
+        Nothing -> error $ show sp <> " variant member not found: " <> f
+        Just v' -> pure v'
+
 -- temp?
 getMember _ (Boolean b) "_torepr" =
     pure $ if b then wrap "true" else wrap "false"
   where
-    wrap v = Fun $ \[] -> pure $ BText v
+    wrap v = Fun $ \case
+        [] -> pure $ BString v
+        _ -> error "bad args to torepr"
+getMember _ (Boolean b) "_equals" =
+    pure $ Fun $ \case
+        [Boolean c] -> pure $ Boolean $ b == c
+        [_] -> pure $ Boolean False
+        _ -> error $ "bad args to equals"
         
 getMember sp v f = error $ show sp <> ": getMember: " <> debugShowValue v <> " . " <> f
 
@@ -276,30 +296,38 @@ makeMemFns :: [FFIValueEntry a]
 makeMemFns meths tid mkV exV =
     let eqMem fn = ("_equals", \v -> do
             v' <- either error id <$> exV v
-            pure $ Fun $ \[w] -> do
-                w' <- exV w
-                case w' of
-                    Left _ -> pure $ Boolean False
-                    Right w'' -> Boolean <$> fn v' w'')
+            pure $ Fun $ \case
+                [w] -> do
+                    w' <- exV w
+                    case w' of
+                        Left _ -> pure $ Boolean False
+                        Right w'' -> Boolean <$> fn v' w''
+                _ -> error $ "bad args to equals")
         binMem nm fn = (nm, \v -> do
                 v' <- either error id <$> exV v
-                pure $ Fun $ \[w] -> do
-                    w' <- exV w
-                    case w' of
-                        Left _ -> error $ "bad type"
-                        Right w'' -> fn v' w'')
+                pure $ Fun $ \case
+                    [w] -> do
+                        w' <- exV w
+                        case w' of
+                            Left _ -> error $ "bad type"
+                            Right w'' -> fn v' w''
+                    _ -> error $ "bad args to " <> nm)
         binMem2 nm fn = (nm, \v -> do
                 v' <- either error id <$> exV v
-                pure $ Fun $ \[w] -> do
-                    w' <- exV w
-                    case w' of
-                        Left _ -> error $ "bad type"
-                        Right w'' -> fn v' w'')
+                pure $ Fun $ \case
+                    [w] -> do
+                        w' <- exV w
+                        case w' of
+                            Left _ -> error $ "bad type"
+                            Right w'' -> fn v' w''
+                    _ -> error $ "bad args to " <> nm)
         meths' :: [(Text, Value -> Runtime Value)]
         meths' = concat $ flip map meths $ \case
            ToRepr f -> [("_torepr", \v -> do
                v' <- either error id <$> exV v
-               pure $ Fun $ \[] -> BText <$> f v')] 
+               pure $ Fun $ \case
+                   [] -> BString <$> f v'
+                   _ -> error $ "bad args to torepr")] 
            Equals f -> [eqMem f]
            Compare f -> [eqMem (\a b -> (==EQ) <$> f a b)
                         ,binMem "_lessthan" (\a b -> (Boolean . (==LT)) <$> f a b)
