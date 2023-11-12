@@ -40,6 +40,9 @@ desugarStmt (S.LetDecl sp b e) = I.LetDecl sp (desugarBinding b) (desugarExpr e)
 desugarStmt (S.VarDecl sp (S.SimpleBinding _ _ nm Nothing) e) = I.VarDecl sp nm (desugarExpr e)
 desugarStmt (S.SetVar sp (S.Iden _ nm) e) = I.SetVar sp [nm] (desugarExpr e)
 
+desugarStmt (S.When sp e bdy) =
+    desugarStmt $ S.StmtExpr sp $ S.If sp [(e,bdy)] (Just [S.StmtExpr sp $ S.DotExpr sp (S.Iden sp "_bootstrap") "nothing"])
+
 desugarStmt s = error $ "desugarStmt " <> show s
 
 ------------------------------------------------------------------------------

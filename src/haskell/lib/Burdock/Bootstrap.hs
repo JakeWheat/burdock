@@ -55,6 +55,8 @@ burdockBootstrapModule = do
 
     pure [("_type-ffitag", burdockFFITag)
          ,("_type-number", burdockNumberTag)
+
+         ,("nothing", R.BNothing)
          
          ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
          ,("demo-make-val", R.Fun (demoMakeVal burdockNumberTI))
