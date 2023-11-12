@@ -47,8 +47,6 @@ check:
 
 end
 
-#|
-
 check:
   rec fact = lam(n): if n <= 1: 1 else: n * fact(n - 1) end end
   fact(1) is 1
@@ -71,7 +69,7 @@ check:
   addeven(6) is 21
 
 end
-
+#|
 check:
 
   a = 6

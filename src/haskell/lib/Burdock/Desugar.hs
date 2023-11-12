@@ -16,15 +16,22 @@ import Burdock.StaticError (StaticError)
 
 import qualified Burdock.Pretty as P
 
+import Control.Arrow (first)
 
+------------------------------------------------------------------------------
 
 desugarScript :: Text
               -> S.Script
               -> Either [StaticError] [I.Stmt]
 desugarScript _fn (S.Script stmts) = pure $ desugarStmts stmts
 
+------------------------------------------------------------------------------
+
 desugarStmts :: [S.Stmt] -> [I.Stmt]
-desugarStmts ss = map desugarStmt ss
+desugarStmts ss = map desugarStmt $ desugarRecs ss
+
+
+------------------------------------------------------------------------------
 
 desugarStmt :: S.Stmt -> I.Stmt
 desugarStmt (S.Check sp _ bdy) = desugarStmt $ S.StmtExpr sp $ S.Block sp bdy
@@ -34,6 +41,8 @@ desugarStmt (S.VarDecl sp (S.SimpleBinding _ _ nm Nothing) e) = I.VarDecl sp nm 
 desugarStmt (S.SetVar sp (S.Iden _ nm) e) = I.SetVar sp [nm] (desugarExpr e)
 
 desugarStmt s = error $ "desugarStmt " <> show s
+
+------------------------------------------------------------------------------
 
 desugarExpr :: S.Expr -> I.Expr
 desugarExpr (S.BinOp sp e0 "is" e1) = do
@@ -102,3 +111,29 @@ desugarBinding :: S.Binding -> I.Binding
 desugarBinding (S.NameBinding sp nm) = I.NameBinding sp nm
 desugarBinding (S.ShadowBinding sp nm) = I.NameBinding sp nm
 desugarBinding b = error $ "desugarBinding " <> show b
+
+------------------------------------------------------------------------------
+
+desugarRecs :: [S.Stmt] -> [S.Stmt]
+desugarRecs [] = []
+desugarRecs ss =
+    let (rs,ctu) = getRecs ss
+    in if null rs
+       then case ctu of
+            (t:ts) -> t : desugarRecs ts
+            [] -> []
+       else let (vars,sets) = unzip $ flip map rs $ \(a,b,c) -> makeRec a b c
+            in vars ++ sets ++ desugarRecs ctu
+  where
+    getRecs :: [S.Stmt] -> ([(S.SourcePosition, Text, S.Expr)], [S.Stmt])
+    getRecs (S.RecDecl sp (S.NameBinding _ nm) e : ts) = first ((sp,nm,e):) $ getRecs ts
+    getRecs (S.FunDecl sp (S.SimpleBinding _ S.NoShadow nm Nothing) fh Nothing bdy Nothing : ts)
+        = first ((sp,nm,S.Lam sp fh bdy) :) $ getRecs ts
+    getRecs [] = ([],[])
+    getRecs ts = ([],ts)
+
+makeRec :: S.SourcePosition -> Text -> S.Expr -> (S.Stmt, S.Stmt)
+makeRec sp nm e =
+        let placeholder = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp $ S.App sp (S.Iden sp "raise") [S.Text sp "internal: recursive var not initialized"]]
+        in (S.VarDecl sp (S.SimpleBinding sp S.NoShadow nm Nothing) placeholder
+           ,S.SetVar sp (S.Iden sp nm) e)
