@@ -141,17 +141,22 @@ runBinaryTest tally msg v0 v1 op opFailString = do
                         ,sv0
                         ,opFailString
                         ,sv1]
-                _ -> error $ "non bool from test predicate: " <> R.debugShowValue r
-        (Left er0, Left er1) ->
+                _ -> do
+                    liftIO $ modifyIORef tally (second (+1))
+                    error $ "non bool from test predicate: " <> R.debugShowValue r
+        (Left er0, Left er1) -> do
+            liftIO $ modifyIORef tally (second (+1))
             liftIO $ putStrLn $ T.unlines
                  ["FAIL: " <> msg
                  ,"LHS raised: " <> er0
                  ,"RHS raised: " <> er1]
-        (Left er0, Right {}) ->
+        (Left er0, Right {}) -> do
+            liftIO $ modifyIORef tally (second (+1))
             liftIO $ putStrLn $ T.unlines
                  ["FAIL: " <> msg
                  ,"LHS raised: " <> er0]
-        (Right {}, Left er1) ->
+        (Right {}, Left er1) -> do
+            liftIO $ modifyIORef tally (second (+1))
             liftIO $ putStrLn $ T.unlines
                  ["FAIL: " <> msg
                  ,"RHS raised: " <> er1]

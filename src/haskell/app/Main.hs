@@ -117,5 +117,5 @@ runScriptWithTests fns = do
     if f == 0
         then putStrLn $ show p <> " tests passed"
         else do
-            putStrLn $ show f <> "/" <> show tot <> " tests failed"
+            putStrLn $ show p <> "/" <> show tot <> " tests passed"
             exitFailure
