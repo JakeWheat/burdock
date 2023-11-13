@@ -1,13 +1,12 @@
 
 # todo: fix text, bool to have compare
-# deal with != -> is it just desugaring?
 
 check:
   1 is 1
-  #"test" is "test"
-  #1 is-not "test"
-  #true is true
-  #true is-not false
+  "test" is "test"
+  1 is-not "test"
+  true is true
+  true is-not false
 end
 
 check:
@@ -17,7 +16,7 @@ end
 check:
   a = 3
   a is 3
-  #a is-not 4
+  a is-not 4
 end
 
 check:
@@ -139,5 +138,7 @@ check:
   ctor2(2,5) is ctor2(2,5)
   ctor2(2,5)._torepr() is "ctor2(2,5)"
   ctor1._torepr() is "ctor1"
+
+  2 <> 3 is true
 
 end

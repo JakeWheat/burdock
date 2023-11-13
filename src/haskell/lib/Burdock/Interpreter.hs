@@ -87,7 +87,7 @@ interpExpr (I.App sp ef es) = do
 interpExpr (I.MethodExpr _sp e) = R.Method <$> interpExpr e
 
 interpExpr (I.Lam _sp fvs bs bdy) = do
-    env <- R.captureClosure -- fvs
+    env <- R.captureClosure fvs
     let runF :: [R.Value] -> R.Runtime R.Value
         runF vs = do
             -- todo: check lists same length

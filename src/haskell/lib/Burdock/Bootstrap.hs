@@ -70,6 +70,8 @@ burdockBootstrapModule = do
 
          ,("nothing", R.BNothing)
 
+         ,("not", R.Fun bNot)
+
          -- data decl support
          ,("make-data-decl-tag", R.Fun (makeDataDeclTag dataDeclTagTI))
          ,("is-type", R.Fun $ isType dataDeclTagTI)
@@ -362,3 +364,9 @@ bPrint [v] = do
     pure R.BNothing
 
 bPrint _ = error "bad args to print"
+
+
+bNot :: [Value] -> R.Runtime Value
+bNot [R.Boolean t] = do
+    pure $ R.Boolean $ not t
+bNot _ = error "bad args to nott"

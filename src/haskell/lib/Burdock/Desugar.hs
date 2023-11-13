@@ -18,35 +18,88 @@ import qualified Burdock.Pretty as P
 
 import Control.Arrow (first)
 
+{-
+What is really wanted is a writer
+and peek to read the current value
+with censor which is applied at the point of censor,
+  so it doesn't affect nested peeks
+this models a kind of inherited ag attribute
+feels more like an inverse of reader too
+-}
+import Control.Monad.Writer
+    (Writer
+    ,runWriter
+    ,tell
+    )
+
+import Data.List (nub, (\\))
+
 ------------------------------------------------------------------------------
 
 desugarScript :: Text
               -> S.Script
               -> Either [StaticError] [I.Stmt]
-desugarScript _fn (S.Script stmts) = pure $ desugarStmts stmts
+desugarScript _fn (S.Script stmts) =
+    pure $ fst $ runWriter $ desugarStmts stmts
 
 ------------------------------------------------------------------------------
 
-desugarStmts :: [S.Stmt] -> [I.Stmt]
-desugarStmts ss = map desugarStmt $ desugarRecs $ desugarDataDecls ss
+type Desugar = Writer [Text]
+
+desugarStmts :: [S.Stmt] -> Desugar [I.Stmt]
+desugarStmts ss = desugarStmtsFilterFree $ desugarRecs $ desugarDataDecls ss
 
 ------------------------------------------------------------------------------
 
-desugarStmt :: S.Stmt -> I.Stmt
+desugarStmtsFilterFree :: [S.Stmt] -> Desugar [I.Stmt]
+desugarStmtsFilterFree st = do
+    -- todo: run in subwriter
+    -- look through the introduced bindings from letdecl and vardecl and tell
+    -- what's left in the outer
+    let (st',freeCands) = runWriter (mapM desugarStmt st)
+        intros = concat $ map getIntros st'
+        frees = nub freeCands \\ intros
+    tell frees
+    pure st'
+  where
+    getIntros :: I.Stmt -> [Text]
+    getIntros (I.LetDecl _ b _) = getBoundNames b
+    getIntros (I.VarDecl _ nm _) = [nm]
+    getIntros _ = []
+
+getBoundNames :: I.Binding -> [Text]
+getBoundNames (I.NameBinding _ nm) = [nm]
+getBoundNames (I.WildcardBinding {}) = []
+getBoundNames (I.VariantBinding _ _ bs) = concat $ map getBoundNames bs
+getBoundNames (I.TupleBinding _ bs) = concat $ map getBoundNames bs
+
+------------------------------------------------------------------------------
+
+desugarStmt :: S.Stmt -> Desugar I.Stmt
+
+-- S -> S
+
 desugarStmt (S.Check sp _ bdy) = desugarStmt $ S.StmtExpr sp $ S.Block sp bdy
-desugarStmt (S.StmtExpr sp e) = I.StmtExpr sp $ desugarExpr e
-desugarStmt (S.LetDecl sp b e) = I.LetDecl sp (desugarBinding b) (desugarExpr e)
-desugarStmt (S.VarDecl sp (S.SimpleBinding _ _ nm Nothing) e) = I.VarDecl sp nm (desugarExpr e)
-desugarStmt (S.SetVar sp (S.Iden _ nm) e) = I.SetVar sp [nm] (desugarExpr e)
-
 desugarStmt (S.When sp e bdy) =
-    desugarStmt $ S.StmtExpr sp $ S.If sp [(e,bdy)] (Just [S.StmtExpr sp $ S.DotExpr sp (S.Iden sp "_bootstrap") "nothing"])
+    desugarStmt $ S.StmtExpr sp
+    $ S.If sp [(e,bdy)] (Just [S.StmtExpr sp $ S.DotExpr sp (S.Iden sp "_bootstrap") "nothing"])
+
+-- S -> I
+
+desugarStmt (S.StmtExpr sp e) = I.StmtExpr sp <$> desugarExpr e
+desugarStmt (S.LetDecl sp b e) = I.LetDecl sp <$> desugarBinding b <*> desugarExpr e
+desugarStmt (S.VarDecl sp (S.SimpleBinding _ _ nm Nothing) e) = I.VarDecl sp nm <$> desugarExpr e
+desugarStmt (S.SetVar sp (S.Iden _ nm) e) = do
+    tell [nm]
+    I.SetVar sp [nm] <$> desugarExpr e
 
 desugarStmt s = error $ "desugarStmt " <> show s
 
 ------------------------------------------------------------------------------
 
-desugarExpr :: S.Expr -> I.Expr
+desugarExpr :: S.Expr -> Desugar I.Expr
+
+-- S -> S
 desugarExpr (S.BinOp sp e0 "is" e1) = do
     let msg = L.toStrict $ P.prettyExpr e0 <> " is " <> P.prettyExpr e1
     desugarExpr $ app "run-binary-test"
@@ -54,7 +107,7 @@ desugarExpr (S.BinOp sp e0 "is" e1) = do
         ,wrapit e0
         ,wrapit e1
         ,lam ["a", "b"] (S.BinOp sp (S.Iden sp "a") "==" (S.Iden sp "b"))
-        ,S.Text sp "!="
+        ,S.Text sp "<>"
         ]
   where
     app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") nm) as
@@ -67,7 +120,7 @@ desugarExpr (S.BinOp sp e0 "is-not" e1) = do
         [S.Text sp msg
         ,wrapit e0
         ,wrapit e1
-        ,lam ["a", "b"] (S.BinOp sp (S.Iden sp "a") "!=" (S.Iden sp "b"))
+        ,lam ["a", "b"] (S.BinOp sp (S.Iden sp "a") "<>" (S.Iden sp "b"))
         ,S.Text sp "=="
         ]
   where
@@ -75,17 +128,7 @@ desugarExpr (S.BinOp sp e0 "is-not" e1) = do
     wrapit e = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp e]
     lam as e = S.Lam sp (S.FunHeader [] (flip map as $ S.NameBinding sp) Nothing) [S.StmtExpr sp e]
 
-
-desugarExpr (S.Block sp bdy) = I.Block sp $ desugarStmts bdy
-desugarExpr (S.App sp f as) = I.App sp (desugarExpr f) (map desugarExpr as)
-desugarExpr (S.DotExpr sp e f) = I.DotExpr sp (desugarExpr e) f
-desugarExpr (S.Iden sp i) = I.Iden sp i
-desugarExpr (S.Text sp t) = I.IString sp t
-desugarExpr (S.Num sp n) = I.Num sp n
 desugarExpr (S.Parens _ e) = desugarExpr e
-desugarExpr (S.Lam sp (S.FunHeader [] bs Nothing) bdy)
-    = I.Lam sp [] (map desugarBinding bs) $ desugarStmts bdy
-
 
 desugarExpr (S.BinOp sp e0 op e1) | Just op' <- lookup op methOps =
     desugarExpr (S.App sp (S.DotExpr sp e0 op') [e1])
@@ -102,24 +145,65 @@ desugarExpr (S.BinOp sp e0 op e1) | Just op' <- lookup op methOps =
         ,("/", "_divide")
         ]
 
-desugarExpr (S.If sp ts els) =
-    I.If sp (flip map ts $ \(e,bdy) -> (desugarExpr e, desugarStmts bdy)) $ fmap desugarStmts els
+desugarExpr (S.BinOp sp e0 "<>" e1) =
+    desugarExpr (S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") "not") [(S.BinOp sp e0 "==" e1)])
 
-desugarExpr (S.Cases sp e Nothing bs Nothing) =
-    I.Cases sp (desugarExpr e) $ flip map bs $ \(b,_,bdy) -> (desugarBinding b, desugarStmts bdy)
+-- S -> I
+
+desugarExpr (S.Block sp bdy) = I.Block sp <$> desugarStmts bdy
+desugarExpr (S.App sp f as) = I.App sp <$> desugarExpr f <*> mapM desugarExpr as
+desugarExpr (S.DotExpr sp e f) = I.DotExpr sp <$> desugarExpr e <*> pure f
+desugarExpr (S.Iden sp i) = do
+    tell [i]
+    pure $ I.Iden sp i
+desugarExpr (S.Text sp t) = pure $ I.IString sp t
+desugarExpr (S.Num sp n) = do
+    tell ["_bootstrap"]
+    pure $ I.Num sp n
+desugarExpr (S.Lam sp (S.FunHeader [] bs Nothing) bdy) = do
+    let ((bs',bdy'), candFrees) =
+            runWriter $ (,) <$> mapM desugarBinding bs <*> desugarStmts bdy
+        bounds = concat $ map getBoundNames bs'
+        frees = nub candFrees \\ bounds
+    -- pass free vars up the chain
+    tell frees
+    pure $ I.Lam sp frees bs' bdy'
+
+desugarExpr (S.If sp ts els) = do
+    I.If sp <$> flip mapM ts (\(e,bdy) -> (,) <$> desugarExpr e <*> desugarStmts bdy) <*> els'
+  where
+    els' = case els of
+        Nothing -> pure Nothing
+        Just e' -> Just <$> desugarStmts e'
+
+desugarExpr (S.Cases sp e Nothing bs Nothing) = do
+    I.Cases sp <$> desugarExpr e <*> mapM branch bs
+  where
+    branch :: (S.Binding, b, [S.Stmt]) -> Desugar (I.Binding, [I.Stmt])
+    branch (b,_,bdy) = do
+        let ((b', bdy'),candFrees) = runWriter $ (,) <$> desugarBinding b <*> desugarStmts bdy
+            bounds = getBoundNames b'
+            frees = nub candFrees \\ bounds
+        tell frees
+        pure (b', bdy')
 
 desugarExpr (S.MethodExpr sp (S.Method (S.FunHeader _ts (a:as) _mty) bdy)) = do
-    I.MethodExpr sp $ desugarExpr (S.Lam Nothing (S.FunHeader [] [a] Nothing)
+    I.MethodExpr sp <$> desugarExpr (S.Lam Nothing (S.FunHeader [] [a] Nothing)
                         [S.StmtExpr Nothing $ S.Lam Nothing (S.FunHeader [] as Nothing) bdy])
 
 desugarExpr e = error $ "desugarExpr " <> show e
 
 ------------------------------------------------------------------------------
 
-desugarBinding :: S.Binding -> I.Binding
-desugarBinding (S.NameBinding sp nm) = I.NameBinding sp nm
-desugarBinding (S.ShadowBinding sp nm) = I.NameBinding sp nm
-desugarBinding (S.VariantBinding sp nm bs) = I.VariantBinding sp nm $ map desugarBinding bs
+desugarBinding :: S.Binding -> Desugar I.Binding
+desugarBinding (S.NameBinding sp nm) = do
+    -- temp: might be a variant name
+    tell ["_bootstrap", "_variant-" <> nm]
+    pure $ I.NameBinding sp nm
+desugarBinding (S.ShadowBinding sp nm) = pure $ I.NameBinding sp nm
+desugarBinding (S.VariantBinding sp nm bs) = do
+    tell ["_bootstrap", "_variant-" <> last nm]
+    I.VariantBinding sp nm <$> mapM desugarBinding bs
 desugarBinding b = error $ "desugarBinding " <> show b
 
 ------------------------------------------------------------------------------

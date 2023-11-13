@@ -176,10 +176,11 @@ app :: SP -> Value -> [Value] -> Runtime Value
 app _sourcePos (Fun f) args = f args
 app _ v _ = error $ "bad arg to app " <> debugShowValue v
 
-captureClosure :: Runtime [(Text,Value)]
-captureClosure = do
+captureClosure :: [Text] -> Runtime [(Text,Value)]
+captureClosure nms = do
+    -- todo: error if any names aren't found
     rtb <- rtBindings <$> ask
-    liftIO $ readIORef rtb
+    filter ((`elem` nms) . fst) <$> liftIO (readIORef rtb)
 
 addBinding :: Text -> Value -> Runtime ()
 addBinding nm v = do

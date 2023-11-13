@@ -24,3 +24,4 @@ renameScript :: Text
              -> Either [StaticError] (ModuleMetadata, S.Script)
 renameScript _fn _ism _ctx scr =
     Right (ModuleMetadata, scr)
+
