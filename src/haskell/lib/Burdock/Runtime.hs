@@ -12,7 +12,7 @@ module Burdock.Runtime
     ,debugShowValue
     -- temp
     ,showValue
-    ,Value(BNothing,Boolean,BString,Fun,Box,Module,Variant)
+    ,Value(BNothing,Boolean,BString,Fun,Box,Module,Variant,Method)
     ,makeVar
     ,setVar
 
@@ -200,8 +200,9 @@ getMember sp (Module fs) f = case lookup f fs of
         Nothing -> error $ show sp <> " module member not found: " <> f
         Just v' -> pure v'
 
-getMember sp (Variant _ fs) f = case lookup f fs of
+getMember sp v@(Variant _ fs) f = case lookup f fs of
         Nothing -> error $ show sp <> " variant member not found: " <> f
+        Just (Method v1) -> app Nothing v1 [v]
         Just v' -> pure v'
 
 -- temp?
@@ -214,6 +215,18 @@ getMember _ (Boolean b) "_torepr" =
 getMember _ (Boolean b) "_equals" =
     pure $ Fun $ \case
         [Boolean c] -> pure $ Boolean $ b == c
+        [_] -> pure $ Boolean False
+        _ -> error $ "bad args to equals"
+
+getMember _ (BString b) "_torepr" =
+    pure $ BString $ show b
+  where
+    wrap v = Fun $ \case
+        [] -> pure $ BString v
+        _ -> error "bad args to torepr"
+getMember _ (BString b) "_equals" =
+    pure $ Fun $ \case
+        [BString c] -> pure $ Boolean $ b == c
         [_] -> pure $ Boolean False
         _ -> error $ "bad args to equals"
         

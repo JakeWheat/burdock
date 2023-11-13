@@ -108,6 +108,10 @@ desugarExpr (S.If sp ts els) =
 desugarExpr (S.Cases sp e Nothing bs Nothing) =
     I.Cases sp (desugarExpr e) $ flip map bs $ \(b,_,bdy) -> (desugarBinding b, desugarStmts bdy)
 
+desugarExpr (S.MethodExpr sp (S.Method (S.FunHeader _ts (a:as) _mty) bdy)) = do
+    I.MethodExpr sp $ desugarExpr (S.Lam Nothing (S.FunHeader [] [a] Nothing)
+                        [S.StmtExpr Nothing $ S.Lam Nothing (S.FunHeader [] as Nothing) bdy])
+
 desugarExpr e = error $ "desugarExpr " <> show e
 
 ------------------------------------------------------------------------------
@@ -185,17 +189,26 @@ desugarDataDecl (S.DataDecl dsp dnm _params variants _meths _where) =
                                                                           ,S.Iden vsp "x"]
     makeVariantCtor (S.VariantDecl vsp vnm [] _meths) =
         slet vsp vnm $ sapp vsp "make-variant" [S.Iden vsp ("_variant-" <> vnm)
-                                               ,hl vsp []
-                                               ,hl vsp []
-                                               ]
+                                               ,hl vsp [S.Text vsp "_equals", S.Text vsp "_torepr"]
+                                               ,hl vsp [eqf [], torp []]]
     makeVariantCtor (S.VariantDecl vsp vnm fs _meths) =
         let fnms = flip map fs $ \(_,S.SimpleBinding _ _ nm _) -> nm
+            ifs = map (S.Text dsp) fnms
         in slet vsp vnm $ slam vsp fnms $ sapp vsp "make-variant"
            [S.Iden vsp ("_variant-" <> vnm)
-           ,hl vsp $ map (S.Text vsp) fnms
-           ,hl vsp $ map (S.Iden vsp) fnms]
+           -- hack, put methods at the end, tryApplyBinding relies on this atm
+           ,hl vsp (map (S.Text vsp) (fnms ++ ["_equals", "_torepr"]))
+           ,hl vsp (map (S.Iden vsp) fnms ++ [eqf ifs, torp ifs])]
+    eqf ifs = smeth dsp ["a","b"] (sapp dsp "variants-equal" [sapp dsp "make-haskell-list" ifs
+                                                         ,S.Iden dsp "a"
+                                                         ,S.Iden dsp "b"])
+    torp ifs = smeth dsp ["a"] (sapp dsp "show-variant" [sapp dsp "make-haskell-list" ifs
+                                                        ,S.Iden dsp "a"])
     slet sp nm e = S.LetDecl sp (S.NameBinding sp nm) e
     sapp sp nm args = S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") nm) args
+    smeth sp as e =
+      let bs = flip map as $ \a -> S.NameBinding sp a
+      in S.MethodExpr sp (S.Method (S.FunHeader [] bs Nothing) [S.StmtExpr sp e])
     slam sp as e =
       let bs = flip map as $ \a -> S.NameBinding sp a
       in S.Lam sp (S.FunHeader [] bs Nothing) [S.StmtExpr sp e]

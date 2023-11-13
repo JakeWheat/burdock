@@ -84,6 +84,8 @@ interpExpr (I.App sp ef es) = do
     f <- interpExpr ef
     R.app sp f vs
 
+interpExpr (I.MethodExpr _sp e) = R.Method <$> interpExpr e
+
 interpExpr (I.Lam _sp fvs bs bdy) = do
     env <- R.captureClosure -- fvs
     let runF :: [R.Value] -> R.Runtime R.Value
@@ -148,7 +150,7 @@ tryApplyBinding _ False (I.NameBinding _sp nm) v = do
     case mvtg of
         Just (R.VariantTag pddt pvnm) -> do
             case v of
-                R.Variant (R.VariantTag vddt vvnm) [] | (pddt,pvnm) == (vddt,vvnm) ->
+                R.Variant (R.VariantTag vddt vvnm) _ | (pddt,pvnm) == (vddt,vvnm) ->
                     pure $ Just []
                 _ -> pure $ Nothing
         Nothing -> pure $ Just [(nm,v)]

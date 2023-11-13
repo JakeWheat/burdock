@@ -124,10 +124,6 @@ check:
     | ctor2(c,d) => d
   end is 5
 
-  #|cases y:
-    | yy => yy
-  end is ctor2(2,5)|#
-
   # temp work around before variant equals implemented
   zz = cases y:
     | yy => yy
@@ -135,5 +131,13 @@ check:
   zz.a is 2
   zz.b is 5
 
-end
+  _bootstrap.variants-equal(_bootstrap.make-haskell-list("a", "b"), ctor2(1,2), ctor2(1,2)) is true
+  _bootstrap.variants-equal(_bootstrap.make-haskell-list("a", "b"), ctor2(1,2), ctor2(2,1)) is false
+  _bootstrap.variants-equal(_bootstrap.make-haskell-list(), ctor1, ctor1) is true
 
+  ctor1 is ctor1
+  ctor2(2,5) is ctor2(2,5)
+  ctor2(2,5)._torepr() is "ctor2(2,5)"
+  ctor1._torepr() is "ctor1"
+
+end

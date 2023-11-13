@@ -32,7 +32,7 @@ import Data.IORef
 
 import qualified Burdock.Runtime as R
 import Burdock.Runtime (Value)
-import Burdock.Scientific (Scientific)
+import Burdock.Scientific (Scientific, showScientific)
 
 ------------------------------------------------------------------------------
 
@@ -76,6 +76,8 @@ burdockBootstrapModule = do
          ,("make-variant-tag", R.Fun (makeVariantTag dataDeclTagTI variantTagTI))
          ,("is-variant", R.Fun (isVariant variantTagTI))
          ,("make-variant", R.Fun (makeVariant variantTagTI haskellListTI))
+         ,("variants-equal", R.Fun (variantsEqual haskellListTI))
+         ,("show-variant", R.Fun (showVariant haskellListTI))
          ,("make-haskell-list", R.Fun (makeHaskellList haskellListTI))
 
           -- test framework plugin
@@ -127,7 +129,7 @@ the language itself
 makeNumberType :: R.Runtime R.FFITypeInfo
 makeNumberType = do
     R.makeFFIType ["_bootstrap", "number"]
-        [R.ToRepr $ \(v :: Scientific) -> pure $ show v
+        [R.ToRepr $ \(v :: Scientific) -> pure $ showScientific v
         ,R.Compare $ (pure .) . compare
         ,R.Arith
             {R.aAdd = (pure .) . (+)
@@ -164,31 +166,13 @@ runBinaryTest :: IORef (Int,Int)
               -> R.Value
               -> Text
               -> R.Runtime ()
-runBinaryTest tally msg v0 v1 op opFailString = do
+runBinaryTest tally msg lv0 lv1 op opFailString = do
     -- todo: get the original source positions in here
-    v0' <- R.runTask $ R.app Nothing v0 []
-    v1' <- R.runTask $ R.app Nothing v1 []
-    case (v0',v1') of
-        (Right v0'', Right v1'') -> do
-            -- todo: have to run-task the call to op
-            r <- R.app Nothing op [v0'', v1'']
-            case r of
-                R.Boolean True -> liftIO $ do
-                    liftIO $ modifyIORef tally (first (+1))
-                    liftIO $ putStrLn $ "PASS: " <> msg
-                R.Boolean False -> do
-                    liftIO $ modifyIORef tally (second (+1))
-                    -- todo: have to runtask the call to torepr
-                    sv0 <- R.showValue v0''
-                    sv1 <- R.showValue v1''
-                    liftIO $ putStrLn $ T.unlines
-                        ["FAIL: " <> msg
-                        ,sv0
-                        ,opFailString
-                        ,sv1]
-                _ -> do
-                    liftIO $ modifyIORef tally (second (+1))
-                    error $ "non bool from test predicate: " <> R.debugShowValue r
+    v0 <- R.runTask $ R.app Nothing lv0 []
+    v1 <- R.runTask $ R.app Nothing lv1 []
+    case (v0,v1) of
+        (Right v0', Right v1') -> do
+            expressionsOK v0' v1'
         (Left er0, Left er1) -> do
             liftIO $ modifyIORef tally (second (+1))
             liftIO $ putStrLn $ T.unlines
@@ -205,6 +189,43 @@ runBinaryTest tally msg v0 v1 op opFailString = do
             liftIO $ putStrLn $ T.unlines
                  ["FAIL: " <> msg
                  ,"RHS raised: " <> er1]
+  where
+    expressionsOK v0 v1 = do
+        r <- R.runTask $ R.app Nothing op [v0, v1]
+        case r of
+            Right rx -> predicateOK rx v0 v1
+            Left er -> do
+                liftIO $ modifyIORef tally (second (+1))
+                liftIO $ putStrLn $ T.unlines
+                    ["FAIL: " <> msg
+                    ,"predicate raised: " <> er]
+    predicateOK r v0 v1 = 
+         case r of
+            R.Boolean True -> liftIO $ do
+                liftIO $ modifyIORef tally (first (+1))
+                liftIO $ putStrLn $ "PASS: " <> msg
+            R.Boolean False -> do
+                liftIO $ modifyIORef tally (second (+1))
+                -- todo: have to runtask the call to torepr
+                sv0 <- safeToRepr v0
+                sv1 <- safeToRepr v1
+                liftIO $ putStrLn $ T.unlines
+                    ["FAIL: " <> msg
+                    ,sv0
+                    ,opFailString
+                    ,sv1]
+            _ -> do
+                liftIO $ modifyIORef tally (second (+1))
+                er <- safeToRepr r
+                error $ "non bool from test predicate: " <> er -- R.debugShowValue r
+    safeToRepr v = do
+        r <- R.runTask $ do
+            tr <- R.getMember Nothing v "_torepr"
+            R.app Nothing tr []
+        case r of
+            Left e -> pure $ e <> " : " <> R.debugShowValue v
+            Right (R.BString t) -> pure t
+            Right x -> pure $ R.debugShowValue v <> " torepr: " <> R.debugShowValue x
 
 getTestVal :: IORef (Int,Int) -> Int -> R.FFITypeInfo -> [Value] -> R.Runtime Value
 getTestVal v i nti = \case
@@ -272,6 +293,57 @@ makeVariant vvti hlti [vt, fs, as] = do
     Right as' <- R.extractFFIValue hlti as
     pure $ R.Variant varTag $ zip fs'' as'
 makeVariant _ _ _ = error $ "bad args to makeVariant"
+
+-- variants-equal(fs :: [String],v0,v1)
+variantsEqual :: R.FFITypeInfo -> [Value] -> R.Runtime Value
+variantsEqual hlti [fs, v0, v1] = do
+    Right fs' <- R.extractFFIValue hlti fs
+    let fs'' :: [Text]
+        fs'' = flip map fs' $ \case
+            R.BString t -> t
+            x -> error $ "non string in make variant call: " <> R.debugShowValue x
+    case (v0,v1) of
+        (R.Variant tg0 fs0, R.Variant tg1 fs1)
+            | tg0 == tg1
+            -> do
+              let checkit fn = case (lookup fn fs0, lookup fn fs1) of
+                       (Just a, Just b) -> do
+                           eq <- R.getMember Nothing a "_equals"
+                           R.app Nothing eq [b]
+                           --undefined --call a.equals(b)
+                       _ -> pure $ R.Boolean False
+              res <-mapM checkit fs''
+              let tot :: Bool
+                  tot = and $ flip map res $ \case
+                                     R.Boolean True -> True
+                                     _ -> False
+              pure $ R.Boolean tot
+        _ -> pure $ R.Boolean False
+variantsEqual _ as = error $ "bad args to variantsEqual" <> show (length as)
+
+showVariant :: R.FFITypeInfo -> [Value] -> R.Runtime Value
+showVariant hlti [fs, v0] = do
+    Right fs' <- R.extractFFIValue hlti fs
+    let fs'' :: [Text]
+        fs'' = flip map fs' $ \case
+            R.BString t -> t
+            x -> error $ "non string in make variant call: " <> R.debugShowValue x
+    case v0 of
+        R.Variant (R.VariantTag _ nm) _ | null fs'' -> do
+            pure $ R.BString $ nm 
+        R.Variant (R.VariantTag _ nm) vfs -> do
+            let tr nm = do
+                    let Just a = lookup nm vfs
+                    tr <- R.getMember Nothing a "_torepr"
+                    x <- R.app Nothing tr []
+                    case x of
+                        R.BString s -> pure s
+                        x -> error $ "wrong return type from torepr" <> R.debugShowValue x
+            vs <- mapM tr fs''
+            pure $ R.BString $ nm <> "(" <> T.intercalate "," vs <> ")"
+        _ -> error "bad arg to showVariant"
+
+showVariant _ as = error $ "bad args to showVariant"
 
 ------------------------------------------------------------------------------
 
