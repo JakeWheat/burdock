@@ -150,3 +150,11 @@ check:
   a.y is 4
 
 end
+
+check:
+
+  _bootstrap.print(_bootstrap-either)
+  a = _bootstrap-either.left(1)
+  _bootstrap.print(a)
+
+end

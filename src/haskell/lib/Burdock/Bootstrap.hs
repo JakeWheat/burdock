@@ -82,6 +82,8 @@ burdockBootstrapModule = do
          ,("show-variant", R.Fun (showVariant haskellListTI))
          ,("make-haskell-list", R.Fun (makeHaskellList haskellListTI))
 
+         ,("make-module", R.Fun makeModule)
+         
           -- test framework plugin
          ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
          ,("get-test-passes", R.Fun (getTestVal testLog 0 burdockNumberTI))
@@ -367,6 +369,9 @@ bPrint _ = error "bad args to print"
 
 
 bNot :: [Value] -> R.Runtime Value
-bNot [R.Boolean t] = do
-    pure $ R.Boolean $ not t
-bNot _ = error "bad args to nott"
+bNot [R.Boolean t] = pure $ R.Boolean $ not t
+bNot _ = error "bad args to not"
+
+makeModule :: [Value] -> R.Runtime Value
+makeModule [R.Record fs] = pure $ R.Module fs
+makeModule _ = error "bad args to makeModule"

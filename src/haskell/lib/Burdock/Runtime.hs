@@ -204,6 +204,13 @@ getMember :: SP -> Value -> Text -> Runtime Value
 
 getMember _ v@(FFIValue tg _) fld = (tyMemberFn tg) fld v
 
+getMember _ (Module fs) "_torepr" =
+    pure $ wrap $ "MODULE{" <> T.intercalate "," (map fst fs) <> "}"
+  where
+    wrap v = Fun $ \case
+        [] -> pure $ BString v
+        _ -> error "bad args to torepr"
+
 getMember sp (Module fs) f = case lookup f fs of
     Nothing -> error $ show sp <> " module member not found: " <> f
     Just v' -> pure v'
@@ -241,7 +248,7 @@ getMember _ (BString b) "_equals" =
         [BString c] -> pure $ Boolean $ b == c
         [_] -> pure $ Boolean False
         _ -> error $ "bad args to equals"
-        
+
 getMember sp v f = error $ show sp <> ": getMember: " <> debugShowValue v <> " . " <> f
 
 runTask :: Runtime a -> Runtime (Either Text a)
