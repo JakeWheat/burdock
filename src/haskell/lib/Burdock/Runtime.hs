@@ -12,7 +12,7 @@ module Burdock.Runtime
     ,debugShowValue
     -- temp
     ,showValue
-    ,Value(BNothing,Boolean,BString,Fun,Box,Module,Variant,Method)
+    ,Value(BNothing,Boolean,BString,Fun,Box,Module,Variant,Method,Record)
     ,makeVar
     ,setVar
 
@@ -87,6 +87,7 @@ data Value
     
     | FFIValue FFITypeInfo Dynamic
 
+    | Record [(Text,Value)]
     | Variant VariantTag [(Text,Value)]
     | Box (IORef Value)
     | Module [(Text, Value)]
@@ -106,6 +107,12 @@ debugShowValue (Module _) = "<module>"
 debugShowValue (FFIValue _ d) = "<" <> show d <> ">"
 debugShowValue (Variant (VariantTag _ nm) fs) =
     nm <> "(" <> T.intercalate "," (map (debugShowValue . snd) fs) <> ")"
+
+debugShowValue (Record fs) =
+    "{" <> T.intercalate "," (map f fs) <> "}"
+  where
+    f (nm,e) = nm <> ":" <> debugShowValue e
+
 
 showValue :: Value -> Runtime Text
 showValue (Boolean b) = pure $ show b
@@ -198,13 +205,17 @@ getMember :: SP -> Value -> Text -> Runtime Value
 getMember _ v@(FFIValue tg _) fld = (tyMemberFn tg) fld v
 
 getMember sp (Module fs) f = case lookup f fs of
-        Nothing -> error $ show sp <> " module member not found: " <> f
-        Just v' -> pure v'
+    Nothing -> error $ show sp <> " module member not found: " <> f
+    Just v' -> pure v'
+
+getMember sp (Record fs) f = case lookup f fs of
+    Nothing -> error $ show sp <> " record member not found: " <> f
+    Just v' -> pure v'
 
 getMember sp v@(Variant _ fs) f = case lookup f fs of
-        Nothing -> error $ show sp <> " variant member not found: " <> f
-        Just (Method v1) -> app Nothing v1 [v]
-        Just v' -> pure v'
+    Nothing -> error $ show sp <> " variant member not found: " <> f
+    Just (Method v1) -> app Nothing v1 [v]
+    Just v' -> pure v'
 
 -- temp?
 getMember _ (Boolean b) "_torepr" =

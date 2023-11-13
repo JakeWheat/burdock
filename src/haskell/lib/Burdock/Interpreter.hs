@@ -1,6 +1,7 @@
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 module Burdock.Interpreter
     (interpBurdock
     ) where
@@ -121,6 +122,10 @@ interpExpr (I.Cases sp e bs) = do
     f bs
 
 interpExpr (I.Block _ stmts) = R.withScope $ interpStmts stmts
+
+interpExpr (I.RecordSel _ fs) = do
+    fs' <- flip mapM fs $ \(n,e) -> (n,) <$> interpExpr e
+    pure $ R.Record fs'
 
 interpExpr e = error $ "interpExpr: " <> show e
 

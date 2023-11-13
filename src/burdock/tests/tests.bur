@@ -142,3 +142,11 @@ check:
   2 <> 3 is true
 
 end
+
+check:
+
+  a = {x:3, y: 4}
+  a.x is 3
+  a.y is 4
+
+end

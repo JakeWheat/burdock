@@ -1,5 +1,6 @@
 
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE TupleSections #-}
 module Burdock.Desugar
     (desugarScript
     ) where
@@ -191,7 +192,10 @@ desugarExpr (S.MethodExpr sp (S.Method (S.FunHeader _ts (a:as) _mty) bdy)) = do
     I.MethodExpr sp <$> desugarExpr (S.Lam Nothing (S.FunHeader [] [a] Nothing)
                         [S.StmtExpr Nothing $ S.Lam Nothing (S.FunHeader [] as Nothing) bdy])
 
-desugarExpr e = error $ "desugarExpr " <> show e
+desugarExpr (S.RecordSel sp fs) =
+    I.RecordSel sp <$> flip mapM fs (\(nm,e) -> (nm,) <$> desugarExpr e)
+
+desugarExpr e = error $ "desugarExpr: " <> show e
 
 ------------------------------------------------------------------------------
 
