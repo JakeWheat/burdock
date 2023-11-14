@@ -61,8 +61,13 @@ createHandle = do
     R.runRuntime st $ do
         sm <- burdockBootstrapModule
         R.addBinding "_bootstrap" (R.Module sm)
-        em <- runFragment Nothing testScript
-        R.addBinding "_bootstrap-either" em
+        eitherV <- runFragment Nothing eitherScript
+        R.addBinding "_bootstrap-either" eitherV
+        listV <- runFragment Nothing listScript
+        listV' <- addModuleItems listV [("make-burdock-list", R.Fun makeBurdockList)]
+        R.addBinding "_bootstrap-list" listV'
+        nothingV <- runFragment Nothing nothingScript
+        R.addBinding "_bootstrap-nothing" nothingV
     pure $ Handle st
 
 runScript :: Handle -> (Maybe Text) -> L.Text -> IO Value
@@ -118,8 +123,12 @@ desugarIt renameF _h fn' src = do
         -- interpret src
     pure $ I.prettyStmts iast
 
-testScript :: L.Text
-testScript = [R.r|
+addModuleItems :: Value -> [(Text, Value)] -> R.Runtime Value
+addModuleItems (R.Module is) es = pure $ R.Module $ is ++ es
+addModuleItems x _ = error $ "wrong arg to addModuleItems: " <> R.debugShowValue x
+
+eitherScript :: L.Text
+eitherScript = [R.r|
 
 data either:
   | right(a)
@@ -127,3 +136,69 @@ data either:
 end
 
 |]
+
+listScript :: L.Text
+listScript = [R.r|
+
+data list:
+  | link(first, rest)
+  | empty
+sharing:
+  method _torepr(self):
+    fun intercalate-items(l):
+      cases l:
+        | empty => ""
+        | link(x, y) =>
+          cases y:
+            | empty => torepr(x)
+            | else => torepr(x) + ", " + intercalate-items(y)
+          end
+      end
+    end
+    cases self:
+      | empty => "[list: ]"
+      | link(x,y) => "[list: "
+          + intercalate-items(self) + "]"
+    end
+  end,
+  method _plus(self,b):
+    cases self:
+      | empty => b
+      | link(x,y) => link(x, y + b)
+    end
+  end,
+  method length(self):
+    cases self:
+      | empty => 0
+      | link(_,b) => 1 + b.length()
+    end
+  end ,
+  method map(self,f):
+    cases self:
+      | empty => empty
+      | link(a,b) => link(f(a), b.map(f))
+    end
+  end
+end
+
+|]
+
+
+makeBurdockList :: [Value] -> R.Runtime Value
+makeBurdockList us = do
+    link <- getList "link"
+    empty <- getList "empty"
+    f link empty us
+  where
+    f _ empty [] = pure empty
+    f link empty (v:vs) = do
+        vs' <- f link empty vs
+        R.app Nothing link [v, vs']
+    getList nm = do
+        Just b <- R.lookupBinding "_bootstrap-list"
+        R.getMember Nothing b nm
+makeBurdockList _ = error "bad args to makeBurdockList"
+
+    
+nothingScript :: L.Text
+nothingScript = "data Nothing: nothing end"

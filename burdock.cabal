@@ -43,7 +43,7 @@ common shared-properties
                       Burdock.ModuleMetadata
                       Burdock.Bootstrap
 
-    build-depends:    base ^>=4.17.0.0
+    build-depends:    base < 5
                     , scientific
                     , prettyprinter
                     , text

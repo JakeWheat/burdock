@@ -149,6 +149,14 @@ desugarExpr (S.BinOp sp e0 op e1) | Just op' <- lookup op methOps =
 desugarExpr (S.BinOp sp e0 "<>" e1) =
     desugarExpr (S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") "not") [(S.BinOp sp e0 "==" e1)])
 
+-- todo1: the renamer will give this a canonical name, then special
+-- case this name
+desugarExpr (S.Construct sp ["list"] es) =
+    desugarExpr $ S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap-list") "make-burdock-list") es
+
+desugarExpr (S.Construct sp [nm] es) =
+    desugarExpr $ S.App sp (S.DotExpr sp (S.Iden sp nm) "make") [S.Construct sp ["list"] es]
+
 -- S -> I
 
 desugarExpr (S.Block sp bdy) = I.Block sp <$> desugarStmts bdy
@@ -208,6 +216,9 @@ desugarBinding (S.ShadowBinding sp nm) = pure $ I.NameBinding sp nm
 desugarBinding (S.VariantBinding sp nm bs) = do
     tell ["_bootstrap", "_variant-" <> last nm]
     I.VariantBinding sp nm <$> mapM desugarBinding bs
+
+desugarBinding (S.WildcardBinding sp) = pure $ I.WildcardBinding sp
+
 desugarBinding b = error $ "desugarBinding " <> show b
 
 ------------------------------------------------------------------------------

@@ -157,4 +157,42 @@ check:
   a = _bootstrap-either.left(1)
   _bootstrap.print(a)
 
+  x = _bootstrap-list.link(1, _bootstrap-list.link(3, _bootstrap-list.empty))
+  _bootstrap.print(x)
+
+end
+
+check:
+
+  #list = _bootstrap-list.list
+  empty = _bootstrap-list.empty
+  link = _bootstrap-list.link
+
+  [list:] is empty
+  [list:1] is link(1,empty)
+
+end
+
+check:
+  tostring = _bootstrap.tostring
+  weird2 = {
+    make : lam(args):
+      cases args:
+        | empty => "nothing at all"
+        | link(a,empty) => "just " + tostring(a)
+        | link(a,link(b, empty)) => tostring(a) + " and " + tostring(b)
+        | link(a,link(b, link(c,empty))) => "several things"
+        | link(a,link(b, link(c,link(d,empty)))) => "four things"
+        | link(a,link(b, link(c,link(d,link(e,empty))))) => "five things"
+        | _ => "too many things"
+      end
+    end 
+    }
+  [weird2: ] is "nothing at all"
+  [weird2: true] is "just true"
+  [weird2: 5, 6.24] is "5 and 6.24"
+  [weird2: true, false, 5] is "several things"
+  [weird2: 1, 2, 3, 4] is "four things"
+  [weird2: 1, 1, 1, 1, 1] is "five things"
+  [weird2: "a", "b", "c", true, false, 5] is "too many things"
 end

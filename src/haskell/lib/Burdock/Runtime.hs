@@ -249,6 +249,11 @@ getMember _ (BString b) "_equals" =
         [_] -> pure $ Boolean False
         _ -> error $ "bad args to equals"
 
+getMember _ (BString b) "_plus" =
+    pure $ Fun $ \case
+        [BString c] -> pure $ BString $ b <> c
+        _ -> error $ "bad args to bstring _plus"
+
 getMember sp v f = error $ show sp <> ": getMember: " <> debugShowValue v <> " . " <> f
 
 runTask :: Runtime a -> Runtime (Either Text a)

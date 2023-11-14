@@ -172,6 +172,9 @@ tryApplyBinding _ _ (I.VariantBinding _sp [nm] bs) (R.Variant (R.VariantTag vddt
         _ -> pure $ Nothing
 
 tryApplyBinding _ _ (I.VariantBinding {}) _ = pure Nothing    
+
+tryApplyBinding _ _ (I.WildcardBinding {}) _ = pure $ Just []
+
 tryApplyBinding _ _ b _ = error $ show b
 
 lookupVariantByName :: Text -> R.Runtime (Maybe R.VariantTag)

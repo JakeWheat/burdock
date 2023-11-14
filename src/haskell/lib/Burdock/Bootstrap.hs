@@ -90,8 +90,8 @@ burdockBootstrapModule = do
          ,("get-test-failures", R.Fun (getTestVal testLog 1 burdockNumberTI))
 
           -- misc
+         ,("tostring", R.Fun bToString)
          ,("print", R.Fun bPrint)
-
          ]
 
 {-
@@ -351,6 +351,8 @@ showVariant _ as = error $ "bad args to showVariant"
 
 ------------------------------------------------------------------------------
 
+-- todo: print should use tostring on a single value
+--   so it needs to closure capture the tostring function
 bPrint :: [Value] -> R.Runtime Value
 bPrint [R.BString t] = do
     liftIO $ putStrLn t
@@ -364,9 +366,14 @@ bPrint [v] = do
         R.BString t -> liftIO $ putStrLn t
         _ -> error $ "non text returned from x._torepr()" <> R.debugShowValue v <> " " <> R.debugShowValue r
     pure R.BNothing
-
 bPrint _ = error "bad args to print"
 
+bToString :: [Value] -> R.Runtime Value
+bToString [v@(R.BString t)] = pure v
+bToString [v] = do
+    f <- R.getMember Nothing v "_torepr"
+    R.app Nothing f []
+bToString _ = error "bad args to tostring"
 
 bNot :: [Value] -> R.Runtime Value
 bNot [R.Boolean t] = pure $ R.Boolean $ not t
