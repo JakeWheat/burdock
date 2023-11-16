@@ -215,6 +215,12 @@ desugarExpr (S.MethodExpr sp (S.Method (S.FunHeader _ts (a:as) _mty) bdy)) = do
 desugarExpr (S.RecordSel sp fs) =
     I.RecordSel sp <$> flip mapM fs (\(nm,e) -> (nm,) <$> desugarExpr e)
 
+desugarExpr (S.TupleSel sp es) =
+    I.TupleSel sp <$> mapM desugarExpr es
+
+desugarExpr (S.TupleGet sp e i) =
+    I.TupleGet sp <$> desugarExpr e <*> pure i
+
 desugarExpr e = error $ "desugarExpr: " <> show e
 
 ------------------------------------------------------------------------------

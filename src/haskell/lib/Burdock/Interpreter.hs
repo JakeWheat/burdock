@@ -9,6 +9,7 @@ module Burdock.Interpreter
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
 --import Data.Text.IO (putStrLn)
+--import qualified Data.Text.Lazy.IO as L
 
 import Data.Text (Text)
 import Control.Monad.IO.Class (liftIO)
@@ -17,6 +18,7 @@ import Data.IORef
     (readIORef)
 
 import qualified Burdock.InterpreterSyntax as I
+--import qualified Burdock.PrettyInterpreter as I
 import qualified Burdock.Runtime as R
 
 ------------------------------------------------------------------------------
@@ -120,9 +122,32 @@ interpExpr (I.Cases sp e bs) = do
 
 interpExpr (I.Block _ stmts) = R.withScope $ interpStmts stmts
 
-interpExpr (I.RecordSel _ fs) = do
+interpExpr (I.RecordSel sp fs) = do
     fs' <- flip mapM fs $ \(n,e) -> (n,) <$> interpExpr e
-    pure $ R.Record fs'
+
+    Just bstp <- R.lookupBinding "_bootstrap"
+    vvti <- R.getMember Nothing bstp "_type-variant-tag"
+    ffiti <- R.getFFITypeInfoTypeInfo
+    Right vvti' <- R.extractFFIValue ffiti vvti
+    ttagB <- R.getMember Nothing bstp "_variant-record"
+    Right ttag <- R.extractFFIValue vvti' ttagB
+
+    let lam cl as e = I.Lam sp cl (map (I.NameBinding sp) as) ([I.StmtExpr sp e])
+        app f as = I.App sp (I.DotExpr sp (I.Iden sp "_bootstrap") f) as
+        nms = map ((I.IString sp) . fst) fs
+        eqs = I.MethodExpr sp
+            $ lam ["_bootstrap"] ["a"]
+            $ lam ["_bootstrap", "a"] ["b"]
+            $ app "variants-equal" [app "make-haskell-list" nms
+                                   ,I.Iden sp "a"
+                                   ,I.Iden sp "b"]
+        tor = I.MethodExpr sp
+            $ lam ["_bootstrap"] ["a"]
+            $ lam ["_bootstrap", "a"] []
+            $ app "show-record" [I.Iden sp "a"]
+    equals <- interpExpr eqs
+    torepr <- interpExpr tor
+    pure $ R.Variant ttag (fs' ++ [("_equals", equals), ("_torepr", torepr)])
 
 interpExpr (I.RunTask _ e) = do
     r <- R.runTask $ interpExpr e
@@ -133,7 +158,47 @@ interpExpr (I.RunTask _ e) = do
         Right v -> R.app Nothing bright [v]
         Left err -> R.app Nothing bleft [err]
 
-interpExpr e = error $ "interpExpr: " <> show e
+interpExpr (I.TupleSel sp es) = do
+    vs <- mapM interpExpr es
+    Just bstp <- R.lookupBinding "_bootstrap"
+    vvti <- R.getMember Nothing bstp "_type-variant-tag"
+    ffiti <- R.getFFITypeInfoTypeInfo
+    Right vvti' <- R.extractFFIValue ffiti vvti
+    ttagB <- R.getMember Nothing bstp "_variant-tuple"
+    Right ttag <- R.extractFFIValue vvti'  ttagB
+
+    let fs = zipWith (\n v -> (show n, v)) [(0::Int)..] vs
+    -- todo: add _equals and _torepr methods
+    -- just cheat and recursively call interpExpr, can do it properly later
+    -- method(a,b): variants-equal(make-haskell-list(map fst fs), a, b) end
+    let lam cl as e = I.Lam sp cl (map (I.NameBinding sp) as) ([I.StmtExpr sp e])
+        app f as = I.App sp (I.DotExpr sp (I.Iden sp "_bootstrap") f) as
+        nms = map ((I.IString sp) . fst) fs
+        eqs = I.MethodExpr sp
+            $ lam ["_bootstrap"] ["a"]
+            $ lam ["_bootstrap", "a"] ["b"]
+            $ app "variants-equal" [app "make-haskell-list" nms
+                                   ,I.Iden sp "a"
+                                   ,I.Iden sp "b"]
+        tor = I.MethodExpr sp
+            $ lam ["_bootstrap"] ["a"]
+            $ lam ["_bootstrap", "a"] []
+            $ app "show-tuple" [I.Iden sp "a"]
+            
+    -- liftIO $ L.putStrLn $ I.prettyStmts [I.StmtExpr Nothing x]
+    equals <- interpExpr eqs
+    torepr <- interpExpr tor
+    pure $ R.Variant ttag (fs ++ [("_equals", equals), ("_torepr", torepr)])
+
+interpExpr (I.TupleGet _ e n) = do
+    v <- interpExpr e
+    -- todo check it's tuple type, need the closure capture/boilerplate
+    -- work else it's tedious
+    case v of
+        R.Variant _ _ -> R.getMember Nothing v (show n)
+        _ -> error $ "wrong value for tuple get: " <> R.debugShowValue v
+
+--interpExpr e = error $ "interpExpr: " <> show e
 
 ------------------------------------------------------------------------------
 

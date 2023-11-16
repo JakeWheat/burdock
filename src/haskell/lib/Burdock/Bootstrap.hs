@@ -51,6 +51,11 @@ burdockBootstrapModule = do
 
     haskellListTI <- makeHaskellListType
 
+    tupleDeclTag <- R.newDataDeclTag "tuple"
+    tupleVariantTag <- pure $ R.VariantTag tupleDeclTag "tuple"
+    recordDeclTag <- R.newDataDeclTag "record"
+    recordVariantTag <- pure $ R.VariantTag recordDeclTag "record"
+
     testLog <- liftIO $ newIORef (0,0)
 
     -- wrap direct ffi type infos as burdock ffi values so they can
@@ -59,6 +64,10 @@ burdockBootstrapModule = do
     burdockNumberTag <- R.makeFFIValue ffiTypeInfo burdockNumberTI
     haskellListTag <- R.makeFFIValue ffiTypeInfo haskellListTI
     variantTag <- R.makeFFIValue ffiTypeInfo variantTagTI
+    tupleTypeFFITag <- R.makeFFIValue dataDeclTagTI tupleDeclTag
+    tupleVariantFFITag <- R.makeFFIValue variantTagTI tupleVariantTag
+    recordTypeFFITag <- R.makeFFIValue dataDeclTagTI recordDeclTag
+    recordVariantFFITag <- R.makeFFIValue variantTagTI recordVariantTag
     
     pure [
 
@@ -67,6 +76,14 @@ burdockBootstrapModule = do
          ,("_type-number", burdockNumberTag)
          ,("_type-haskell-list", haskellListTag)
          ,("_type-variant-tag", variantTag)
+
+         ,("_type-tuple", tupleTypeFFITag)
+         ,("_variant-tuple", tupleVariantFFITag)
+         ,("_type-record", recordTypeFFITag)
+         ,("_variant-record", recordVariantFFITag)
+
+         ,("show-tuple", R.Fun showTuple)
+         ,("show-record", R.Fun showRecord)
 
          ,("true", R.Boolean True)
          ,("false", R.Boolean False)
@@ -361,6 +378,33 @@ showVariant hlti [fs, v0] = do
 showVariant _ _as = error $ "bad args to showVariant"
 
 
+showTuple :: [Value] -> R.Runtime Value
+-- todo: check the tag
+showTuple [R.Variant _ vs] = do
+    vs' <- mapM (tor . snd) $ filter ((`notElem` ["_equals", "_torepr"]) . fst) vs
+    pure $ R.BString $ "{" <> T.intercalate ";" vs' <> "}"
+  where
+    tor v = do
+        t <- R.getMember Nothing v "_torepr"
+        v1 <- R.app Nothing t []
+        case v1 of
+            R.BString s -> pure s
+            _ -> error $ "wrong type from torepr 388"
+showTuple _ = error "bad args to showTuple"
+
+showRecord :: [Value] -> R.Runtime Value
+showRecord [R.Variant _ vs] = do
+    vs' <- mapM tor $ filter ((`notElem` ["_equals", "_torepr"]) . fst) vs
+    pure $ R.BString $ "{" <> T.intercalate "," vs' <> "}"
+  where
+    tor (nm,v) = do
+        t <- R.getMember Nothing v "_torepr"
+        v1 <- R.app Nothing t []
+        case v1 of
+            R.BString s -> pure $ nm <> ":" <> s
+            _ -> error $ "wrong type from torepr 388"
+showRecord _ = error "bad args to showRecord"
+
 ------------------------------------------------------------------------------
 
 bRaise :: [Value] -> R.Runtime Value
@@ -373,7 +417,8 @@ haskellError [R.BString v] = error v
 haskellError _ = error "bad args to haskellError"
 
 makeModule :: [Value] -> R.Runtime Value
-makeModule [R.Record fs] = pure $ R.Module fs
+-- todo: check the tag
+makeModule [R.Variant _ fs] = pure $ R.Module fs
 makeModule _ = error "bad args to makeModule"
 
 ------------------------------------------------------------------------------
