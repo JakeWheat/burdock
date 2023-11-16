@@ -160,7 +160,19 @@ desugarExpr (S.Construct sp [nm] es) =
 -- S -> I
 
 desugarExpr (S.Block sp bdy) = I.Block sp <$> desugarStmts bdy
+
+-- special case for runtask
+-- todo: renamer will give this a canonical name, pick up on this
+-- this approach is suspect because aliasing will break it
+-- but run-task is an 'internal feature' so maybe this is fine
+-- for the way users should be catching exceptions, plan to use
+-- the industrial pyret design that was on the google group
+desugarExpr (S.App sp (S.Iden _ "run-task") [a]) = do
+    tell ["_bootstrap-either"]
+    I.RunTask sp <$> desugarExpr a
+
 desugarExpr (S.App sp f as) = I.App sp <$> desugarExpr f <*> mapM desugarExpr as
+
 desugarExpr (S.DotExpr sp e f) = I.DotExpr sp <$> desugarExpr e <*> pure f
 desugarExpr (S.Iden sp i) = do
     tell [i]
@@ -243,9 +255,11 @@ desugarRecs ss =
 
 makeRec :: S.SourcePosition -> Text -> S.Expr -> (S.Stmt, S.Stmt)
 makeRec sp nm e =
-        let placeholder = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp $ S.App sp (S.Iden sp "raise") [S.Text sp "internal: recursive var not initialized"]]
-        in (S.VarDecl sp (S.SimpleBinding sp S.NoShadow nm Nothing) placeholder
-           ,S.SetVar sp (S.Iden sp nm) e)
+    let placeholder = S.Lam sp (S.FunHeader [] [] Nothing)
+            [S.StmtExpr sp $ S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") "raise")
+                [S.Text sp "internal: recursive var not initialized"]]
+    in (S.VarDecl sp (S.SimpleBinding sp S.NoShadow nm Nothing) placeholder
+       ,S.SetVar sp (S.Iden sp nm) e)
 
 ------------------------------------------------------------------------------
 

@@ -11,7 +11,6 @@ module Burdock.Runtime
     --,Value
     ,debugShowValue
     -- temp
-    ,showValue
     ,Value(BNothing,Boolean,BString,Fun,Box,Module,Variant,Method,Record)
     ,makeVar
     ,setVar
@@ -37,10 +36,14 @@ module Burdock.Runtime
     ,lookupBinding
     ,runTask
 
+    ,InterpreterException(..)
+    ,throwM
+    
     ) where
 
 import Prelude hiding (error, putStrLn, show)
-import Burdock.Utils (error, show, catchAsText)
+import Burdock.Utils (error, show)
+import qualified Prelude as P
 
 --import Burdock.Scientific (Scientific, showScientific)
 import Data.Text (Text)
@@ -63,11 +66,25 @@ import Data.IORef
 
 import Control.Monad.IO.Class (liftIO)
 
+import Control.Monad (when)
+
 import Data.Dynamic
     (Dynamic
     ,fromDynamic
     ,toDyn
     ,Typeable
+    )
+
+import Data.List
+    ((\\)
+    )
+
+import Control.Exception.Safe
+    (SomeException
+    ,Exception
+    ,Handler(..)
+    ,catches
+    ,throwM
     )
 
 ------------------------------------------------------------------------------
@@ -112,20 +129,6 @@ debugShowValue (Record fs) =
     "{" <> T.intercalate "," (map f fs) <> "}"
   where
     f (nm,e) = nm <> ":" <> debugShowValue e
-
-
-showValue :: Value -> Runtime Text
-showValue (Boolean b) = pure $ show b
-showValue (BString t) = pure $ "\"" <> t <> "\""
-showValue BNothing = pure $ "nothing"
-showValue (Fun {}) = pure $ "<function>"
-showValue (Method {}) = pure $ "<method>"
-showValue (Box _) = pure $ "<box>"
-showValue (Module _) = pure $ "<box>"
-showValue (FFIValue _ d) = pure $ "<" <> show d <> ">"
-showValue (Variant (VariantTag _ nm) fs) = do
-    as <- flip mapM fs $ showValue . snd
-    pure $ nm <> "(" <> T.intercalate "," as <> ")"
 
 newDataDeclTag :: Text -> Runtime DataDeclTag
 newDataDeclTag tnm = do
@@ -183,11 +186,24 @@ app :: SP -> Value -> [Value] -> Runtime Value
 app _sourcePos (Fun f) args = f args
 app _ v _ = error $ "bad arg to app " <> debugShowValue v
 
+-- todo: should capture closure capture elements within a module instead
+-- of just the module? not sure. it might be a performance boost
+-- but maybe using indexes would achieve this too, and plan to do that
+-- at some point
 captureClosure :: [Text] -> Runtime [(Text,Value)]
 captureClosure nms = do
     -- todo: error if any names aren't found
     rtb <- rtBindings <$> ask
-    filter ((`elem` nms) . fst) <$> liftIO (readIORef rtb)
+    rtbv <- liftIO (readIORef rtb)
+    -- could consider making this optional if it's a performance issue, seems unlikely
+    -- given how inefficient everything else is
+    let missing = nms \\ map fst rtbv
+        -- todo: get to the point this hack isn't needed to make it work
+        missingHack = filter (`notElem` ["run-task"])
+                      $ filter (not . ("_variant-" `T.isPrefixOf`)) missing
+    when (not $ null missingHack) $
+        error $ "closure capture items not found: " <> show missingHack
+    pure $ filter ((`elem` nms) . fst) rtbv
 
 addBinding :: Text -> Value -> Runtime ()
 addBinding nm v = do
@@ -231,6 +247,7 @@ getMember _ (Boolean b) "_torepr" =
     wrap v = Fun $ \case
         [] -> pure $ BString v
         _ -> error "bad args to torepr"
+
 getMember _ (Boolean b) "_equals" =
     pure $ Fun $ \case
         [Boolean c] -> pure $ Boolean $ b == c
@@ -238,11 +255,10 @@ getMember _ (Boolean b) "_equals" =
         _ -> error $ "bad args to equals"
 
 getMember _ (BString b) "_torepr" =
-    pure $ BString $ show b
-  where
-    wrap v = Fun $ \case
-        [] -> pure $ BString v
+    pure $ Fun $ \case
+        [] -> pure $ BString b
         _ -> error "bad args to torepr"
+
 getMember _ (BString b) "_equals" =
     pure $ Fun $ \case
         [BString c] -> pure $ Boolean $ b == c
@@ -256,8 +272,16 @@ getMember _ (BString b) "_plus" =
 
 getMember sp v f = error $ show sp <> ": getMember: " <> debugShowValue v <> " . " <> f
 
-runTask :: Runtime a -> Runtime (Either Text a)
-runTask f = catchAsText (Right <$> f) (pure . Left)
+runTask :: forall a. Runtime a -> Runtime (Either Value a)
+runTask f = do
+    (do
+        x <- f
+        pure $! Right $! x
+        ) `catches`
+        [Handler $ \case
+            InterpreterException txt -> pure $ Left $ BString txt
+            ValueException v -> pure $ Left v
+        ,Handler $ \(ex :: SomeException) -> pure $ Left $ BString $ show ex]
 
 makeVar :: Value -> Runtime Value
 makeVar v = do
@@ -301,7 +325,6 @@ data FFIValueEntry a
 
 makeFFIType :: Typeable a => [Text] -> [FFIValueEntry a] -> Runtime FFITypeInfo
 makeFFIType nm fs = makeFFIType2 nm $ makeMemFns fs
-    
 
 makeFFIType2 :: Typeable a =>
                 [Text]
@@ -397,3 +420,19 @@ newFFITypeID :: [Text] -> Runtime FFITypeID
 newFFITypeID tnm = do
     newID <- autoID rtAutoFFITypeID
     pure $ FFITypeID newID tnm
+
+
+------------------------------------------------------------------------------
+
+data InterpreterException = InterpreterException Text
+                          | ValueException Value
+
+instance Show InterpreterException where
+    show (InterpreterException s) = T.unpack s
+    show (ValueException v) = T.unpack $ debugShowValue v
+
+instance Exception InterpreterException where
+
+--interpreterExceptionToValue :: InterpreterException -> Value
+--interpreterExceptionToValue (InterpreterException s) = BString s
+--interpreterExceptionToValue (ValueException v) = v

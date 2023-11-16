@@ -8,7 +8,7 @@ module Burdock.Interpreter
 
 import Prelude hiding (error, putStrLn, show)
 import Burdock.Utils (error, show)
-import Data.Text.IO (putStrLn)
+--import Data.Text.IO (putStrLn)
 
 import Data.Text (Text)
 import Control.Monad.IO.Class (liftIO)
@@ -65,9 +65,6 @@ interpExpr (I.Num _sp n) = do
     R.makeFFIValue nti n
     -- pure $ R.Number n
 interpExpr (I.IString _ n) = pure $ R.BString n
-
-interpExpr (I.Iden _ "true") = pure $ R.Boolean True
-interpExpr (I.Iden _ "false") = pure $ R.Boolean False
 
 interpExpr (I.DotExpr sp e1 fld) = do
     v1 <- interpExpr e1
@@ -126,6 +123,15 @@ interpExpr (I.Block _ stmts) = R.withScope $ interpStmts stmts
 interpExpr (I.RecordSel _ fs) = do
     fs' <- flip mapM fs $ \(n,e) -> (n,) <$> interpExpr e
     pure $ R.Record fs'
+
+interpExpr (I.RunTask _ e) = do
+    r <- R.runTask $ interpExpr e
+    Just bstp <- R.lookupBinding "_bootstrap-either"
+    bright <- R.getMember Nothing bstp "right"
+    bleft <- R.getMember Nothing bstp "left"
+    case r of
+        Right v -> R.app Nothing bright [v]
+        Left err -> R.app Nothing bleft [err]
 
 interpExpr e = error $ "interpExpr: " <> show e
 

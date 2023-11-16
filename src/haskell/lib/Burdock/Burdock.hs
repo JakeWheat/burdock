@@ -68,6 +68,9 @@ createHandle = do
         R.addBinding "_bootstrap-list" listV'
         nothingV <- runFragment Nothing nothingScript
         R.addBinding "_bootstrap-nothing" nothingV
+        -- temp before renamer/modules/prelude added
+        R.addBinding "true" $ R.Boolean True
+        R.addBinding "false" $ R.Boolean False
     pure $ Handle st
 
 runScript :: Handle -> (Maybe Text) -> L.Text -> IO Value
@@ -197,7 +200,6 @@ makeBurdockList us = do
     getList nm = do
         Just b <- R.lookupBinding "_bootstrap-list"
         R.getMember Nothing b nm
-makeBurdockList _ = error "bad args to makeBurdockList"
 
     
 nothingScript :: L.Text

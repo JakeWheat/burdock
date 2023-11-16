@@ -34,7 +34,7 @@ data Expr
     | IString SP Text
     | Iden SP Text
     | MethodExpr SP Expr
-    | RunTask SP Bool Expr
+    | RunTask SP Expr
     | Cases SP Expr [(Binding, [Stmt])]
     | TupleGet SP Expr Int
     deriving (Eq,Show,Data)

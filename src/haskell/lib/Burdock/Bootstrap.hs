@@ -68,7 +68,12 @@ burdockBootstrapModule = do
          ,("_type-haskell-list", haskellListTag)
          ,("_type-variant-tag", variantTag)
 
+         ,("true", R.Boolean True)
+         ,("false", R.Boolean False)
+         
          ,("nothing", R.BNothing)
+         ,("raise", R.Fun bRaise)
+         ,("haskell-error", R.Fun haskellError)
 
          ,("not", R.Fun bNot)
 
@@ -179,20 +184,24 @@ runBinaryTest tally msg lv0 lv1 op opFailString = do
             expressionsOK v0' v1'
         (Left er0, Left er1) -> do
             liftIO $ modifyIORef tally (second (+1))
+            er0s <- safeToRepr er0
+            er1s <- safeToRepr er1
             liftIO $ putStrLn $ T.unlines
                  ["FAIL: " <> msg
-                 ,"LHS raised: " <> er0
-                 ,"RHS raised: " <> er1]
+                 ,"LHS raised: " <> er0s
+                 ,"RHS raised: " <> er1s]
         (Left er0, Right {}) -> do
             liftIO $ modifyIORef tally (second (+1))
+            er0s <- safeToRepr er0
             liftIO $ putStrLn $ T.unlines
                  ["FAIL: " <> msg
-                 ,"LHS raised: " <> er0]
+                 ,"LHS raised: " <> er0s]
         (Right {}, Left er1) -> do
             liftIO $ modifyIORef tally (second (+1))
+            er1s <- safeToRepr er1
             liftIO $ putStrLn $ T.unlines
                  ["FAIL: " <> msg
-                 ,"RHS raised: " <> er1]
+                 ,"RHS raised: " <> er1s]
   where
     expressionsOK v0 v1 = do
         r <- R.runTask $ R.app Nothing op [v0, v1]
@@ -200,9 +209,10 @@ runBinaryTest tally msg lv0 lv1 op opFailString = do
             Right rx -> predicateOK rx v0 v1
             Left er -> do
                 liftIO $ modifyIORef tally (second (+1))
+                ers <- safeToRepr er
                 liftIO $ putStrLn $ T.unlines
                     ["FAIL: " <> msg
-                    ,"predicate raised: " <> er]
+                    ,"predicate raised: " <> ers]
     predicateOK r v0 v1 = 
          case r of
             R.Boolean True -> liftIO $ do
@@ -210,7 +220,6 @@ runBinaryTest tally msg lv0 lv1 op opFailString = do
                 liftIO $ putStrLn $ "PASS: " <> msg
             R.Boolean False -> do
                 liftIO $ modifyIORef tally (second (+1))
-                -- todo: have to runtask the call to torepr
                 sv0 <- safeToRepr v0
                 sv1 <- safeToRepr v1
                 liftIO $ putStrLn $ T.unlines
@@ -227,7 +236,10 @@ runBinaryTest tally msg lv0 lv1 op opFailString = do
             tr <- R.getMember Nothing v "_torepr"
             R.app Nothing tr []
         case r of
-            Left e -> pure $ e <> " : " <> R.debugShowValue v
+            Left e -> case e of
+                -- todo: another fucking call to safetorepr
+                R.BString e' -> pure $ e' <> " : " <> R.debugShowValue v
+                e1 -> pure $ R.debugShowValue e1
             Right (R.BString t) -> pure t
             Right x -> pure $ R.debugShowValue v <> " torepr: " <> R.debugShowValue x
 
@@ -248,7 +260,6 @@ bRunBinaryTest tally [R.BString msg
                      ,R.BString opFailString] = do
     runBinaryTest tally msg v0 v1 op opFailString
     pure R.BNothing
-    
 bRunBinaryTest _ _ = error $ "bad args to bRunBinaryTest"
 
 ------------------------------------------------------------------------------
@@ -336,18 +347,34 @@ showVariant hlti [fs, v0] = do
         R.Variant (R.VariantTag _ nm) _ | null fs'' -> do
             pure $ R.BString $ nm 
         R.Variant (R.VariantTag _ nm) vfs -> do
-            let tr nm = do
-                    let Just a = lookup nm vfs
-                    tr <- R.getMember Nothing a "_torepr"
-                    x <- R.app Nothing tr []
+            let tr fnm = do
+                    let a = maybe (error "what?") id $ lookup fnm vfs
+                    tr1 <- R.getMember Nothing a "_torepr"
+                    x <- R.app Nothing tr1 []
                     case x of
                         R.BString s -> pure s
-                        x -> error $ "wrong return type from torepr" <> R.debugShowValue x
+                        x1 -> error $ "wrong return type from torepr" <> R.debugShowValue x1
             vs <- mapM tr fs''
             pure $ R.BString $ nm <> "(" <> T.intercalate "," vs <> ")"
         _ -> error "bad arg to showVariant"
 
-showVariant _ as = error $ "bad args to showVariant"
+showVariant _ _as = error $ "bad args to showVariant"
+
+
+------------------------------------------------------------------------------
+
+bRaise :: [Value] -> R.Runtime Value
+bRaise [v] = R.throwM $ R.ValueException v
+bRaise _ = error "bad args to bRaise" 
+
+
+haskellError :: [Value] -> R.Runtime Value
+haskellError [R.BString v] = error v
+haskellError _ = error "bad args to haskellError"
+
+makeModule :: [Value] -> R.Runtime Value
+makeModule [R.Record fs] = pure $ R.Module fs
+makeModule _ = error "bad args to makeModule"
 
 ------------------------------------------------------------------------------
 
@@ -369,7 +396,7 @@ bPrint [v] = do
 bPrint _ = error "bad args to print"
 
 bToString :: [Value] -> R.Runtime Value
-bToString [v@(R.BString t)] = pure v
+bToString [v@(R.BString {})] = pure v
 bToString [v] = do
     f <- R.getMember Nothing v "_torepr"
     R.app Nothing f []
@@ -378,7 +405,3 @@ bToString _ = error "bad args to tostring"
 bNot :: [Value] -> R.Runtime Value
 bNot [R.Boolean t] = pure $ R.Boolean $ not t
 bNot _ = error "bad args to not"
-
-makeModule :: [Value] -> R.Runtime Value
-makeModule [R.Record fs] = pure $ R.Module fs
-makeModule _ = error "bad args to makeModule"

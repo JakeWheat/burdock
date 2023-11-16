@@ -89,7 +89,7 @@ expr (IString _ s) = dquotes (pretty s)
 expr (Iden _ n) = pretty n
 expr (MethodExpr _ m) = pretty "method"
     <> prettyBlocklike sep [expr m]
-expr (RunTask _ _e es) = pretty "run-task" <> parens (expr es)
+expr (RunTask _ es) = pretty "run-task" <> parens (expr es)
 expr (Cases _ e mats) =
     prettyBlocklike vsep
     [pretty "cases" <+> expr e <> pretty ":"

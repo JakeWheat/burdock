@@ -49,7 +49,7 @@ import Burdock.Burdock
     ,createHandle
     ,Handle
     ,runScript
-    ,Value(..)
+    --,Value(..)
     ,debugShowValue
     ,extractFFIValue
     ,hRuntimeState

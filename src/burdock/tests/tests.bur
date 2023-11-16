@@ -81,7 +81,7 @@ check:
 
   block:
     when false:
-      raise("bye")
+      _bootstrap.raise("bye")
     end
     5
   end is 5
@@ -196,3 +196,15 @@ check:
   [weird2: 1, 1, 1, 1, 1] is "five things"
   [weird2: "a", "b", "c", true, false, 5] is "too many things"
 end
+
+
+check:
+  right = _bootstrap-either.right
+  left = _bootstrap-either.left
+  raise = _bootstrap.raise
+  run-task("ok") is right("ok")
+  run-task(raise("burdock")) is left("burdock")
+  # not currently working - needs the strictness pass
+  #run-task(_bootstrap.haskell-error("haskell")) is left("haskell")
+end
+
