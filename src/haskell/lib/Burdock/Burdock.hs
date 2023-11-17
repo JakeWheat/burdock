@@ -66,12 +66,47 @@ createHandle = do
         listV <- runFragment Nothing listScript
         listV' <- addModuleItems listV [("make-burdock-list", R.Fun makeBurdockList)]
         R.addBinding "_bootstrap-list" listV'
-        nothingV <- runFragment Nothing nothingScript
-        R.addBinding "_bootstrap-nothing" nothingV
-        -- temp before renamer/modules/prelude added
+
+        globalsV <- runFragment Nothing globalsScript
+        R.addBinding "globals" globalsV
+        -- include "globals" hack
+        importAll "globals"
+        
         R.addBinding "true" $ R.Boolean True
         R.addBinding "false" $ R.Boolean False
     pure $ Handle st
+
+importAll :: Text -> R.Runtime ()
+importAll nm = do
+    v <- maybe (error $ "import not found: " <> nm) id <$> R.lookupBinding nm
+    case v of
+        R.Module fs -> flip mapM_ fs $ \(n,v1) -> R.addBinding n v1
+        _ -> error $ "import from non module: " <> R.debugShowValue v
+
+globalsScript :: L.Text
+globalsScript = [R.r|
+
+# stand in for the future globals module
+# this is the module that's auto included into any script by default
+
+# import _bootstrap as _bootstrap
+# import list or something
+
+raise = _bootstrap.raise
+print = _bootstrap.print
+tostring = _bootstrap.tostring
+true = _bootstrap.true
+false = _bootstrap.false
+_type-list = _bootstrap-list._type-list
+_variant-link = _bootstrap-list._variant-link
+_variant-empty = _bootstrap-list._variant-empty
+is-list = _bootstrap-list.is-list
+is-link = _bootstrap-list.is-link
+is-empty = _bootstrap-list.is-empty
+link = _bootstrap-list.link
+empty = _bootstrap-list.empty
+
+|]
 
 runScript :: Handle -> (Maybe Text) -> L.Text -> IO Value
 runScript h fn' src = do
@@ -186,7 +221,10 @@ end
 
 |]
 
-
+-- this function exists to bootstrap construct syntax
+-- probably it's main justification is to make the desugared interpreter
+-- syntax, and the code that generates it readable, so it's a bit of a
+-- luxury
 makeBurdockList :: [Value] -> R.Runtime Value
 makeBurdockList us = do
     link <- getList "link"
@@ -200,7 +238,3 @@ makeBurdockList us = do
     getList nm = do
         Just b <- R.lookupBinding "_bootstrap-list"
         R.getMember Nothing b nm
-
-    
-nothingScript :: L.Text
-nothingScript = "data Nothing: nothing end"

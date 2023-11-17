@@ -192,6 +192,9 @@ captureClosure nms = do
     -- given how inefficient everything else is
     let missing = nms \\ map fst rtbv
         -- todo: get to the point this hack isn't needed to make it work
+        -- run-task: special case in the desugarer, don't add this syntax
+        -- _variant: once the renamer is working, this will be accurate and
+        -- can be removed
         missingHack = filter (`notElem` ["run-task"])
                       $ filter (not . ("_variant-" `T.isPrefixOf`)) missing
     when (not $ null missingHack) $

@@ -81,7 +81,7 @@ check:
 
   block:
     when false:
-      _bootstrap.raise("bye")
+      raise("bye")
     end
     5
   end is 5
@@ -153,20 +153,16 @@ end
 
 check:
 
-  _bootstrap.print(_bootstrap-either)
+  print(_bootstrap-either)
   a = _bootstrap-either.left(1)
-  _bootstrap.print(a)
+  print(a)
 
-  x = _bootstrap-list.link(1, _bootstrap-list.link(3, _bootstrap-list.empty))
-  _bootstrap.print(x)
+  x = link(1, link(3, empty))
+  print(x)
 
 end
 
 check:
-
-  #list = _bootstrap-list.list
-  empty = _bootstrap-list.empty
-  link = _bootstrap-list.link
 
   [list:] is empty
   [list:1] is link(1,empty)
@@ -174,7 +170,6 @@ check:
 end
 
 check:
-  tostring = _bootstrap.tostring
   weird2 = {
     make : lam(args):
       cases args:
@@ -201,7 +196,6 @@ end
 check:
   right = _bootstrap-either.right
   left = _bootstrap-either.left
-  raise = _bootstrap.raise
   run-task("ok") is right("ok")
   run-task(raise("burdock")) is left("burdock")
   # not currently working - needs the strictness pass
