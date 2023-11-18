@@ -57,27 +57,42 @@ data Handle
 
 createHandle :: IO Handle
 createHandle = do
+    -- current arbitrary design decision is to handle all the bootstrapping
+    -- from here, and not e.g. bootstrap partially internally within Runtime,
+    -- then across one or more other bootstrap participating modules
     st <- R.makeRuntimeState
     R.runRuntime st $ do
-        sm <- burdockBootstrapModule
-        R.addBinding "_bootstrap" (R.Module sm)
-        eitherV <- runFragment Nothing eitherScript
-        R.addBinding "_bootstrap-either" eitherV
-        listV <- runFragment Nothing listScript
-        listV' <- addModuleItems listV [("make-burdock-list", R.Fun makeBurdockList)]
-        R.addBinding "_bootstrap-list" listV'
+        hp <- R.haskellModulePlugin
+        R.addModulePlugin "haskell" $ R.hmmModulePlugin hp
 
-        globalsV <- runFragment Nothing globalsScript
-        R.addBinding "globals" globalsV
-        -- include "globals" hack
-        importAll "globals"
+        -- temp hacks
+        let quickAddModule nm m =
+                let hm = R.HaskellModule (pure R.ModuleMetadata) m
+                in R.addHaskellModule nm hm hp
+            -- temp: bring module into scope globally and permanently
+            quickImportModule nm =
+                R.addBinding nm =<<
+                R.getModuleValue Nothing (R.RuntimeImportSource "haskell" [nm])
+
+        quickAddModule "_bootstrap" (R.Module <$> burdockBootstrapModule)
+        quickImportModule "_bootstrap"
+
+        quickAddModule "_bootstrap-either" $ runFragment Nothing eitherScript
+        quickImportModule "_bootstrap-either"
+
+        quickAddModule "_bootstrap-list" $ do
+            listV <- runFragment Nothing listScript
+            addModuleItems listV [("make-burdock-list", R.Fun makeBurdockList)]
+        quickImportModule "_bootstrap-list"
+            
+        quickAddModule "globals" $ runFragment Nothing globalsScript
+        quickImportModule "globals"
+        includeAll "globals"
         
-        R.addBinding "true" $ R.Boolean True
-        R.addBinding "false" $ R.Boolean False
     pure $ Handle st
 
-importAll :: Text -> R.Runtime ()
-importAll nm = do
+includeAll :: Text -> R.Runtime ()
+includeAll nm = do
     v <- maybe (error $ "import not found: " <> nm) id <$> R.lookupBinding nm
     case v of
         R.Module fs -> flip mapM_ fs $ \(n,v1) -> R.addBinding n v1

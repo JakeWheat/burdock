@@ -38,7 +38,23 @@ module Burdock.Runtime
 
     ,InterpreterException(..)
     ,throwM
-    
+
+    ,RuntimeImportSource(..)
+    ,ModulePlugin(..)
+    --,ModuleMetadata
+    ,addModulePlugin
+
+    ,getModuleMetadata
+    ,getModuleValue
+
+    ,BurdockImportSource(..)
+    ,lookupImportSource
+
+    ,addHaskellModule
+    ,HaskellModulePlugin(..)
+    ,haskellModulePlugin
+    ,HaskellModule(..)
+    ,ModuleMetadata(..)
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -86,6 +102,8 @@ import Control.Exception.Safe
     ,catches
     ,throwM
     )
+
+import Burdock.ModuleMetadata (ModuleMetadata(..))
 
 ------------------------------------------------------------------------------
 
@@ -136,6 +154,7 @@ data RuntimeState
     ,rtAutoDataDeclID :: IORef Int
     ,rtAutoFFITypeID :: IORef Int
     ,rtFFITypeInfoTypeInfo :: FFITypeInfo
+    ,rtModulePlugins :: IORef [(Text, ModulePlugin)]
     }
 
 makeRuntimeState :: IO RuntimeState
@@ -145,6 +164,7 @@ makeRuntimeState = do
         <*> newIORef 0
         <*> newIORef 0
         <*> pure (error "delayed initialisation")
+        <*> newIORef []
     -- does this need to be here? try to move it to bootstrap
     tinf <- runRuntime st $
         makeFFIType ["_bootstrap","ffi-type-info"]
@@ -428,3 +448,160 @@ instance Exception InterpreterException where
 --interpreterExceptionToValue :: InterpreterException -> Value
 --interpreterExceptionToValue (InterpreterException s) = BString s
 --interpreterExceptionToValue (ValueException v) = v
+
+
+------------------------------------------------------------------------------
+
+{-
+
+modules
+
+Basic design:
+
+a low level import source is name(args), like importspecial in pyret syntax
+
+the idea is that users will use package.name or similar to usually import modules
+then the system will map from these to the low level modules
+
+then, the name in the importspecial refers to an import plugin
+plugins have the following responsibilities:
+  given some args:
+    give an error if there's no corresponding module
+    provide the metadata for that module (without loading it if possible
+      - this allows a pure burdock codebase to statically check everything
+      without executing any script specific code yet, for other languages
+      this will be possible with caching tricks, but convenient to be
+      non mandatory)
+      the metadata is used to do static checks of burdock code
+        perhaps it can also be used with ffi code in the other direction
+    provide the module value for that module
+    plus module plugins store module values for reuse - they aren't
+      cached anywhere else in the runtime
+
+currently planned to be built in are:
+haskell/pre wrapped modules - this is what the system uses for the bootstrap
+  modules and the ffi implemented built in modules
+  and what to use for regular haskell implemented ffi modules
+burdock modules - this is the plugin that handles burdock implemented modules
+python
+later: c ffi plugin
+
+-}
+    
+data RuntimeImportSource
+    = RuntimeImportSource
+    {risImportSourceName :: Text
+    ,risArgs :: [Text]
+    }
+    deriving Show
+
+data ModulePlugin
+    = ModulePlugin
+    {mpGetMetadata :: Maybe Text -> RuntimeImportSource -> Runtime ModuleMetadata
+    ,mpGetModuleValue :: Maybe Text -> RuntimeImportSource -> Runtime Value
+    }
+
+getModuleMetadata :: Maybe Text -> RuntimeImportSource -> Runtime ModuleMetadata
+getModuleMetadata ctx ri = do
+    st <- ask
+    c <- liftIO $ readIORef (rtModulePlugins st)
+    case lookup (risImportSourceName ri) c of
+        Nothing -> error $ "unrecognised runtime import source: " <> risImportSourceName ri
+        Just p -> (mpGetMetadata p) ctx ri
+
+getModuleValue :: Maybe Text -> RuntimeImportSource -> Runtime Value
+getModuleValue ctx ri = do
+    st <- ask
+    c <- liftIO $ readIORef (rtModulePlugins st)
+    case lookup (risImportSourceName ri) c of
+        Nothing -> error $ "unrecognised runtime import source: " <> risImportSourceName ri
+        Just p -> (mpGetModuleValue p) ctx ri
+
+addModulePlugin :: Text -> ModulePlugin -> Runtime ()
+addModulePlugin nm mp = do
+    st <- ask
+    liftIO $ modifyIORef (rtModulePlugins st) ((nm,mp):)
+
+-- the burdock import source is to provide an ffi api to load module values
+-- into ffi code. it gives access to the low level module plugins,
+-- or the high level module map
+
+data BurdockImportSource
+    = BurdockImportSpecial Text [Text]
+    | BurdockImportName [Text]
+    deriving Show
+
+lookupImportSource :: BurdockImportSource -> Runtime RuntimeImportSource
+lookupImportSource (BurdockImportSpecial nm as) = pure $ RuntimeImportSource nm as
+lookupImportSource (BurdockImportName [nm]) =
+    -- todo: need to locate the builtins a bit more robustly
+    -- plus implement a flexible dictionary for this mapping
+    pure $ RuntimeImportSource "file" ["/home/jake/wd/burdock/2023/src/burdock/built-ins/" <> nm <> ".bur"]
+lookupImportSource x = error $ "import source not supported: " <> show x
+
+------------------------------------------------------------------------------
+
+-- native plugin
+
+data HaskellModulePlugin
+    = HaskellModulePlugin
+    {hmmModulePlugin :: ModulePlugin
+    ,hmmModules :: IORef [(Text, InternalHaskellModule)]
+    }
+
+-- the values are put in runtime, so the user can decide if to unconditionally
+-- load the module before registering, or load it only on first use
+data HaskellModule
+    = HaskellModule
+    {hmGetMetadata :: Runtime ModuleMetadata
+    ,hmGetModuleValue :: Runtime Value
+    }
+
+-- there's probably a more elegant way to do this
+data InternalHaskellModule
+    = InternalHaskellModule
+    {ihmGetMetadata :: IORef (Either ModuleMetadata (Runtime ModuleMetadata))
+    ,ihmGetModuleValue :: IORef (Either Value (Runtime Value))
+    }
+
+
+--data Internal
+
+haskellModulePlugin :: Runtime HaskellModulePlugin
+haskellModulePlugin = do
+    modulesRef <- liftIO $ newIORef []
+    let lookupPlugin ris = do
+            modules <- liftIO $ readIORef modulesRef
+            let mnm = case ris of
+                    RuntimeImportSource _ [mnmcunt] -> mnmcunt
+                    _ -> error "unsupported haskell import source " <> show ris
+            pure $ maybe (error $ "haskell module not found: " <> mnm) id
+                $ lookup mnm modules
+
+    let x = ModulePlugin
+            {mpGetMetadata = \_ ris -> do
+                r <- lookupPlugin ris
+                v <- liftIO $ readIORef (ihmGetMetadata r)
+                case v of
+                    Left v' -> pure v'
+                    Right r1 -> do
+                        v' <- r1
+                        liftIO $ writeIORef  (ihmGetMetadata r) (Left v')
+                        pure v'
+            ,mpGetModuleValue = \_ ris -> do
+                r <- lookupPlugin ris
+                v <- liftIO $ readIORef (ihmGetModuleValue r)
+                case v of
+                    Left v' -> pure v'
+                    Right r1 -> do
+                        v' <- r1
+                        liftIO $ writeIORef  (ihmGetModuleValue r) (Left v')
+                        pure v'
+            }
+    pure $ HaskellModulePlugin x modulesRef
+
+addHaskellModule :: Text -> HaskellModule -> HaskellModulePlugin -> Runtime ()
+addHaskellModule nm hm hmm = do
+    a <- liftIO $ newIORef (Right $ hmGetMetadata hm)
+    b <- liftIO $ newIORef (Right $ hmGetModuleValue hm)
+    liftIO $ modifyIORef (hmmModules hmm) ((nm,InternalHaskellModule a b):)
