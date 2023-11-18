@@ -37,11 +37,11 @@ check:
   a is 7
 
   var b = 1
-  set_it = lam(c): 
+  set-it = lam(c):
      b := c
   end
   b is 1
-  set_it(2)
+  set-it(2)
   b is 2
 
 end

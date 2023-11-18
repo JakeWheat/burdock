@@ -806,7 +806,7 @@ stmt = do
         ,importStmt
         ,whenStmt
         ,shadowDecl
-        ,usePackage
+        ,useSomething
         ,startsWithExprOrBinding]
 
 stmts :: Parser [Stmt]
@@ -1018,9 +1018,12 @@ shadowDecl =
                           Just tyx -> TypedBinding sp b tyx
                   in LetDecl sp b1 v
 
-usePackage :: Parser Stmt
-usePackage =
-    UsePackage <$> sourcePos <*> (keyword_ "use" *> keyword_ "package" *> stringRaw)
+useSomething :: Parser Stmt
+useSomething = do
+    sp <- sourcePos
+    keyword_ "use"
+    choice [UsePackage sp <$> (keyword_ "package" *> stringRaw)
+           ,UseContext sp <$> (keyword_ "context" *> importSource)]
 
 {-
 starts with expr or binding

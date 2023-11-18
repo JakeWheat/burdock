@@ -49,6 +49,7 @@ data Stmt
     | IncludeFrom SourcePosition Text [ProvideItem]
     | ImportFrom SourcePosition ImportSource [ProvideItem]
     | UsePackage SourcePosition Text
+    | UseContext SourcePosition ImportSource
     deriving (Eq,Show,Data)
 
 -- ty params, args, return ann

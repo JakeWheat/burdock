@@ -64,48 +64,40 @@ createHandle = do
     R.runRuntime st $ do
         hp <- R.haskellModulePlugin
         R.addModulePlugin "haskell" $ R.hmmModulePlugin hp
-
-        -- temp hacks
+        -- temp hack
         let quickAddModule nm m =
                 let hm = R.HaskellModule (pure R.ModuleMetadata) m
                 in R.addHaskellModule nm hm hp
-            -- temp: bring module into scope globally and permanently
-            quickImportModule nm =
-                R.addBinding nm =<<
-                R.getModuleValue Nothing (R.RuntimeImportSource "haskell" [nm])
-
+        -- the plan: the bootstrap modules are what's needed to run all of the
+        -- interpeter. _bootstrap is needed to interpret the list burdock source,
+        -- then the list type is needed for construct, and the either type
+        -- for run-task, etc. (to be reviewed in the future)
         quickAddModule "_bootstrap" (R.Module <$> burdockBootstrapModule)
-        quickImportModule "_bootstrap"
-
         quickAddModule "_bootstrap-either" $ runFragment Nothing eitherScript
-        quickImportModule "_bootstrap-either"
-
         quickAddModule "_bootstrap-list" $ do
             listV <- runFragment Nothing listScript
             addModuleItems listV [("make-burdock-list", R.Fun makeBurdockList)]
-        quickImportModule "_bootstrap-list"
-            
-        quickAddModule "globals" $ runFragment Nothing globalsScript
-        quickImportModule "globals"
-        includeAll "globals"
-        
+        -- hack for global, this will become a regular burdock module when that's
+        -- implemented
+        quickAddModule "global" $ runFragment Nothing globalSource
     pure $ Handle st
 
-includeAll :: Text -> R.Runtime ()
-includeAll nm = do
-    v <- maybe (error $ "import not found: " <> nm) id <$> R.lookupBinding nm
-    case v of
-        R.Module fs -> flip mapM_ fs $ \(n,v1) -> R.addBinding n v1
-        _ -> error $ "import from non module: " <> R.debugShowValue v
+quickImportModule :: Text -> R.Runtime ()
+quickImportModule nm =
+    R.addBinding nm =<< R.getModuleValue Nothing (R.RuntimeImportSource "haskell" [nm])
 
-globalsScript :: L.Text
-globalsScript = [R.r|
+globalSource :: L.Text
+globalSource = [R.r|
 
-# stand in for the future globals module
+# stand in for the future global module
 # this is the module that's auto included into any script by default
 
-# import _bootstrap as _bootstrap
-# import list or something
+# todo: there should be another default module with all the stuff in
+# and global should be a limited module following pyret
+
+use context empty
+_bootstrap-either = _bootstrap.load-module("_bootstrap-either")
+_bootstrap-list = _bootstrap.load-module("_bootstrap-list")
 
 raise = _bootstrap.raise
 print = _bootstrap.print
@@ -133,7 +125,10 @@ runScript h fn' src = do
         -- desugar src
         iast = either (error . prettyStaticErrors) id $ D.desugarScript fn rast
         -- interpret src
-    R.runRuntime (hRuntimeState h) $ I.interpBurdock iast
+    R.runRuntime (hRuntimeState h) $ R.withScope $ do
+        -- todo: move this to the renamer
+        quickImportModule "_bootstrap"
+        I.interpBurdock iast
 
 runFragment :: (Maybe Text) -> L.Text -> R.Runtime Value
 runFragment fn' src = do
@@ -145,7 +140,9 @@ runFragment fn' src = do
         -- desugar src
         iast = either (error . prettyStaticErrors) id $ D.desugarScript fn rast
         -- interpret src
-    I.interpBurdock iast
+    R.withScope $ do
+        quickImportModule "_bootstrap"
+        I.interpBurdock iast
 
 desugarScript :: Handle -> (Maybe Text) -> L.Text -> IO L.Text
 desugarScript h fn' src = desugarIt N.renameScript h fn' src
@@ -183,6 +180,8 @@ addModuleItems x _ = error $ "wrong arg to addModuleItems: " <> R.debugShowValue
 eitherScript :: L.Text
 eitherScript = [R.r|
 
+use context empty
+
 data either:
   | right(a)
   | left(b)
@@ -192,6 +191,8 @@ end
 
 listScript :: L.Text
 listScript = [R.r|
+
+use context empty
 
 data list:
   | link(first, rest)

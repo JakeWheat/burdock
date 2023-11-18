@@ -741,6 +741,10 @@ end|]
     -- todo: add optional alias
     ,("use package \"dir/my-package\""
      ,UsePackage np "dir/my-package")
+
+    ,("use context test"
+     ,UseContext np (ImportName ["test"]))
+
     ]
   where
     nm x = NameBinding np x

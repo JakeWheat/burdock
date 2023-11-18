@@ -332,6 +332,7 @@ stmt (ImportFrom _ is pis) =
          [pretty "import" <+> pretty "from" <+> importSource is <> pretty ":"
          ,nest 2 $ commaSep $ map provideItem pis]
 stmt (UsePackage _ d) = pretty "use" <+> pretty "package" <+> dquotes (pretty d)
+stmt (UseContext _ is) = pretty "use" <+> pretty "context" <+> importSource is
 
 funHeader :: FunHeader -> Doc a
 funHeader (FunHeader ts as rt) =

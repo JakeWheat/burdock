@@ -9,6 +9,9 @@ module Burdock.Rename
 
     ) where
 
+import Prelude hiding (error, show, putStrLn)
+import Burdock.Utils (error, show)
+
 import Data.Text (Text)
 
 import qualified Burdock.Syntax as S
@@ -23,8 +26,8 @@ renameScript :: Text
              -> [(ModuleID, ModuleMetadata)]
              -> S.Script
              -> Either [StaticError] (ModuleMetadata, S.Script)
-renameScript _fn _ism _ctx scr =
-    Right (ModuleMetadata, scr)
+renameScript _fn _ism _ctx (S.Script scr) =
+    Right (ModuleMetadata, (S.Script $ useContextHack scr))
 
 {-
 The bool is to turn provideAll on as the default,
@@ -41,7 +44,7 @@ renameModule :: Bool
 renameModule _provideAll _fn _ _ (S.Script ss) =
     -- quick hack - just generate the make-module call at the end
     let rs = concat $ map getBinds ss
-    in Right (ModuleMetadata, S.Script (ss ++ [makeModuleValue rs]))
+    in Right (ModuleMetadata, S.Script (useContextHack ss ++ [makeModuleValue rs]))
   where
     makeModuleValue rs =
         let sp = Nothing
@@ -70,3 +73,19 @@ renameModule _provideAll _fn _ _ (S.Script ss) =
     getBs (S.WildcardBinding {}) = []
     getBs (S.NumberLitBinding {}) = []
     getBs (S.StringLitBinding {}) = []
+
+useContextHack :: [S.Stmt] -> [S.Stmt]
+useContextHack (S.UseContext _ (S.ImportName ["empty"]) : ss) = ss
+useContextHack (S.UseContext _ is : _ss) = error $ "unsupported context" <> show is
+useContextHack ss =
+    ltm "_bootstrap"
+    : ltm "_bootstrap-either"
+    : ltm "_bootstrap-list"
+    : ltm "global"
+     : S.StmtExpr n (app "include-all" [S.Iden n "global"])
+     : ss
+  where
+    ltm nm = lt nm (app "load-module" [S.Text n nm])
+    lt nm e = S.LetDecl n (S.NameBinding n nm) e
+    app nm es = S.App n (S.DotExpr n (S.Iden n "_bootstrap") nm) es
+    n = Nothing

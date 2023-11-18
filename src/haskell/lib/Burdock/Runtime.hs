@@ -170,7 +170,6 @@ makeRuntimeState = do
         makeFFIType ["_bootstrap","ffi-type-info"]
             [ToRepr $ \(v :: FFITypeInfo) -> pure $ "<" <> tyNameText (tyTypeID v) <> ">"
             ,Equals $ \v w -> pure $ tyTypeID v == tyTypeID w]
-
     pure $ st {rtFFITypeInfoTypeInfo = tinf}
 
 type Runtime = ReaderT RuntimeState IO
