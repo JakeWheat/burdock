@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Burdock.Rename
     (rename
-
+    ,getImportSources
     ,ModuleID
     ,ModuleMetadata 
 
@@ -19,6 +19,15 @@ import Burdock.StaticError (StaticError(..))
 import Burdock.ModuleMetadata
     (ModuleMetadata(..)
     ,ModuleID(..))
+
+getImportSources :: S.Script -> [S.ImportSource]
+getImportSources (S.Script ss) = concatMap getImportSourceInfo ss
+  where
+    getImportSourceInfo (S.StmtExpr _ (S.Block _ ss')) = concatMap getImportSourceInfo ss'
+    getImportSourceInfo (S.Import _ s _) = [s]
+    getImportSourceInfo (S.Include _ s) = [s]
+    getImportSourceInfo (S.ImportFrom _ s _) = [s]
+    getImportSourceInfo _x = []
 
 rename :: Text
        -> [(S.ImportSource, ModuleID)]

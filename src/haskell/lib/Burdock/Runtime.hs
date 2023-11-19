@@ -39,7 +39,7 @@ module Burdock.Runtime
     ,InterpreterException(..)
     ,throwM
 
-    ,RuntimeImportSource(..)
+    ,ModuleID(..)
     ,ModulePlugin(..)
     --,ModuleMetadata
     ,addModulePlugin
@@ -47,7 +47,7 @@ module Burdock.Runtime
     ,getModuleMetadata
     ,getModuleValue
 
-    ,BurdockImportSource(..)
+    ,S.ImportSource(..)
     ,lookupImportSource
 
     ,addHaskellModule
@@ -64,6 +64,8 @@ import qualified Prelude as P
 --import Burdock.Scientific (Scientific, showScientific)
 import Data.Text (Text)
 import qualified Data.Text as T
+
+import qualified Burdock.Syntax as S (ImportSource(..))
 
 import Control.Monad.Reader
     (ReaderT
@@ -103,7 +105,9 @@ import Control.Exception.Safe
     ,throwM
     )
 
-import Burdock.ModuleMetadata (ModuleMetadata(..))
+import Burdock.ModuleMetadata
+    (ModuleMetadata(..)
+    ,ModuleID(..))
 
 ------------------------------------------------------------------------------
 
@@ -486,35 +490,29 @@ python
 later: c ffi plugin
 
 -}
-    
-data RuntimeImportSource
-    = RuntimeImportSource
-    {risImportSourceName :: Text
-    ,risArgs :: [Text]
-    }
-    deriving Show
 
 data ModulePlugin
     = ModulePlugin
-    {mpGetMetadata :: Maybe Text -> RuntimeImportSource -> Runtime ModuleMetadata
-    ,mpGetModuleValue :: Maybe Text -> RuntimeImportSource -> Runtime Value
+    {mpCanonicalizeID :: Maybe ModuleID -> ModuleID -> Runtime ModuleID
+    ,mpGetMetadata :: ModuleID -> Runtime ModuleMetadata
+    ,mpGetModuleValue :: ModuleID -> Runtime Value
     }
 
-getModuleMetadata :: Maybe Text -> RuntimeImportSource -> Runtime ModuleMetadata
-getModuleMetadata ctx ri = do
+getModuleMetadata :: ModuleID -> Runtime ModuleMetadata
+getModuleMetadata ri = do
     st <- ask
     c <- liftIO $ readIORef (rtModulePlugins st)
-    case lookup (risImportSourceName ri) c of
-        Nothing -> error $ "unrecognised runtime import source: " <> risImportSourceName ri
-        Just p -> (mpGetMetadata p) ctx ri
+    case lookup (mPlugin ri) c of
+        Nothing -> error $ "unrecognised runtime import source: " <> mPlugin ri
+        Just p -> (mpGetMetadata p) ri
 
-getModuleValue :: Maybe Text -> RuntimeImportSource -> Runtime Value
-getModuleValue ctx ri = do
+getModuleValue :: ModuleID -> Runtime Value
+getModuleValue ri = do
     st <- ask
     c <- liftIO $ readIORef (rtModulePlugins st)
-    case lookup (risImportSourceName ri) c of
-        Nothing -> error $ "unrecognised runtime import source: " <> risImportSourceName ri
-        Just p -> (mpGetModuleValue p) ctx ri
+    case lookup (mPlugin ri) c of
+        Nothing -> error $ "unrecognised runtime import source: " <> mPlugin ri
+        Just p -> (mpGetModuleValue p) ri
 
 addModulePlugin :: Text -> ModulePlugin -> Runtime ()
 addModulePlugin nm mp = do
@@ -525,18 +523,21 @@ addModulePlugin nm mp = do
 -- into ffi code. it gives access to the low level module plugins,
 -- or the high level module map
 
-data BurdockImportSource
-    = BurdockImportSpecial Text [Text]
-    | BurdockImportName [Text]
-    deriving Show
-
-lookupImportSource :: BurdockImportSource -> Runtime RuntimeImportSource
-lookupImportSource (BurdockImportSpecial nm as) = pure $ RuntimeImportSource nm as
-lookupImportSource (BurdockImportName [nm]) =
+lookupImportSource :: Maybe ModuleID -> S.ImportSource -> Runtime ModuleID
+lookupImportSource ctx (S.ImportSpecial nm as) = do
+    st <- ask
+    c <- liftIO $ readIORef (rtModulePlugins st)
+    case lookup nm c of
+        Nothing -> error $ "unrecognised runtime import source: " <> nm
+        Just p -> (mpCanonicalizeID p) ctx (ModuleID nm as)
+lookupImportSource ctx (S.ImportName [nm]) =
     -- todo: need to locate the builtins a bit more robustly
     -- plus implement a flexible dictionary for this mapping
-    pure $ RuntimeImportSource "file" ["/home/jake/wd/burdock/2023/src/burdock/built-ins/" <> nm <> ".bur"]
-lookupImportSource x = error $ "import source not supported: " <> show x
+    lookupImportSource ctx
+        (S.ImportSpecial "file"
+            ["/home/jake/wd/burdock/2023/src/burdock/built-ins/" <> nm <> ".bur"])
+lookupImportSource _ x = error $ "import source not supported: " <> show x
+
 
 ------------------------------------------------------------------------------
 
@@ -572,13 +573,14 @@ haskellModulePlugin = do
     let lookupPlugin ris = do
             modules <- liftIO $ readIORef modulesRef
             let mnm = case ris of
-                    RuntimeImportSource _ [mnmcunt] -> mnmcunt
+                    ModuleID _ [mnmcunt] -> mnmcunt
                     _ -> error "unsupported haskell import source " <> show ris
             pure $ maybe (error $ "haskell module not found: " <> mnm) id
                 $ lookup mnm modules
 
     let x = ModulePlugin
-            {mpGetMetadata = \_ ris -> do
+            {mpCanonicalizeID = \_ zz -> pure zz
+            ,mpGetMetadata = \ris -> do
                 r <- lookupPlugin ris
                 v <- liftIO $ readIORef (ihmGetMetadata r)
                 case v of
@@ -587,7 +589,7 @@ haskellModulePlugin = do
                         v' <- r1
                         liftIO $ writeIORef  (ihmGetMetadata r) (Left v')
                         pure v'
-            ,mpGetModuleValue = \_ ris -> do
+            ,mpGetModuleValue = \ris -> do
                 r <- lookupPlugin ris
                 v <- liftIO $ readIORef (ihmGetModuleValue r)
                 case v of

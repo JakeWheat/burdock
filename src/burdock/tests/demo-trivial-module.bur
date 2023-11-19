@@ -1,0 +1,4 @@
+
+provide: *, type *, data * end
+
+a = 5

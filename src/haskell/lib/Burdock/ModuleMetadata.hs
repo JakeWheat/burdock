@@ -4,5 +4,12 @@ module Burdock.ModuleMetadata
     ,ModuleID(..)
     ) where
 
-data ModuleID = ModuleID
+import Data.Text (Text)
+
+data ModuleID
+    = ModuleID
+    {mPlugin :: Text
+    ,mArgs :: [Text]}
+    deriving (Eq, Show)
+
 data ModuleMetadata = ModuleMetadata
