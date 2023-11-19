@@ -2,7 +2,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TupleSections #-}
-module Burdock.Interpreter
+module Burdock.Interpret
     (interpBurdock
     ) where
 

@@ -1,6 +1,6 @@
 
 {-# LANGUAGE OverloadedStrings #-}
-module Burdock.Rename
+module Burdock.RenameAst
     (rename
     ,getImportSources
     ,ModuleID

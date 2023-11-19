@@ -36,9 +36,9 @@ import Control.Monad.IO.Class (liftIO)
 import Burdock.Runtime (Value)
 import qualified Burdock.Parse as P
 --import qualified Burdock.Syntax as S
-import qualified Burdock.Rename as N
+import qualified Burdock.RenameAst as N
 import qualified Burdock.Desugar as D
-import qualified Burdock.Interpreter as I
+import qualified Burdock.Interpret as I
 import qualified Burdock.InterpreterSyntax as I
 import qualified Burdock.Runtime as R
 import Burdock.StaticError
@@ -46,7 +46,7 @@ import Burdock.StaticError
     --,
         prettyStaticErrors)
 import Burdock.Bootstrap (burdockBootstrapModule)
-import qualified Burdock.PrettyInterpreter as I
+import qualified Burdock.InterpreterPretty as I
 --import Burdock.StaticError (StaticError)
 
 import Burdock.ModuleMetadata
@@ -199,9 +199,7 @@ recurseAndCompileScript mid src = do
     let fn = getModuleIDFilename mid
         ast = either error id $ P.parseScript fn src
         deps = N.getImportSources ast
-
     ism <- flip mapM deps $ \x -> (x,) <$> R.lookupImportSource (Just mid) x
-
     ctx <- flip mapM ism $ \(_,dmid) -> (dmid,) <$> R.getModuleMetadata dmid
     let (md,rast) = either (error . prettyStaticErrors) id $ N.rename fn ism ctx ast
         iast = either (error . prettyStaticErrors) id $ D.desugarScript fn rast

@@ -33,12 +33,12 @@ common shared-properties
                       Burdock.Scientific
                       Burdock.Utils
                       Burdock.Burdock
-                      Burdock.Interpreter
+                      Burdock.Interpret
                       Burdock.Runtime
                       Burdock.Desugar
                       Burdock.InterpreterSyntax
-                      Burdock.PrettyInterpreter
-                      Burdock.Rename
+                      Burdock.InterpreterPretty
+                      Burdock.RenameAst
                       Burdock.StaticError
                       Burdock.ModuleMetadata
                       Burdock.Bootstrap
