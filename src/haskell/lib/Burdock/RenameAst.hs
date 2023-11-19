@@ -20,6 +20,29 @@ import Burdock.ModuleMetadata
     (ModuleMetadata(..)
     ,ModuleID(..))
 
+import qualified Burdock.Rename as R
+
+import Control.Monad.Reader
+    (ReaderT
+    ,runReaderT
+    )
+
+import Control.Monad.Reader.Class
+    (ask
+    ,local
+    )
+
+import Control.Monad.Writer
+    (Writer
+    ,runWriter
+    ,tell
+    )
+
+------------------------------------------------------------------------------
+
+type Renamer = ReaderT R.RenamerEnv (Writer [StaticError])
+
+
 getImportSources :: S.Script -> [S.ImportSource]
 getImportSources (S.Script ss) = concatMap getImportSourceInfo ss
   where
@@ -28,6 +51,8 @@ getImportSources (S.Script ss) = concatMap getImportSourceInfo ss
     getImportSourceInfo (S.Include _ s) = [s]
     getImportSourceInfo (S.ImportFrom _ s _) = [s]
     getImportSourceInfo _x = []
+
+--------------------------------------
 
 rename :: Text
        -> [(S.ImportSource, ModuleID)]
@@ -100,3 +125,5 @@ then keep the rest of the source as is
     lt nm e = S.LetDecl n (S.NameBinding n nm) e
     app nm es = S.App (Just (_fn,0,0)) (S.DotExpr (Just (_fn,0,0)) (S.Iden (Just (_fn,0,0)) "_interpreter") nm) es
     n = Nothing
+
+------------------------------------------------------------------------------

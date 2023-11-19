@@ -83,6 +83,34 @@ data Handle
     {hRuntimeState :: R.RuntimeState
     }
 
+{-
+
+The bootstrap process mainly has to deal with the fact that the interpreter needs
+list and either types, and especially list would be very tedious to implement in ffi.
+
+The list is only needed for construct (with a special work around for list construct).
+Either is only needed for the return value of run-task
+
+So it creates an _internals module from bootstrap in ffi
+this can run most of the interpreter
+this is used to create the list and either types using the interpreter
+then all this is bound into a _interpreter module
+now the whole interpreter can run just using this _interpreter module
+then it just bootstraps the burdock2023 module
+later this will probably change, so burdock2023 doesn't need any
+special handling
+
+currently this file contains 4 burdock source fragments:
+bootstrap-either
+bootstrap-list
+_interpreter
+burdock2023
+
+in theory, all of them could just be .bur files in the builtins directory,
+  which might be a better way to do it?
+
+-}
+
 createHandle :: IO Handle
 createHandle = do
     -- current arbitrary design decision is to handle all the bootstrapping
@@ -96,10 +124,6 @@ createHandle = do
         let quickAddModule nm m =
                 let hm = R.HaskellModule (pure R.ModuleMetadata) m
                 in R.addHaskellModule nm hm hp
-        -- the plan: the bootstrap modules are what's needed to run all of the
-        -- interpeter. _bootstrap is needed to interpret the list burdock source,
-        -- then the list type is needed for construct, and the either type
-        -- for run-task, etc. (to be reviewed in the future)
         quickAddModule "_bootstrap" (R.Module <$> burdockBootstrapModule)
         quickAddModule "_bootstrap-either" $ runScriptB "_bootstrap" (Just "<bootstrap-either>") eitherScript
         quickAddModule "_bootstrap-list" $ do
@@ -119,13 +143,6 @@ createHandle = do
         -- system now bootstrapped to be able to use default use context burdock2023
 
     pure $ Handle st
-
-{-
-todo:
-new plan is to create an _interpreter module from _bootstrap *
-then the renamer will add this only
-rename global to burdock2023 (later global will be a smaller module, like pyret's)
--}
 
 quickImportModule :: Text -> R.Runtime ()
 quickImportModule nm =
