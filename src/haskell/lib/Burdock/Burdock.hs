@@ -81,6 +81,13 @@ createHandle = do
         quickAddModule "global" $ runScript' (Just "<global>") globalSource
     pure $ Handle st
 
+{-
+todo:
+new plan is to create an _interpreter module from _bootstrap *
+then the renamer will add this only
+rename global to burdock2023 (later global will be a smaller module, like pyret's)
+-}
+
 quickImportModule :: Text -> R.Runtime ()
 quickImportModule nm =
     R.addBinding nm =<< R.getModuleValue Nothing (R.RuntimeImportSource "haskell" [nm])
@@ -98,8 +105,8 @@ use context empty
 
 provide: *, type *, data * end
 
-_bootstrap-either = _bootstrap.load-module("_bootstrap-either")
-_bootstrap-list = _bootstrap.load-module("_bootstrap-list")
+_bootstrap-either = _bootstrap.load-module("haskell", "_bootstrap-either")
+_bootstrap-list = _bootstrap.load-module("haskell", "_bootstrap-list")
 
 raise = _bootstrap.raise
 print = _bootstrap.print

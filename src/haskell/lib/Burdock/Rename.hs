@@ -89,7 +89,7 @@ then keep the rest of the source as is
     getBs (S.NumberLitBinding {}) = []
     getBs (S.StringLitBinding {}) = []
 
-    ltm nm = lt nm (app "load-module" [S.Text n nm])
+    ltm nm = lt nm (app "load-module" [S.Text n "haskell", S.Text n nm])
     lt nm e = S.LetDecl n (S.NameBinding n nm) e
     app nm es = S.App n (S.DotExpr n (S.Iden n "_bootstrap") nm) es
     n = Nothing

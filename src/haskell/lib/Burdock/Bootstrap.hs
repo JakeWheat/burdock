@@ -427,8 +427,8 @@ makeModule _ = error "bad args to makeModule"
 
 loadModule :: [Value] -> R.Runtime Value
 -- todo: check the tag
-loadModule [R.BString nm] =
-    R.getModuleValue Nothing (R.RuntimeImportSource "haskell" [nm])
+loadModule [R.BString plugin, R.BString nm] =
+    R.getModuleValue Nothing (R.RuntimeImportSource plugin [nm])
 loadModule _ = error "bad args to loadModule"
 
 includeAll :: [Value] -> R.Runtime Value
