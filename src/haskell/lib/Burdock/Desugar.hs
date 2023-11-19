@@ -83,7 +83,7 @@ desugarStmt :: S.Stmt -> Desugar I.Stmt
 desugarStmt (S.Check sp _ bdy) = desugarStmt $ S.StmtExpr sp $ S.Block sp bdy
 desugarStmt (S.When sp e bdy) =
     desugarStmt $ S.StmtExpr sp
-    $ S.If sp [(e,bdy)] (Just [S.StmtExpr sp $ S.DotExpr sp (S.Iden sp "_bootstrap") "nothing"])
+    $ S.If sp [(e,bdy)] (Just [S.StmtExpr sp $ S.DotExpr sp (S.Iden sp "_interpreter") "nothing"])
 
 -- S -> I
 
@@ -111,7 +111,7 @@ desugarExpr (S.BinOp sp e0 "is" e1) = do
         ,S.Text sp "<>"
         ]
   where
-    app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") nm) as
+    app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_interpreter") nm) as
     wrapit e = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp e]
     lam as e = S.Lam sp (S.FunHeader [] (flip map as $ S.NameBinding sp) Nothing) [S.StmtExpr sp e]
 
@@ -125,7 +125,7 @@ desugarExpr (S.BinOp sp e0 "is-not" e1) = do
         ,S.Text sp "=="
         ]
   where
-    app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") nm) as
+    app nm as = S.App sp (S.DotExpr sp (S.Iden sp "_interpreter") nm) as
     wrapit e = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp e]
     lam as e = S.Lam sp (S.FunHeader [] (flip map as $ S.NameBinding sp) Nothing) [S.StmtExpr sp e]
 
@@ -147,12 +147,12 @@ desugarExpr (S.BinOp sp e0 op e1) | Just op' <- lookup op methOps =
         ]
 
 desugarExpr (S.BinOp sp e0 "<>" e1) =
-    desugarExpr (S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") "not") [(S.BinOp sp e0 "==" e1)])
+    desugarExpr (S.App sp (S.DotExpr sp (S.Iden sp "_interpreter") "not") [(S.BinOp sp e0 "==" e1)])
 
 -- todo1: the renamer will give this a canonical name, then special
 -- case this name
 desugarExpr (S.Construct sp ["list"] es) =
-    desugarExpr $ S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap-list") "make-burdock-list") es
+    desugarExpr $ S.App sp (S.DotExpr sp (S.Iden sp "_interpreter") "make-burdock-list") es
 
 desugarExpr (S.Construct sp [nm] es) =
     desugarExpr $ S.App sp (S.DotExpr sp (S.Iden sp nm) "make") [S.Construct sp ["list"] es]
@@ -168,7 +168,7 @@ desugarExpr (S.Block sp bdy) = I.Block sp <$> desugarStmts bdy
 -- for the way users should be catching exceptions, plan to use
 -- the industrial pyret design that was on the google group
 desugarExpr (S.App sp (S.Iden _ "run-task") [a]) = do
-    tell ["_bootstrap-either"]
+    tell ["_interpreter"]
     I.RunTask sp <$> desugarExpr a
 
 desugarExpr (S.App sp f as) = I.App sp <$> desugarExpr f <*> mapM desugarExpr as
@@ -179,7 +179,7 @@ desugarExpr (S.Iden sp i) = do
     pure $ I.Iden sp i
 desugarExpr (S.Text sp t) = pure $ I.IString sp t
 desugarExpr (S.Num sp n) = do
-    tell ["_bootstrap"]
+    tell ["_interpreter"]
     pure $ I.Num sp n
 desugarExpr (S.Lam sp (S.FunHeader [] bs Nothing) bdy) = do
     let ((bs',bdy'), candFrees) =
@@ -228,11 +228,11 @@ desugarExpr e = error $ "desugarExpr: " <> show e
 desugarBinding :: S.Binding -> Desugar I.Binding
 desugarBinding (S.NameBinding sp nm) = do
     -- temp: might be a variant name
-    tell ["_bootstrap", "_variant-" <> nm]
+    tell ["_interpreter", "_variant-" <> nm]
     pure $ I.NameBinding sp nm
 desugarBinding (S.ShadowBinding sp nm) = pure $ I.NameBinding sp nm
 desugarBinding (S.VariantBinding sp nm bs) = do
-    tell ["_bootstrap", "_variant-" <> last nm]
+    tell ["_interpreter", "_variant-" <> last nm]
     I.VariantBinding sp nm <$> mapM desugarBinding bs
 
 desugarBinding (S.WildcardBinding sp) = pure $ I.WildcardBinding sp
@@ -262,7 +262,7 @@ desugarRecs ss =
 makeRec :: S.SourcePosition -> Text -> S.Expr -> (S.Stmt, S.Stmt)
 makeRec sp nm e =
     let placeholder = S.Lam sp (S.FunHeader [] [] Nothing)
-            [S.StmtExpr sp $ S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") "raise")
+            [S.StmtExpr sp $ S.App sp (S.DotExpr sp (S.Iden sp "_interpreter") "raise")
                 [S.Text sp "internal: recursive var not initialized"]]
     in (S.VarDecl sp (S.SimpleBinding sp S.NoShadow nm Nothing) placeholder
        ,S.SetVar sp (S.Iden sp nm) e)
@@ -324,7 +324,7 @@ desugarDataDecl (S.DataDecl dsp dnm _params variants _meths _where) =
     torp ifs = smeth dsp ["a"] (sapp dsp "show-variant" [sapp dsp "make-haskell-list" ifs
                                                         ,S.Iden dsp "a"])
     slet sp nm e = S.LetDecl sp (S.NameBinding sp nm) e
-    sapp sp nm args = S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") nm) args
+    sapp sp nm args = S.App sp (S.DotExpr sp (S.Iden sp "_interpreter") nm) args
     smeth sp as e =
       let bs = flip map as $ \a -> S.NameBinding sp a
       in S.MethodExpr sp (S.Method (S.FunHeader [] bs Nothing) [S.StmtExpr sp e])

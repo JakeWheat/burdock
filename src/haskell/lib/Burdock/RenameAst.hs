@@ -55,13 +55,11 @@ then keep the rest of the source as is
 
   where
     checkUseContext (S.UseContext _ (S.ImportName ["empty"]) : ss) = checkProvideAll ss
-    -- todo: change to load _interpreter, and load burdock2023
-    checkUseContext ss = 
-        ltm "_bootstrap"
-        : ltm "_bootstrap-either"
-        : ltm "_bootstrap-list"
-        : ltm "global"
-        : S.StmtExpr n (app "include-all" [S.Iden n "global"])
+    checkUseContext (S.UseContext _ (S.ImportName ["burdock2023"]) : ss) = defaultContext ss
+    checkUseContext ss = defaultContext ss
+    defaultContext ss = 
+        ltm "burdock2023"
+        : S.StmtExpr n (app "include-all" [S.Iden n "burdock2023"])
         : checkProvideAll ss
 
     checkProvideAll (S.Provide _ [S.ProvideAll _,S.ProvideTypeAll _,S.ProvideDataAll _] : ss) =
@@ -72,7 +70,7 @@ then keep the rest of the source as is
     makeModuleValue rs =
         let sp = Nothing
             r = flip map rs $ \r1 -> (r1, S.Iden sp r1)
-        in S.StmtExpr sp $ S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") "make-module") [S.RecordSel sp r]
+        in S.StmtExpr sp $ S.App sp (S.DotExpr sp (S.Iden sp "_interpreter") "make-module") [S.RecordSel sp r]
 
     getBinds (S.LetDecl _ b _) = getBs b
     getBinds (S.VarDecl _ (S.SimpleBinding _ _ nm _) _) = [nm]
@@ -100,5 +98,5 @@ then keep the rest of the source as is
 
     ltm nm = lt nm (app "load-module" [S.Text n "haskell", S.Text n nm])
     lt nm e = S.LetDecl n (S.NameBinding n nm) e
-    app nm es = S.App n (S.DotExpr n (S.Iden n "_bootstrap") nm) es
+    app nm es = S.App (Just (_fn,0,0)) (S.DotExpr (Just (_fn,0,0)) (S.Iden (Just (_fn,0,0)) "_interpreter") nm) es
     n = Nothing

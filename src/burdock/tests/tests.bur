@@ -130,9 +130,9 @@ check:
   zz.a is 2
   zz.b is 5
 
-  _bootstrap.variants-equal(_bootstrap.make-haskell-list("a", "b"), ctor2(1,2), ctor2(1,2)) is true
-  _bootstrap.variants-equal(_bootstrap.make-haskell-list("a", "b"), ctor2(1,2), ctor2(2,1)) is false
-  _bootstrap.variants-equal(_bootstrap.make-haskell-list(), ctor1, ctor1) is true
+  _interpreter.variants-equal(_interpreter.make-haskell-list("a", "b"), ctor2(1,2), ctor2(1,2)) is true
+  _interpreter.variants-equal(_interpreter.make-haskell-list("a", "b"), ctor2(1,2), ctor2(2,1)) is false
+  _interpreter.variants-equal(_interpreter.make-haskell-list(), ctor1, ctor1) is true
 
   ctor1 is ctor1
   ctor2(2,5) is ctor2(2,5)
@@ -153,8 +153,8 @@ end
 
 check:
 
-  print(_bootstrap-either)
-  a = _bootstrap-either.left(1)
+  #print(_bootstrap-either)
+  a = _interpreter.left(1)
   print(a)
 
   x = link(1, link(3, empty))
@@ -194,12 +194,12 @@ end
 
 
 check:
-  right = _bootstrap-either.right
-  left = _bootstrap-either.left
+  right = _interpreter.right
+  left = _interpreter.left
   run-task("ok") is right("ok")
   run-task(raise("burdock")) is left("burdock")
   # not currently working - needs the strictness pass
-  #run-task(_bootstrap.haskell-error("haskell")) is left("haskell")
+  #run-task(_interpreter.haskell-error("haskell")) is left("haskell")
 end
 
 check:

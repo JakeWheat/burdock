@@ -28,7 +28,7 @@ import Burdock.Utils (error, show)
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Text.IO (putStrLn)
+--import Data.Text.IO (putStrLn)
 import qualified Data.Text.Lazy as L
 import qualified Data.Text.Lazy.IO as L
 import Control.Monad.IO.Class (liftIO)
@@ -101,15 +101,23 @@ createHandle = do
         -- then the list type is needed for construct, and the either type
         -- for run-task, etc. (to be reviewed in the future)
         quickAddModule "_bootstrap" (R.Module <$> burdockBootstrapModule)
-        quickAddModule "_bootstrap-either" $ runScript' (Just "<bootstrap-either>") eitherScript
+        quickAddModule "_bootstrap-either" $ runScriptB "_bootstrap" (Just "<bootstrap-either>") eitherScript
         quickAddModule "_bootstrap-list" $ do
-            listV <- runScript' (Just "<bootstrap-list>") listScript
-            addModuleItems listV [("make-burdock-list", R.Fun makeBurdockList)]
+            listV <- runScriptB "_bootstrap" (Just "<bootstrap-list>") listScript
+            -- todo: closure capture helper fns
+            llink <- R.getMember Nothing listV "link"
+            lempty <- R.getMember Nothing listV "empty"
+            let mbl = makeBurdockList llink lempty
+            addModuleItems listV [("make-burdock-list", R.Fun mbl)]
         -- hack for global, this will become a regular burdock module when that's
         -- implemented
-        quickAddModule "global" $ runScript' (Just "<global>") globalSource
+        quickAddModule "_interpreter" $ runScriptB "_bootstrap" (Just "<interpreter>") interpreterSupportScript
+        -- system now bootstrapped to the point where can use regular _interpreter module
         bp <- burdockModulePlugin
         R.addModulePlugin burdockPluginName bp
+        quickAddModule "burdock2023" $ runScript' (Just "<burdock2023>") burdock2023Source
+        -- system now bootstrapped to be able to use default use context burdock2023
+
     pure $ Handle st
 
 {-
@@ -126,50 +134,18 @@ quickImportModule nm =
 fileNameToModuleID :: Text -> ModuleID
 fileNameToModuleID nm = ModuleID burdockPluginName [nm]
 
-globalSource :: L.Text
-globalSource = [R.r|
-
-# stand in for the future global module
-# this is the module that's auto included into any script by default
-
-# todo: there should be another default module with all the stuff in
-# and global should be a limited module following pyret
-
-use context empty
-
-provide: *, type *, data * end
-
-_bootstrap-either = _bootstrap.load-module("haskell", "_bootstrap-either")
-_bootstrap-list = _bootstrap.load-module("haskell", "_bootstrap-list")
-
-raise = _bootstrap.raise
-print = _bootstrap.print
-tostring = _bootstrap.tostring
-true = _bootstrap.true
-false = _bootstrap.false
-_type-list = _bootstrap-list._type-list
-_variant-link = _bootstrap-list._variant-link
-_variant-empty = _bootstrap-list._variant-empty
-is-list = _bootstrap-list.is-list
-is-link = _bootstrap-list.is-link
-is-empty = _bootstrap-list.is-empty
-link = _bootstrap-list.link
-empty = _bootstrap-list.empty
-
-|]
-
 runScript :: Handle -> (Maybe Text) -> L.Text -> IO Value
-runScript h fn src = do
-    putStrLn $ "got: " <> show fn
-    R.runRuntime (hRuntimeState h) $ runScript' fn src
+runScript h fn src = R.runRuntime (hRuntimeState h) $ runScript' fn src
 
 runScript' :: (Maybe Text) -> L.Text -> R.Runtime Value
-runScript' fn src = do
+runScript' fn src = runScriptB "_interpreter" fn src
+
+runScriptB :: Text -> (Maybe Text) -> L.Text -> R.Runtime Value
+runScriptB bootstrap fn src = do
     let mid = fileNameToModuleID (maybe "<unknown>" id fn)
     (_,iast) <- recurseAndCompileScript mid src
     R.withScope $ do
-        -- todo: move this to the renamer when it can handle it
-        quickImportModule "_bootstrap"
+        quickImportModule bootstrap
         I.interpBurdock iast
 
 -- wrapper: will include recursively loading in the future
@@ -255,12 +231,10 @@ getModuleValue fn bm = do
         _ -> do
             (_,iast) <- getCompiledModule fn bm
             v <- R.withScope $ do
-                -- todo: move this to the renamer when it can handle it
-                quickImportModule "_bootstrap"
+                quickImportModule "_interpreter"
                 I.interpBurdock iast
             addExecutedModule fn v bm
             pure v
-
 
 (</>) :: Text -> Text -> Text
 a </> b = T.pack ((F.</>) (T.unpack a) (T.unpack b))
@@ -297,12 +271,130 @@ burdockModulePlugin = do
 -- burdock bootstrap scripts - bits implemented in burdock that are needed
 -- by some of the interpreter features.
 
+interpreterSupportScript :: L.Text
+interpreterSupportScript = [R.r|
+
+# this is all the stuff under the _interpreter module which is
+# what the interpreter itself needs to run everything
+
+use context empty
+
+provide: *, type *, data * end
+
+# hack
+_interpreter = _bootstrap
+
+# _bootstrap already in scope
+
+_bootstrap-either = _bootstrap.load-module("haskell", "_bootstrap-either")
+_bootstrap-list = _bootstrap.load-module("haskell", "_bootstrap-list")
+
+# todo: try to implement this all as include froms
+
+# nothing
+nothing = _bootstrap.nothing
+
+# boolean
+true = _bootstrap.true
+false = _bootstrap.false
+
+# other type stuff
+_type-number = _bootstrap._type-number
+_type-variant-tag = _bootstrap._type-variant-tag
+_variant-record = _bootstrap._variant-record
+show-record = _bootstrap.show-record
+_variant-tuple = _bootstrap._variant-tuple
+show-tuple = _bootstrap.show-tuple
+
+# prelude suppport
+make-module = _bootstrap.make-module
+include-all = _bootstrap.include-all
+load-module = _bootstrap.load-module
+
+# bootstrap data decls
+make-data-decl-tag = _bootstrap.make-data-decl-tag
+is-type = _bootstrap.is-type
+make-variant-tag = _bootstrap.make-variant-tag
+is-variant = _bootstrap.is-variant
+make-variant = _bootstrap.make-variant
+variants-equal = _bootstrap.variants-equal
+show-variant = _bootstrap.show-variant
+make-haskell-list = _bootstrap.make-haskell-list
+
+# bootstrap construct for list
+make-burdock-list = _bootstrap-list.make-burdock-list
+
+# data list, for general construct
+_type-list = _bootstrap-list._type-list
+_variant-link = _bootstrap-list._variant-link
+_variant-empty = _bootstrap-list._variant-empty
+is-list = _bootstrap-list.is-list
+is-link = _bootstrap-list.is-link
+is-empty = _bootstrap-list.is-empty
+link = _bootstrap-list.link
+empty = _bootstrap-list.empty
+
+# either, for run-task
+_type-either = _bootstrap-either._type-either
+_variant-left = _bootstrap-either._variant-left
+_variant-right = _bootstrap-either._variant-right
+is-either = _bootstrap-either.is-either
+is-left = _bootstrap-either.is-left
+is-right = _bootstrap-either.is-right
+left = _bootstrap-either.left
+right = _bootstrap-either.right
+
+# auxiliary
+raise = _bootstrap.raise
+not = _bootstrap.not
+
+# tests
+run-binary-test = _bootstrap.run-binary-test
+
+|]
+
+burdock2023Source :: L.Text
+burdock2023Source = [R.r|
+
+# start of the default convenience module that's auto included into any
+# script by default
+
+use context empty
+
+provide: *, type *, data * end
+
+_bootstrap = _interpreter.load-module("haskell", "_bootstrap")
+
+print = _bootstrap.print
+tostring = _bootstrap.tostring
+
+raise = _interpreter.raise
+
+true = _interpreter.true
+false = _interpreter.false
+
+_type-list = _interpreter._type-list
+_variant-link = _interpreter._variant-link
+_variant-empty = _interpreter._variant-empty
+is-list = _interpreter.is-list
+is-link = _interpreter.is-link
+is-empty = _interpreter.is-empty
+link = _interpreter.link
+empty = _interpreter.empty
+
+nothing = _interpreter.nothing
+
+|]
+
 eitherScript :: L.Text
 eitherScript = [R.r|
 
 use context empty
 
 provide: *, type *, data * end
+
+# hack
+_interpreter = _bootstrap
 
 data either:
   | right(a)
@@ -317,6 +409,9 @@ listScript = [R.r|
 use context empty
 
 provide: *, type *, data * end
+
+# hack
+_interpreter = _bootstrap
 
 data list:
   | link(first, rest)
@@ -365,16 +460,10 @@ end
 -- probably it's main justification is to make the desugared interpreter
 -- syntax, and the code that generates it readable, so it's a bit of a
 -- luxury
-makeBurdockList :: [Value] -> R.Runtime Value
-makeBurdockList us = do
-    link <- getList "link"
-    empty <- getList "empty"
-    f link empty us
+makeBurdockList :: Value -> Value -> ([Value] -> R.Runtime Value)
+makeBurdockList link empty us = f us
   where
-    f _ empty [] = pure empty
-    f link empty (v:vs) = do
-        vs' <- f link empty vs
+    f [] = pure empty
+    f (v:vs) = do
+        vs' <- f vs
         R.app Nothing link [v, vs']
-    getList nm = do
-        Just b <- R.lookupBinding "_bootstrap-list"
-        R.getMember Nothing b nm

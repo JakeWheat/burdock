@@ -1,5 +1,5 @@
 
-x = _bootstrap.load-module("file", "src/burdock/tests/demo-trivial-module.bur")
+x = _interpreter.load-module("file", "src/burdock/tests/demo-trivial-module.bur")
 
 check:
   x.a is 5

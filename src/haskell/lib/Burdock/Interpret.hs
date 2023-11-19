@@ -60,7 +60,7 @@ interpExpr :: I.Expr -> R.Runtime R.Value
 
 interpExpr (I.Num _sp n) = do
     --liftIO $ putStrLn $ show sp
-    Just bs <- R.lookupBinding "_bootstrap"
+    Just bs <- R.lookupBinding "_interpreter"
     bnum <- R.getMember Nothing bs "_type-number"
     ti <- R.getFFITypeInfoTypeInfo
     Right (nti :: R.FFITypeInfo) <- R.extractFFIValue ti bnum
@@ -125,7 +125,7 @@ interpExpr (I.Block _ stmts) = R.withScope $ interpStmts stmts
 interpExpr (I.RecordSel sp fs) = do
     fs' <- flip mapM fs $ \(n,e) -> (n,) <$> interpExpr e
 
-    Just bstp <- R.lookupBinding "_bootstrap"
+    Just bstp <- R.lookupBinding "_interpreter"
     vvti <- R.getMember Nothing bstp "_type-variant-tag"
     ffiti <- R.getFFITypeInfoTypeInfo
     Right vvti' <- R.extractFFIValue ffiti vvti
@@ -133,17 +133,17 @@ interpExpr (I.RecordSel sp fs) = do
     Right ttag <- R.extractFFIValue vvti' ttagB
 
     let lam cl as e = I.Lam sp cl (map (I.NameBinding sp) as) ([I.StmtExpr sp e])
-        app f as = I.App sp (I.DotExpr sp (I.Iden sp "_bootstrap") f) as
+        app f as = I.App sp (I.DotExpr sp (I.Iden sp "_interpreter") f) as
         nms = map ((I.IString sp) . fst) fs
         eqs = I.MethodExpr sp
-            $ lam ["_bootstrap"] ["a"]
-            $ lam ["_bootstrap", "a"] ["b"]
+            $ lam ["_interpreter"] ["a"]
+            $ lam ["_interpreter", "a"] ["b"]
             $ app "variants-equal" [app "make-haskell-list" nms
                                    ,I.Iden sp "a"
                                    ,I.Iden sp "b"]
         tor = I.MethodExpr sp
-            $ lam ["_bootstrap"] ["a"]
-            $ lam ["_bootstrap", "a"] []
+            $ lam ["_interpreter"] ["a"]
+            $ lam ["_interpreter", "a"] []
             $ app "show-record" [I.Iden sp "a"]
     equals <- interpExpr eqs
     torepr <- interpExpr tor
@@ -151,7 +151,7 @@ interpExpr (I.RecordSel sp fs) = do
 
 interpExpr (I.RunTask _ e) = do
     r <- R.runTask $ interpExpr e
-    Just bstp <- R.lookupBinding "_bootstrap-either"
+    Just bstp <- R.lookupBinding "_interpreter"
     bright <- R.getMember Nothing bstp "right"
     bleft <- R.getMember Nothing bstp "left"
     case r of
@@ -160,7 +160,7 @@ interpExpr (I.RunTask _ e) = do
 
 interpExpr (I.TupleSel sp es) = do
     vs <- mapM interpExpr es
-    Just bstp <- R.lookupBinding "_bootstrap"
+    Just bstp <- R.lookupBinding "_interpreter"
     vvti <- R.getMember Nothing bstp "_type-variant-tag"
     ffiti <- R.getFFITypeInfoTypeInfo
     Right vvti' <- R.extractFFIValue ffiti vvti
@@ -172,17 +172,17 @@ interpExpr (I.TupleSel sp es) = do
     -- just cheat and recursively call interpExpr, can do it properly later
     -- method(a,b): variants-equal(make-haskell-list(map fst fs), a, b) end
     let lam cl as e = I.Lam sp cl (map (I.NameBinding sp) as) ([I.StmtExpr sp e])
-        app f as = I.App sp (I.DotExpr sp (I.Iden sp "_bootstrap") f) as
+        app f as = I.App sp (I.DotExpr sp (I.Iden sp "_interpreter") f) as
         nms = map ((I.IString sp) . fst) fs
         eqs = I.MethodExpr sp
-            $ lam ["_bootstrap"] ["a"]
-            $ lam ["_bootstrap", "a"] ["b"]
+            $ lam ["_interpreter"] ["a"]
+            $ lam ["_interpreter", "a"] ["b"]
             $ app "variants-equal" [app "make-haskell-list" nms
                                    ,I.Iden sp "a"
                                    ,I.Iden sp "b"]
         tor = I.MethodExpr sp
-            $ lam ["_bootstrap"] ["a"]
-            $ lam ["_bootstrap", "a"] []
+            $ lam ["_interpreter"] ["a"]
+            $ lam ["_interpreter", "a"] []
             $ app "show-tuple" [I.Iden sp "a"]
             
     -- liftIO $ L.putStrLn $ I.prettyStmts [I.StmtExpr Nothing x]
@@ -257,7 +257,7 @@ lookupVariantByName nm = do
         -- issue, which will be handled elsewhere, so assume it's ok to shadow
         Just vtg -> do
             -- vtg is a value, inside this value we want to find a variant tag
-            Just bstp <- R.lookupBinding "_bootstrap"
+            Just bstp <- R.lookupBinding "_interpreter"
             vvti <- R.getMember Nothing bstp "_type-variant-tag"
             ffiti <- R.getFFITypeInfoTypeInfo
             Right vvti' <- R.extractFFIValue ffiti vvti
