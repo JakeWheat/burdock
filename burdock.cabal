@@ -39,6 +39,7 @@ common shared-properties
                       Burdock.InterpreterSyntax
                       Burdock.InterpreterPretty
                       Burdock.RenameAst
+                      Burdock.Rename
                       Burdock.StaticError
                       Burdock.ModuleMetadata
                       Burdock.Bootstrap
