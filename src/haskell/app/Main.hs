@@ -47,7 +47,7 @@ import System.Exit (exitFailure)
 import Burdock.Burdock
     (liftIO
     ,createHandle
-    ,Handle
+    --,Handle
     ,runScript
     --,Value(..)
     ,debugShowValue
@@ -55,13 +55,13 @@ import Burdock.Burdock
     ,hRuntimeState
 
     ,desugarScript
-    ,desugarModule
-    ,desugarFragment
+    --,desugarModule
+    --,desugarFragment
     )
     
 import Burdock.Scientific (extractInt)
 import qualified Burdock.Runtime as R
-import qualified Data.Text.Lazy as L
+--import qualified Data.Text.Lazy as L
 
 main :: IO ()
 main = do
@@ -70,20 +70,18 @@ main = do
     case as of
         ("rename": _as') -> undefined
         ("rename-module": _as') -> undefined
-        ("desugar": as') -> mapM_ (doDesugar desugarScript) as'
-        ("desugar-module": as') -> mapM_ (doDesugar desugarModule) as'
-        ("desugar-fragment": as') -> mapM_ (doDesugar desugarFragment) as'
+        ("desugar": as') -> mapM_ doDesugar as'
         ("test": as') -> runScriptWithTests as'
         ("test-all": _as') -> undefined -- do the hunit tests too
         ("--": _as) -> undefined -- runfiles
         _ -> undefined -- runfiles
 
-doDesugar :: (Handle -> Maybe Text -> L.Text -> IO L.Text) -> Text -> IO ()
-doDesugar desugarF fn = do
+doDesugar :: Text -> IO ()
+doDesugar fn = do
     putStrLn fn
     mySrc <- liftIO $ L.readFile (T.unpack fn)
     st <- createHandle
-    x <- desugarF st (Just fn) mySrc
+    x <- desugarScript st (Just fn) mySrc
     L.putStrLn x
 
 runScriptTest :: Text -> IO (Int,Int)

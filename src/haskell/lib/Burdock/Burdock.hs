@@ -17,8 +17,6 @@ module Burdock.Burdock
     ,R.getFFITypeInfoTypeInfo
 
     ,desugarScript
-    ,desugarModule
-    ,desugarFragment
     
     ,Handle
     ) where
@@ -32,19 +30,20 @@ import Control.Monad.IO.Class (liftIO)
 
 import Burdock.Runtime (Value)
 import qualified Burdock.Parse as P
-import qualified Burdock.Syntax as S
+--import qualified Burdock.Syntax as S
 import qualified Burdock.Rename as N
 import qualified Burdock.Desugar as D
 import qualified Burdock.Interpreter as I
+import qualified Burdock.InterpreterSyntax as I
 import qualified Burdock.Runtime as R
-import Burdock.StaticError (prettyStaticErrors)
+import Burdock.StaticError (StaticError, prettyStaticErrors)
 import Burdock.Bootstrap (burdockBootstrapModule)
 import qualified Burdock.PrettyInterpreter as I
-import Burdock.StaticError (StaticError)
+--import Burdock.StaticError (StaticError)
 
-import Burdock.ModuleMetadata
-    (ModuleMetadata
-    ,ModuleID)
+--import Burdock.ModuleMetadata
+--    (ModuleMetadata
+--    ,ModuleID)
 
 import qualified Text.RawString.QQ as R
 
@@ -73,13 +72,13 @@ createHandle = do
         -- then the list type is needed for construct, and the either type
         -- for run-task, etc. (to be reviewed in the future)
         quickAddModule "_bootstrap" (R.Module <$> burdockBootstrapModule)
-        quickAddModule "_bootstrap-either" $ runFragment Nothing eitherScript
+        quickAddModule "_bootstrap-either" $ runScript' (Just "<bootstrap-either>") eitherScript
         quickAddModule "_bootstrap-list" $ do
-            listV <- runFragment Nothing listScript
+            listV <- runScript' (Just "<bootstrap-list>") listScript
             addModuleItems listV [("make-burdock-list", R.Fun makeBurdockList)]
         -- hack for global, this will become a regular burdock module when that's
         -- implemented
-        quickAddModule "global" $ runFragment Nothing globalSource
+        quickAddModule "global" $ runScript' (Just "<global>") globalSource
     pure $ Handle st
 
 quickImportModule :: Text -> R.Runtime ()
@@ -96,6 +95,9 @@ globalSource = [R.r|
 # and global should be a limited module following pyret
 
 use context empty
+
+provide: *, type *, data * end
+
 _bootstrap-either = _bootstrap.load-module("_bootstrap-either")
 _bootstrap-list = _bootstrap.load-module("_bootstrap-list")
 
@@ -116,62 +118,31 @@ empty = _bootstrap-list.empty
 |]
 
 runScript :: Handle -> (Maybe Text) -> L.Text -> IO Value
-runScript h fn' src = do
-    let fn = maybe "<unknown>" id fn'
-        -- parse src
-        ast = either error id $ P.parseScript fn src
-        -- rename src
-        (_,rast) = either (error . prettyStaticErrors) id $ N.renameScript fn [] [] ast
-        -- desugar src
-        iast = either (error . prettyStaticErrors) id $ D.desugarScript fn rast
-        -- interpret src
-    R.runRuntime (hRuntimeState h) $ R.withScope $ do
-        -- todo: move this to the renamer
-        quickImportModule "_bootstrap"
-        I.interpBurdock iast
+runScript h fn src = R.runRuntime (hRuntimeState h) $ runScript' fn src
 
-runFragment :: (Maybe Text) -> L.Text -> R.Runtime Value
-runFragment fn' src = do
-    let fn = maybe "<unknown>" id fn'
-        -- parse src
-        ast = either error id $ P.parseScript fn src
-        -- rename src
-        (_,rast) = either (error . prettyStaticErrors) id $ N.renameModule True fn [] [] ast
-        -- desugar src
-        iast = either (error . prettyStaticErrors) id $ D.desugarScript fn rast
-        -- interpret src
+runScript' :: (Maybe Text) -> L.Text -> R.Runtime Value
+runScript' fn src = do
+    let iast = either (error . prettyStaticErrors) id $ compileScript fn src
     R.withScope $ do
+        -- todo: move this to the renamer when it can handle it
         quickImportModule "_bootstrap"
         I.interpBurdock iast
 
+-- wrapper: will include recursively loading in the future
 desugarScript :: Handle -> (Maybe Text) -> L.Text -> IO L.Text
-desugarScript h fn' src = desugarIt N.renameScript h fn' src
+desugarScript _ fn src = pure $ either (L.fromStrict . error . prettyStaticErrors) I.prettyStmts $ compileScript fn src
 
-desugarModule :: Handle -> (Maybe Text) -> L.Text -> IO L.Text
-desugarModule h fn' src = desugarIt (N.renameModule False) h fn' src
-
--- fragment is a module, except if there are no provides, it defaults to
--- provide *, type *, data *
-desugarFragment :: Handle -> (Maybe Text) -> L.Text -> IO L.Text
-desugarFragment h fn' src = desugarIt (N.renameModule True) h fn' src
-
-type RenameF = Text
-             -> [(S.ImportSource, ModuleID)]
-             -> [(ModuleID, ModuleMetadata)]
-             -> S.Script
-             -> Either [StaticError] (ModuleMetadata, S.Script)
-
-desugarIt :: RenameF -> Handle -> (Maybe Text) -> L.Text -> IO L.Text
-desugarIt renameF _h fn' src = do
+compileScript :: (Maybe Text) -> L.Text -> Either [StaticError] [I.Stmt]
+compileScript fn' src =
     let fn = maybe "<unknown>" id fn'
         -- parse src
         ast = either error id $ P.parseScript fn src
         -- rename src
-        (_,rast) = either (error . prettyStaticErrors) id $ renameF fn [] [] ast
+        (_,rast) = either (error . prettyStaticErrors) id $ N.rename fn [] [] ast
         -- desugar src
         iast = either (error . prettyStaticErrors) id $ D.desugarScript fn rast
-        -- interpret src
-    pure $ I.prettyStmts iast
+    in pure iast
+
 
 addModuleItems :: Value -> [(Text, Value)] -> R.Runtime Value
 addModuleItems (R.Module is) es = pure $ R.Module $ is ++ es
@@ -181,6 +152,8 @@ eitherScript :: L.Text
 eitherScript = [R.r|
 
 use context empty
+
+provide: *, type *, data * end
 
 data either:
   | right(a)
@@ -193,6 +166,8 @@ listScript :: L.Text
 listScript = [R.r|
 
 use context empty
+
+provide: *, type *, data * end
 
 data list:
   | link(first, rest)

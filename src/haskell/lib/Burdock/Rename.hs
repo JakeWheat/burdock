@@ -1,8 +1,7 @@
 
 {-# LANGUAGE OverloadedStrings #-}
 module Burdock.Rename
-    (renameScript
-    ,renameModule
+    (rename
 
     ,ModuleID
     ,ModuleMetadata 
@@ -10,7 +9,7 @@ module Burdock.Rename
     ) where
 
 import Prelude hiding (error, show, putStrLn)
-import Burdock.Utils (error, show)
+--import Burdock.Utils (error, show)
 
 import Data.Text (Text)
 
@@ -21,35 +20,51 @@ import Burdock.ModuleMetadata
     (ModuleMetadata(..)
     ,ModuleID(..))
 
-renameScript :: Text
-             -> [(S.ImportSource, ModuleID)]
-             -> [(ModuleID, ModuleMetadata)]
-             -> S.Script
-             -> Either [StaticError] (ModuleMetadata, S.Script)
-renameScript _fn _ism _ctx (S.Script scr) =
-    Right (ModuleMetadata, (S.Script $ useContextHack scr))
+rename :: Text
+       -> [(S.ImportSource, ModuleID)]
+       -> [(ModuleID, ModuleMetadata)]
+       -> S.Script
+       -> Either [StaticError] (ModuleMetadata, S.Script)
+rename _fn _ism _ctx (S.Script scr) =
 
 {-
-The bool is to turn provideAll on as the default,
-this is for working with burdock source fragments from ffi code,
-which will usually want provide: *, type *, data * end as the default
-(this provideAll doesn't also do module *)
+temp algo:
+if there's a use context empty
+  -> skip it
+else add the default imports
+then:
+if there's a provide: *, type *, data * end
+  -> turn on module mode, which for now adds a make module value
+     to the end of the source
+any other prelude statement is ignored
+
+then keep the rest of the source as is
+
 -}
-renameModule :: Bool
-             -> Text
-             -> [(S.ImportSource, ModuleID)]
-             -> [(ModuleID, ModuleMetadata)]
-             -> S.Script
-             -> Either [StaticError] (ModuleMetadata, S.Script)
-renameModule _provideAll _fn _ _ (S.Script ss) =
-    -- quick hack - just generate the make-module call at the end
-    let rs = concat $ map getBinds ss
-    in Right (ModuleMetadata, S.Script (useContextHack ss ++ [makeModuleValue rs]))
+    
+    Right (ModuleMetadata, (S.Script $ checkUseContext scr))
+
   where
+    checkUseContext (S.UseContext _ (S.ImportName ["empty"]) : ss) = checkProvideAll ss
+    -- todo: change to load _interpreter, and load burdock2023
+    checkUseContext ss = 
+        ltm "_bootstrap"
+        : ltm "_bootstrap-either"
+        : ltm "_bootstrap-list"
+        : ltm "global"
+        : S.StmtExpr n (app "include-all" [S.Iden n "global"])
+        : checkProvideAll ss
+
+    checkProvideAll (S.Provide _ [S.ProvideAll _,S.ProvideTypeAll _,S.ProvideDataAll _] : ss) =
+        let rs = concat $ map getBinds ss
+        in ss ++ [makeModuleValue rs]
+    checkProvideAll ss = ss
+
     makeModuleValue rs =
         let sp = Nothing
             r = flip map rs $ \r1 -> (r1, S.Iden sp r1)
         in S.StmtExpr sp $ S.App sp (S.DotExpr sp (S.Iden sp "_bootstrap") "make-module") [S.RecordSel sp r]
+
     getBinds (S.LetDecl _ b _) = getBs b
     getBinds (S.VarDecl _ (S.SimpleBinding _ _ nm _) _) = [nm]
     getBinds (S.DataDecl _ nm _ vars _ _) =
@@ -74,17 +89,6 @@ renameModule _provideAll _fn _ _ (S.Script ss) =
     getBs (S.NumberLitBinding {}) = []
     getBs (S.StringLitBinding {}) = []
 
-useContextHack :: [S.Stmt] -> [S.Stmt]
-useContextHack (S.UseContext _ (S.ImportName ["empty"]) : ss) = ss
-useContextHack (S.UseContext _ is : _ss) = error $ "unsupported context" <> show is
-useContextHack ss =
-    ltm "_bootstrap"
-    : ltm "_bootstrap-either"
-    : ltm "_bootstrap-list"
-    : ltm "global"
-     : S.StmtExpr n (app "include-all" [S.Iden n "global"])
-     : ss
-  where
     ltm nm = lt nm (app "load-module" [S.Text n nm])
     lt nm e = S.LetDecl n (S.NameBinding n nm) e
     app nm es = S.App n (S.DotExpr n (S.Iden n "_bootstrap") nm) es
