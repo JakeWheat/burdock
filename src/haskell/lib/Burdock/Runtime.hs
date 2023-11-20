@@ -320,6 +320,12 @@ setVar sp bx v = do
 
 -- ffi values helper functions
 
+-- when considering adding other ways to create ffi values, you'll
+-- almost certainly need to use recursive definitions - since to
+-- extract values or create values in any of the members, you need the
+-- ffi type already created, which must contain all the
+-- members/methods for the ffi value
+
 data FFITypeID
     = FFITypeID
     {tyID :: Int
@@ -443,7 +449,6 @@ newFFITypeID tnm = do
     newID <- autoID rtAutoFFITypeID
     pure $ FFITypeID newID tnm
 
-
 ------------------------------------------------------------------------------
 
 data InterpreterException = InterpreterException Text
@@ -458,7 +463,6 @@ instance Exception InterpreterException where
 --interpreterExceptionToValue :: InterpreterException -> Value
 --interpreterExceptionToValue (InterpreterException s) = BString s
 --interpreterExceptionToValue (ValueException v) = v
-
 
 ------------------------------------------------------------------------------
 
@@ -565,14 +569,13 @@ data HaskellModule
     }
 
 -- there's probably a more elegant way to do this
+-- the either implements the possibility of loading the module
+-- only on first use
 data InternalHaskellModule
     = InternalHaskellModule
     {ihmGetMetadata :: IORef (Either ModuleMetadata (Runtime ModuleMetadata))
     ,ihmGetModuleValue :: IORef (Either Value (Runtime Value))
     }
-
-
---data Internal
 
 haskellModulePlugin :: Runtime HaskellModulePlugin
 haskellModulePlugin = do
@@ -584,8 +587,7 @@ haskellModulePlugin = do
                     _ -> error "unsupported haskell import source " <> show ris
             pure $ maybe (error $ "haskell module not found: " <> mnm) id
                 $ lookup mnm modules
-
-    let x = ModulePlugin
+        plg = ModulePlugin
             {mpCanonicalizeID = \_ zz -> pure zz
             ,mpGetMetadata = \ris -> do
                 r <- lookupPlugin ris
@@ -606,7 +608,7 @@ haskellModulePlugin = do
                         liftIO $ writeIORef  (ihmGetModuleValue r) (Left v')
                         pure v'
             }
-    pure $ HaskellModulePlugin x modulesRef
+    pure $ HaskellModulePlugin plg modulesRef
 
 addHaskellModule :: Text -> HaskellModule -> HaskellModulePlugin -> Runtime ()
 addHaskellModule nm hm hmm = do

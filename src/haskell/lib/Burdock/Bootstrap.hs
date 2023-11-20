@@ -108,7 +108,8 @@ burdockBootstrapModule = R.withScope $ do
          ,("make-module", R.Fun makeModule) -- rename to make module value?
          -- temp hack, will be handled in the renamer
          ,("include-all", R.Fun includeAll)
-         
+
+          -- todo: the below should be moved to other modules/namespaces
           -- test framework plugin
          ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
          ,("get-test-passes", R.Fun (getTestVal testLog 0 burdockNumberTI))

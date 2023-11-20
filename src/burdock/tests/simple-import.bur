@@ -1,5 +1,5 @@
 
-import file("src/burdock/tests/demo-trivial-module.bur") as x
+import file("demo-trivial-module.bur") as x
 
 check:
   x.a is 5

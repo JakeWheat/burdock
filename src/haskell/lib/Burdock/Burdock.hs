@@ -89,8 +89,10 @@ current arbitrary design decision is to handle all the bootstrapping
 from here, and not e.g. bootstrap partially internally within Runtime,
 then across one or more other bootstrap participating modules
 
+The bootstrap process mainly has to deal with the fact that the interpreter needs
+list and either types, and especially list would be very tedious to implement in ffi.
 
-The system bootstraps by loading the internal _bootstrap module
+So the system bootstraps by loading the internal _bootstrap module
 this allows most of the interpreter to work, as long as it's imported
 under the _interpreter alias.
 
@@ -102,35 +104,45 @@ either for run-task
 then these modules are combined into the _interpreter module, which
 is automatically imported by the renamer outside of bootstrapping
 
+currently this file contains 4 burdock source fragments:
+bootstrap-either
+bootstrap-list
+_interpreter
+burdock2023
+
+in theory, all of them could just be .bur files in the builtins directory,
+  which might be a better way to do it?
+
 -}
+
 createHandle :: IO Handle
 createHandle = do
     st <- R.makeRuntimeState
     R.runRuntime st $ do
         hp <- R.haskellModulePlugin
         R.addModulePlugin "haskell" $ R.hmmModulePlugin hp
-        let quickLoadModule nm m = do
+        let bootstrapLoadModule nm m = do
                 -- the system designed to load modules only if they are used
                 -- in this case, we definitely want them loaded, so force loading now
                 m' <- m
                 let hm = R.HaskellModule (pure R.ModuleMetadata) (pure m')
                 R.addHaskellModule nm hm hp
                 
-        quickLoadModule "_bootstrap" (R.Module <$> burdockBootstrapModule)
-        quickLoadModule "_bootstrap-either" $ runScript' (Just "<bootstrap-either>") eitherScript
-        quickLoadModule "_bootstrap-list" $ do
+        bootstrapLoadModule "_bootstrap" (R.Module <$> burdockBootstrapModule)
+        bootstrapLoadModule "_bootstrap-either" $ runScript' (Just "<bootstrap-either>") eitherScript
+        bootstrapLoadModule "_bootstrap-list" $ do
             listV <- runScript' (Just "<bootstrap-list>") listScript
             -- todo: closure capture helper fns
             llink <- R.getMember Nothing listV "link"
             lempty <- R.getMember Nothing listV "empty"
             let mbl = makeBurdockList llink lempty
             addModuleItems listV [("make-burdock-list", R.Fun mbl)]
-        quickLoadModule "_interpreter" $ runScript' (Just "<interpreter>") interpreterSupportScript
+        bootstrapLoadModule "_interpreter" $ runScript' (Just "<interpreter>") interpreterSupportScript
         -- system now bootstrapped to the point where can use regular _interpreter module
         -- so use context base is working
         bp <- burdockModulePlugin
         R.addModulePlugin burdockPluginName bp
-        quickLoadModule "burdock2023" $ runScript' (Just "<burdock2023>") burdock2023Source
+        bootstrapLoadModule "burdock2023" $ runScript' (Just "<burdock2023>") burdock2023Source
         -- system now bootstrapped to be able to use default use context burdock2023
 
     pure $ Handle st
@@ -180,7 +192,7 @@ recurseAndCompileScript mid src = do
         deps = N.getImportSources ast
     ism <- flip mapM deps $ \x -> (x,) <$> R.lookupImportSource (Just mid) x
     ctx <- flip mapM ism $ \(_,dmid) -> (dmid,) <$> R.getModuleMetadata dmid
-    let (md,rast) = either (error . prettyStaticErrors) id $ N.rename fn ism ctx ast
+    let (md,rast) = either (error . prettyStaticErrors) id $ N.rename ism ctx ast
         iast = either (error . prettyStaticErrors) id $ D.desugarScript fn rast
     pure $ (md,iast)
 
@@ -251,8 +263,7 @@ takeDirectory a = T.pack (F.takeDirectory (T.unpack a))
 burdockModulePlugin :: R.Runtime R.ModulePlugin
 burdockModulePlugin = do
     bmc <- BurdockModulePluginCache <$> liftIO (newIORef [])
-
-    let canonicaliseModuleID mctx (ModuleID nm as) =
+    let canonicalizeModuleID mctx (ModuleID nm as) =
             liftIO $ case as of
                 [fn] -> do
                     b <- case mctx of
@@ -260,11 +271,9 @@ burdockModulePlugin = do
                         Just m -> pure $ takeDirectory $ getModuleIDFilename m
                     (\x -> ModuleID nm [x]) <$> canonicalizePath (b </> fn)
                 _ -> error $ "bad args to burdock module id: " <> show as
-                
-    
     let gmd is = fst <$> getCompiledModule is bmc
         gmv is = getModuleValue is bmc
-    pure $ R.ModulePlugin canonicaliseModuleID gmd gmv
+    pure $ R.ModulePlugin canonicalizeModuleID gmd gmv
 
 ------------------------------------------------------------------------------
 
