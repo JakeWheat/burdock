@@ -286,8 +286,8 @@ _interpreter = _bootstrap
 
 # _bootstrap already in scope
 
-_bootstrap-either = _bootstrap.load-module("haskell", "_bootstrap-either")
-_bootstrap-list = _bootstrap.load-module("haskell", "_bootstrap-list")
+import haskell("_bootstrap-either") as _bootstrap-either
+import haskell("_bootstrap-list") as _bootstrap-list
 
 # todo: try to implement this all as include froms
 
@@ -309,7 +309,6 @@ show-tuple = _bootstrap.show-tuple
 # prelude suppport
 make-module = _bootstrap.make-module
 include-all = _bootstrap.include-all
-load-module = _bootstrap.load-module
 
 # bootstrap data decls
 make-data-decl-tag = _bootstrap.make-data-decl-tag
@@ -350,6 +349,8 @@ not = _bootstrap.not
 
 # tests
 run-binary-test = _bootstrap.run-binary-test
+get-test-passes = _bootstrap.get-test-passes
+get-test-failures = _bootstrap.get-test-failures
 
 |]
 
@@ -363,7 +364,8 @@ use context empty
 
 provide: *, type *, data * end
 
-_bootstrap = _interpreter.load-module("haskell", "_bootstrap")
+import haskell("_interpreter") as _interpreter
+import haskell("_bootstrap") as _bootstrap
 
 print = _bootstrap.print
 tostring = _bootstrap.tostring

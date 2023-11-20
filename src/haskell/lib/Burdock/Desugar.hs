@@ -87,6 +87,9 @@ desugarStmt (S.When sp e bdy) =
 
 -- S -> I
 
+desugarStmt (S.Import sp (S.ImportSpecial nm as) al) =
+    pure $ I.ImportAs sp al (nm,as)
+
 desugarStmt (S.StmtExpr sp e) = I.StmtExpr sp <$> desugarExpr e
 desugarStmt (S.LetDecl sp b e) = I.LetDecl sp <$> desugarBinding b <*> desugarExpr e
 desugarStmt (S.VarDecl sp (S.SimpleBinding _ _ nm Nothing) e) = I.VarDecl sp nm <$> desugarExpr e

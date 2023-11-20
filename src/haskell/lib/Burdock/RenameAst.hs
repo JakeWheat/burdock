@@ -96,7 +96,6 @@ then keep the rest of the source as is
     getBs (S.NumberLitBinding {}) = []
     getBs (S.StringLitBinding {}) = []
 
-    ltm nm = lt nm (app "load-module" [S.Text n "haskell", S.Text n nm])
-    lt nm e = S.LetDecl n (S.NameBinding n nm) e
+    ltm nm = S.Import n (S.ImportSpecial "haskell" [nm]) nm 
     app nm es = S.App (Just (_fn,0,0)) (S.DotExpr (Just (_fn,0,0)) (S.Iden (Just (_fn,0,0)) "_interpreter") nm) es
     n = Nothing

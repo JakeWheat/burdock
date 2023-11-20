@@ -52,6 +52,12 @@ interpStmt (I.SetVar sp [nm] e) = do
     pure R.BNothing
 
 interpStmt (I.StmtExpr _ e) = interpExpr e
+
+interpStmt (I.ImportAs sp nm (p,as)) = do
+    v <- R.getModuleValue (R.ModuleID p as)
+    letValues True [(I.NameBinding sp nm, v)]
+    pure R.BNothing
+
 interpStmt s = error $ "interpStmt: " <> show s
 
 ------------------------------------------------------------------------------

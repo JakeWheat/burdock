@@ -1,4 +1,6 @@
 
+import haskell("_bootstrap") as _bootstrap
+
 # todo: fix text, bool to have compare
 
 check:

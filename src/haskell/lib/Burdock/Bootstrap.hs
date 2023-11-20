@@ -106,7 +106,6 @@ burdockBootstrapModule = do
          ,("make-haskell-list", R.Fun (makeHaskellList haskellListTI))
 
          ,("make-module", R.Fun makeModule) -- rename to make module value?
-         ,("load-module", R.Fun loadModule)
          -- temp hack, will be handled in the renamer
          ,("include-all", R.Fun includeAll)
          
@@ -141,7 +140,6 @@ either
 run-task + variations
 
 raise
-load-module
 
 data decl support, roughly
 haskell-list ffitype
@@ -424,12 +422,6 @@ makeModule :: [Value] -> R.Runtime Value
 -- todo: check the tag
 makeModule [R.Variant _ fs] = pure $ R.Module fs
 makeModule _ = error "bad args to makeModule"
-
-loadModule :: [Value] -> R.Runtime Value
--- todo: check the tag
-loadModule [R.BString plugin, R.BString nm] =
-    R.getModuleValue (R.ModuleID plugin [nm])
-loadModule _ = error "bad args to loadModule"
 
 includeAll :: [Value] -> R.Runtime Value
 -- todo: check the tag

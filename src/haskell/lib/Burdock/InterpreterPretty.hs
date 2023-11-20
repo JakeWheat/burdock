@@ -44,8 +44,9 @@ stmt (LetDecl _ b e) = nest 2 (bindExpr b e)
 stmt (StmtExpr _ e) = expr e
 stmt (VarDecl _ pn e) = pretty "var" <+> pretty pn <+> pretty "=" <+> expr e
 stmt (SetVar _ n e) = commaSep (map pretty n) <+> pretty ":=" <+> nest 2 (expr e)
-
-
+stmt (ImportAs _ nm (p,as)) =
+    pretty nm <+> pretty "=" <+> pretty "import" <+>
+      pretty p <> parens (commaSep (map pretty as))
 
 expr :: Expr -> Doc a
 expr (Block _ ss) = prettyBlocklike vsep

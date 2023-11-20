@@ -18,6 +18,7 @@ data Stmt
     | StmtExpr SP Expr
     | VarDecl SP Text Expr
     | SetVar SP [Text] Expr
+    | ImportAs SP Text (Text, [Text])
     deriving (Eq,Show,Data)
 
 data Expr
