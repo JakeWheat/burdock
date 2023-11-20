@@ -15,6 +15,8 @@ module Burdock.Runtime
     ,makeVar
     ,setVar
 
+    --,debugGetBindings
+
     ,newDataDeclTag
     ,DataDeclTag(..)
     ,VariantTag(..)
@@ -180,6 +182,11 @@ type Runtime = ReaderT RuntimeState IO
 
 runRuntime :: RuntimeState -> Runtime a -> IO a
 runRuntime st f = runReaderT f st
+
+--debugGetBindings :: Runtime [(Text, Value)]
+--debugGetBindings = do
+--    st <- ask
+--    liftIO $ readIORef (rtBindings st)
 
 --------------------------------------
 

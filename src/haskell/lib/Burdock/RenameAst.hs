@@ -54,11 +54,22 @@ then keep the rest of the source as is
     Right (ModuleMetadata, (S.Script $ checkUseContext scr))
 
   where
-    checkUseContext (S.UseContext _ (S.ImportName ["_bootstrap"]) : ss) = checkProvideAll ss
+
+    -- todo: the way it should work, is _bootstrap context skips including _interpreter
+    -- then any other context includes the _interpreter
+    -- and the named or default use context is just a regular module
+    -- the name of default use context should be passed in?
+    checkUseContext (S.UseContext _ (S.ImportName ["_bootstrap-interpreter"]) : ss) = checkProvideAll ss
+    checkUseContext (S.UseContext _ (S.ImportName ["_base"]) : ss) = baseContext ss
     checkUseContext (S.UseContext _ (S.ImportName ["burdock2023"]) : ss) = defaultContext ss
     checkUseContext ss = defaultContext ss
+
+    baseContext ss =
+        ltm "_interpreter"
+        : checkProvideAll ss
     defaultContext ss = 
-        ltm "burdock2023"
+        ltm "_interpreter"
+        : ltm "burdock2023"
         : S.StmtExpr n (app "include-all" [S.Iden n "burdock2023"])
         : checkProvideAll ss
 

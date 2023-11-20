@@ -37,7 +37,7 @@ import Burdock.Scientific (Scientific, showScientific)
 ------------------------------------------------------------------------------
 
 burdockBootstrapModule :: R.Runtime [(Text, Value)]
-burdockBootstrapModule = do
+burdockBootstrapModule = R.withScope $ do
 
     --liftIO $ putStrLn "**********************LOAD BOOSTRAP"
     -- get the ffitypetag burdock type
