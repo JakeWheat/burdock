@@ -54,7 +54,7 @@ then keep the rest of the source as is
     Right (ModuleMetadata, (S.Script $ checkUseContext scr))
 
   where
-    checkUseContext (S.UseContext _ (S.ImportName ["empty"]) : ss) = checkProvideAll ss
+    checkUseContext (S.UseContext _ (S.ImportName ["_bootstrap"]) : ss) = checkProvideAll ss
     checkUseContext (S.UseContext _ (S.ImportName ["burdock2023"]) : ss) = defaultContext ss
     checkUseContext ss = defaultContext ss
     defaultContext ss = 

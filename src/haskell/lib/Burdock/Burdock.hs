@@ -277,7 +277,7 @@ interpreterSupportScript = [R.r|
 # this is all the stuff under the _interpreter module which is
 # what the interpreter itself needs to run everything
 
-use context empty
+use context _bootstrap
 
 provide: *, type *, data * end
 
@@ -360,7 +360,7 @@ burdock2023Source = [R.r|
 # start of the default convenience module that's auto included into any
 # script by default
 
-use context empty
+use context _bootstrap
 
 provide: *, type *, data * end
 
@@ -391,7 +391,7 @@ nothing = _interpreter.nothing
 eitherScript :: L.Text
 eitherScript = [R.r|
 
-use context empty
+use context _bootstrap
 
 provide: *, type *, data * end
 
@@ -408,7 +408,7 @@ end
 listScript :: L.Text
 listScript = [R.r|
 
-use context empty
+use context _bootstrap
 
 provide: *, type *, data * end
 
