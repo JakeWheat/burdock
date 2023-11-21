@@ -318,13 +318,13 @@ stmt (Provide _ pis) =
          ,commaSep $ map provideItem pis]
 stmt (ProvideFrom _ al pis) =
     prettyBlocklike vsep
-         [pretty "provide"<+> pretty "from" <+> pretty al <> pretty ":"
+         [pretty "provide"<+> pretty "from" <+> dotIden al <> pretty ":"
          ,commaSep $ map provideItem pis]
 
 stmt (Include _ s) = pretty "include" <+> importSource s
 stmt (IncludeFrom _ a pis) =
     prettyBlocklike vsep
-         [pretty "include" <+> pretty "from" <+> pretty a <> pretty ":"
+         [pretty "include" <+> pretty "from" <+> dotIden a <> pretty ":"
          ,nest 2 $ commaSep $ map provideItem pis]
 stmt (Import _ is a) = pretty "import" <+> importSource is <+> pretty "as" <+> pretty a
 stmt (ImportFrom _ is pis) =
@@ -366,7 +366,7 @@ provideItem (ProvideModuleAlias _ ns a) =
 
 importSource :: ImportSource -> Doc a
 importSource (ImportSpecial nm as) = pretty nm <> parens (commaSep $ map (dquotes . pretty) as)
-importSource (ImportName s) = xSep "." $ map pretty s
+importSource (ImportName s) = dotIden s
 
 stmts :: [Stmt] -> Doc a
 stmts = vsep . map stmt

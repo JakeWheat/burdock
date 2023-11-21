@@ -40,6 +40,7 @@ common shared-properties
                       Burdock.InterpreterPretty
                       Burdock.RenameAst
                       Burdock.Rename
+                      Burdock.RenameTypes
                       Burdock.StaticError
                       Burdock.ModuleMetadata
                       Burdock.Bootstrap
@@ -74,20 +75,20 @@ common shared-properties
     ghc-options:      -Wall -rtsopts -threaded
 
 
-executable burdock
-    import:           shared-properties
-    main-is:          Main.hs
-
+common test-modules
     other-modules:    Burdock.Tests
                       Burdock.TestLib
                       Burdock.ParseTests
- 
+                      Burdock.RenameTests
+                      Burdock.RenameTestParser
+
+executable burdock
+    import:           shared-properties
+    import:           test-modules
+    main-is:          Main.hs
+
 Test-Suite Tests
     import:           shared-properties
+    import:           test-modules
     type:             exitcode-stdio-1.0
     main-is:          RunTests.hs
-
-    other-Modules:    Burdock.Tests
-                      Burdock.TestLib
-                      Burdock.ParseTests
- 

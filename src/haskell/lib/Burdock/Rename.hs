@@ -154,7 +154,7 @@ provide sp pis re =
              ([],re { reProvideItems = True})
          _ -> error $ show sp <> " provide items not supported: " <> show pis
          
-provideFrom :: S.SourcePosition -> Text -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
+provideFrom :: S.SourcePosition -> [Text] -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 provideFrom = error $ "provide from not implemented yet"
 
 bImport :: S.SourcePosition -> S.ImportSource -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
@@ -167,7 +167,7 @@ bImport _sp is alias re =
 include :: S.SourcePosition -> S.ImportSource -> RenamerEnv -> ([StaticError], RenamerEnv)
 include _sp _is _re = error $ "include not implemented yet"
 
-includeFrom :: S.SourcePosition -> Text -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
+includeFrom :: S.SourcePosition -> [Text] -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 includeFrom _sp _mal _pis _re = error $ "include from not implemented yet"
 
 importFrom :: S.SourcePosition -> S.ImportSource -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
@@ -191,8 +191,8 @@ queryLoadModules re = ([], reLoadModules re)
 applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, Maybe [([Text],Text)]))
 applyProvides re =
     if reProvideItems re
-    then ([],(ModuleMetadata, Just $ flip map (reBindings re) (\a -> ([a],a))))
-    else ([],(ModuleMetadata, Nothing))
+    then ([],(ModuleMetadata [], Just $ flip map (reBindings re) (\a -> ([a],a))))
+    else ([],(ModuleMetadata [], Nothing))
 
 ------------------------------------------------------------------------------
 
@@ -205,7 +205,6 @@ createBindings [] re = ([],re)
 createBindings ((sh,sp,nm):bs) re =
     let (es,re') = createBinding sh sp nm re
     in first (es++) $ createBindings bs re'
-
 
 createVar :: Bool -> S.SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
 createVar _shadow _sp i re =

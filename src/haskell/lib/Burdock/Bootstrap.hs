@@ -69,6 +69,19 @@ burdockBootstrapModule = R.withScope $ do
     tupleVariantFFITag <- R.makeFFIValue variantTagTI tupleVariantTag
     recordTypeFFITag <- R.makeFFIValue dataDeclTagTI recordDeclTag
     recordVariantFFITag <- R.makeFFIValue variantTagTI recordVariantTag
+
+{-
+TODO: review these
+
+quite a lot of these functions (and values) could become specialised syntax
+would this make the code simpler? e.g. if you added all the data decl support
+functions to I.Expr, then you'd remove a layer of redirection
+which is easier to read and maintain?
+produce a version of the code where you try to make as much pure syntax as possible
+and move the rest into runtime itself too
+so you can compare both and see which is nicer
+
+-}
     
     pure [
 

@@ -19,12 +19,14 @@ import Burdock.TestLib
     )
 
 import qualified Burdock.ParseTests (testData)
+import Burdock.RenameTests (renameTests)
 
 allTests :: TestTree
 allTests =
     TestGroup "allTests"
     [t3
     ,Burdock.ParseTests.testData
+    ,renameTests
     ]
 
 t3 :: TestTree

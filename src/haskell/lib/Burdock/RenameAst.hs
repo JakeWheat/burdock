@@ -286,7 +286,6 @@ rewriteStmts ss | (rs,ss') <- getRecs ss
                      | otherwise = ([],ssall)
     getRecs [] = ([],[])
 
-
 -- todo: typestmt
 --   adds a new name
 --   checks the type parameters are in scope?

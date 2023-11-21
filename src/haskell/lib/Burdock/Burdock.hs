@@ -125,7 +125,7 @@ createHandle = do
                 -- the system designed to load modules only if they are used
                 -- in this case, we definitely want them loaded, so force loading now
                 m' <- m
-                let hm = R.HaskellModule (pure R.ModuleMetadata) (pure m')
+                let hm = R.HaskellModule (pure (R.ModuleMetadata [])) (pure m')
                 R.addHaskellModule nm hm hp
                 
         bootstrapLoadModule "_bootstrap" (R.Module <$> burdockBootstrapModule)

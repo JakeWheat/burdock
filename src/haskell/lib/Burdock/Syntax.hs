@@ -43,10 +43,10 @@ data Stmt
     | SetRef SourcePosition Expr [(Text,Expr)]
     | Check SourcePosition (Maybe Text) [Stmt]
     | Provide SourcePosition [ProvideItem]
-    | ProvideFrom SourcePosition Text [ProvideItem]
+    | ProvideFrom SourcePosition [Text] [ProvideItem]
     | Import SourcePosition ImportSource Text
     | Include SourcePosition ImportSource
-    | IncludeFrom SourcePosition Text [ProvideItem]
+    | IncludeFrom SourcePosition [Text] [ProvideItem]
     | ImportFrom SourcePosition ImportSource [ProvideItem]
     | UsePackage SourcePosition Text
     | UseContext SourcePosition ImportSource

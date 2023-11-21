@@ -909,13 +909,19 @@ provideOrProvideFrom = do
     choice
         [do
          keyword_ "from"
-         al <- identifier
+         al <- dottedName
          symbol_ ":"
          ProvideFrom sp al <$> (commaSep provideItem <* keyword_ "end")
         ,do
          symbol_ ":"
          Provide sp <$> (commaSep provideItem <* keyword_ "end")
         ]
+  where
+    dottedName = do
+        i <- identifier
+        is <- many (symbol_ "." *> identifier)
+        pure (i : is)
+
 
 provideItem :: Parser ProvideItem
 provideItem = choice
@@ -965,9 +971,14 @@ include = do
     sp <- sourcePos
     keyword_ "include"
     choice [IncludeFrom sp
-            <$> (keyword_ "from" *> identifier <* symbol_ ":")
+            <$> (keyword_ "from" *> dottedName <* symbol_ ":")
             <*> (commaSep provideItem <* keyword_ "end")
            ,Include sp <$> importSource]
+  where
+    dottedName = do
+        i <- identifier
+        is <- many (symbol_ "." *> identifier)
+        pure (i : is)
 
 importSource :: Parser ImportSource
 importSource = do

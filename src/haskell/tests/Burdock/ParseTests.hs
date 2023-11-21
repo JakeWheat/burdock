@@ -706,7 +706,7 @@ end|]
      ,Provide np [ProvideModuleAlias np ["A","B"] "B"])
 
     ,("provide from a: * end"
-     ,ProvideFrom np "a" [ProvideAll np])
+     ,ProvideFrom np ["a"] [ProvideAll np])
     
     ,("include file(\"file.tea\")"
      ,Include np (ImportSpecial "file" ["file.tea"]))
@@ -724,16 +724,16 @@ end|]
      ,Import np (ImportName ["string-dict"]) "X")
 
     ,("include from X: * end"
-     ,IncludeFrom np "X" [ProvideAll np])
+     ,IncludeFrom np ["X"] [ProvideAll np])
 
     ,("include from X: a end"
-     ,IncludeFrom np "X" [ProvideName np ["a"]])
+     ,IncludeFrom np ["X"] [ProvideName np ["a"]])
 
     ,("include from X: a,b end"
-     ,IncludeFrom np "X" [ProvideName np ["a"], ProvideName np ["b"]])
+     ,IncludeFrom np ["X"] [ProvideName np ["a"], ProvideName np ["b"]])
 
     ,("include from X: a as b end"
-     ,IncludeFrom np "X" [ProvideAlias np ["a"] "b"])
+     ,IncludeFrom np ["X"] [ProvideAlias np ["a"] "b"])
 
     ,("import from string-dict: a as b end"
      ,ImportFrom np (ImportName ["string-dict"]) [ProvideAlias np ["a"] "b"])

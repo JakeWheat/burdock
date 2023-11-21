@@ -1,0 +1,49 @@
+
+# dsl for testing the rewriter
+# decided that it was simplest to test the rewriter by creating a number
+# of files, then checking the final file rewrites to a particular syntax
+# or gives some particular errors
+
+##############################################################################
+
+# check the absolute basics without modules
+
+# these are things that the renamer should pass through without
+# changing or producing errors
+
+Test: empty
+Script:
+Result:
+
+Test: simple decl
+Script:
+a = 3
+a
+Result:
+a = 3
+a
+
+Test: update var
+Script:
+a = 3
+a
+Result:
+a = 3
+a
+
+Test: simple type
+Script:
+a = 3
+a
+Result:
+a = 3
+a
+
+Test: shadow
+Script:
+a = 3
+a
+Result:
+a = 3
+a
+
