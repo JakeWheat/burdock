@@ -49,6 +49,65 @@ Result:
 a = 3
 shadow a = 4
 
+Test: unneeded shadow
+# by default, want this to be OK, it's not perfect for finished code
+# but one of the long list of things that's super annoying to deal
+# with in the middle of writing or debugging code if it's an error
+Script:
+shadow a = 4
+Result:
+shadow a = 4
+
+####
+
+Test: match variants
+
+Script:
+data Test:
+  | ctor1
+  | ctor2(a,b)
+end
+a = ctor
+cases a:
+  | ctor1 => 1
+  | ctor2(x,y) => 2
+  | regular-bind => 3
+end
+
+Result:
+data Test:
+  | ctor1
+  | ctor2(a,b)
+end
+a = ctor
+cases a:
+  | _variant-ctor1 => 1
+  | _variant-ctor2(x,y) => 2
+  | regular-bind => 3
+end
+
+####
+
+Test: data decl extras
+
+Script:
+data Test:
+  | ctor(a,b)
+end
+a = 1
+is-Test(a)
+is-ctor(a)
+b = ctor(1,2)
+
+Result:
+data Test:
+  | ctor(a,b)
+end
+a = 1
+is-Test(a)
+is-ctor(a)
+b = ctor(1,2)
+
 ######################################
 
 # testing basic anomalies without modules
@@ -59,12 +118,42 @@ shadow a = 4
 # Errors:
 # unrecognised-identifier([list: "a"])
 
+# Test: two errors
+# Script:
+# a
+# b
+# Errors:
+# unrecognised-identifier([list: "a"])
+# unrecognised-identifier([list: "b"])
+
+# Test: unrecognised type
+# Script:
+# a = 3
+# assert-type-compat(a :: my-type)
+# Errors:
+# unrecognised-identifier([list: "my-type"])
+
 # Test: write to non var
 # Script:
 # a = 4
 # a := 5
 # Errors:
 # assign-to-non-var([list: "a"])
+
+# Test: write to unrecognised var
+# Script:
+# a := 5
+# Errors:
+# unrecognised-identifier([list: "a"])
+
+# Test: unrecognised variant
+# Script:
+# a = 3
+# cases a:
+#   | my-variant(b) => 1
+# end
+# Errors:
+# unrecognised-identifier([list: "my-variant"])
 
 # Test: iden as type
 # Script:
@@ -87,3 +176,104 @@ shadow a = 4
 # a = 4
 # Errors:
 # identifier-redefined([list: "a"])
+
+# Test: no shadow in pattern match bind
+# Script:
+# a = 3
+# b = 4
+# cases a:
+#   | b => 1
+# end
+# Errors:
+# identifier-redefined([list: "b"])
+
+# Test: no shadow in pattern match bind variant arg
+# Script:
+# data Test:
+#   | ctor1
+#   | ctor2(a,b)
+# end
+# a = ctor
+# b = 1
+# cases a:
+#   | ctor1 => 1
+#   | ctor2(b,c) => 2
+#   | regular-bind => 3
+# end
+# Errors:
+# identifier-redefined([list: "b"])
+
+# Test: no arg ctor given args in pattern
+# Script:
+# data Test:
+#   | ctor1
+#   | ctor2(a,b)
+# end
+# a = ctor
+# b = 1
+# cases a:
+#   | ctor1(a) => 1
+# end
+# Errors:
+# variant-pattern-incorrect-num-args([list: "ctor1", 1, 0])
+
+# Test: variant given wrong number of args in pattern
+# Script:
+# data Test:
+#   | ctor1
+#   | ctor2(a,b)
+# end
+# a = ctor
+# b = 1
+# cases a:
+#   | ctor2(b,c,d) => 2
+# end
+# cases a:
+#   | ctor2 => 2
+# end
+# Errors:
+# variant-pattern-incorrect-num-args([list: "ctor1", 2, 3])
+# variant-pattern-incorrect-num-args([list: "ctor1", 2, 0])
+
+# no arg bind fail if shadow
+# no arg ctor pattern given args
+# ctor pattern with wrong number of args
+
+##############################################################################
+
+# basic tests for simplest import
+# iden, var assign, use type, use pattern
+
+# use stuff that comes with data
+
+# special case: rename variant
+
+
+##############################################################################
+
+# provide items
+
+##############################################################################
+
+# rest of prelude statements
+
+##############################################################################
+
+# edge cases
+
+# error iden redefined in two different prelude statements
+
+# identifier only gives ambiguous error if used, if max one of the imports
+# is a non *
+
+# ok: same iden imported from two different modules, but ultimately has the
+# same original source
+
+
+##############################################################################
+
+# body anomaly testing
+
+##############################################################################
+
+# prelude anomaly testing

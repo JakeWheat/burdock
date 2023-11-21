@@ -192,7 +192,7 @@ recurseAndCompileScript mid src = do
         deps = N.getImportSources ast
     ism <- flip mapM deps $ \x -> (x,) <$> R.lookupImportSource (Just mid) x
     ctx <- flip mapM ism $ \(_,dmid) -> (dmid,) <$> R.getModuleMetadata dmid
-    let (md,rast) = either (error . prettyStaticErrors) id $ N.rename ism ctx ast
+    let (md,rast) = either (error . prettyStaticErrors) id $ N.rename fn ism ctx ast
         iast = either (error . prettyStaticErrors) id $ D.desugarScript fn rast
     pure $ (md,iast)
 

@@ -114,44 +114,53 @@ import Data.Text (Text)
 
 import Control.Arrow (first)
 
+import Burdock.RenameTypes
+    (RenamerEnv(..)
+    ,reImportSources
+    ,reModuleMetadatas
+    ,reProvides
+    ,reProvideFroms
+    ,reImports
+    ,reIncludes
+    ,reIncludeFroms
+    ,reImportFroms
+    ,reBindings
+    ,reCurrentOriginIDName
+    
+    ,reProvideItems
+    ,reLoadModules
+
+    ,RenamerBindingEntry(..)
+    ,beRenamedName
+    ,beSourcePos
+    ,beBm
+    ,beOrigin
+    ,beIsLocal
+    )
+
+import Lens.Micro
+    (set
+    ,over
+    )
+import Lens.Micro.Extras
+    (view)
+    
 ------------------------------------------------------------------------------
 
-data RenamerEnv
-    = RenamerEnv
-    { -- available modules to import
-     reImportSources :: [(S.ImportSource,ModuleID)]
-      --  the key is the identifier of the module
-      -- this is the name and args of the import source
-    ,reCtx :: [(ModuleID, ModuleMetadata)]
-    -- tally of all the load modules needed in the renamed source
-    -- it's the module id that matches the key in reCtx, and the local canonical
-    -- alias for that module
-    ,reLoadModules :: [(ModuleID,Text)]
-    -- track all provided items for the source
-    ,reProvideItems :: Bool
-    -- track bindings for checking renames, and for apply provides
-    ,reBindings :: [Text]
-    }
-   
-
-makeRenamerEnv :: [(S.ImportSource, ModuleID)]
+makeRenamerEnv :: Text
+               -> [(S.ImportSource, ModuleID)]
                -> [(ModuleID, ModuleMetadata)]
                -> RenamerEnv
-makeRenamerEnv is ctx =
-    RenamerEnv
-    {reImportSources = is
-    ,reCtx = ctx
-    ,reLoadModules = []
-    ,reProvideItems = False
-    ,reBindings = []
-    }
+makeRenamerEnv mnm is ctx = RenamerEnv is ctx [] [] [] [] [] [] [] [] mnm False
+
+------------------------------------------------------------------------------
 
 provide :: S.SourcePosition -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 provide sp pis re =
     case pis of
          -- only allow this one combo for now
          [S.ProvideAll _,S.ProvideTypeAll _,S.ProvideDataAll _] ->
-             ([],re { reProvideItems = True})
+             ([], set reProvideItems True re)
          _ -> error $ show sp <> " provide items not supported: " <> show pis
          
 provideFrom :: S.SourcePosition -> [Text] -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
@@ -159,10 +168,10 @@ provideFrom = error $ "provide from not implemented yet"
 
 bImport :: S.SourcePosition -> S.ImportSource -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
 bImport _sp is alias re =
-    let imp = case lookup is (reImportSources re) of
+    let imp = case lookup is (view reImportSources re) of
             Nothing -> error $ "rename: import source not found" <> show is
             Just mid -> mid
-    in ([], re { reLoadModules = (imp,alias) : reLoadModules re})
+    in ([], over reLoadModules ((imp,alias):) re)
 
 include :: S.SourcePosition -> S.ImportSource -> RenamerEnv -> ([StaticError], RenamerEnv)
 include _sp _is _re = error $ "include not implemented yet"
@@ -178,7 +187,7 @@ importFrom = error $ "import from not implemented yet"
 -- so (a,b) here should become b = load-module("a")
 -- this should be called before processing the first non prelude statement
 queryLoadModules :: RenamerEnv -> ([StaticError], [(ModuleID,Text)])
-queryLoadModules re = ([], reLoadModules re)
+queryLoadModules re = ([], view reLoadModules re)
 
 -- this applies the provides and returns the final module metadata
 -- for this module, plus the record for the desugared module value
@@ -190,15 +199,15 @@ queryLoadModules re = ([], reLoadModules re)
 -- module value, without it, it will return the value of the last statement in the user script
 applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, Maybe [([Text],Text)]))
 applyProvides re =
-    if reProvideItems re
-    then ([],(ModuleMetadata [], Just $ flip map (reBindings re) (\a -> ([a],a))))
+    if view reProvideItems re
+    then ([],(ModuleMetadata [], Just $ flip map (view reBindings re) (\a -> ([a],a))))
     else ([],(ModuleMetadata [], Nothing))
 
 ------------------------------------------------------------------------------
 
 createBinding :: Bool -> S.SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
 createBinding _shadow _sp i re =
-    ([],re {reBindings = i : reBindings re})
+    ([],over reBindings (i:) re)
 
 createBindings :: [(Bool, S.SourcePosition, Text)] -> RenamerEnv -> ([StaticError], RenamerEnv)
 createBindings [] re = ([],re)
@@ -208,7 +217,7 @@ createBindings ((sh,sp,nm):bs) re =
 
 createVar :: Bool -> S.SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
 createVar _shadow _sp i re =
-    ([],re {reBindings = i : reBindings re})
+    ([],over reBindings (i:) re)
 
 createType :: S.SourcePosition
              -> Text
@@ -219,7 +228,7 @@ createType :: S.SourcePosition
 createType _sp i _numParams vs re =
     let bs = [renameTypeName i, "is-" <> i]
              ++ concat (flip map vs (\(_vsp,vnm) -> [vnm, "is-" <> vnm, "_variant-" <> vnm]))
-    in ([],re {reBindings = bs ++ reBindings re})
+    in ([],over reBindings (bs ++) re)
 
   -- create _type-x, is-x, for variants: is-x, _variant-x, x
 

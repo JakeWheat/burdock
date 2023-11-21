@@ -71,18 +71,20 @@ getImportSources (S.Script ss') =
 
 type Renamer = ReaderT R.RenamerEnv (Writer [StaticError])
 
-runRenamer :: [(S.ImportSource, ModuleID)]
+runRenamer :: Text
+           ->  [(S.ImportSource, ModuleID)]
            -> [(ModuleID, ModuleMetadata)]
            -> Renamer a
            -> (a, [StaticError])
-runRenamer isCtx ctx f = runWriter $ flip runReaderT (R.makeRenamerEnv isCtx ctx) f
+runRenamer modID isCtx ctx f = runWriter $ flip runReaderT (R.makeRenamerEnv modID isCtx ctx) f
 
-rename :: [(S.ImportSource, ModuleID)]
-              -> [(ModuleID, ModuleMetadata)]
-              -> S.Script
-              -> Either [StaticError] (ModuleMetadata, S.Script)
-rename is ctx (S.Script stmts) = 
-    errToEither $ runRenamer is ctx $ do
+rename :: Text
+       -> [(S.ImportSource, ModuleID)]
+       -> [(ModuleID, ModuleMetadata)]
+       -> S.Script
+       -> Either [StaticError] (ModuleMetadata, S.Script)
+rename modID is ctx (S.Script stmts) = 
+    errToEither $ runRenamer modID is ctx $ do
         (re, stmts') <- rewriteUseContext stmts
         (mm,ret) <- liftErrs $ R.applyProvides re
         let rscr = case ret of

@@ -65,13 +65,13 @@ makeRenameTest rt = TestCase (rName rt) $ do
         f acc ((fn,src):srcs) = do
             let ast = parseIt fn src
                 hackISCtx = flip map acc $ \(x@(ModuleID nm as),_) -> (ImportSpecial nm as, x)
-            (mmeta, _) <- rename hackISCtx acc ast
+            (mmeta, _) <- rename fn hackISCtx acc ast
             f ((ModuleID "file" [fn],mmeta):acc) srcs
     let ctx = (either (error . show) id $ f [] (rSources rt))
         isCtx = flip map ctx $ \(x@(ModuleID nm as),_) -> (ImportSpecial nm as,x)
         
     -- parse the script, rename it
-    let res = either Left (Right . snd) $ rename isCtx ctx $ parseIt (rName rt) (rScript rt)
+    let res = either Left (Right . snd) $ rename "script" isCtx ctx $ parseIt (rName rt) (rScript rt)
     -- check if it matches the expected, or the expected errors
     case (res, rResult rt) of
         (Left errs, Left expErrs) ->

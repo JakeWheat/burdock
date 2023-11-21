@@ -10,7 +10,7 @@ no idea why it's doing this or if there's a better workaround
 {-# LANGUAGE TemplateHaskell #-}
 module Burdock.RenameTypes 
     (RenamerEnv(..)
-    ,reImportSources2
+    ,reImportSources
     ,reModuleMetadatas
     ,reProvides
     ,reProvideFroms
@@ -20,6 +20,9 @@ module Burdock.RenameTypes
     ,reImportFroms
     ,reBindings
     ,reCurrentOriginIDName
+    
+    ,reProvideItems
+    ,reLoadModules
 
     ,RenamerBindingEntry(..)
     ,beRenamedName
@@ -27,7 +30,6 @@ module Burdock.RenameTypes
     ,beBm
     ,beOrigin
     ,beIsLocal
-    ,
     ) where
 
 import Burdock.Syntax
@@ -53,7 +55,7 @@ data RenamerEnv
     = RenamerEnv
     {
      -- available modules to import
-     _reImportSources2 :: [(ImportSource,ModuleID)]
+     _reImportSources :: [(ImportSource,ModuleID)]
       --  the key is the identifier of the module
       -- this is the name and args of the import source
     ,_reModuleMetadatas :: [(ModuleID, ModuleMetadata)]
@@ -64,15 +66,20 @@ data RenamerEnv
     ,_reIncludes :: [(SourcePosition, ImportSource)]
     ,_reIncludeFroms :: [(SourcePosition, Text, [ProvideItem])]
     ,_reImportFroms :: [(SourcePosition, ImportSource, [ProvideItem])]
+    -- temp
+    ,_reLoadModules :: [(ModuleID,Text)]
 
     -- all the bindings used to rename the body, track additional
     -- declarations in the body, and to process applyprovides
     -- the rule is, the apply provides should only look at these bindings,
     -- and the reprovides, reprovidefroms, and not any of the other
     -- prelude statements, all the info needed from these is put into rebindings
-    ,_reBindings :: [([Text], RenamerBindingEntry)]
+    --,_reBindings :: [([Text], RenamerBindingEntry)]
+    ,_reBindings :: [Text]
     -- this is used as a origin id
     ,_reCurrentOriginIDName :: Text
+    -- all the provide items gathered after prelude processing
+    ,_reProvideItems :: Bool
     }
 
 -- represents a single entry used during body renaming
