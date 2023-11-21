@@ -228,7 +228,7 @@ renameIdentifier x _re = ([], x)
 
 -- same as renameIdentifier, but for type names
 renameType :: S.SourcePosition -> [Text] -> RenamerEnv -> ([StaticError], (S.SourcePosition,[Text]))
-renameType sp x _re = ([],(sp,x))
+renameType sp x _re = ([],(sp,renameQTypeName x))
 
 -- renameBinding:
 --
@@ -265,8 +265,8 @@ then it sort of works as if they are in different namespaces
 renameTypeName :: Text -> Text
 renameTypeName = ("_type-" <>)
 
-_renameQTypeName :: [Text] -> [Text]
-_renameQTypeName x = if null x
+renameQTypeName :: [Text] -> [Text]
+renameQTypeName x = if null x
     then error $ "empty qtype name"
     else init x ++ [renameTypeName $ last x]
 

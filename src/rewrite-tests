@@ -25,25 +25,65 @@ a
 
 Test: update var
 Script:
-a = 3
-a
+var a = 3
+a := 4
 Result:
-a = 3
-a
+var a = 3
+a := 4
 
 Test: simple type
 Script:
-a = 3
-a
+data Test: test(a) end
+a = test(3)
+assert-type-compat(a :: Test)
 Result:
-a = 3
-a
+data Test: test(a) end
+a = test(3)
+assert-type-compat(a :: _type-Test)
 
 Test: shadow
 Script:
 a = 3
-a
+shadow a = 4
 Result:
 a = 3
-a
+shadow a = 4
 
+######################################
+
+# testing basic anomalies without modules
+
+# Test: unrecognised iden
+# Script:
+# a
+# Errors:
+# unrecognised-identifier([list: "a"])
+
+# Test: write to non var
+# Script:
+# a = 4
+# a := 5
+# Errors:
+# assign-to-non-var([list: "a"])
+
+# Test: iden as type
+# Script:
+# a = 1
+# not-a-type = 3
+# assert-type-compat(a :: not-a-type)
+# Errors:
+# non-type-used-as-type([list: "not-a-type"])
+
+# Test: use type as iden
+# Script:
+# data Test: test(a) end
+# a = Test
+# Errors:
+# type-use-in-expr([list: "Test"])
+
+# Test: shadow without shadow keyword
+# Script:
+# a = 3
+# a = 4
+# Errors:
+# identifier-redefined([list: "a"])
