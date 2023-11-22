@@ -1,0 +1,18 @@
+
+
+import haskell("testing-extras") as testing-extras
+
+
+check:
+
+  var a = 1
+
+  fun set-a(new-a):
+    a := new-a
+  end
+
+  testing-extras.simple-haskell-callback(set-a, 5)
+
+  a is 10
+
+end

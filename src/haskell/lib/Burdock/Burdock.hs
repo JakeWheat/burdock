@@ -45,8 +45,11 @@ import Burdock.StaticError
     (--StaticError
     --,
         prettyStaticErrors)
+
 import Burdock.FFIModules.Bootstrap (burdockBootstrapModule)
 import Burdock.FFIModules.Internals (burdockInternalsModule)
+import Burdock.FFIModules.TestingExtras (testingExtrasModule)
+
 import qualified Burdock.InterpreterPretty as I
 --import Burdock.StaticError (StaticError)
 
@@ -148,6 +151,8 @@ createHandle = do
         bootstrapLoadModule "_internals" =<< burdockInternalsModule
         bootstrapLoadModule "burdock2023" =<< runScript' (Just "<burdock2023>") burdock2023Source
         -- system now bootstrapped to be able to use default use context burdock2023
+
+        bootstrapLoadModule "testing-extras" =<< testingExtrasModule
 
     pure $ Handle st
 

@@ -238,6 +238,7 @@ unrecognised-identifier([list: "b"])
 # variant-pattern-incorrect-num-args([list: "ctor1", 2, 0])
 
 # no arg bind fail if shadow
+# demo weird shadowing of iden, but not the same named pattern
 # no arg ctor pattern given args
 # ctor pattern with wrong number of args
 
@@ -339,6 +340,8 @@ _interpreter.make-module(
 # ok: same iden imported from two different modules, but ultimately has the
 # same original source
 
+# show idens not sneaking through preludes when they shouldn't be,
+# including doublechecking renames
 
 ##############################################################################
 
