@@ -77,5 +77,6 @@ wrappedHaskellCallback burdockNumberTI [fn, nm] = do
     -- takes a callback
     Right (nm' :: Scientific) <- R.extractFFIValue burdockNumberTI nm
     R.liftIO $ myHaskellTripleAndCallback nm' w
+    
     pure R.BNothing
 wrappedHaskellCallback _ _ = error "bad args to wrappedHaskellCallback"

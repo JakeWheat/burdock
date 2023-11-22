@@ -195,10 +195,18 @@ runRuntime st f = runReaderT f st
 -- something more sophisticated with threads
 -- plus, probably should be cloning the state anyway since it's not pure
 -- need to reason very carefully about state
+-- the rtBindings should probably be copied to a new ioref
+-- the auto data decl and ffitype id -> these could be stm tvars
+--   but will also need a solution for serialization and high level
+--   networking, which may remove these
+-- the module plugins should probably be a tvar also - so all threads
+-- share the same module cache, but then this would be copied to a new
+-- tvar when using the container system
 getRuntimeRunner :: Runtime (Runtime a -> IO a)
 getRuntimeRunner = do
     st <- ask
-    pure $ runRuntime st
+    bs <- liftIO (newIORef =<< readIORef (rtBindings st))
+    pure $ runRuntime st {rtBindings = bs}
 
 --------------------------------------
 
