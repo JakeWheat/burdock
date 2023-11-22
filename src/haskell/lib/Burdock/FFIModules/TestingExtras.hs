@@ -25,6 +25,8 @@ import Burdock.ModuleMetadata
     ,BindingMeta(..)
     )
 
+import Control.Monad (void)
+
 ------------------------------------------------------------------------------
 
 testingExtrasModule :: R.Runtime (ModuleMetadata, Value)
@@ -37,6 +39,7 @@ testingExtrasModule = R.withScope $ do
 
     let bs' = map (BEIdentifier,)
              [("simple-haskell-callback", R.Fun $ simpleHaskellCallback burdockNumberTI)
+             ,("wrapped-haskell-callback", R.Fun $ wrappedHaskellCallback burdockNumberTI)
              ]
         (ms, bs) = unzip $ flip map bs' $ \(t,(n,v)) ->
             ((n, Nothing, t, ("<testing-extras>",Nothing)), (n,v))
@@ -44,11 +47,35 @@ testingExtrasModule = R.withScope $ do
 
 ------------------------------------------------------------------------------
 
-
 simpleHaskellCallback :: R.FFITypeInfo -> [Value] -> R.Runtime Value
 simpleHaskellCallback burdockNumberTI [fn, nm] = do
     Right (nm' :: Scientific) <- R.extractFFIValue burdockNumberTI nm
     nm'' <- R.makeFFIValue burdockNumberTI (nm' * 2)
-    R.app Nothing fn [nm'']
-    
-simpleHaskellCallback _ _ = error "bad args to haskellError"
+    void $ R.app Nothing fn [nm'']
+    pure R.BNothing
+simpleHaskellCallback _ _ = error "bad args to simpleHaskellCallback"
+
+-- get a function value from burdock
+-- then wrap it so it can be passed to this haskell function
+-- which will call it as a callback without any burdock specific
+-- monad or types
+myHaskellTripleAndCallback :: Scientific -> (Scientific -> IO ()) -> IO ()
+myHaskellTripleAndCallback n f = f (n * 3)
+
+wrappedHaskellCallback :: R.FFITypeInfo -> [Value] -> R.Runtime Value
+wrappedHaskellCallback burdockNumberTI [fn, nm] = do
+    -- create a wrapper for fn that takes a haskell data type argument
+    -- and runs in IO
+    myRunBurdock <- R.getRuntimeRunner
+    let w :: Scientific -> IO ()
+        w n = myRunBurdock $ do
+            -- there will be some boilerplate helpers that will make
+            -- this wrapping/unwrapping trivial
+            n' <- R.makeFFIValue burdockNumberTI n
+            void $ R.app Nothing fn [n']
+    -- extract the number, and call the native haskell function which
+    -- takes a callback
+    Right (nm' :: Scientific) <- R.extractFFIValue burdockNumberTI nm
+    R.liftIO $ myHaskellTripleAndCallback nm' w
+    pure R.BNothing
+wrappedHaskellCallback _ _ = error "bad args to wrappedHaskellCallback"

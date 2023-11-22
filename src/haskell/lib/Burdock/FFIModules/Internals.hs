@@ -15,25 +15,13 @@ module Burdock.FFIModules.Internals
     ) where
 
 import Prelude hiding (error, show, putStrLn)
-import Burdock.Utils (error, show)
+import Burdock.Utils (error)
 import Data.Text.IO (putStrLn)
 
-import Control.Arrow (first, second)
-
-import Data.Text (Text)
-import qualified Data.Text as T
 import Control.Monad.IO.Class (liftIO)
-
-import Data.IORef
-    (IORef
-    ,readIORef
-    ,modifyIORef
-    ,newIORef
-    )
 
 import qualified Burdock.Runtime as R
 import Burdock.Runtime (Value)
-import Burdock.Scientific (Scientific, showScientific)
 import Burdock.ModuleMetadata
     (ModuleMetadata(..)
     ,BindingMeta(..)
@@ -44,12 +32,6 @@ import Burdock.ModuleMetadata
 burdockInternalsModule :: R.Runtime (ModuleMetadata, Value)
 burdockInternalsModule = R.withScope $ do
 
-    imod <- R.getModuleValue (R.ModuleID "haskell" ["_interpreter"])
-    bnum <- R.getMember Nothing imod "_type-number"
-    ti <- R.getFFITypeInfoTypeInfo
-    Right (burdockNumberTI :: R.FFITypeInfo) <- R.extractFFIValue ti bnum
-
-    testLog <- liftIO $ newIORef (0,0)
     let bs' = map (BEIdentifier,)
              [("tostring", R.Fun bToString)
              ,("print", R.Fun bPrint)

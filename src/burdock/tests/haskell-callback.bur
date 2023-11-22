@@ -15,4 +15,8 @@ check:
 
   a is 10
 
+  testing-extras.wrapped-haskell-callback(set-a, 11)
+
+  a is 33
+
 end

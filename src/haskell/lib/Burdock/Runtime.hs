@@ -57,6 +57,9 @@ module Burdock.Runtime
     ,haskellModulePlugin
     ,HaskellModule(..)
     ,ModuleMetadata(..)
+
+    ,liftIO
+    ,getRuntimeRunner
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -187,6 +190,15 @@ runRuntime st f = runReaderT f st
 --debugGetBindings = do
 --    st <- ask
 --    liftIO $ readIORef (rtBindings st)
+
+-- this could work if everything is single threaded, will need
+-- something more sophisticated with threads
+-- plus, probably should be cloning the state anyway since it's not pure
+-- need to reason very carefully about state
+getRuntimeRunner :: Runtime (Runtime a -> IO a)
+getRuntimeRunner = do
+    st <- ask
+    pure $ runRuntime st
 
 --------------------------------------
 
