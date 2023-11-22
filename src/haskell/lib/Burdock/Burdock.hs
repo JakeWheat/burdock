@@ -45,7 +45,8 @@ import Burdock.StaticError
     (--StaticError
     --,
         prettyStaticErrors)
-import Burdock.Bootstrap (burdockBootstrapModule)
+import Burdock.FFIModules.Bootstrap (burdockBootstrapModule)
+import Burdock.FFIModules.Internals (burdockInternalsModule)
 import qualified Burdock.InterpreterPretty as I
 --import Burdock.StaticError (StaticError)
 
@@ -144,6 +145,7 @@ createHandle = do
         -- so use context base is working
         bp <- burdockModulePlugin
         R.addModulePlugin burdockPluginName bp
+        bootstrapLoadModule "_internals" =<< burdockInternalsModule
         bootstrapLoadModule "burdock2023" =<< runScript' (Just "<burdock2023>") burdock2023Source
         -- system now bootstrapped to be able to use default use context burdock2023
 
@@ -326,14 +328,6 @@ burdock2023Source = [R.r|
 
 use context _base
 
-# todo: reexpose these somewhere better to import into here
-# they probably don't even need to be in bootstrap at all
-#import haskell("_bootstrap") as _bootstrap
-#provide from _bootstrap:
-#  print,
-#  tostring
-#end
-
 # bring the _interpreter namespace into scope for user use
 import haskell("_interpreter") as _interpreter
 provide from _interpreter:
@@ -352,6 +346,11 @@ provide from _interpreter:
   not
 end
 
+import haskell("_internals") as _internals
+provide from _internals:
+  print,
+  tostring
+end
 
 |]
 

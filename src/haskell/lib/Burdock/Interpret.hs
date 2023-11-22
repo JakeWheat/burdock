@@ -246,10 +246,10 @@ lookupNames [] = error $ "empty name"
 lookupNames [n] = R.lookupBinding n
 lookupNames (n:ns) = do
     let f _ [] = error $ "empty name2"
-        f v [n] = Just <$> R.getMember Nothing v n
-        f v (n:ns) = do
-            v' <- R.getMember Nothing v n
-            f v' ns
+        f v [m] = Just <$> R.getMember Nothing v m
+        f v (m:ms) = do
+            v' <- R.getMember Nothing v m
+            f v' ms
     vx <- R.lookupBinding n
     case vx of
         Just vx' -> f vx' ns

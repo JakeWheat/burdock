@@ -137,11 +137,11 @@ import Burdock.RenameTypes
     ,reLoadModules
     
     ,RenamerBindingEntry(..)
-    ,beRenamedName
-    ,beSourcePos
-    ,beBm
-    ,beOrigin
-    ,beIsLocal
+    --,beRenamedName
+    --,beSourcePos
+    --,beBm
+    --,beOrigin
+    --,beIsLocal
     )
 
 import Lens.Micro
@@ -403,6 +403,7 @@ renameIdentifier x@((sp,_):_) re =
                         ([UnrecognisedIdentifier sp (map snd x)], x)
         -- todo: if this is a type or module alias, then error
         Just (RenamerBindingEntry cn _ _ _ _) -> ([], map (sp,) cn)
+        Just (RenamerBindingAmbiguous _) -> error $ show sp <> "ambiguous identifier"
 renameIdentifier [] _ = error $ "internal error: empty identifier"
 
 -- same as renameIdentifier, but for type names

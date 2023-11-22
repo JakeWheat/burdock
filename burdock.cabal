@@ -43,7 +43,8 @@ common shared-properties
                       Burdock.RenameTypes
                       Burdock.StaticError
                       Burdock.ModuleMetadata
-                      Burdock.Bootstrap
+                      Burdock.FFIModules.Bootstrap
+                      Burdock.FFIModules.Internals
 
     build-depends:    base < 5
                     , scientific
