@@ -390,8 +390,8 @@ sharing:
         | empty => ""
         | link(x, y) =>
           cases y:
-            | empty => ... #_interpreter.torepr(x)
-            | else => ... #_interpreter.torepr(x) + ", " + intercalate-items(y)
+            | empty => x.torepr()
+            | else => x.torepr() + ", " + intercalate-items(y)
           end
       end
     end

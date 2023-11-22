@@ -143,7 +143,7 @@ check:
   2 <> 3 is true
 
 end
-#|
+
 check:
 
   a = {x:3, y: 4}
@@ -195,8 +195,8 @@ end
 
 
 check:
-  right = _interpreter.right
-  left = _interpreter.left
+  #right = _interpreter.right
+  #left = _interpreter.left
   run-task("ok") is right("ok")
   run-task(raise("burdock")) is left("burdock")
   # not currently working - needs the strictness pass
@@ -231,4 +231,3 @@ check:
   #is-record({}) is true
 
 end
-|#

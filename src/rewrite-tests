@@ -69,6 +69,7 @@ data Test:
 end
 a = ctor1
 cases a:
+  # can't test this directly at the moment because of a parsing/test issue
   # | ctor1 => 1
   | ctor2(x,y) => 2
   | regular-bind => 3

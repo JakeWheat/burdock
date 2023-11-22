@@ -59,6 +59,9 @@ getImportSources (S.Script ss) =
 
 ------------------------------------------------------------------------------
 
+-- todo: fix this so there's one place in the source that says the
+-- name of the default use context
+-- and support arbitrary use context names
 rewriteUseContext :: [S.Stmt] -> [S.Stmt]
 rewriteUseContext = \case
     [] -> importInterpreter : includeBurdock2023 : []
@@ -144,22 +147,8 @@ rewritePreludeStmts (S.ProvideFrom sp al pis : ss) = do
 rewritePreludeStmts ss = do
     (re, lms) <- callWithEnv R.queryLoadModules
     local (const re) $ do
-        -- temp hack: if burdock2023 is imported, include-all it
-        -- this will not be needed once the renamer is actually working
-        let extra = if "burdock2023" `elem` map snd lms
-                    then [tempIncludeAll]
-                    else []
-        --trace "balls" lms $ pure ()
         let f (ModuleID nm as) alias = S.Import Nothing (S.ImportSpecial nm as) alias
-        second (map (uncurry f) lms ++) <$> rewriteStmts (extra ++ ss)
-
-tempIncludeAll :: S.Stmt
-tempIncludeAll =
-    S.StmtExpr Nothing (app "include-all" [S.Iden n "burdock2023"])
-  where
-    n = Nothing
-    app nm es = S.App n (S.DotExpr n (S.Iden n "_interpreter") nm) es
-
+        second (map (uncurry f) lms ++) <$> rewriteStmts ss
 
 ------------------------------------------------------------------------------
 

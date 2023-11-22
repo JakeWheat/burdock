@@ -226,7 +226,7 @@ captureClosure nms = do
         -- _variant: once the renamer is working, this will be accurate and
         -- can be removed
         missingHack = filter (`notElem` ["run-task"])
-                      $ filter (not . ("_variant-" `T.isPrefixOf`)) missing
+                      missing
     when (not $ null missingHack) $
         error $ "closure capture items not found: " <> show missingHack
     pure $ filter ((`elem` nms) . fst) rtbv

@@ -381,15 +381,12 @@ createType sp i numParams vs re =
     in ([],over reBindings (bs ++) re)
 
 renameIdentifier :: [(S.SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(S.SourcePosition,Text)])
--- temp hack before include implemented
-renameIdentifier x@[(_, "burdock2023")] _ = ([], x)
 -- need to figure out a better way to handle this - at least namespace it,
 -- plus it should be a regular value you can assign and pass around and stuff
 renameIdentifier x@[(_, "list")] _ = ([], x)
 -- similar comments, but this isn't namespaced, and it cannot be assigned
 -- and passed around
 renameIdentifier x@[(_, "run-task")] _ = ([], x)
---renameIdentifier x@[(_, "make-haskell-list")] _ = ([], x)
 
 renameIdentifier x@((sp,_):_) re =
     case lookup (map snd x) (view reBindings re) of

@@ -231,11 +231,14 @@ desugarExpr e = error $ "desugarExpr: " <> show e
 desugarBinding :: S.Binding -> Desugar I.Binding
 desugarBinding (S.NameBinding sp nm) = do
     -- temp: might be a variant name
-    tell ["_interpreter", "_variant-" <> nm]
     pure $ I.NameBinding sp nm
 desugarBinding (S.ShadowBinding sp nm) = pure $ I.NameBinding sp nm
-desugarBinding (S.VariantBinding sp nm bs) = do
-    tell ["_interpreter", "_variant-" <> last nm]
+desugarBinding (S.VariantBinding sp nm@(n:_) bs) = do
+    tell ["_interpreter", n]
+    I.VariantBinding sp nm <$> mapM desugarBinding bs
+desugarBinding (S.VariantBinding sp nm@[] bs) =
+    -- not sure if should error here or let it be someone else's
+    -- problem
     I.VariantBinding sp nm <$> mapM desugarBinding bs
 
 desugarBinding (S.WildcardBinding sp) = pure $ I.WildcardBinding sp

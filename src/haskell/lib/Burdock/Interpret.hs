@@ -36,14 +36,14 @@ interpStmt :: I.Stmt -> R.Runtime R.Value
 
 interpStmt (I.LetDecl _ b e) = do
     v <- interpExpr e
-    letValues True [(b,v)]
+    letValues [(b,v)]
     pure R.BNothing
 
 -- todo: make vars abstract, move to runtime
 interpStmt (I.VarDecl sp nm e) = do
     v <- interpExpr e
     r <- R.makeVar v
-    letValues True [(I.NameBinding sp nm, r)]
+    letValues [(I.NameBinding sp nm, r)]
     pure R.BNothing
 
 interpStmt (I.SetVar sp [nm] e) = do
@@ -56,7 +56,7 @@ interpStmt (I.StmtExpr _ e) = interpExpr e
 
 interpStmt (I.ImportAs sp nm (p,as)) = do
     v <- R.getModuleValue (R.ModuleID p as)
-    letValues True [(I.NameBinding sp nm, v)]
+    letValues [(I.NameBinding sp nm, v)]
     pure R.BNothing
 
 interpStmt s = error $ "interpStmt: " <> show s
@@ -102,7 +102,7 @@ interpExpr (I.Lam _sp fvs bs bdy) = do
             -- todo: check lists same length
             let bs' = zip bs vs
             R.withNewEnv env $ do
-                letValues True bs'
+                letValues bs'
                 interpStmts bdy
     pure $ R.Fun runF
 
@@ -122,7 +122,7 @@ interpExpr (I.Cases sp e bs) = do
     v <- interpExpr e
     let f [] = error $ "no case branches matched"
         f ((t,bdy):bs') = do
-            res <- tryApplyBinding sp False t v
+            res <- tryApplyBinding sp t v
             case res of
                 Nothing -> f bs'
                 Just ls -> R.withScope $ do
@@ -211,55 +211,53 @@ interpExpr (I.TupleGet _ e n) = do
 
 ------------------------------------------------------------------------------
 
-letValues :: Bool -> [(I.Binding, R.Value)] -> R.Runtime ()
-letValues isSimple bs = flip mapM_ bs $ \(b,v) -> do
-    mbs <- tryApplyBinding Nothing isSimple b v
+letValues :: [(I.Binding, R.Value)] -> R.Runtime ()
+letValues bs = flip mapM_ bs $ \(b,v) -> do
+    mbs <- tryApplyBinding Nothing b v
     case mbs of
         Nothing -> error $ "couldn't bind " <> R.debugShowValue v <> " to " <> show b
         Just bs' -> mapM_ (uncurry R.addBinding) bs'
 
 ------------------------------------------------------------------------------
 
--- second arg is issimple, which allows variants
-tryApplyBinding :: I.SP -> Bool -> I.Binding -> R.Value -> R.Runtime (Maybe [(Text,R.Value)])
+tryApplyBinding :: I.SP -> I.Binding -> R.Value -> R.Runtime (Maybe [(Text,R.Value)])
 
--- the bool says if this is a simple binding - so a name cannot match a 0 arg variant
--- need a better solution for this
--- just removing it causes data decl desugaring to fail to execute
+tryApplyBinding _ (I.NameBinding _sp nm) v = pure $ Just [(nm,v)]
 
-tryApplyBinding _ True (I.NameBinding _sp nm) v = pure $ Just [(nm,v)]
-    
-tryApplyBinding _ False (I.NameBinding _sp nm) v = do
-    -- try to match 0 arg constructor
-    mvtg <- lookupVariantByName nm
-    case mvtg of
-        Just (R.VariantTag pddt pvnm) -> do
-            case v of
-                R.Variant (R.VariantTag vddt vvnm) _ | (pddt,pvnm) == (vddt,vvnm) ->
-                    pure $ Just []
-                _ -> pure $ Nothing
-        Nothing -> pure $ Just [(nm,v)]
-
-tryApplyBinding _ _ (I.VariantBinding _sp [nm] bs) (R.Variant (R.VariantTag vddt vvnm) vfs) = do
+tryApplyBinding _ (I.VariantBinding _sp nm bs) (R.Variant (R.VariantTag vddt vvnm) vfs) = do
     mvtg <- lookupVariantByName nm
     case mvtg of
         Just (R.VariantTag pddt pvnm) | (pddt,pvnm) == (vddt,vvnm) -> do
             x <- flip mapM (zip bs vfs) $ \(b, vf) ->
-                tryApplyBinding Nothing False b (snd vf)
+                tryApplyBinding Nothing b (snd vf)
             let y :: Maybe [(Text, R.Value)]
                 y = concat <$> sequence x
             pure y
         _ -> pure $ Nothing
 
-tryApplyBinding _ _ (I.VariantBinding {}) _ = pure Nothing    
+tryApplyBinding _ (I.VariantBinding {}) _ = pure Nothing    
 
-tryApplyBinding _ _ (I.WildcardBinding {}) _ = pure $ Just []
+tryApplyBinding _ (I.WildcardBinding {}) _ = pure $ Just []
 
-tryApplyBinding _ _ b _ = error $ show b
+tryApplyBinding _ b _ = error $ show b
 
-lookupVariantByName :: Text -> R.Runtime (Maybe R.VariantTag)
+lookupNames :: [Text] -> R.Runtime (Maybe R.Value)
+lookupNames [] = error $ "empty name"
+lookupNames [n] = R.lookupBinding n
+lookupNames (n:ns) = do
+    let f _ [] = error $ "empty name2"
+        f v [n] = Just <$> R.getMember Nothing v n
+        f v (n:ns) = do
+            v' <- R.getMember Nothing v n
+            f v' ns
+    vx <- R.lookupBinding n
+    case vx of
+        Just vx' -> f vx' ns
+        Nothing -> pure Nothing
+
+lookupVariantByName :: [Text] -> R.Runtime (Maybe R.VariantTag)
 lookupVariantByName nm = do
-    bv <- R.lookupBinding ("_variant-" <> nm)
+    bv <- lookupNames nm
     case bv of
         -- if it matches a variant in scope, we commit to it
         -- if it matches something else in scope, this should be a shadowing
