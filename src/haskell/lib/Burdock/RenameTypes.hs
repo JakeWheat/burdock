@@ -20,10 +20,8 @@ module Burdock.RenameTypes
     ,reImportFroms
     ,reBindings
     ,reCurrentOriginIDName
-    
-    ,reProvideItems
     ,reLoadModules
-
+    
     ,RenamerBindingEntry(..)
     ,beRenamedName
     ,beSourcePos
@@ -64,22 +62,20 @@ data RenamerEnv
     ,_reProvideFroms :: [(SourcePosition, [Text], [ProvideItem])]
     ,_reImports :: [(SourcePosition, ImportSource, Text)]
     ,_reIncludes :: [(SourcePosition, ImportSource)]
-    ,_reIncludeFroms :: [(SourcePosition, Text, [ProvideItem])]
+    ,_reIncludeFroms :: [(SourcePosition, [Text], [ProvideItem])]
     ,_reImportFroms :: [(SourcePosition, ImportSource, [ProvideItem])]
-    -- temp
-    ,_reLoadModules :: [(ModuleID,Text)]
 
     -- all the bindings used to rename the body, track additional
     -- declarations in the body, and to process applyprovides
     -- the rule is, the apply provides should only look at these bindings,
     -- and the reprovides, reprovidefroms, and not any of the other
     -- prelude statements, all the info needed from these is put into rebindings
-    --,_reBindings :: [([Text], RenamerBindingEntry)]
-    ,_reBindings :: [Text]
+    ,_reBindings :: [([Text], RenamerBindingEntry)]
     -- this is used as a origin id
     ,_reCurrentOriginIDName :: Text
-    -- all the provide items gathered after prelude processing
-    ,_reProvideItems :: Bool
+    -- set as the canonical list of imported modules and their canonical aliases
+    -- in queryloadmodules
+    ,_reLoadModules :: [(ModuleID,Text)]
     }
 
 -- represents a single entry used during body renaming
@@ -100,6 +96,7 @@ data RenamerBindingEntry
     -- not an error, but if they are used, the error is produced at that
     -- point
     | RenamerBindingAmbiguous [SourcePosition]
+    deriving Show
 
 makeLenses ''RenamerEnv
 makeLenses ''RenamerBindingEntry

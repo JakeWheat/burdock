@@ -67,6 +67,7 @@ has just been renamed
 
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE LambdaCase #-}
 module Burdock.Rename
     (RenamerEnv
     ,makeRenamerEnv
@@ -94,12 +95,18 @@ module Burdock.Rename
     ,renameVariantPattern
 
     ) where
-    
+
+import Prelude hiding (error, show, putStrLn)
+import Burdock.Utils (error, show)
+--import Burdock.Utils (trace, traceit)
+
 import Burdock.StaticError (StaticError(..))
 
 import Burdock.ModuleMetadata
     (ModuleMetadata(..)
-    ,ModuleID(..))
+    ,ModuleID(..)
+    ,BindingMeta(..)
+    )
 
 -- OK, so it cheats and uses a little bit of syntax. Could be all proper and
 -- just mirror these few small items, then write conversion functions, but
@@ -111,6 +118,7 @@ import qualified Burdock.Syntax as S
     )
 
 import Data.Text (Text)
+import qualified  Data.Text as T
 
 import Control.Arrow (first)
 
@@ -126,10 +134,8 @@ import Burdock.RenameTypes
     ,reImportFroms
     ,reBindings
     ,reCurrentOriginIDName
-    
-    ,reProvideItems
     ,reLoadModules
-
+    
     ,RenamerBindingEntry(..)
     ,beRenamedName
     ,beSourcePos
@@ -144,40 +150,42 @@ import Lens.Micro
     )
 import Lens.Micro.Extras
     (view)
-    
+
+--import Data.Maybe (mapMaybe)
+
+import Data.List (nub)
+
+--import Text.Show.Pretty (ppShow)
+
 ------------------------------------------------------------------------------
 
 makeRenamerEnv :: Text
                -> [(S.ImportSource, ModuleID)]
                -> [(ModuleID, ModuleMetadata)]
                -> RenamerEnv
-makeRenamerEnv mnm is ctx = RenamerEnv is ctx [] [] [] [] [] [] [] [] mnm False
+makeRenamerEnv mnm is ctx = RenamerEnv is ctx [] [] [] [] [] [] [] mnm []
 
 ------------------------------------------------------------------------------
 
 provide :: S.SourcePosition -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 provide sp pis re =
-    case pis of
-         -- only allow this one combo for now
-         [S.ProvideAll _,S.ProvideTypeAll _,S.ProvideDataAll _] ->
-             ([], set reProvideItems True re)
-         _ -> error $ show sp <> " provide items not supported: " <> show pis
+    ([], over reProvides ((sp,pis):) re)
          
 provideFrom :: S.SourcePosition -> [Text] -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
-provideFrom = error $ "provide from not implemented yet"
+provideFrom sp nm pis re =
+    ([],over reProvideFroms ((sp,nm,pis):) re)
 
 bImport :: S.SourcePosition -> S.ImportSource -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-bImport _sp is alias re =
-    let imp = case lookup is (view reImportSources re) of
-            Nothing -> error $ "rename: import source not found" <> show is
-            Just mid -> mid
-    in ([], over reLoadModules ((imp,alias):) re)
+bImport sp is alias re =
+    ([], over reImports ((sp,is,alias):) re)
 
 include :: S.SourcePosition -> S.ImportSource -> RenamerEnv -> ([StaticError], RenamerEnv)
-include _sp _is _re = error $ "include not implemented yet"
+include sp is re =
+    ([],over reIncludes ((sp,is):) re)
 
 includeFrom :: S.SourcePosition -> [Text] -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
-includeFrom _sp _mal _pis _re = error $ "include from not implemented yet"
+includeFrom sp mal pis re =
+    ([], over reIncludeFroms ((sp,mal,pis):) re)
 
 importFrom :: S.SourcePosition -> S.ImportSource -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 importFrom = error $ "import from not implemented yet"
@@ -186,8 +194,64 @@ importFrom = error $ "import from not implemented yet"
 -- the result is id for the module, local alias for the module
 -- so (a,b) here should become b = load-module("a")
 -- this should be called before processing the first non prelude statement
-queryLoadModules :: RenamerEnv -> ([StaticError], [(ModuleID,Text)])
-queryLoadModules re = ([], view reLoadModules re)
+
+-- maybe change the name, this is the call that processes all the prelude statements
+-- there should be a switch so that after this, a subsequence prelude statement
+-- causes an error
+
+queryLoadModules :: RenamerEnv -> ([StaticError], (RenamerEnv,[(ModuleID,Text)]))
+queryLoadModules re =
+    let loadModules =
+            -- todo: sort the imports by order they first appear in the source
+            -- so they load in the order the user wrote them, which will make
+            -- troubleshooting less confusing
+            -- this means interleaving these statements, and taking into account
+            -- transforms that need to preserve the source order in the positions
+            let is1 = reverse $ map (\(_,i,_) -> i) (view reImports re)
+                is2 = reverse $ map snd (view reIncludes re)
+                is3 = reverse $ map (\(_,i,_) -> i) (view reImportFroms re)
+                is = nub [ mid
+                     | i <- is1 ++ is2 ++ is3
+                     , (isx,mid) <- view reImportSources re
+                     , i == isx]
+            in --traceit "bullshit" $
+                flip map is (\mid@(ModuleID p as) ->
+                  if as `elem` [["_interpreter"], ["_bootstrap"]]
+                  then (mid, "_interpreter")
+                  else (mid, "_module-" <> p <> "-" <> T.intercalate "." as))
+        importBindings =
+            -- create the binding entries
+            map (\(userAl,canonicalAl, (nm, sp, bm, oid)) ->
+            ([userAl,nm], RenamerBindingEntry [canonicalAl,nm] sp bm oid False))
+            -- unnestb
+            $ concatMap ( \(a,b,c) -> map (a,b,) c)
+            -- join imports, import sources, module metadatas and load modules
+            [(userAl,canonicalAl,mms)
+            | (_,is1,userAl) <- view reImports re
+            , (is2,mid2) <- view reImportSources re
+            , (mid3,ModuleMetadata mms) <- view reModuleMetadatas re
+            , (mid4,canonicalAl) <- loadModules
+            , is1 == is2
+            , mid2 == mid3
+            , mid3 == mid4]
+        includeBindings =
+            map (\(canonicalAl, (nm, sp, bm, oid)) ->
+            ([nm], RenamerBindingEntry [canonicalAl,nm] sp bm oid False))
+            -- unnest
+            $ concatMap ( \(a,b) -> map (a,) b)
+            -- join includes with import sources, module metadata and load modules
+            [(canonicalAl, mms)
+            | (_,is1) <- view reIncludes re
+            , (is2,mid2) <- view reImportSources re
+            , (mid3,ModuleMetadata mms) <- view reModuleMetadatas re
+            , (mid4,canonicalAl) <- loadModules
+            , is1 == is2
+            , mid2 == mid3
+            , mid3 == mid4
+            ]
+
+        bs = importBindings ++ includeBindings
+    in ([], (set reBindings bs $ set reLoadModules loadModules re, loadModules))
 
 -- this applies the provides and returns the final module metadata
 -- for this module, plus the record for the desugared module value
@@ -199,15 +263,90 @@ queryLoadModules re = ([], view reLoadModules re)
 -- module value, without it, it will return the value of the last statement in the user script
 applyProvides :: RenamerEnv -> ([StaticError], (ModuleMetadata, Maybe [([Text],Text)]))
 applyProvides re =
-    if view reProvideItems re
-    then ([],(ModuleMetadata [], Just $ flip map (view reBindings re) (\a -> ([a],a))))
-    else ([],(ModuleMetadata [], Nothing))
+    -- check if there are any provides or provide froms
+    if null (view reProvides re) && null (view reProvideFroms re)
+    then ([], (ModuleMetadata [], Nothing))
+    else let (mm1,rc1)= unzip
+                  [((nm1,sp,bm,oid), (nm, nm1))
+                  | _ <- view reProvides re
+                  , (_,RenamerBindingEntry nm sp bm oid True) <- view reBindings re
+                  , let nm1 = last nm]
+             (mm2, rc2) = unzip
+                  $ map (\(canonicalAl, meta@(nm, _sp, _bm, _oid)) ->
+                             (meta, ([canonicalAl,nm], nm)))
+                  -- unnest
+                  $ concatMap ( \(a,b) -> map (a,) b)
+                  {-$ traceit (T.pack $ ppShow
+                             {-("apply provides"
+                            ,"provide froms", reverse $ view reProvideFroms re
+                            ,"imports" , view reImports re
+                            ,"import sources", view reImportSources re
+                            ,"module metadatas", view reModuleMetadatas re
+                            ,"load modules", view reLoadModules re
+                            )-}
+                            ("provide froms", reverse $ view reProvideFroms re
+                            ,"==============================================="
+                            ,"join to imports"
+                            , [(al,is,al1)
+                              | (_,al,_) <- reverse $ view reProvideFroms re
+                              , (_,is,al1) <- view reImports re
+                              , al == [al1]]
+                            ,"==============================================="
+                            ,"join to import sources"
+                            , [(al,is,al1, mid2)
+                              | (_,al,_) <- reverse $ view reProvideFroms re
+                              , (_,is,al1) <- view reImports re
+                              , (is2,mid2) <- view reImportSources re
+                              , al == [al1]
+                              , is == is2
+                              ]
+                            ,"==============================================="
+                            ,"join to module metas"
+                            , [(al,is,al1, mid2, mm)
+                              | (_,al,_) <- reverse $ view reProvideFroms re
+                              , (_,is,al1) <- view reImports re
+                              , (is2,mid2) <- view reImportSources re
+                              , (mid3, ModuleMetadata mm) <- view reModuleMetadatas re
+                              , al == [al1]
+                              , is == is2
+                              , mid2 == mid3
+                              ]
+                            ,"==============================================="
+                            ,"join to loadmodules"
+                            , [(al,is,al1, mid2, mm)
+                              | (_,al,_) <- reverse $ view reProvideFroms re
+                              , (_,is,al1) <- view reImports re
+                              , (is2,mid2) <- view reImportSources re
+                              , (mid3, ModuleMetadata mm) <- view reModuleMetadatas re
+                              , al == [al1]
+                              , is == is2
+                              , mid2 == mid3
+                              ]
+                            ,"==============================================="
+                            )
+                            )-}
+                  [ (canonicalAl, metas)
+                  | (_,al,_) <- reverse $ view reProvideFroms re
+                  , (_,is,al1) <- view reImports re
+                  , (is2,mid2) <- view reImportSources re
+                  , (mid3, ModuleMetadata metas) <- view reModuleMetadatas re
+                  , (mid4,canonicalAl) <- view reLoadModules re
+                  , al == [al1]
+                  , is == is2
+                  , mid2 == mid3
+                  , mid3 == mid4
+                  ]
+                  
+             mm = mm1 ++ mm2
+             rc = rc1 ++ rc2
+         in ([], (ModuleMetadata mm, Just rc))
 
 ------------------------------------------------------------------------------
 
 createBinding :: Bool -> S.SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-createBinding _shadow _sp i re =
-    ([],over reBindings (i:) re)
+createBinding _shadow sp i re =
+    let b = RenamerBindingEntry [i] sp BEIdentifier (view reCurrentOriginIDName re,sp) True
+    in ([],over reBindings (([i],b):) re)
 
 createBindings :: [(Bool, S.SourcePosition, Text)] -> RenamerEnv -> ([StaticError], RenamerEnv)
 createBindings [] re = ([],re)
@@ -216,8 +355,9 @@ createBindings ((sh,sp,nm):bs) re =
     in first (es++) $ createBindings bs re'
 
 createVar :: Bool -> S.SourcePosition -> Text -> RenamerEnv -> ([StaticError], RenamerEnv)
-createVar _shadow _sp i re =
-    ([],over reBindings (i:) re)
+createVar _shadow sp i re =
+    let b = RenamerBindingEntry [i] sp BEVariable (view reCurrentOriginIDName re,sp) True
+    in ([],over reBindings (([i],b):) re)
 
 createType :: S.SourcePosition
              -> Text
@@ -225,15 +365,48 @@ createType :: S.SourcePosition
              -> [(S.SourcePosition, Text)] -- variant names
              -> RenamerEnv
              -> ([StaticError], RenamerEnv)
-createType _sp i _numParams vs re =
-    let bs = [renameTypeName i, "is-" <> i]
-             ++ concat (flip map vs (\(_vsp,vnm) -> [vnm, "is-" <> vnm, "_variant-" <> vnm]))
+createType sp i numParams vs re =
+    -- create _type-x, is-x, for variants: is-x, _variant-x, x
+    let renamedTypeName = renameTypeName i
+        oid = (view reCurrentOriginIDName re,sp)
+        makeSimpleEntry nm = ([nm], RenamerBindingEntry [nm] sp BEIdentifier oid True)
+        bs = [([renamedTypeName], RenamerBindingEntry [renamedTypeName] sp (BEType numParams) oid True)
+             ,makeSimpleEntry ("is-" <> i)]
+             ++ concat (flip map vs (\(_vsp,vnm) ->
+                 [makeSimpleEntry vnm
+                 ,makeSimpleEntry ("is-" <> vnm)
+                 -- todo: need to track the number of args for each variant
+                 ,(["_variant-" <> vnm], RenamerBindingEntry ["_variant-" <> vnm] sp (BEVariant 1) oid True)]))
+        -- todo: add the data entry for data provide item export
     in ([],over reBindings (bs ++) re)
 
-  -- create _type-x, is-x, for variants: is-x, _variant-x, x
-
 renameIdentifier :: [(S.SourcePosition, Text)] -> RenamerEnv -> ([StaticError], [(S.SourcePosition,Text)])
-renameIdentifier x _re = ([], x)
+-- temp hack before include implemented
+renameIdentifier x@[(_, "burdock2023")] _ = ([], x)
+-- need to figure out a better way to handle this - at least namespace it,
+-- plus it should be a regular value you can assign and pass around and stuff
+renameIdentifier x@[(_, "list")] _ = ([], x)
+-- similar comments, but this isn't namespaced, and it cannot be assigned
+-- and passed around
+renameIdentifier x@[(_, "run-task")] _ = ([], x)
+--renameIdentifier x@[(_, "make-haskell-list")] _ = ([], x)
+
+renameIdentifier x@((sp,_):_) re =
+    case lookup (map snd x) (view reBindings re) of
+        Nothing ->
+            -- field access - check the prefix
+            case x of
+                [_] -> --trace "1" (x, view reBindings re)
+                     ([UnrecognisedIdentifier sp (map snd x)], x)
+                _ -> case renameIdentifier (init x) re of
+                    ([], ys) -> ([], ys ++ [last x])
+                    -- if the prefix isn't found, return the original error
+                    -- later might want to do something different depending on the error?
+                    _ -> --trace "2" x
+                        ([UnrecognisedIdentifier sp (map snd x)], x)
+        -- todo: if this is a type or module alias, then error
+        Just (RenamerBindingEntry cn _ _ _ _) -> ([], map (sp,) cn)
+renameIdentifier [] _ = error $ "internal error: empty identifier"
 
 -- same as renameIdentifier, but for type names
 renameType :: S.SourcePosition -> [Text] -> RenamerEnv -> ([StaticError], (S.SourcePosition,[Text]))
@@ -257,7 +430,28 @@ data RenameBinding
 -- doesn't check for identifier renamed, for this function,
 -- you create bindings in a separate step (todo: reconsider this inconsistency)
 renameBinding :: RenameBinding -> RenamerEnv -> ([StaticError], RenameBinding)
-renameBinding b _re = ([],b)
+renameBinding b re =
+    case b of
+        NameBinding sp nm ->
+            case lookup [renameVariantPattern nm] (view reBindings re) of
+                -- todo: check number of args, if it isn't 0, it should be
+                -- an error
+                Just (RenamerBindingEntry cn _ (BEVariant numP) _ _) ->
+                    ([], VariantBinding sp cn numP)
+                Nothing -> ([], b)
+                -- error: should be caught when attempt to apply the binding
+                Just _ -> ([], b)
+        VariantBinding sp nm _numP ->
+            -- todo: check number of args match
+            case lookup (renameQVariantPattern nm) (view reBindings re) of
+                Just (RenamerBindingEntry cn _ (BEVariant numP) _ _) ->
+                    ([], VariantBinding sp cn numP)
+                -- temp hack
+                --Just (RenamerBindingEntry cn _ _ _ _) ->
+                --    ([], VariantBinding sp cn 42)
+                Just x -> error $ show x
+                _ -> --trace "didn't find: " (nm,renameQVariantPattern nm, view reBindings re)
+                    ([UnrecognisedIdentifier sp nm], b)
 
 -- check if the target of the assign is a variable
 -- plus rename the target if it needs it
@@ -294,7 +488,7 @@ when providing names, if they are variants, you export/import and rename
 renameVariantPattern :: Text -> Text
 renameVariantPattern = ("_variant-" <>)
 
-_renameQVariantPattern :: [Text] -> [Text]
-_renameQVariantPattern x = if null x
+renameQVariantPattern :: [Text] -> [Text]
+renameQVariantPattern x = if null x
     then error $ "empty qvariantname"
     else init x ++ [renameVariantPattern $ last x]

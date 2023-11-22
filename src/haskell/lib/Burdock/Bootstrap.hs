@@ -9,6 +9,7 @@ built in ffi module used to bootstrap the interpreter/handle
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TupleSections #-}
 module Burdock.Bootstrap
     (burdockBootstrapModule
     ) where
@@ -33,10 +34,14 @@ import Data.IORef
 import qualified Burdock.Runtime as R
 import Burdock.Runtime (Value)
 import Burdock.Scientific (Scientific, showScientific)
+import Burdock.ModuleMetadata
+    (ModuleMetadata(..)
+    ,BindingMeta(..)
+    )
 
 ------------------------------------------------------------------------------
 
-burdockBootstrapModule :: R.Runtime [(Text, Value)]
+burdockBootstrapModule :: R.Runtime (ModuleMetadata, Value)
 burdockBootstrapModule = R.withScope $ do
 
     --liftIO $ putStrLn "**********************LOAD BOOSTRAP"
@@ -82,56 +87,60 @@ and move the rest into runtime itself too
 so you can compare both and see which is nicer
 
 -}
-    
-    pure [
 
-          -- core language types
-          ("_type-ffitag", burdockFFITag)
-         ,("_type-number", burdockNumberTag)
-         ,("_type-haskell-list", haskellListTag)
-         ,("_type-variant-tag", variantTag)
-
-         ,("_type-tuple", tupleTypeFFITag)
-         ,("_variant-tuple", tupleVariantFFITag)
-         ,("_type-record", recordTypeFFITag)
-         ,("_variant-record", recordVariantFFITag)
-
-         ,("show-tuple", R.Fun showTuple)
-         ,("show-record", R.Fun showRecord)
-
-         ,("true", R.Boolean True)
-         ,("false", R.Boolean False)
-         
-         ,("nothing", R.BNothing)
-         ,("raise", R.Fun bRaise)
-         ,("haskell-error", R.Fun haskellError)
-
-         ,("not", R.Fun bNot)
-
-         -- data decl support
-         ,("make-data-decl-tag", R.Fun (makeDataDeclTag dataDeclTagTI))
-         ,("is-type", R.Fun $ isType dataDeclTagTI)
-         ,("make-variant-tag", R.Fun (makeVariantTag dataDeclTagTI variantTagTI))
-         ,("is-variant", R.Fun (isVariant variantTagTI))
-         ,("make-variant", R.Fun (makeVariant variantTagTI haskellListTI))
-         ,("variants-equal", R.Fun (variantsEqual haskellListTI))
-         ,("show-variant", R.Fun (showVariant haskellListTI))
-         ,("make-haskell-list", R.Fun (makeHaskellList haskellListTI))
-
-         ,("make-module", R.Fun makeModule) -- rename to make module value?
-         -- temp hack, will be handled in the renamer
-         ,("include-all", R.Fun includeAll)
-
-          -- todo: the below should be moved to other modules/namespaces
-          -- test framework plugin
-         ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
-         ,("get-test-passes", R.Fun (getTestVal testLog 0 burdockNumberTI))
-         ,("get-test-failures", R.Fun (getTestVal testLog 1 burdockNumberTI))
-
-          -- misc
-         ,("tostring", R.Fun bToString)
-         ,("print", R.Fun bPrint)
-         ]
+    let bs' = [-- core language types
+              (BEType 0, ("_type-ffitag", burdockFFITag))
+             ,(BEType 0, ("_type-number", burdockNumberTag))
+             ,(BEType 0, ("_type-haskell-list", haskellListTag))
+             ,(BEType 0, ("_type-variant-tag", variantTag))
+             
+             ,(BEType 0, ("_type-tuple", tupleTypeFFITag))
+             ,(BEVariant (-1), ("_variant-tuple", tupleVariantFFITag))
+             ,(BEType 0, ("_type-record", recordTypeFFITag))
+             ,(BEVariant (-1), ("_variant-record", recordVariantFFITag))
+             ]
+             ++ map (BEIdentifier,)
+             [("show-tuple", R.Fun showTuple)
+             ,("show-record", R.Fun showRecord)
+             
+             ,("true", R.Boolean True)
+             ,("false", R.Boolean False)
+             
+             ,("nothing", R.BNothing)
+             ,("raise", R.Fun bRaise)
+             ,("haskell-error", R.Fun haskellError)
+             
+             ,("not", R.Fun bNot)
+             
+             -- data decl support
+             ,("make-data-decl-tag", R.Fun (makeDataDeclTag dataDeclTagTI))
+             ,("is-type", R.Fun $ isType dataDeclTagTI)
+             ,("make-variant-tag", R.Fun (makeVariantTag dataDeclTagTI variantTagTI))
+             ,("is-variant", R.Fun (isVariant variantTagTI))
+             ,("make-variant", R.Fun (makeVariant variantTagTI haskellListTI))
+             ,("variants-equal", R.Fun (variantsEqual haskellListTI))
+             ,("show-variant", R.Fun (showVariant haskellListTI))
+             ,("make-haskell-list", R.Fun (makeHaskellList haskellListTI))
+             
+             ,("make-module", R.Fun makeModule) -- rename to make module value?
+             -- temp hack, will be handled in the renamer
+             ,("include-all", R.Fun includeAll)
+             
+             -- todo: the below should be moved to other modules/namespaces
+             -- test framework plugin
+             ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
+             ,("get-test-passes", R.Fun (getTestVal testLog 0 burdockNumberTI))
+             ,("get-test-failures", R.Fun (getTestVal testLog 1 burdockNumberTI))
+             
+             -- misc
+             ,("tostring", R.Fun bToString)
+             ,("print", R.Fun bPrint)
+             ]
+        -- todo: what's a nice way to make all the originids unique for ffi code
+        -- also, this is rubbish hack
+        (ms, bs) = unzip $ flip map bs' $ \(t,(n,v)) ->
+            ((n, Nothing, t, ("<bootstrap>",Nothing)), (n,v))
+    pure (ModuleMetadata ms, (R.Module bs))
 
 {-
 

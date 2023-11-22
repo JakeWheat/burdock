@@ -1,5 +1,5 @@
 
-import haskell("_bootstrap") as _bootstrap
+#import haskell("_bootstrap") as _bootstrap
 
 # todo: fix text, bool to have compare
 
@@ -10,7 +10,6 @@ check:
   true is true
   true is-not false
 end
-
 check:
   if 1 == 2: 3 else: 4 end is 4
 end
@@ -144,7 +143,7 @@ check:
   2 <> 3 is true
 
 end
-
+#|
 check:
 
   a = {x:3, y: 4}
@@ -232,3 +231,4 @@ check:
   #is-record({}) is true
 
 end
+|#

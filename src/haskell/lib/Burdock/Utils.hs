@@ -24,7 +24,7 @@ import Control.Exception.Safe
     ,SomeException
     ,MonadCatch
     )
-
+import Text.Show.Pretty (ppShow)
 
 error :: HasCallStack => T.Text -> a
 error = P.error . T.unpack
@@ -33,10 +33,10 @@ show :: Show a => a -> T.Text
 show = T.pack . P.show
 
 trace :: Show a => T.Text -> a -> b -> b
-trace msg val e = DT.trace (T.unpack (msg <> show val)) e
+trace msg val e = DT.trace (T.unpack (msg <> (T.pack $ ppShow val))) e
 
 traceit :: Show a => T.Text -> a -> a
-traceit msg val = DT.trace (T.unpack (msg <> show val)) val
+traceit msg val = DT.trace (T.unpack (msg <> (T.pack $ ppShow val))) val
 
 emacsShowPos :: Maybe (T.Text, Int, Int) -> T.Text
 emacsShowPos Nothing = "unknown:"

@@ -12,6 +12,7 @@ import Burdock.Utils (error, show)
 --import qualified Data.Text.Lazy.IO as L
 
 import Data.Text (Text)
+--import qualified Data.Text as T
 import Control.Monad.IO.Class (liftIO)
 
 import Data.IORef
@@ -81,7 +82,9 @@ interpExpr (I.DotExpr sp e1 fld) = do
 interpExpr (I.Iden sp nm) = do
     b <- R.lookupBinding nm
     case b of
-        Nothing -> error $ show sp <> " binding not found: " <> nm
+        Nothing -> --do
+            --bs <- R.debugGetBindings
+            error $ show sp <> " binding not found: " <> nm --  <> "\n" <> T.unlines (map fst bs)
         Just (R.Box v) -> liftIO $ readIORef v
         Just v -> pure v
 

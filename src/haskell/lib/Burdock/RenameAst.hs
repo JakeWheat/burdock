@@ -12,11 +12,15 @@ module Burdock.RenameAst
 
 import Prelude hiding (error, show, putStrLn)
 import Burdock.Utils (error, show)
+--import Burdock.Utils (trace)
 
 import Data.Text (Text)
+--import qualified Data.Text.Lazy as L
 
 import qualified Burdock.Syntax as S
 import Burdock.StaticError (StaticError(..))
+
+--import qualified Burdock.Pretty as P
 
 import Burdock.ModuleMetadata
     (ModuleMetadata(..)
@@ -45,27 +49,27 @@ import Control.Arrow (first, second)
 ------------------------------------------------------------------------------
 
 getImportSources :: S.Script -> [S.ImportSource]
-getImportSources (S.Script ss') =
-    let (r,ss) = getUseContext ss'
-    in r ++ concatMap getImportSourceInfo ss
+getImportSources (S.Script ss) =
+    concatMap getImportSourceInfo $ rewriteUseContext ss
   where
-    getUseContext (S.UseContext _ (S.ImportName ["_bootstrap-interpreter"]) : ss) =
-        ([], ss)
-    getUseContext (S.UseContext _ (S.ImportName ["_base"]) : ss) =
-        ([S.ImportSpecial "haskell" ["_interpreter"]], ss)
-    getUseContext (S.UseContext _ (S.ImportName ["burdock2023"]) : ss) =
-        ([S.ImportSpecial "haskell" ["_interpreter"]
-         ,S.ImportSpecial "haskell" ["burdock2023"]]
-        ,ss)
-    getUseContext ss =
-        ([S.ImportSpecial "haskell" ["_interpreter"]
-         ,S.ImportSpecial "haskell" ["burdock2023"]]
-        ,ss)
-    getImportSourceInfo (S.StmtExpr _ (S.Block _ ssx')) = concatMap getImportSourceInfo ssx'
     getImportSourceInfo (S.Import _ s _) = [s]
     getImportSourceInfo (S.Include _ s) = [s]
     getImportSourceInfo (S.ImportFrom _ s _) = [s]
     getImportSourceInfo _x = []
+
+------------------------------------------------------------------------------
+
+rewriteUseContext :: [S.Stmt] -> [S.Stmt]
+rewriteUseContext = \case
+    [] -> importInterpreter : includeBurdock2023 : []
+    (S.UseContext _ (S.ImportName ["_bootstrap-interpreter"]) : ss) -> ss
+    (S.UseContext _ (S.ImportName ["_base"]) : ss) -> importInterpreter : ss
+    (S.UseContext _ (S.ImportName ["burdock2023"]) : ss) -> importInterpreter : includeBurdock2023 : ss
+    ss -> importInterpreter : includeBurdock2023 : ss
+  where
+    importInterpreter = S.Import n (S.ImportSpecial "haskell" ["_interpreter"]) "_interpreter"
+    includeBurdock2023 = S.Include n (S.ImportSpecial "haskell" ["burdock2023"])
+    n = Nothing
 
 ------------------------------------------------------------------------------
 
@@ -85,7 +89,7 @@ rename :: Text
        -> Either [StaticError] (ModuleMetadata, S.Script)
 rename modID is ctx (S.Script stmts) = 
     errToEither $ runRenamer modID is ctx $ do
-        (re, stmts') <- rewriteUseContext stmts
+        (re, stmts') <- rewritePreludeStmts $ rewriteUseContext stmts
         (mm,ret) <- liftErrs $ R.applyProvides re
         let rscr = case ret of
                        Nothing -> stmts'
@@ -107,32 +111,6 @@ liftErrs (es, a) = tell es >> pure a
 callWithEnv :: (R.RenamerEnv -> ([StaticError], b)) -> Renamer b
 callWithEnv f = liftErrs =<< f <$> ask
 
-------------------------------------------------------------------------------
-
-rewriteUseContext :: [S.Stmt] -> Renamer (R.RenamerEnv, [S.Stmt])
--- _bootstrap-interpreter means no context
-rewriteUseContext (S.UseContext _ (S.ImportName ["_bootstrap-interpreter"]) : ss) =
-    rewritePreludeStmts ss
-    
--- _base means only the _interpreter module
-rewriteUseContext (S.UseContext _ (S.ImportName ["_base"]) : ss) =
-    useContextToImports ["_interpreter"] ss
-
-rewriteUseContext (S.UseContext _ (S.ImportName ["burdock2023"]) : ss) =
-    useContextToImports ["_interpreter", "burdock2023"] ss
-
-rewriteUseContext (S.UseContext _ x : _) = error $ "unsupported context" <> show x
-
-rewriteUseContext ss =
-    useContextToImports ["_interpreter", "burdock2023"] ss
-
-useContextToImports :: [Text] -> [S.Stmt] -> Renamer (R.RenamerEnv, [S.Stmt])
-useContextToImports is ss =
-    rewritePreludeStmts $ map imp is ++ ss
-  where
-    imp i = S.Import n (S.ImportSpecial "haskell" [i]) i
-    n = Nothing
-    
 ------------------------------------------------------------------------------
 
 rewritePreludeStmts :: [S.Stmt] -> Renamer (R.RenamerEnv, [S.Stmt])
@@ -164,15 +142,16 @@ rewritePreludeStmts (S.ProvideFrom sp al pis : ss) = do
 -- non prelude statement - output the desugared imports then
 -- go to regular processing
 rewritePreludeStmts ss = do
-    lms <- callWithEnv R.queryLoadModules
-    -- temp hack: if burdock2023 is imported, include-all it
-    -- this will not be needed once the renamer is actually working
-    let extra = if "burdock2023" `elem` map snd lms
-                then [tempIncludeAll]
-                else []
-    --trace "balls" lms $ pure ()
-    let f (ModuleID nm as) alias = S.Import Nothing (S.ImportSpecial nm as) alias
-    second (map (uncurry f) lms ++) <$> rewriteStmts (extra ++ ss)
+    (re, lms) <- callWithEnv R.queryLoadModules
+    local (const re) $ do
+        -- temp hack: if burdock2023 is imported, include-all it
+        -- this will not be needed once the renamer is actually working
+        let extra = if "burdock2023" `elem` map snd lms
+                    then [tempIncludeAll]
+                    else []
+        --trace "balls" lms $ pure ()
+        let f (ModuleID nm as) alias = S.Import Nothing (S.ImportSpecial nm as) alias
+        second (map (uncurry f) lms ++) <$> rewriteStmts (extra ++ ss)
 
 tempIncludeAll :: S.Stmt
 tempIncludeAll =

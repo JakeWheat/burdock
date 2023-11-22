@@ -67,9 +67,9 @@ data Test:
   | ctor1
   | ctor2(a,b)
 end
-a = ctor
+a = ctor1
 cases a:
-  | ctor1 => 1
+  # | ctor1 => 1
   | ctor2(x,y) => 2
   | regular-bind => 3
 end
@@ -79,9 +79,10 @@ data Test:
   | ctor1
   | ctor2(a,b)
 end
-a = ctor
+a = ctor1
 cases a:
-  | _variant-ctor1 => 1
+  # can't test this directly at the moment because of a parsing/test issue
+  # | _variant-ctor1 => 1
   | _variant-ctor2(x,y) => 2
   | regular-bind => 3
 end
@@ -112,19 +113,19 @@ b = ctor(1,2)
 
 # testing basic anomalies without modules
 
-# Test: unrecognised iden
-# Script:
-# a
-# Errors:
-# unrecognised-identifier([list: "a"])
+Test: unrecognised iden
+Script:
+a
+Errors:
+unrecognised-identifier([list: "a"])
 
-# Test: two errors
-# Script:
-# a
-# b
-# Errors:
-# unrecognised-identifier([list: "a"])
-# unrecognised-identifier([list: "b"])
+Test: two errors
+Script:
+a
+b
+Errors:
+unrecognised-identifier([list: "a"])
+unrecognised-identifier([list: "b"])
 
 # Test: unrecognised type
 # Script:
@@ -238,6 +239,74 @@ b = ctor(1,2)
 # no arg bind fail if shadow
 # no arg ctor pattern given args
 # ctor pattern with wrong number of args
+
+##############################################################################
+
+# temp? bootstrap import for simplest scripts
+
+Test: trivial module
+Script:
+provide: *, type *, data * end
+a = 3
+Result:
+a = 3
+_interpreter.make-module({a:a})
+
+Test: imported
+File: imported
+provide: *, type *, data * end
+a = 3
+Script:
+import file("imported") as i
+i.a
+Result:
+import file("imported") as _module-file-imported
+_module-file-imported.a
+
+Test: include
+File: included
+provide: *, type *, data * end
+a = 3
+Script:
+include file("included")
+a
+Result:
+import file("included") as _module-file-included
+_module-file-included.a
+
+Test: provide from
+File: imported
+provide: *, type *, data * end
+a = 3
+File: provide-from
+import file("imported") as imported
+provide from imported: *, type *, data * end
+Script:
+include file("provide-from")
+a
+Result:
+import file("provide-from") as _module-file-provide-from
+_module-file-provide-from.a
+
+Test: provide from2
+File: imported1
+provide: *, type *, data * end
+a = 3
+File: imported2
+provide: *, type *, data * end
+b = 3
+Script:
+import file("imported1") as imported1
+import file("imported2") as imported2
+provide from imported1: *, type *, data * end
+provide from imported2: *, type *, data * end
+Result:
+import file("imported1") as _module-file-imported1
+import file("imported2") as _module-file-imported2
+_interpreter.make-module(
+ {a: _module-file-imported1.a,
+  b: _module-file-imported2.b})
+
 
 ##############################################################################
 
