@@ -159,20 +159,18 @@ newDataDeclTag tnm = do
 
 data RuntimeState
     = RuntimeState
-    {rtBindings :: IORef [(Text, Value)]
+    {rtBindings :: [(Text, Value)]
+    ,rtFFITypeInfoTypeInfo :: FFITypeInfo
     ,rtAutoDataDeclID :: IORef Int
     ,rtAutoFFITypeID :: IORef Int
-    ,rtFFITypeInfoTypeInfo :: FFITypeInfo
     ,rtModulePlugins :: IORef [(Text, ModulePlugin)]
     }
 
 makeRuntimeState :: IO RuntimeState
 makeRuntimeState = do
-    st <- RuntimeState
-        <$> newIORef []
+    st <- RuntimeState [] (error "delayed initialisation")
+        <$> newIORef 0
         <*> newIORef 0
-        <*> newIORef 0
-        <*> pure (error "delayed initialisation")
         <*> newIORef []
     -- does this need to be here? try to move it to bootstrap
     tinf <- runRuntime st $
@@ -203,10 +201,7 @@ runRuntime st f = runReaderT f st
 -- share the same module cache, but then this would be copied to a new
 -- tvar when using the container system
 getRuntimeRunner :: Runtime (Runtime a -> IO a)
-getRuntimeRunner = do
-    st <- ask
-    bs <- liftIO (newIORef =<< readIORef (rtBindings st))
-    pure $ runRuntime st {rtBindings = bs}
+getRuntimeRunner = runRuntime <$> ask
 
 --------------------------------------
 
@@ -214,16 +209,12 @@ withScope :: Runtime a -> Runtime a
 withScope f = localEnv id f
 
 withNewEnv :: [(Text,Value)] -> Runtime a -> Runtime a
-withNewEnv bs f = do
-    b1 <- liftIO $ newIORef bs
-    local (\y -> y {rtBindings = b1}) f
+withNewEnv bs f = local (\y -> y {rtBindings = bs}) f
 
 localEnv :: ([(Text,Value)] -> [(Text,Value)]) -> Runtime a -> Runtime a
 localEnv f stuff = do
-    rtb <- rtBindings <$> ask
-    rtbv <- liftIO $ readIORef rtb
-    rtbvn <- liftIO $ newIORef (f rtbv)
-    local (\s -> s {rtBindings = rtbvn}) stuff
+    rtbv <- rtBindings <$> ask
+    local (\s -> s {rtBindings = f rtbv}) stuff
 
 app :: SP -> Value -> [Value] -> Runtime Value
 app _sourcePos (Fun f) args = f args
@@ -235,32 +226,24 @@ app _ v _ = error $ "bad arg to app " <> debugShowValue v
 -- at some point
 captureClosure :: [Text] -> Runtime [(Text,Value)]
 captureClosure nms = do
-    -- todo: error if any names aren't found
-    rtb <- rtBindings <$> ask
-    rtbv <- liftIO (readIORef rtb)
+    -- error if any names aren't found
+    rtbv <- rtBindings <$> ask
     -- could consider making this optional if it's a performance issue, seems unlikely
     -- given how inefficient everything else is
     let missing = nms \\ map fst rtbv
         -- todo: get to the point this hack isn't needed to make it work
         -- run-task: special case in the desugarer, don't add this syntax
-        -- _variant: once the renamer is working, this will be accurate and
-        -- can be removed
         missingHack = filter (`notElem` ["run-task"])
                       missing
     when (not $ null missingHack) $
         error $ "closure capture items not found: " <> show missingHack
     pure $ filter ((`elem` nms) . fst) rtbv
 
-addBinding :: Text -> Value -> Runtime ()
-addBinding nm v = do
-    stb <- rtBindings <$> ask
-    liftIO $ modifyIORef stb ((nm,v):)
+addBinding :: Text -> Value -> Runtime a -> Runtime a
+addBinding nm v f = local (\x -> x {rtBindings = ((nm,v): rtBindings x)}) f
 
 lookupBinding :: Text -> Runtime (Maybe Value)
-lookupBinding nm = do
-    x <- rtBindings <$> ask
-    x1 <- liftIO $ readIORef x
-    pure $ lookup nm x1
+lookupBinding nm = lookup nm . rtBindings <$> ask
 
 getMember :: SP -> Value -> Text -> Runtime Value
 

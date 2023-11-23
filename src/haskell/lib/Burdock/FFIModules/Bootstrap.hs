@@ -3,6 +3,24 @@
 
 built in ffi module used to bootstrap the interpreter/handle
 
+Not sure about this at all.
+
+What you definitely need, is some of the items below, like the types
+and some of the user accessible functions, to be in a bootstrap ffi
+and bound to burdock names.
+
+especially, the data decl support functions and the make module,
+these could just be interpreter syntax directly, and cut out the middle
+man and all the indirection. It would make the runtime and interpreter
+syntax a lot more bulky, but all that exists, the current method just
+misleadingly hides it. plus it's not complex, it's just extra lines
+of relatively simple code.
+
+the only benefit is that the runtime module is less cluttered, but
+maybe it will still be perfectly manageable with this folded into it.
+
+revisit this after doing all the ffi helper code
+
 -}
 
 
@@ -75,19 +93,6 @@ burdockBootstrapModule = R.withScope $ do
     recordTypeFFITag <- R.makeFFIValue dataDeclTagTI recordDeclTag
     recordVariantFFITag <- R.makeFFIValue variantTagTI recordVariantTag
 
-{-
-TODO: review these
-
-quite a lot of these functions (and values) could become specialised syntax
-would this make the code simpler? e.g. if you added all the data decl support
-functions to I.Expr, then you'd remove a layer of redirection
-which is easier to read and maintain?
-produce a version of the code where you try to make as much pure syntax as possible
-and move the rest into runtime itself too
-so you can compare both and see which is nicer
-
--}
-
     let bs' = [-- core language types
               (BEType 0, ("_type-ffitag", burdockFFITag))
              ,(BEType 0, ("_type-number", burdockNumberTag))
@@ -127,7 +132,6 @@ so you can compare both and see which is nicer
              ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
              ,("get-test-passes", R.Fun (getTestVal testLog 0 burdockNumberTI))
              ,("get-test-failures", R.Fun (getTestVal testLog 1 burdockNumberTI))
-             
              ]
         -- todo: what's a nice way to make all the originids unique for ffi code
         -- also, this is rubbish hack
@@ -300,12 +304,10 @@ bRaise :: [Value] -> R.Runtime Value
 bRaise [v] = R.throwM $ R.ValueException v
 bRaise _ = error "bad args to bRaise" 
 
-
 makeModule :: [Value] -> R.Runtime Value
 -- todo: check the tag
 makeModule [R.Variant _ fs] = pure $ R.Module fs
 makeModule _ = error "bad args to makeModule"
-
 
 bNot :: [Value] -> R.Runtime Value
 bNot [R.Boolean t] = pure $ R.Boolean $ not t

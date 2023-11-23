@@ -28,23 +28,26 @@ interpBurdock :: [I.Stmt] -> R.Runtime R.Value
 interpBurdock = interpStmts
 
 interpStmts :: [I.Stmt] -> R.Runtime R.Value
-interpStmts [] = error "no statements" -- todo: change to return nothing
+interpStmts [] = pure R.BNothing
+
+interpStmts (I.LetDecl _ b e : ss) = do
+    v <- interpExpr e
+    letValues [(b,v)] $ interpStmts ss
+
+-- todo: make vars abstract, move to runtime
+interpStmts (I.VarDecl sp nm e : ss) = do
+    v <- interpExpr e
+    r <- R.makeVar v
+    letValues [(I.NameBinding sp nm, r)] $ interpStmts ss
+
+interpStmts (I.ImportAs sp nm (p,as) : ss) = do
+    v <- R.getModuleValue (R.ModuleID p as)
+    letValues [(I.NameBinding sp nm, v)] $ interpStmts ss
+    
 interpStmts [s] = interpStmt s
 interpStmts (s:ss) = interpStmt s *> interpStmts ss
 
 interpStmt :: I.Stmt -> R.Runtime R.Value
-
-interpStmt (I.LetDecl _ b e) = do
-    v <- interpExpr e
-    letValues [(b,v)]
-    pure R.BNothing
-
--- todo: make vars abstract, move to runtime
-interpStmt (I.VarDecl sp nm e) = do
-    v <- interpExpr e
-    r <- R.makeVar v
-    letValues [(I.NameBinding sp nm, r)]
-    pure R.BNothing
 
 interpStmt (I.SetVar sp [nm] e) = do
     v <- interpExpr e
@@ -53,11 +56,6 @@ interpStmt (I.SetVar sp [nm] e) = do
     pure R.BNothing
 
 interpStmt (I.StmtExpr _ e) = interpExpr e
-
-interpStmt (I.ImportAs sp nm (p,as)) = do
-    v <- R.getModuleValue (R.ModuleID p as)
-    letValues [(I.NameBinding sp nm, v)]
-    pure R.BNothing
 
 interpStmt s = error $ "interpStmt: " <> show s
 
@@ -101,9 +99,7 @@ interpExpr (I.Lam _sp fvs bs bdy) = do
         runF vs = do
             -- todo: check lists same length
             let bs' = zip bs vs
-            R.withNewEnv env $ do
-                letValues bs'
-                interpStmts bdy
+            R.withNewEnv env $ letValues bs' $ interpStmts bdy
     pure $ R.Fun runF
 
 interpExpr (I.If sp bs' mels) =
@@ -211,12 +207,17 @@ interpExpr (I.TupleGet _ e n) = do
 
 ------------------------------------------------------------------------------
 
-letValues :: [(I.Binding, R.Value)] -> R.Runtime ()
-letValues bs = flip mapM_ bs $ \(b,v) -> do
+letValues :: [(I.Binding, R.Value)] -> R.Runtime a -> R.Runtime a
+letValues [] f = f
+letValues ((b,v):bs) f = do
     mbs <- tryApplyBinding Nothing b v
     case mbs of
         Nothing -> error $ "couldn't bind " <> R.debugShowValue v <> " to " <> show b
-        Just bs' -> mapM_ (uncurry R.addBinding) bs'
+        Just bs' -> letSimple bs' $ letValues bs f
+
+letSimple :: [(Text, R.Value)] -> R.Runtime a-> R.Runtime a
+letSimple [] f = f
+letSimple ((nm,v):bs) f = R.addBinding nm v $ letSimple bs f
 
 ------------------------------------------------------------------------------
 

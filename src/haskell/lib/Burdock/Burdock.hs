@@ -156,10 +156,6 @@ createHandle = do
 
     pure $ Handle st
 
-_quickImportModule :: Text -> R.Runtime ()
-_quickImportModule nm =
-    R.addBinding nm =<< R.getModuleValue (R.ModuleID "haskell" [nm])
-
 fileNameToModuleID :: Text -> ModuleID
 fileNameToModuleID nm = ModuleID burdockPluginName [nm]
 
