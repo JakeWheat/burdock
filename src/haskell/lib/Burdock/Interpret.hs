@@ -12,7 +12,7 @@ import Burdock.Utils (error, show)
 --import qualified Data.Text.Lazy.IO as L
 
 import Data.Text (Text)
---import qualified Data.Text as T
+import qualified Data.Text as T
 import Control.Monad.IO.Class (liftIO)
 
 import Data.IORef
@@ -22,6 +22,8 @@ import qualified Burdock.InterpreterSyntax as I
 --import qualified Burdock.PrettyInterpreter as I
 import qualified Burdock.Runtime as R
 
+import Burdock.Rename (intMod)
+
 ------------------------------------------------------------------------------
 
 interpBurdock :: [I.Stmt] -> R.Runtime R.Value
@@ -29,6 +31,16 @@ interpBurdock = interpStmts
 
 interpStmts :: [I.Stmt] -> R.Runtime R.Value
 interpStmts [] = pure R.BNothing
+
+-- the other solution here, is to not have letdecl, vardecl, import as
+-- as interpreter syntax, but only a let <bindings> in expression form
+-- a remaining reason why originally moved away from let expression style,
+-- was that it took a bunch of hacks to make the pretty printed interpreter
+-- syntax readable again. not sure if this is a good enough reason to
+-- stick with this statement form
+-- but there's not that much difference in the end between the two approaches
+-- the interp here currently is just actually simulating the let expression
+-- style when given the letdecl style syntax
 
 interpStmts (I.LetDecl _ b e : ss) = do
     v <- interpExpr e
@@ -65,7 +77,7 @@ interpExpr :: I.Expr -> R.Runtime R.Value
 
 interpExpr (I.Num _sp n) = do
     --liftIO $ putStrLn $ show sp
-    Just bs <- R.lookupBinding "_interpreter"
+    Just bs <- R.lookupBinding intMod
     bnum <- R.getMember Nothing bs "_type-number"
     ti <- R.getFFITypeInfoTypeInfo
     Right (nti :: R.FFITypeInfo) <- R.extractFFIValue ti bnum
@@ -129,8 +141,12 @@ interpExpr (I.Block _ stmts) = R.withScope $ interpStmts stmts
 
 interpExpr (I.RecordSel sp fs) = do
     fs' <- flip mapM fs $ \(n,e) -> (n,) <$> interpExpr e
-
-    Just bstp <- R.lookupBinding "_interpreter"
+    mbstp <- R.lookupBinding intMod
+    bstp <- case mbstp of
+            Just x -> pure x
+            Nothing -> do
+                ds <- R.debugGetBindings
+                error $ "no binding: " <> T.unlines (map fst ds)
     vvti <- R.getMember Nothing bstp "_type-variant-tag"
     ffiti <- R.getFFITypeInfoTypeInfo
     Right vvti' <- R.extractFFIValue ffiti vvti
@@ -138,17 +154,17 @@ interpExpr (I.RecordSel sp fs) = do
     Right ttag <- R.extractFFIValue vvti' ttagB
 
     let lam cl as e = I.Lam sp cl (map (I.NameBinding sp) as) ([I.StmtExpr sp e])
-        app f as = I.App sp (I.DotExpr sp (I.Iden sp "_interpreter") f) as
+        app f as = I.App sp (I.DotExpr sp (I.Iden sp intMod) f) as
         nms = map ((I.IString sp) . fst) fs
         eqs = I.MethodExpr sp
-            $ lam ["_interpreter"] ["a"]
-            $ lam ["_interpreter", "a"] ["b"]
+            $ lam [intMod] ["a"]
+            $ lam [intMod, "a"] ["b"]
             $ app "variants-equal" [app "make-haskell-list" nms
                                    ,I.Iden sp "a"
                                    ,I.Iden sp "b"]
         tor = I.MethodExpr sp
-            $ lam ["_interpreter"] ["a"]
-            $ lam ["_interpreter", "a"] []
+            $ lam [intMod] ["a"]
+            $ lam [intMod, "a"] []
             $ app "show-record" [I.Iden sp "a"]
     equals <- interpExpr eqs
     torepr <- interpExpr tor
@@ -156,7 +172,7 @@ interpExpr (I.RecordSel sp fs) = do
 
 interpExpr (I.RunTask _ e) = do
     r <- R.runTask $ interpExpr e
-    Just bstp <- R.lookupBinding "_interpreter"
+    Just bstp <- R.lookupBinding intMod
     bright <- R.getMember Nothing bstp "right"
     bleft <- R.getMember Nothing bstp "left"
     case r of
@@ -165,7 +181,7 @@ interpExpr (I.RunTask _ e) = do
 
 interpExpr (I.TupleSel sp es) = do
     vs <- mapM interpExpr es
-    Just bstp <- R.lookupBinding "_interpreter"
+    Just bstp <- R.lookupBinding intMod
     vvti <- R.getMember Nothing bstp "_type-variant-tag"
     ffiti <- R.getFFITypeInfoTypeInfo
     Right vvti' <- R.extractFFIValue ffiti vvti
@@ -177,17 +193,17 @@ interpExpr (I.TupleSel sp es) = do
     -- just cheat and recursively call interpExpr, can do it properly later
     -- method(a,b): variants-equal(make-haskell-list(map fst fs), a, b) end
     let lam cl as e = I.Lam sp cl (map (I.NameBinding sp) as) ([I.StmtExpr sp e])
-        app f as = I.App sp (I.DotExpr sp (I.Iden sp "_interpreter") f) as
+        app f as = I.App sp (I.DotExpr sp (I.Iden sp intMod) f) as
         nms = map ((I.IString sp) . fst) fs
         eqs = I.MethodExpr sp
-            $ lam ["_interpreter"] ["a"]
-            $ lam ["_interpreter", "a"] ["b"]
+            $ lam [intMod] ["a"]
+            $ lam [intMod, "a"] ["b"]
             $ app "variants-equal" [app "make-haskell-list" nms
                                    ,I.Iden sp "a"
                                    ,I.Iden sp "b"]
         tor = I.MethodExpr sp
-            $ lam ["_interpreter"] ["a"]
-            $ lam ["_interpreter", "a"] []
+            $ lam [intMod] ["a"]
+            $ lam [intMod, "a"] []
             $ app "show-tuple" [I.Iden sp "a"]
             
     -- liftIO $ L.putStrLn $ I.prettyStmts [I.StmtExpr Nothing x]
@@ -265,7 +281,7 @@ lookupVariantByName nm = do
         -- issue, which will be handled elsewhere, so assume it's ok to shadow
         Just vtg -> do
             -- vtg is a value, inside this value we want to find a variant tag
-            Just bstp <- R.lookupBinding "_interpreter"
+            Just bstp <- R.lookupBinding intMod
             vvti <- R.getMember Nothing bstp "_type-variant-tag"
             ffiti <- R.getFFITypeInfoTypeInfo
             Right vvti' <- R.extractFFIValue ffiti vvti

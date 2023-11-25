@@ -46,6 +46,8 @@ import Control.Monad.Writer
 
 import Control.Arrow (first, second)
 
+import Burdock.Rename (intMod)
+
 ------------------------------------------------------------------------------
 
 getImportSources :: S.Script -> [S.ImportSource]
@@ -102,7 +104,7 @@ rename modID is ctx (S.Script stmts) =
     makeModuleValue rs =
         let n = Nothing
             r = flip map rs $ \(as,b) -> (b, toIdenExpr $ map (n,) as)
-        in S.StmtExpr n $ S.App n (S.DotExpr n (S.Iden n "_interpreter") "make-module") [S.RecordSel n r]
+        in S.StmtExpr n $ S.App n (S.DotExpr n (S.Iden n intMod) "make-module") [S.RecordSel n r]
 
 errToEither :: (a, [StaticError]) -> Either [StaticError] a
 errToEither (a, []) = Right a

@@ -252,7 +252,7 @@ provide: *, type *, data * end
 a = 3
 Result:
 a = 3
-_interpreter.make-module({a:a})
+_module-haskell-_interpreter.make-module({a:a})
 
 Test: imported
 File: imported
@@ -305,7 +305,7 @@ provide from imported2: *, type *, data * end
 Result:
 import file("imported1") as _module-file-imported1
 import file("imported2") as _module-file-imported2
-_interpreter.make-module(
+_module-haskell-_interpreter.make-module(
  {a: _module-file-imported1.a,
   b: _module-file-imported2.b})
 

@@ -94,6 +94,8 @@ module Burdock.Rename
     ,renameTypeName
     ,renameVariantPattern
 
+    ,canonicalizeModuleName
+    ,intMod
     ) where
 
 import Prelude hiding (error, show, putStrLn)
@@ -167,6 +169,15 @@ makeRenamerEnv mnm is ctx = RenamerEnv is ctx [] [] [] [] [] [] [] mnm []
 
 ------------------------------------------------------------------------------
 
+-- probably need to revisit this approach if start using a fresh names system
+canonicalizeModuleName :: Text -> [Text] -> Text
+canonicalizeModuleName pnm as = "_module-" <> pnm <> "-" <> T.intercalate "." as
+
+intMod :: Text
+intMod = canonicalizeModuleName "haskell" ["_interpreter"]
+
+------------------------------------------------------------------------------
+
 provide :: S.SourcePosition -> [S.ProvideItem] -> RenamerEnv -> ([StaticError], RenamerEnv)
 provide sp pis re =
     ([], over reProvides ((sp,pis):) re)
@@ -214,11 +225,12 @@ queryLoadModules re =
                      | i <- is1 ++ is2 ++ is3
                      , (isx,mid) <- view reImportSources re
                      , i == isx]
-            in --traceit "bullshit" $
-                flip map is (\mid@(ModuleID p as) ->
-                  if as `elem` [["_interpreter"], ["_bootstrap"]]
-                  then (mid, "_interpreter")
-                  else (mid, "_module-" <> p <> "-" <> T.intercalate "." as))
+            in flip map is $ \mid@(ModuleID p as) ->
+                    -- todo: revisit how the bootstrap temporarily
+                    -- masquerades as the _interpreter module
+                    if as == ["_bootstrap"]
+                    then (mid, canonicalizeModuleName "haskell" ["_interpreter"])
+                    else (mid, canonicalizeModuleName p as)
         importBindings =
             -- create the binding entries
             map (\(userAl,canonicalAl, (nm, sp, bm, oid)) ->

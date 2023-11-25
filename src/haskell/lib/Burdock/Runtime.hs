@@ -15,7 +15,7 @@ module Burdock.Runtime
     ,makeVar
     ,setVar
 
-    --,debugGetBindings
+    ,debugGetBindings
 
     ,newDataDeclTag
     ,DataDeclTag(..)
@@ -163,6 +163,9 @@ data RuntimeState
     ,rtFFITypeInfoTypeInfo :: FFITypeInfo
     ,rtAutoDataDeclID :: IORef Int
     ,rtAutoFFITypeID :: IORef Int
+    -- the reason that this is an ioref is that it is expected
+    -- that the concurrency engine will share this cache between threads
+    -- in a mutable way (so it will become a tvar)
     ,rtModulePlugins :: IORef [(Text, ModulePlugin)]
     }
 
@@ -184,10 +187,10 @@ type Runtime = ReaderT RuntimeState IO
 runRuntime :: RuntimeState -> Runtime a -> IO a
 runRuntime st f = runReaderT f st
 
---debugGetBindings :: Runtime [(Text, Value)]
---debugGetBindings = do
---    st <- ask
---    liftIO $ readIORef (rtBindings st)
+debugGetBindings :: Runtime [(Text, Value)]
+debugGetBindings = do
+    st <- ask
+    pure $ rtBindings st
 
 -- this could work if everything is single threaded, will need
 -- something more sophisticated with threads
@@ -562,6 +565,27 @@ data HaskellModulePlugin
     {hmmModulePlugin :: ModulePlugin
     ,hmmModules :: IORef [(Text, InternalHaskellModule)]
     }
+
+{-
+
+thread protection for hmm modules:
+when a request comes through to get a module if it's cached,
+or load it if it isn't,
+if it's loaded - return it,
+otherwise, need to get a token or something, then load it,
+then put it in the cache, release the token
+if the token is already being held, wait for it to be released
+then expect it in the cache
+  -> this means if there's an error, you need to save the error
+  in the cache too
+the token is per import source/module
+there are several layers of caching to consider:
+  the module registration, which may not involve loading the module
+  the generation and caching of the metadata
+  the generation and caching of the module value
+
+-}
+
 
 -- the values are put in runtime, so the user can decide if to unconditionally
 -- load the module before registering, or load it only on first use
