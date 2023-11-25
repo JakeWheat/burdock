@@ -96,6 +96,7 @@ module Burdock.Rename
 
     ,canonicalizeModuleName
     ,intMod
+    ,testingMod
     ) where
 
 import Prelude hiding (error, show, putStrLn)
@@ -175,6 +176,9 @@ canonicalizeModuleName pnm as = "_module-" <> pnm <> "-" <> T.intercalate "." as
 
 intMod :: Text
 intMod = canonicalizeModuleName "haskell" ["_interpreter"]
+
+testingMod :: Text
+testingMod = canonicalizeModuleName "haskell" ["_testing"]
 
 ------------------------------------------------------------------------------
 

@@ -66,14 +66,17 @@ getImportSources (S.Script ss) =
 -- and support arbitrary use context names
 rewriteUseContext :: [S.Stmt] -> [S.Stmt]
 rewriteUseContext = \case
-    [] -> importInterpreter : includeBurdock2023 : []
     (S.UseContext _ (S.ImportName ["_bootstrap-interpreter"]) : ss) -> ss
-    (S.UseContext _ (S.ImportName ["_base"]) : ss) -> importInterpreter : ss
-    (S.UseContext _ (S.ImportName ["burdock2023"]) : ss) -> importInterpreter : includeBurdock2023 : ss
-    ss -> importInterpreter : includeBurdock2023 : ss
+    (S.UseContext _ (S.ImportName ["_base"]) : ss) -> basePrelude ++ ss
+    (S.UseContext _ (S.ImportName [nm]) : ss) ->
+        concat [basePrelude, [makeInclude nm], ss]
+    ss -> concat [basePrelude, [makeInclude defaultUseContext], ss]
   where
-    importInterpreter = S.Import n (S.ImportSpecial "haskell" ["_interpreter"]) "_interpreter"
-    includeBurdock2023 = S.Include n (S.ImportSpecial "haskell" ["burdock2023"])
+    baseModules = ["_interpreter", "_testing"]
+    defaultUseContext = "burdock2023"
+    basePrelude = map makeImport baseModules
+    makeImport nm = S.Import n (S.ImportSpecial "haskell" [nm]) nm
+    makeInclude nm =  S.Include n (S.ImportSpecial "haskell" [nm])
     n = Nothing
 
 ------------------------------------------------------------------------------

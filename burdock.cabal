@@ -46,6 +46,7 @@ common shared-properties
                       Burdock.FFIModules.Bootstrap
                       Burdock.FFIModules.Internals
                       Burdock.FFIModules.TestingExtras
+                      Burdock.FFIModules.Testing
 
     build-depends:    base < 5
                     , scientific

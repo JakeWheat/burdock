@@ -89,8 +89,8 @@ runScriptTest fn =
     let getTestResults st = do
             -- todo: create a nice user wrapper here that doesn't need all this
             -- boilerplate and internals
-            passes <- runScript st Nothing "_interpreter.get-test-passes()"
-            failures <- runScript st Nothing "_interpreter.get-test-failures()"
+            passes <- runScript st Nothing "_testing.get-test-passes()"
+            failures <- runScript st Nothing "_testing.get-test-failures()"
             ntix <- runScript st Nothing "_interpreter._type-number"
             R.runRuntime (hRuntimeState st) $ do
                 xx <- R.getFFITypeInfoTypeInfo

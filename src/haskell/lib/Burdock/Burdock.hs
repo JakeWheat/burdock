@@ -48,6 +48,7 @@ import Burdock.StaticError
 
 import Burdock.FFIModules.Bootstrap (burdockBootstrapModule)
 import Burdock.FFIModules.Internals (burdockInternalsModule)
+import Burdock.FFIModules.Testing (burdockTestingModule)
 import Burdock.FFIModules.TestingExtras (testingExtrasModule)
 
 import qualified Burdock.InterpreterPretty as I
@@ -149,9 +150,12 @@ createHandle = do
         bp <- burdockModulePlugin
         R.addModulePlugin burdockPluginName bp
         bootstrapLoadModule "_internals" =<< burdockInternalsModule
+        bootstrapLoadModule "_testing" =<< burdockTestingModule
         bootstrapLoadModule "burdock2023" =<< runScript' (Just "<burdock2023>") burdock2023Source
         -- system now bootstrapped to be able to use default use context burdock2023
 
+        -- load for additional interpreter testing - eventually will find a better
+        -- way to handle this
         bootstrapLoadModule "testing-extras" =<< testingExtrasModule
 
     pure $ Handle st

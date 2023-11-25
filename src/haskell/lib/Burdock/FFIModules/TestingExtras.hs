@@ -1,7 +1,7 @@
 
 {-
 
-some extra ffi used in the testing
+some extra ffi used in the testing for the interpreter itself
 
 -}
 

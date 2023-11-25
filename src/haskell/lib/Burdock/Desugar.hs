@@ -35,7 +35,7 @@ import Control.Monad.Writer
 
 import Data.List (nub, (\\))
 
-import Burdock.Rename (intMod)
+import Burdock.Rename (intMod, testingMod)
 
 ------------------------------------------------------------------------------
 
@@ -108,7 +108,7 @@ desugarExpr :: S.Expr -> Desugar I.Expr
 -- S -> S
 desugarExpr (S.BinOp sp e0 "is" e1) = do
     let msg = L.toStrict $ P.prettyExpr e0 <> " is " <> P.prettyExpr e1
-    desugarExpr $ app "run-binary-test"
+    desugarExpr $ tapp "run-binary-test"
         [S.Text sp msg
         ,wrapit e0
         ,wrapit e1
@@ -116,13 +116,13 @@ desugarExpr (S.BinOp sp e0 "is" e1) = do
         ,S.Text sp "<>"
         ]
   where
-    app nm as = S.App sp (S.DotExpr sp (S.Iden sp intMod) nm) as
+    tapp nm as = S.App sp (S.DotExpr sp (S.Iden sp testingMod) nm) as
     wrapit e = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp e]
     lam as e = S.Lam sp (S.FunHeader [] (flip map as $ S.NameBinding sp) Nothing) [S.StmtExpr sp e]
 
 desugarExpr (S.BinOp sp e0 "is-not" e1) = do
     let msg = L.toStrict $ P.prettyExpr e0 <> " is " <> P.prettyExpr e1
-    desugarExpr $ app "run-binary-test"
+    desugarExpr $ tapp "run-binary-test"
         [S.Text sp msg
         ,wrapit e0
         ,wrapit e1
@@ -130,7 +130,7 @@ desugarExpr (S.BinOp sp e0 "is-not" e1) = do
         ,S.Text sp "=="
         ]
   where
-    app nm as = S.App sp (S.DotExpr sp (S.Iden sp intMod) nm) as
+    tapp nm as = S.App sp (S.DotExpr sp (S.Iden sp testingMod) nm) as
     wrapit e = S.Lam sp (S.FunHeader [] [] Nothing) [S.StmtExpr sp e]
     lam as e = S.Lam sp (S.FunHeader [] (flip map as $ S.NameBinding sp) Nothing) [S.StmtExpr sp e]
 

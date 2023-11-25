@@ -34,20 +34,9 @@ module Burdock.FFIModules.Bootstrap
 
 import Prelude hiding (error, show, putStrLn)
 import Burdock.Utils (error, show)
-import Data.Text.IO (putStrLn)
-
-import Control.Arrow (first, second)
 
 import Data.Text (Text)
 import qualified Data.Text as T
-import Control.Monad.IO.Class (liftIO)
-
-import Data.IORef
-    (IORef
-    ,readIORef
-    ,modifyIORef
-    ,newIORef
-    )
 
 import qualified Burdock.Runtime as R
 import Burdock.Runtime (Value)
@@ -79,8 +68,6 @@ burdockBootstrapModule = R.withScope $ do
     tupleVariantTag <- pure $ R.VariantTag tupleDeclTag "tuple"
     recordDeclTag <- R.newDataDeclTag "record"
     recordVariantTag <- pure $ R.VariantTag recordDeclTag "record"
-
-    testLog <- liftIO $ newIORef (0,0)
 
     -- wrap direct ffi type infos as burdock ffi values so they can
     -- be bound in a burdock namespace
@@ -128,10 +115,6 @@ burdockBootstrapModule = R.withScope $ do
              
              ,("make-module", R.Fun makeModule) -- rename to make module value?
 
-             -- to become the test framework plugin
-             ,("run-binary-test", R.Fun (bRunBinaryTest testLog))
-             ,("get-test-passes", R.Fun (getTestVal testLog 0 burdockNumberTI))
-             ,("get-test-failures", R.Fun (getTestVal testLog 1 burdockNumberTI))
              ]
         -- todo: what's a nice way to make all the originids unique for ffi code
         -- also, this is rubbish hack
@@ -270,7 +253,6 @@ showVariant hlti [fs, v0] = do
 
 showVariant _ _as = error $ "bad args to showVariant"
 
-
 showTuple :: [Value] -> R.Runtime Value
 -- todo: check the tag
 showTuple [R.Variant _ vs] = do
@@ -312,99 +294,3 @@ makeModule _ = error "bad args to makeModule"
 bNot :: [Value] -> R.Runtime Value
 bNot [R.Boolean t] = pure $ R.Boolean $ not t
 bNot _ = error "bad args to not"
-
-------------------------------------------------------------------------------
-
-runBinaryTest :: IORef (Int,Int)
-              -> Text
-              -> R.Value
-              -> R.Value
-              -> R.Value
-              -> Text
-              -> R.Runtime ()
-runBinaryTest tally msg lv0 lv1 op opFailString = do
-    -- todo: get the original source positions in here
-    v0 <- R.runTask $ R.app Nothing lv0 []
-    v1 <- R.runTask $ R.app Nothing lv1 []
-    case (v0,v1) of
-        (Right v0', Right v1') -> do
-            expressionsOK v0' v1'
-        (Left er0, Left er1) -> do
-            liftIO $ modifyIORef tally (second (+1))
-            er0s <- safeToRepr er0
-            er1s <- safeToRepr er1
-            liftIO $ putStrLn $ T.unlines
-                 ["FAIL: " <> msg
-                 ,"LHS raised: " <> er0s
-                 ,"RHS raised: " <> er1s]
-        (Left er0, Right {}) -> do
-            liftIO $ modifyIORef tally (second (+1))
-            er0s <- safeToRepr er0
-            liftIO $ putStrLn $ T.unlines
-                 ["FAIL: " <> msg
-                 ,"LHS raised: " <> er0s]
-        (Right {}, Left er1) -> do
-            liftIO $ modifyIORef tally (second (+1))
-            er1s <- safeToRepr er1
-            liftIO $ putStrLn $ T.unlines
-                 ["FAIL: " <> msg
-                 ,"RHS raised: " <> er1s]
-  where
-    expressionsOK v0 v1 = do
-        r <- R.runTask $ R.app Nothing op [v0, v1]
-        case r of
-            Right rx -> predicateOK rx v0 v1
-            Left er -> do
-                liftIO $ modifyIORef tally (second (+1))
-                ers <- safeToRepr er
-                liftIO $ putStrLn $ T.unlines
-                    ["FAIL: " <> msg
-                    ,"predicate raised: " <> ers]
-    predicateOK r v0 v1 = 
-         case r of
-            R.Boolean True -> liftIO $ do
-                liftIO $ modifyIORef tally (first (+1))
-                liftIO $ putStrLn $ "PASS: " <> msg
-            R.Boolean False -> do
-                liftIO $ modifyIORef tally (second (+1))
-                sv0 <- safeToRepr v0
-                sv1 <- safeToRepr v1
-                liftIO $ putStrLn $ T.unlines
-                    ["FAIL: " <> msg
-                    ,sv0
-                    ,opFailString
-                    ,sv1]
-            _ -> do
-                liftIO $ modifyIORef tally (second (+1))
-                er <- safeToRepr r
-                error $ "non bool from test predicate: " <> er -- R.debugShowValue r
-    safeToRepr v = do
-        r <- R.runTask $ do
-            tr <- R.getMember Nothing v "_torepr"
-            R.app Nothing tr []
-        case r of
-            Left e -> case e of
-                -- todo: another fucking call to safetorepr
-                R.BString e' -> pure $ e' <> " : " <> R.debugShowValue v
-                e1 -> pure $ R.debugShowValue e1
-            Right (R.BString t) -> pure t
-            Right x -> pure $ R.debugShowValue v <> " torepr: " <> R.debugShowValue x
-
-getTestVal :: IORef (Int,Int) -> Int -> R.FFITypeInfo -> [Value] -> R.Runtime Value
-getTestVal v i nti = \case
-    [] -> do
-        (a,b) :: (Int,Int) <- liftIO $ readIORef v
-        if i == 0
-            then R.makeFFIValue nti $ ((fromIntegral a) :: Scientific)
-            else R.makeFFIValue nti $ ((fromIntegral b) :: Scientific)
-    _ -> error $ "bad args to getTestVal"
-
-bRunBinaryTest :: IORef (Int,Int) -> [Value] -> R.Runtime Value
-bRunBinaryTest tally [R.BString msg
-                     ,v0
-                     ,v1
-                     ,op
-                     ,R.BString opFailString] = do
-    runBinaryTest tally msg v0 v1 op opFailString
-    pure R.BNothing
-bRunBinaryTest _ _ = error $ "bad args to bRunBinaryTest"
