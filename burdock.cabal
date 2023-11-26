@@ -47,6 +47,7 @@ common shared-properties
                       Burdock.FFIModules.Internals
                       Burdock.FFIModules.TestingExtras
                       Burdock.FFIModules.Testing
+                      Burdock.HsConcurrency
 
     build-depends:    base < 5
                     , scientific
@@ -63,6 +64,7 @@ common shared-properties
                     , process
                     , directory
                     , filepath
+                    , stm
 
                     , tasty
                     , tasty-hunit
