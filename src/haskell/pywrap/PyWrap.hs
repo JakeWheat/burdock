@@ -100,7 +100,7 @@ import Control.Monad.Except
     ,throwError
     )
 import Control.Concurrent (isCurrentThreadBound)
-import Control.Monad.Catch (bracket, MonadMask)
+import Control.Exception.Safe (bracket, MonadMask)
 -- import Control.Monad.IO.Class (MonadIO, liftIO)
 import Control.Concurrent.Async (withAsyncBound, wait)
 import Control.Concurrent (rtsSupportsBoundThreads)

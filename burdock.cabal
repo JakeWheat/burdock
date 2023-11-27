@@ -49,6 +49,7 @@ common shared-properties
                       Burdock.FFIModules.Testing
                       Burdock.FFIModules.Concurrency
                       Burdock.HsConcurrency
+                      PyWrap
 
     build-depends:    base < 5
                     , scientific
@@ -80,6 +81,10 @@ common shared-properties
     default-language: Haskell2010
     ghc-options:      -Wall -rtsopts -threaded
 
+    pkgconfig-depends:   python3
+    extra-libraries:     python3.11
+    C-sources:           src/haskell/lib/pywrap-c.c
+
 
 common test-modules
     other-modules:    Burdock.Tests
@@ -87,6 +92,7 @@ common test-modules
                       Burdock.ParseTests
                       Burdock.RenameTests
                       Burdock.RenameTestParser
+                      PyWrapTests
 
 executable burdock
     import:           shared-properties

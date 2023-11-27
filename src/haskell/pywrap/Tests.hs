@@ -11,4 +11,3 @@ main = do
     setNumCapabilities =<< getNumProcessors
     pts <- PyWrapTests.tests
     T.defaultMain pts
-
