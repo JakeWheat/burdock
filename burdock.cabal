@@ -47,6 +47,7 @@ common shared-properties
                       Burdock.FFIModules.Internals
                       Burdock.FFIModules.TestingExtras
                       Burdock.FFIModules.Testing
+                      Burdock.FFIModules.Concurrency
                       Burdock.HsConcurrency
 
     build-depends:    base < 5

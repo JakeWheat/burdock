@@ -1,0 +1,70 @@
+
+
+include haskell("concurrency")
+
+check "get exit value of spawned thread":
+
+  fun f():
+    3
+  end
+
+  a = spawn(f)
+  wait(a) is 3
+
+end
+
+check "send a message to spawned thread":
+
+  fun f():
+    x = receive-any()
+    x * 2
+  end
+
+  a = spawn(f)
+  send(a,21)
+  wait(a) is 42
+
+end
+
+check "send a message with self, get back a reply":
+
+  fun f():
+    x = receive-any()
+    send(x.{0}, x.{1} * 2)
+  end
+
+  a = spawn(f)
+  send(a,{self();21})
+  b = receive-any()
+  b is 42
+  wait(a) #is nothing
+
+end
+
+check "simple server":
+
+  data my-exit: my-exit end
+
+  fun f():
+    x = receive-any()
+    cases x:
+      | my-exit => nothing
+      | y => 
+        send(y.{0}, y.{1} * 2)
+        f()
+    end
+  end
+
+  a = spawn(f)
+
+  send(a,{self();21})
+  receive-any() is 42
+
+  send(a,{self();3})
+  receive-any() is 6
+
+  send(a,my-exit)
+  wait(a)
+
+end
+

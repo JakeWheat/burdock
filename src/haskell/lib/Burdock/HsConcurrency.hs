@@ -88,8 +88,8 @@ checkInboxOpen ib = do
     -- come back later and figure out the exception types
     unless o $ throwSTM $ AssertionFailed "tried to use closed inbox"
 
-send :: Inbox a -> a -> IO ()
-send ib v = atomically $ do
+send :: a -> Inbox a -> IO ()
+send v ib = atomically $ do
     checkInboxOpen ib
     writeTQueue (ibQueue ib) v
 
@@ -124,6 +124,7 @@ data MAsync a
     = MAsync
     {asyncHandle :: A.Async a
     }
+    deriving Eq
 
 mymasync :: (IO a -> IO (A.Async a))
          -> (ThreadId -> Either SomeException a -> IO ())

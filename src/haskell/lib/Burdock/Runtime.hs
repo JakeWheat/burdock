@@ -60,6 +60,20 @@ module Burdock.Runtime
 
     ,liftIO
     ,getRuntimeRunner
+
+    ,setNumCapabilities
+    ,getNumProcessors
+    ,ThreadHandle
+    ,spawn
+    ,self
+    ,send
+    ,receive
+    ,wait
+    ,waitEither
+
+    ,debugShowThreadHandle
+    ,compareThreadHandles
+    
     ) where
 
 import Prelude hiding (error, putStrLn, show)
@@ -114,6 +128,24 @@ import Burdock.ModuleMetadata
     (ModuleMetadata(..)
     ,ModuleID(..))
 
+import Control.Concurrent
+    (setNumCapabilities
+    --,threadDelay
+    ,myThreadId
+    ,ThreadId
+    --,throwTo
+    --,isCurrentThreadBound
+    )
+import GHC.Conc (getNumProcessors)
+
+import qualified Burdock.HsConcurrency as HC
+import qualified Control.Concurrent.Async as A
+
+import Control.Concurrent.MVar
+    (newEmptyMVar
+    ,takeMVar
+    ,putMVar)
+
 ------------------------------------------------------------------------------
 
 type SP = Maybe (Text, Int, Int)
@@ -167,6 +199,17 @@ data RuntimeState
     -- that the concurrency engine will share this cache between threads
     -- in a mutable way (so it will become a tvar)
     ,rtModulePlugins :: IORef [(Text, ModulePlugin)]
+    -- the starting thread only has a threadid, not a async handle
+    ,rtThreadHandle :: Either ThreadId (HC.MAsync Value)
+    ,rtInbox :: HC.Inbox Value
+    --,rtInboxBuffer :: IORef [Value]
+    -- reference, tag, monitoring thread
+    --,rtMonitors :: TVar [(Value, Value, ConcurrencyHandle)]
+    --,rtLinked :: TVar [ConcurrencyHandle]
+    --,rtScoped :: TVar [ConcurrencyHandle]
+    -- set to have each thread exited exactly once
+    -- when being asynchronously exited
+    --,rtIsExiting :: TVar Bool
     }
 
 makeRuntimeState :: IO RuntimeState
@@ -175,6 +218,8 @@ makeRuntimeState = do
         <$> newIORef 0
         <*> newIORef 0
         <*> newIORef []
+        <*> liftIO (Left <$> myThreadId)
+        <*> liftIO HC.makeInbox
     -- does this need to be here? try to move it to bootstrap
     tinf <- runRuntime st $
         makeFFIType ["_bootstrap","ffi-type-info"]
@@ -188,9 +233,7 @@ runRuntime :: RuntimeState -> Runtime a -> IO a
 runRuntime st f = runReaderT f st
 
 debugGetBindings :: Runtime [(Text, Value)]
-debugGetBindings = do
-    st <- ask
-    pure $ rtBindings st
+debugGetBindings = rtBindings <$> ask
 
 -- this could work if everything is single threaded, will need
 -- something more sophisticated with threads
@@ -206,7 +249,75 @@ debugGetBindings = do
 getRuntimeRunner :: Runtime (Runtime a -> IO a)
 getRuntimeRunner = runRuntime <$> ask
 
---------------------------------------
+------------------------------------------------------------------------------
+
+-- threading stuff
+
+-- todo: decide what this will be -> it's how the ffi will work
+-- with burdock threads
+-- make it like erlang: with this handle you can:
+-- send a message to the handle's inbox
+-- pass it to another thread so that thread can send to your inbox
+-- wait for the thread to exit (convenience feature, not very erlang-y)
+data ThreadHandle
+    = ThreadHandle
+    {thThreadHandle :: Either ThreadId (HC.MAsync Value)
+    ,thInbox :: HC.Inbox Value
+    }
+
+debugShowThreadHandle :: ThreadHandle -> Text
+debugShowThreadHandle th = case thThreadHandle th of
+    Left t -> show t
+    Right m -> show (A.asyncThreadId $ HC.asyncHandle m)
+
+compareThreadHandles :: ThreadHandle -> ThreadHandle -> Bool
+compareThreadHandles a b =
+    thThreadHandle a == thThreadHandle b
+
+spawn :: Runtime Value -> Runtime ThreadHandle
+spawn f = do
+    -- create inbox for spawned thread
+    ib <- liftIO $ HC.makeInbox
+    -- pass the async handle to the spawned process so it has a copy
+    asyncHandlePass <- liftIO newEmptyMVar
+    -- get the state so the spawned thread can clone it
+    st <- ask
+    th <- liftIO $ HC.masync (\_ _ -> pure ()) $ do
+         th <- takeMVar asyncHandlePass
+         let st1 = st {rtThreadHandle = Right th
+                      ,rtInbox = ib}
+         runRuntime st1 f
+    liftIO $ putMVar asyncHandlePass th
+    pure $ ThreadHandle (Right th) ib
+
+self :: Runtime ThreadHandle
+self = do
+    st <- ask
+    -- refactor later to avoid creating this data structure evertime
+    -- self is called
+    pure $ ThreadHandle (rtThreadHandle st) (rtInbox st)
+
+send :: Value -> ThreadHandle -> Runtime ()
+send v th = liftIO $ HC.send v $ thInbox th
+
+receive :: Runtime Value
+receive = do
+    ib <- rtInbox <$> ask
+    liftIO $ HC.receive ib
+
+wait :: ThreadHandle -> Runtime Value
+wait th =
+    case thThreadHandle th of
+        Left _x -> error $ "can't wait on starting thread"
+        Right h -> liftIO $ A.wait $ HC.asyncHandle h
+
+waitEither :: ThreadHandle -> Runtime (Either SomeException Value)
+waitEither th =
+    case thThreadHandle th of
+        Left _x -> error $ "can't wait on starting thread"
+        Right h -> liftIO $ A.waitCatch $ HC.asyncHandle h
+
+------------------------------------------------------------------------------
 
 withScope :: Runtime a -> Runtime a
 withScope f = localEnv id f

@@ -50,6 +50,7 @@ import Burdock.FFIModules.Bootstrap (burdockBootstrapModule)
 import Burdock.FFIModules.Internals (burdockInternalsModule)
 import Burdock.FFIModules.Testing (burdockTestingModule)
 import Burdock.FFIModules.TestingExtras (testingExtrasModule)
+import Burdock.FFIModules.Concurrency (burdockConcurrencyModule)
 
 import qualified Burdock.InterpreterPretty as I
 --import Burdock.StaticError (StaticError)
@@ -151,6 +152,7 @@ createHandle = do
         R.addModulePlugin burdockPluginName bp
         bootstrapLoadModule "_internals" =<< burdockInternalsModule
         bootstrapLoadModule "_testing" =<< burdockTestingModule
+        bootstrapLoadModule "concurrency" =<< burdockConcurrencyModule
         bootstrapLoadModule "burdock2023" =<< runScript' (Just "<burdock2023>") burdock2023Source
         -- system now bootstrapped to be able to use default use context burdock2023
 
