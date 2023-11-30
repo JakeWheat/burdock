@@ -60,6 +60,9 @@ burdockBootstrapModule = R.withScope $ do
     dataDeclTagTI <- makeDataDeclTagType
     variantTagTI <- makeVariantTagType
 
+    -- create a type you can use like this
+    -- below it's wrapped in an ffivalue so it can be made directly
+    -- available in the burdock namespace
     burdockNumberTI <- makeNumberType
 
     haskellListTI <- makeHaskellListType

@@ -108,7 +108,7 @@ runScriptTest fn =
             getTestResults st
             
         onError e = do
-            putStrLn $ "Exception: " <> e
+            putStrLn $ "FAIL: Exception: " <> e
             pure (0,1)
     -- todo: if it's a burdock value exception, show it nicely
     in catchAsText doIt onError

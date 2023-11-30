@@ -98,6 +98,10 @@ desugarStmt (S.VarDecl sp (S.SimpleBinding _ _ nm Nothing) e) = I.VarDecl sp nm 
 desugarStmt (S.SetVar sp (S.Iden _ nm) e) = do
     tell [nm]
     I.SetVar sp [nm] <$> desugarExpr e
+-- todo: generalize
+desugarStmt (S.SetVar sp (S.DotExpr _ (S.Iden _ nm) nm1) e) = do
+    tell [nm]
+    I.SetVar sp [nm,nm1] <$> desugarExpr e
 
 desugarStmt s = error $ "desugarStmt " <> show s
 

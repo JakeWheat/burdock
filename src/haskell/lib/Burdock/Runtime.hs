@@ -11,7 +11,7 @@ module Burdock.Runtime
     --,Value
     ,debugShowValue
     -- temp
-    ,Value(BNothing,Boolean,BString,Fun,Box,Module,Variant,Method)
+    ,Value(BNothing,Boolean,BString,Fun,Box,Module,Variant,MethodV,FFIValue)
     ,makeVar
     ,setVar
 
@@ -77,12 +77,14 @@ module Burdock.Runtime
     ) where
 
 import Prelude hiding (error, putStrLn, show)
-import Burdock.Utils (error, show)
+import Burdock.Utils (error, show, unsnoc)
 import qualified Prelude as P
 
 --import Burdock.Scientific (Scientific, showScientific)
 import Data.Text (Text)
 import qualified Data.Text as T
+
+import Data.Maybe (listToMaybe, catMaybes)
 
 import qualified Burdock.Syntax as S (ImportSource(..))
 
@@ -103,7 +105,7 @@ import Data.IORef
 
 import Control.Monad.IO.Class (liftIO)
 
-import Control.Monad (when)
+import Control.Monad (when, void)
 
 import Data.Dynamic
     (Dynamic
@@ -167,7 +169,7 @@ data Value
     | Module [(Text, Value)]
 
     | Fun ([Value] -> Runtime Value)
-    | Method Value
+    | MethodV Value
 
 -- pure show for use in temporary error messages and internal errors
 debugShowValue :: Value -> Text
@@ -175,7 +177,7 @@ debugShowValue (Boolean b) = show b
 debugShowValue (BString t) = "\"" <> t <> "\""
 debugShowValue BNothing = "nothing"
 debugShowValue (Fun {}) = "<function>"
-debugShowValue (Method {}) = "<method>"
+debugShowValue (MethodV {}) = "<method>"
 debugShowValue (Box _) = "<box>"
 debugShowValue (Module _) = "<module>"
 debugShowValue (FFIValue _ d) = "<" <> show d <> ">"
@@ -332,6 +334,9 @@ localEnv f stuff = do
 
 app :: SP -> Value -> [Value] -> Runtime Value
 app _sourcePos (Fun f) args = f args
+app sp a@(FFIValue {}) args = do
+    f' <- getMember sp a "_app"
+    app sp f' args
 app _ v _ = error $ "bad arg to app " <> debugShowValue v
 
 -- todo: should capture closure capture elements within a module instead
@@ -376,7 +381,7 @@ getMember sp (Module fs) f = case lookup f fs of
 
 getMember sp v@(Variant _ fs) f = case lookup f fs of
     Nothing -> error $ show sp <> " variant member not found: " <> f
-    Just (Method v1) -> app Nothing v1 [v]
+    Just (MethodV v1) -> app Nothing v1 [v]
     Just v' -> pure v'
 
 -- temp?
@@ -467,6 +472,12 @@ data FFIValueEntry a
             ,aSub :: a -> a -> Runtime a
             ,aMult :: a -> a -> Runtime a
             ,aDiv :: a -> a -> Runtime a}
+    | Member Text (a -> Text -> Runtime Value)
+    | Method Text (a -> Text -> [Value] -> Runtime Value)
+    | App (a -> [Value] -> Runtime Value)
+    | Assign Text (a -> Text -> Value -> Runtime ())
+    | AppKw (a -> [Value] -> [(Text,Value)] -> Runtime Value)
+    | CatchAll (Text -> a -> Runtime Value)
 
 makeFFIType :: Typeable a => [Text] -> [FFIValueEntry a] -> Runtime FFITypeInfo
 makeFFIType nm fs = makeFFIType2 nm $ makeMemFns fs
@@ -549,9 +560,44 @@ makeMemFns meths tid mkV exV =
                ,binMem2 "_minus" $ \a b -> mkV =<< mysub a b
                ,binMem2 "_times" $ \a b -> mkV =<< mymul a b
                ,binMem2 "_divide" $ \a b -> mkV =<< mydiv a b]
+           Member nm f -> [(nm, \v -> do
+               v' <- either error id <$> exV v
+               f v' nm)]
+           Method nm f -> [(nm, \v -> do
+               v' <- either error id <$> exV v
+               pure $ Fun $ \as -> f v' nm as)]
+           App f -> [("_app", \v -> do
+               v' <- either error id <$> exV v
+               pure $ Fun $ \as -> f v' as)]
+           Assign nm f -> [("_assign", \v -> do
+               v' <- either error id <$> exV v
+               pure $ Fun $ \case
+                   -- todo: how do you dispatch based on the field?
+                   [BString _nm', a] -> do
+                       void $ f v' nm a
+                       pure BNothing
+                   _ -> error $ "wrong args to _assign")]
+           AppKw f -> [("_appkw", \v -> do
+               v' <- either error id <$> exV v
+               pure $ Fun $ \as ->
+                   case unsnoc as of
+                       Nothing -> f v' [] []
+                       Just (as',kw) -> case kw of
+                           -- todo: check record tag
+                           Variant _ fs -> f v' as' fs
+                           _ -> f v' as [])]
+           CatchAll {} -> []
+        --ca :: Maybe (Text -> a -> Runtime Value)
+        ca = listToMaybe $ catMaybes $ flip map meths $ \case
+            CatchAll f -> Just f
+            _ -> Nothing
         memFn nm = case lookup nm meths' of
-            Nothing -> error $ "field not found:" <> tyNameText tid <> " ." <> nm
-            Just x -> x
+            Nothing -> case ca of
+                Nothing -> error $ "field not found:" <> tyNameText tid <> " ." <> nm
+                Just f -> ((\v -> do
+                    v' <- either error id <$> exV v
+                    f nm v') :: Value -> Runtime Value)
+            Just x -> (x :: Value -> Runtime Value)
     in memFn 
 
 autoID :: (RuntimeState -> IORef Int) -> Runtime Int

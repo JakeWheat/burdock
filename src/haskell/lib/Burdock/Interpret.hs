@@ -23,6 +23,7 @@ import qualified Burdock.InterpreterSyntax as I
 import qualified Burdock.Runtime as R
 
 import Burdock.Rename (intMod)
+import Control.Monad (void)
 
 ------------------------------------------------------------------------------
 
@@ -66,6 +67,18 @@ interpStmt (I.SetVar sp [nm] e) = do
     Just bx <- R.lookupBinding nm
     R.setVar sp bx v
     pure R.BNothing
+-- todo: generalize
+interpStmt (I.SetVar sp [nm,nm1] e) = do
+    v <- interpExpr e
+    Just bx <- R.lookupBinding nm
+    case bx of
+        R.Module _fs -> error $ "implement me"
+        R.FFIValue {} -> do
+            m <- R.getMember sp bx "_assign"
+            void $ R.app sp m [R.BString nm1, v]
+        _ -> error $ "bad assign target"
+    pure R.BNothing
+
 
 interpStmt (I.StmtExpr _ e) = interpExpr e
 
@@ -103,7 +116,7 @@ interpExpr (I.App sp ef es) = do
     f <- interpExpr ef
     R.app sp f vs
 
-interpExpr (I.MethodExpr _sp e) = R.Method <$> interpExpr e
+interpExpr (I.MethodExpr _sp e) = R.MethodV <$> interpExpr e
 
 interpExpr (I.Lam _sp fvs bs bdy) = do
     env <- R.captureClosure fvs

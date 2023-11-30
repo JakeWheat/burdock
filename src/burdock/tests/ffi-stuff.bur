@@ -1,0 +1,50 @@
+
+include haskell("testing-extras")
+
+# arbitrary members and methods for ffi objects
+
+check:
+
+  x = make-ffi-testing-value("one")
+
+  x.field1 is "one"
+  x.method1() is "got: one"
+  x.method2(true) is "got: one True"
+
+end
+
+# add some very non-pyrety things to support the python ffi better
+
+# ffi object with _app
+# this allows you to have an appable object, which can also have fields
+check:
+  x = make-ffi-testing-value("two")
+  x.field1 is "two"
+  x("stuff") is "two stuff"
+end
+
+# _assign for ffi, just using a := x or a.b := x syntax for now, will revisit
+# after doing update syntax sugar in relational
+
+check:
+  x = make-ffi-testing-value("three")
+  x.field1 is "three"
+  x.field2 is "three also"
+  x.field2 := "new"
+  x.field2 is "new"
+end
+
+# functions with keyword args: a._appkw(a,b,c,{d:e, f:g})
+# later can add some sugar so that a(a,b,c,d:e,f:g) is desugared to this
+check:
+  x = make-ffi-testing-value("four")
+  x._appkw("five",{a:3, b:4}) is "four five a 3 b 4"
+  
+end
+
+
+check:
+  x = make-ffi-testing-value("four")
+  x.something-random is "four something-random"
+  
+end

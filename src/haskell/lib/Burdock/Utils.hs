@@ -8,12 +8,13 @@ module Burdock.Utils
     ,traceit
     ,emacsShowPos
     ,catchAsText
+    ,unsnoc
     ) where
 
 import Prelude hiding (error, show)
 import qualified Prelude as P
 
-import Data.Text as T
+import qualified Data.Text as T
 
 import qualified Debug.Trace as DT
 
@@ -42,5 +43,11 @@ emacsShowPos :: Maybe (T.Text, Int, Int) -> T.Text
 emacsShowPos Nothing = "unknown:"
 emacsShowPos (Just (nm,l,c)) = nm <> ":" <> show l <> ":" <> show c <> ":"
 
-catchAsText :: MonadCatch m => m a -> (Text -> m a) -> m a
+catchAsText :: MonadCatch m => m a -> (T.Text -> m a) -> m a
 catchAsText f h = catch f $ \(e :: SomeException) -> h (show e)
+
+unsnoc :: [a] -> Maybe ([a], a)
+unsnoc [] = Nothing
+unsnoc [x] = Just ([], x)
+unsnoc (x:xs) = Just (x:a, b)
+    where Just (a,b) = unsnoc xs
