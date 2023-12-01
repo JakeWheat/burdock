@@ -48,6 +48,7 @@ common shared-properties
                       Burdock.FFIModules.TestingExtras
                       Burdock.FFIModules.Testing
                       Burdock.FFIModules.Concurrency
+                      Burdock.FFIModules.PythonModulePlugin
                       Burdock.HsConcurrency
                       PyWrap
 

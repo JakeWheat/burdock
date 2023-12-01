@@ -52,6 +52,8 @@ import Burdock.FFIModules.Testing (burdockTestingModule)
 import Burdock.FFIModules.TestingExtras (testingExtrasModule)
 import Burdock.FFIModules.Concurrency (burdockConcurrencyModule)
 
+import Burdock.FFIModules.PythonModulePlugin (pythonModulePlugin)
+
 import qualified Burdock.InterpreterPretty as I
 --import Burdock.StaticError (StaticError)
 
@@ -155,6 +157,9 @@ createHandle = do
         bootstrapLoadModule "concurrency" =<< burdockConcurrencyModule
         bootstrapLoadModule "burdock2023" =<< runScript' (Just "<burdock2023>") burdock2023Source
         -- system now bootstrapped to be able to use default use context burdock2023
+
+        pyp <- pythonModulePlugin
+        R.addModulePlugin "python" pyp
 
         -- load for additional interpreter testing - eventually will find a better
         -- way to handle this

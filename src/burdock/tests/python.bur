@@ -1,0 +1,14 @@
+
+
+import python("string") as pystring
+
+print("burdock")
+print(pystring.printable)
+print("done")
+
+check:
+
+  #pystring.capwords("hello python") is "Hello Python"
+end
+
+

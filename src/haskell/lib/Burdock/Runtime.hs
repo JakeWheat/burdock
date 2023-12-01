@@ -477,7 +477,7 @@ data FFIValueEntry a
     | App (a -> [Value] -> Runtime Value)
     | Assign Text (a -> Text -> Value -> Runtime ())
     | AppKw (a -> [Value] -> [(Text,Value)] -> Runtime Value)
-    | CatchAll (Text -> a -> Runtime Value)
+    | CatchAll ((a -> Runtime Value) -> (Value -> Runtime (Either Text a)) -> Text -> a -> Runtime Value)
 
 makeFFIType :: Typeable a => [Text] -> [FFIValueEntry a] -> Runtime FFITypeInfo
 makeFFIType nm fs = makeFFIType2 nm $ makeMemFns fs
@@ -502,7 +502,8 @@ extractFFIValue :: Typeable a => FFITypeInfo -> Value -> Runtime (Either Text a)
 extractFFIValue ti v = case v of
     FFIValue vtg v' | tyTypeID ti == tyTypeID vtg
                     , Just v'' <- fromDynamic v' -> pure $ Right v''
-    _ -> pure $ Left $ "wrong extract value (please fix this error message)"
+    _ -> pure $ Left $ "wrong extract value (please fix this error message), expected " <> show (tyTypeID ti)
+         <> ", got " <> debugShowValue v
 
 getFFITypeInfoTypeInfo :: Runtime FFITypeInfo
 getFFITypeInfoTypeInfo = rtFFITypeInfoTypeInfo <$> ask
@@ -587,16 +588,15 @@ makeMemFns meths tid mkV exV =
                            Variant _ fs -> f v' as' fs
                            _ -> f v' as [])]
            CatchAll {} -> []
-        --ca :: Maybe (Text -> a -> Runtime Value)
         ca = listToMaybe $ catMaybes $ flip map meths $ \case
             CatchAll f -> Just f
             _ -> Nothing
         memFn nm = case lookup nm meths' of
             Nothing -> case ca of
                 Nothing -> error $ "field not found:" <> tyNameText tid <> " ." <> nm
-                Just f -> ((\v -> do
+                Just f -> \v -> do
                     v' <- either error id <$> exV v
-                    f nm v') :: Value -> Runtime Value)
+                    f mkV exV nm v'
             Just x -> (x :: Value -> Runtime Value)
     in memFn 
 

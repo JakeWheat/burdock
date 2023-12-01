@@ -93,7 +93,7 @@ makeFFITestingType = do
                  kwt <- showKws kws
                  pure $ R.BString $ T.unwords [v,t,kwt]
              _ -> error $ "bad args to appkw"
-        ,R.CatchAll $ \nm (FFITesting v _) ->
+        ,R.CatchAll $ \_ _ nm (FFITesting v _) ->
             pure $ R.BString $ v <> " " <> nm
         ]
   where
