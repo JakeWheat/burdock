@@ -194,7 +194,7 @@ desugarExpr (S.Lam sp (S.FunHeader [] bs Nothing) bdy) = do
     let ((bs',bdy'), candFrees) =
             runWriter $ (,) <$> mapM desugarBinding bs <*> desugarStmts bdy
         bounds = concat $ map getBoundNames bs'
-        frees = nub candFrees \\ bounds
+        frees = nub (intMod : (candFrees \\ bounds))
     -- pass free vars up the chain
     tell frees
     pure $ I.Lam sp frees bs' bdy'

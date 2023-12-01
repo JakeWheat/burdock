@@ -52,7 +52,8 @@ import Burdock.FFIModules.Testing (burdockTestingModule)
 import Burdock.FFIModules.TestingExtras (testingExtrasModule)
 import Burdock.FFIModules.Concurrency (burdockConcurrencyModule)
 
-import Burdock.FFIModules.PythonModulePlugin (pythonModulePlugin)
+import Burdock.FFIModules.PythonModulePlugin
+    (addPythonPackage)
 
 import qualified Burdock.InterpreterPretty as I
 --import Burdock.StaticError (StaticError)
@@ -158,8 +159,8 @@ createHandle = do
         bootstrapLoadModule "burdock2023" =<< runScript' (Just "<burdock2023>") burdock2023Source
         -- system now bootstrapped to be able to use default use context burdock2023
 
-        pyp <- pythonModulePlugin
-        R.addModulePlugin "python" pyp
+        -- todo: there should be a way to compile burdock without python support
+        addPythonPackage bootstrapLoadModule
 
         -- load for additional interpreter testing - eventually will find a better
         -- way to handle this

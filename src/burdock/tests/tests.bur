@@ -231,3 +231,15 @@ check:
   #is-record({}) is true
 
 end
+
+check:
+  # sanity check closure for interpreter module
+  b = {a:'aval'}
+  b.a is 'aval'
+
+  fun f(x):
+    x.a
+  end
+  f({a:'aval'}) is 'aval'
+
+end

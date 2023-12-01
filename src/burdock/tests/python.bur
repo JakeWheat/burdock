@@ -1,12 +1,19 @@
 
 
 import python("string") as pystring
+import haskell("python") as python
 
-print("burdock")
-print(pystring.printable)
-print("done")
+# print("burdock")
+# print(pystring.printable)
+# print("done")|#
+
 
 check:
+  pystring.octdigits is "01234567"
+
+  python.py-block("'test' + ' stuff'") is "test stuff"
+
+  python.py-block-with-binds("'test ' + a", {a:'aval'}) is "test aval"
 
   #pystring.capwords("hello python") is "Hello Python"
 end

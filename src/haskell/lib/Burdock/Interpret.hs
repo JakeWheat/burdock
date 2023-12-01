@@ -159,7 +159,7 @@ interpExpr (I.RecordSel sp fs) = do
             Just x -> pure x
             Nothing -> do
                 ds <- R.debugGetBindings
-                error $ "no binding: " <> T.unlines (map fst ds)
+                error $ "internal interp error no binding for " <> intMod <> ": " <> T.unlines (map fst ds)
     vvti <- R.getMember Nothing bstp "_type-variant-tag"
     ffiti <- R.getFFITypeInfoTypeInfo
     Right vvti' <- R.extractFFIValue ffiti vvti
