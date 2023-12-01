@@ -114,20 +114,24 @@ import Control.Concurrent (rtsSupportsBoundThreads)
 
 foreign import ccall "Py_Initialize" pyInitialize :: IO ()
 foreign import ccall "PyEval_SaveThread" pyEvalSaveThread :: IO (Ptr CChar)
+foreign import ccall "Py_IsInitialized" pyIsInitialized :: IO CInt
+
 
 initialize :: IO ()
 initialize = useBoundThreadIf $ do
-    {-b <- isCurrentThreadBound
-    when (not b) $ do
-        error "Thread initializing python is not bound"-}
-    pyInitialize
-    x <- runExceptT (pyEvalEvalCodeWrap Nothing pyFileInput pythonHelpersSource)
-    -- todo: change this into an either like the rest of the code
-    case x of
-        Left e -> error $ "python ffi: initializing helper functions failed " ++ show e
-        Right {} -> pure ()
-    -- release the GIL
-    when rtsSupportsBoundThreads $ void $ pyEvalSaveThread
+    already <- pyIsInitialized
+    when (already == 0) $ do
+        {-b <- isCurrentThreadBound
+        when (not b) $ do
+            error "Thread initializing python is not bound"-}
+        pyInitialize
+        x <- runExceptT (pyEvalEvalCodeWrap Nothing pyFileInput pythonHelpersSource)
+        -- todo: change this into an either like the rest of the code
+        case x of
+            Left e -> error $ "python ffi: initializing helper functions failed " ++ show e
+            Right {} -> pure ()
+        -- release the GIL
+        when rtsSupportsBoundThreads $ void $ pyEvalSaveThread
 
 useBoundThreadIf :: IO a -> IO a
 useBoundThreadIf f =
