@@ -14,8 +14,24 @@ check:
   python.py-block("'test' + ' stuff'") is "test stuff"
 
   python.py-block-with-binds("'test ' + a", {a:'aval'}) is "test aval"
+  python.py-block-with-binds("type(a).__name__", {a:'aval'}) is "str"
 
-  #pystring.capwords("hello python") is "Hello Python"
+  python.py-block-with-binds("not a", {a:true}) is false
+  python.py-block-with-binds("type(a).__name__", {a:true}) is "bool"
+
+  python.py-block-with-binds("a == None", {a:nothing}) is true
+  #python.py-block-with-binds("a == None", {a:1}) is false
+  python.py-block-with-binds("type(a).__name__", {a:nothing}) is "NoneType"
+
+
+  python.py-block-with-binds("2 + a", {a:1}) is 3
+  python.py-block-with-binds("type(a).__name__", {a:1}) is "int"
+
+  python.py-block-with-binds("2.0 + a", {a:1.0}) is 3.0
+  python.py-block-with-binds("type(a).__name__", {a:2.3}) is "float"
+
+
+  # pystring.capwords("hello python") is "Hello Python"
 end
 
 

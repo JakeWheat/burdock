@@ -119,6 +119,7 @@ foreign import ccall "Py_IsInitialized" pyIsInitialized :: IO CInt
 
 initialize :: IO ()
 initialize = useBoundThreadIf $ do
+    -- this needs to be guarded for two threads calling this at the same time
     already <- pyIsInitialized
     when (already == 0) $ do
         {-b <- isCurrentThreadBound

@@ -28,7 +28,7 @@ data StaticError
 prettyStaticError :: StaticError -> Text
 prettyStaticError = \case
     UnrecognisedIdentifier _ [] -> "internal error with unrecognised identifier"
-    UnrecognisedIdentifier pos is -> doMsg pos $ icd is <> " not found"
+    UnrecognisedIdentifier pos is -> doMsg pos $ icd is <> " not found (static)"
     IdentifierRedefined csp osp i ->
         T.unlines
         [doMsg csp $ "identifier redefined: " <> i
