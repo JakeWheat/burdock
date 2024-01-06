@@ -28,7 +28,7 @@ import Burdock.ModuleMetadata
 import Control.Monad (void)
 import Data.Text (Text)
 import qualified Data.Text as T
-import Data.Text.IO (putStrLn)
+--import Data.Text.IO (putStrLn)
 
 import Data.IORef
     (IORef
@@ -102,7 +102,7 @@ makeFFITestingType = do
           ts <- flip mapM ks (\(n,v) -> case v of
               R.MethodV {} -> pure $ Nothing
               _ -> do
-                  liftIO $ putStrLn $ R.debugShowValue v
+                  --liftIO $ putStrLn $ R.debugShowValue v
                   x <- R.getMember Nothing v "_torepr"
                   y <- R.app Nothing x []
                   case y of

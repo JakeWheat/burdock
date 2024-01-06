@@ -11,6 +11,7 @@ import haskell("python") as python
 check:
   pystring.octdigits is "01234567"
 
+  # test pyblock + auto conversions
   python.py-block("'test' + ' stuff'") is "test stuff"
 
   python.py-block-with-binds("'test ' + a", {a:'aval'}) is "test aval"
@@ -20,7 +21,7 @@ check:
   python.py-block-with-binds("type(a).__name__", {a:true}) is "bool"
 
   python.py-block-with-binds("a == None", {a:nothing}) is true
-  #python.py-block-with-binds("a == None", {a:1}) is false
+  python.py-block-with-binds("a == None", {a:1}) is false
   python.py-block-with-binds("type(a).__name__", {a:nothing}) is "NoneType"
 
 
@@ -30,8 +31,21 @@ check:
   python.py-block-with-binds("2.0 + a", {a:1.0}) is 3.0
   python.py-block-with-binds("type(a).__name__", {a:2.3}) is "float"
 
+  # call a function in a python module
+  pystring.capwords("hello python") is "Hello Python"
 
-  # pystring.capwords("hello python") is "Hello Python"
+
+  # iterate through a python iterable, and lists
+  python.py-for(lam(x): x + 1 end, python.py-block("iter([1, 2, 3, 4])"))
+    is [list: 2,3,4,5]
+
+  python.py-for(lam(x): x + 1 end, python.py-block("[1, 2, 3, 4]"))
+    is [list: 2,3,4,5]
+
+  python.py-for(lam(x): x + 1 end, [list:1,2,3,4])
+    is [list: 2,3,4,5]
+
+
 end
 
 

@@ -20,6 +20,7 @@ module Burdock.Runtime
     ,newDataDeclTag
     ,DataDeclTag(..)
     ,VariantTag(..)
+    ,destructureVariant
 
     ,FFITypeInfo(..)
     ,makeFFIType
@@ -188,6 +189,10 @@ newDataDeclTag :: Text -> Runtime DataDeclTag
 newDataDeclTag tnm = do
     newID <- autoID rtAutoDataDeclID
     pure $ DataDeclTag newID tnm
+
+destructureVariant :: Value -> Maybe (VariantTag, [(Text,Value)])
+destructureVariant (Variant tg fs) = Just (tg, fs)
+destructureVariant _ = Nothing
 
 ------------------------------------------------------------------------------
 
