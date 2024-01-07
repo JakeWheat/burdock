@@ -73,8 +73,8 @@ main = do
         ("desugar": as') -> mapM_ doDesugar as'
         ("test": as') -> runScriptWithTests as'
         ("test-all": _as') -> undefined -- do the hunit tests too
-        ("--": _as) -> undefined -- runfiles
-        _ -> undefined -- runfiles
+        ("--": as') -> mapM_ runScriptWrapper as'
+        _ -> mapM_ runScriptWrapper as
 
 doDesugar :: Text -> IO ()
 doDesugar fn = do
@@ -132,3 +132,10 @@ runScriptWithTests fns = do
         else do
             putStrLn $ show p <> "/" <> show tot <> " tests passed"
             exitFailure
+
+runScriptWrapper :: Text -> IO ()
+runScriptWrapper fn = do
+     mySrc <- liftIO $ L.readFile (T.unpack fn)
+     st <- createHandle
+     void $ runScript st (Just fn) mySrc
+

@@ -357,7 +357,6 @@ rewriteExpr (S.Block sp ss) =
 -- make sure this comes after the getidens version above
 rewriteExpr (S.DotExpr sp e nm) =
     (\e1 -> S.DotExpr sp e1 nm) <$> rewriteExpr e
-    
 
 rewriteExpr (S.Cases sp e ma ts el) = do
     e' <- rewriteExpr e
