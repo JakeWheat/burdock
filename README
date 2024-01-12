@@ -75,8 +75,12 @@ syntax. Implemented in Haskell.
 * strong focus on ergonomics, an analogy - the left-handed oil test:
   https://www.youtube.com/watch?v=w08XDXjJhsQ&t=127s
 
+
+
 Try it out
 ----------
+
+[currently broken, fix eta Q1 2024]
 
 Install ghc and cabal-install, ghcup is recommended for this, https://www.haskell.org/ghcup/
 
